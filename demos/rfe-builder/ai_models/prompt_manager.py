@@ -1,17 +1,74 @@
 """
 Prompt Management System for RFE Builder
 Hybrid approach: Enum-based mapping with workflow-aware templates
+Enhanced with usage analytics and optimization tracking
 """
 
+from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import yaml
 from data.rfe_models import RFE, AgentRole
 
 
+@dataclass
+class PromptUsageStats:
+    """Track usage statistics for prompt templates"""
+
+    template_name: str
+    agent_role: str
+    usage_count: int = 0
+    total_response_time: float = 0.0
+    total_tokens_used: int = 0
+    success_count: int = 0
+    error_count: int = 0
+    confidence_scores: List[float] = field(default_factory=list)
+    last_used: Optional[datetime] = None
+    first_used: Optional[datetime] = None
+
+    @property
+    def avg_response_time(self) -> float:
+        return (
+            self.total_response_time / self.usage_count if self.usage_count > 0 else 0.0
+        )
+
+    @property
+    def avg_tokens(self) -> float:
+        return (
+            self.total_tokens_used / self.usage_count if self.usage_count > 0 else 0.0
+        )
+
+    @property
+    def success_rate(self) -> float:
+        total_attempts = self.success_count + self.error_count
+        return self.success_count / total_attempts if total_attempts > 0 else 0.0
+
+    @property
+    def avg_confidence(self) -> float:
+        return (
+            sum(self.confidence_scores) / len(self.confidence_scores)
+            if self.confidence_scores
+            else 0.0
+        )
+
+
+@dataclass
+class TemplatePerformance:
+    """Performance metrics for template comparison"""
+
+    template_name: str
+    effectiveness_score: (
+        float  # Composite score based on success rate, confidence, etc.
+    )
+    usage_frequency: int
+    user_satisfaction: float = 0.0  # Could be populated from user feedback
+    optimization_potential: float = 0.0  # How much this template could be improved
+
+
 class PromptManager:
-    """Centralized prompt template management with cost optimization"""
+    """Centralized prompt template management with analytics and optimization"""
 
     def __init__(self, prompts_dir: Optional[Path] = None):
         if prompts_dir is None:
@@ -21,6 +78,7 @@ class PromptManager:
             self.prompts_dir = Path(prompts_dir)
 
         self.templates: Dict[AgentRole, Dict[str, Any]] = {}
+        self.usage_stats: Dict[str, PromptUsageStats] = {}  # template_key -> stats
         self._load_all_templates()
 
         # Workflow step to agent/task mapping
@@ -33,6 +91,15 @@ class PromptManager:
             6: (AgentRole.PARKER_PM, "communication"),
             7: (AgentRole.DEREK_DELIVERY_OWNER, "ticket_creation"),
         }
+
+        # Activity tracker integration for logging
+        self._activity_tracker = None
+        try:
+            from ai_models.activity_tracker import get_global_tracker
+
+            self._activity_tracker = get_global_tracker()
+        except ImportError:
+            pass
 
     def _load_all_templates(self):
         """Load all prompt templates from the prompts directory"""
@@ -172,3 +239,245 @@ class PromptManager:
                 issues[agent_role.value] = agent_issues
 
         return issues
+
+    def _get_template_key(self, agent_role: AgentRole, template_name: str) -> str:
+        """Generate unique key for template usage tracking"""
+        return f"{agent_role.value}:{template_name}"
+
+    def log_template_usage(
+        self,
+        agent_role: AgentRole,
+        template_name: str,
+        response_time: float,
+        tokens_used: int,
+        success: bool,
+        confidence_score: Optional[float] = None,
+    ):
+        """Log template usage for analytics"""
+        template_key = self._get_template_key(agent_role, template_name)
+
+        # Initialize stats if first use
+        if template_key not in self.usage_stats:
+            self.usage_stats[template_key] = PromptUsageStats(
+                template_name=template_name,
+                agent_role=agent_role.value,
+                first_used=datetime.now(),
+            )
+
+        stats = self.usage_stats[template_key]
+        stats.usage_count += 1
+        stats.total_response_time += response_time
+        stats.total_tokens_used += tokens_used
+        stats.last_used = datetime.now()
+
+        if success:
+            stats.success_count += 1
+        else:
+            stats.error_count += 1
+
+        if confidence_score is not None:
+            stats.confidence_scores.append(confidence_score)
+
+    def get_template_analytics(self) -> Dict[str, Dict[str, Any]]:
+        """Get comprehensive analytics for all templates"""
+        analytics = {}
+
+        for template_key, stats in self.usage_stats.items():
+            analytics[template_key] = {
+                "template_name": stats.template_name,
+                "agent_role": stats.agent_role,
+                "usage_count": stats.usage_count,
+                "avg_response_time": stats.avg_response_time,
+                "avg_tokens": stats.avg_tokens,
+                "success_rate": stats.success_rate,
+                "avg_confidence": stats.avg_confidence,
+                "first_used": (
+                    stats.first_used.isoformat() if stats.first_used else None
+                ),
+                "last_used": stats.last_used.isoformat() if stats.last_used else None,
+            }
+
+        return analytics
+
+    def get_agent_template_performance(
+        self, agent_role: AgentRole
+    ) -> List[TemplatePerformance]:
+        """Get template performance metrics for a specific agent"""
+        agent_templates = []
+
+        for template_key, stats in self.usage_stats.items():
+            if stats.agent_role == agent_role.value:
+                # Calculate effectiveness score
+                effectiveness_score = self._calculate_effectiveness_score(stats)
+
+                performance = TemplatePerformance(
+                    template_name=stats.template_name,
+                    effectiveness_score=effectiveness_score,
+                    usage_frequency=stats.usage_count,
+                    optimization_potential=1.0
+                    - effectiveness_score,  # Room for improvement
+                )
+                agent_templates.append(performance)
+
+        # Sort by effectiveness score descending
+        return sorted(
+            agent_templates, key=lambda x: x.effectiveness_score, reverse=True
+        )
+
+    def _calculate_effectiveness_score(self, stats: PromptUsageStats) -> float:
+        """Calculate composite effectiveness score for a template"""
+        if stats.usage_count == 0:
+            return 0.0
+
+        # Weighted combination of metrics
+        success_weight = 0.4
+        confidence_weight = 0.3
+        usage_weight = 0.2
+        efficiency_weight = 0.1
+
+        # Success rate component
+        success_component = stats.success_rate
+
+        # Confidence component
+        confidence_component = stats.avg_confidence
+
+        # Usage frequency component (normalized by max usage)
+        max_usage = max((s.usage_count for s in self.usage_stats.values()), default=1)
+        usage_component = min(stats.usage_count / max_usage, 1.0)
+
+        # Efficiency component (inverse of response time, normalized)
+        if stats.avg_response_time > 0:
+            max_response_time = max(
+                (s.avg_response_time for s in self.usage_stats.values()), default=1.0
+            )
+            efficiency_component = 1.0 - min(
+                stats.avg_response_time / max_response_time, 1.0
+            )
+        else:
+            efficiency_component = 1.0
+
+        effectiveness_score = (
+            success_weight * success_component
+            + confidence_weight * confidence_component
+            + usage_weight * usage_component
+            + efficiency_weight * efficiency_component
+        )
+
+        return min(effectiveness_score, 1.0)
+
+    def get_optimization_recommendations(self) -> List[Dict[str, Any]]:
+        """Get recommendations for template optimization"""
+        recommendations = []
+
+        for template_key, stats in self.usage_stats.items():
+            # Low success rate templates
+            if stats.success_rate < 0.8 and stats.usage_count >= 5:
+                recommendations.append(
+                    {
+                        "template": stats.template_name,
+                        "agent": stats.agent_role,
+                        "type": "success_rate",
+                        "priority": "high",
+                        "issue": f"Low success rate: {stats.success_rate:.1%}",
+                        "suggestion": "Review template for clarity and error patterns",
+                    }
+                )
+
+            # Low confidence templates
+            if stats.avg_confidence < 0.6 and stats.usage_count >= 3:
+                recommendations.append(
+                    {
+                        "template": stats.template_name,
+                        "agent": stats.agent_role,
+                        "type": "confidence",
+                        "priority": "medium",
+                        "issue": f"Low confidence: {stats.avg_confidence:.2f}",
+                        "suggestion": "Consider more specific prompts or examples",
+                    }
+                )
+
+            # Slow response templates
+            avg_response_time = stats.avg_response_time
+            if avg_response_time > 5.0 and stats.usage_count >= 3:  # > 5 seconds
+                recommendations.append(
+                    {
+                        "template": stats.template_name,
+                        "agent": stats.agent_role,
+                        "type": "performance",
+                        "priority": "medium",
+                        "issue": f"Slow response: {avg_response_time:.1f}s average",
+                        "suggestion": (
+                            "Consider prompt optimization for faster responses"
+                        ),
+                    }
+                )
+
+            # High token usage templates
+            if stats.avg_tokens > 4000 and stats.usage_count >= 3:
+                recommendations.append(
+                    {
+                        "template": stats.template_name,
+                        "agent": stats.agent_role,
+                        "type": "cost",
+                        "priority": "low",
+                        "issue": f"High token usage: {stats.avg_tokens:.0f} average",
+                        "suggestion": "Consider prompt compression or optimization",
+                    }
+                )
+
+        # Sort by priority
+        priority_order = {"high": 3, "medium": 2, "low": 1}
+        return sorted(
+            recommendations, key=lambda x: priority_order[x["priority"]], reverse=True
+        )
+
+    def get_usage_trends(self, days: int = 7) -> Dict[str, Any]:
+        """Get usage trends over time"""
+        from datetime import timedelta
+
+        cutoff_date = datetime.now() - timedelta(days=days)
+        recent_stats = {}
+
+        for template_key, stats in self.usage_stats.items():
+            if stats.last_used and stats.last_used >= cutoff_date:
+                recent_stats[template_key] = {
+                    "template_name": stats.template_name,
+                    "agent_role": stats.agent_role,
+                    "usage_count": stats.usage_count,
+                    "last_used": stats.last_used,
+                    "effectiveness": self._calculate_effectiveness_score(stats),
+                }
+
+        return {
+            "period_days": days,
+            "active_templates": len(recent_stats),
+            "total_templates": len(self.usage_stats),
+            "recent_activity": recent_stats,
+        }
+
+    def export_analytics(self) -> Dict[str, Any]:
+        """Export comprehensive analytics for external analysis"""
+        return {
+            "export_timestamp": datetime.now().isoformat(),
+            "template_analytics": self.get_template_analytics(),
+            "optimization_recommendations": self.get_optimization_recommendations(),
+            "usage_trends": self.get_usage_trends(30),  # 30 day trends
+            "summary": {
+                "total_templates": len(self.usage_stats),
+                "total_usage": sum(
+                    stats.usage_count for stats in self.usage_stats.values()
+                ),
+                "avg_success_rate": (
+                    sum(stats.success_rate for stats in self.usage_stats.values())
+                    / len(self.usage_stats)
+                    if self.usage_stats
+                    else 0
+                ),
+                "avg_confidence": (
+                    sum(stats.avg_confidence for stats in self.usage_stats.values())
+                    / len(self.usage_stats)
+                    if self.usage_stats
+                    else 0
+                ),
+            },
+        }

@@ -1,8 +1,9 @@
 """
 AI-powered assistants for each RFE workflow agent
-Provides role-specific guidance and decision support
+Provides role-specific guidance and decision support with enhanced activity tracking
 """
 
+import time
 from typing import Any, Dict, List, Optional
 
 import streamlit as st
@@ -11,17 +12,30 @@ from ai_models.prompt_manager import PromptManager
 from anthropic import Anthropic
 from data.rfe_models import RFE, AgentRole
 
+# Activity tracking integration
+try:
+    from ai_models.activity_tracker import get_global_tracker
+
+    ACTIVITY_TRACKING_ENABLED = True
+except ImportError:
+    ACTIVITY_TRACKING_ENABLED = False
+
 
 class AgentAIAssistant:
-    """Base class for agent-specific AI assistants"""
+    """Base class for agent-specific AI assistants with enhanced activity tracking"""
 
     def __init__(self, agent_role: AgentRole):
         self.agent_role = agent_role
         self.prompt_manager = PromptManager()
-        self.cost_tracker = CostTracker()
+        self.cost_tracker = CostTracker(enable_activity_logging=True)
 
         # Initialize Anthropic client
         self.anthropic_client = self._get_anthropic_client()
+
+        # Activity tracking
+        self.activity_tracker = None
+        if ACTIVITY_TRACKING_ENABLED:
+            self.activity_tracker = get_global_tracker()
 
     def _get_anthropic_client(self) -> Optional[Anthropic]:
         """Get Anthropic client with error handling"""
@@ -64,15 +78,43 @@ class AgentAIAssistant:
     def get_agent_guidance(
         self, rfe: RFE, context: Optional[Dict[str, Any]] = None
     ) -> str:
-        """Get AI guidance for this agent and RFE"""
+        """Get AI guidance for this agent and RFE with comprehensive tracking"""
         if not self.anthropic_client:
             return "AI guidance unavailable - missing API configuration"
+
+        start_time = time.time()
+        task_context = self._get_task_context(rfe)
+
+        # Log user interaction
+        if self.activity_tracker:
+            self.activity_tracker.log_user_interaction(
+                action="request_guidance",
+                user_input=f"Requested guidance for {task_context}",
+                agent_role=self.agent_role,
+                rfe_id=rfe.id,
+                context=context or {},
+            )
 
         try:
             # Get appropriate prompt template
             prompt_template = self.prompt_manager.get_agent_prompt(
-                self.agent_role, self._get_task_context(rfe), rfe
+                self.agent_role, task_context, rfe
             )
+
+            # Log prompt selection
+            template_name = prompt_template.get("metadata", {}).get(
+                "template_name", "unknown"
+            )
+            if self.activity_tracker:
+                self.activity_tracker.log_prompt_selection(
+                    agent_role=self.agent_role,
+                    prompt_template=template_name,
+                    selection_reason=f"Selected for task: {task_context}",
+                    context={
+                        "workflow_aware": prompt_template.get("workflow_aware", False)
+                    },
+                    rfe_id=rfe.id,
+                )
 
             # Format prompt with RFE and context data
             prompt_context = self._build_prompt_context(rfe, context)
@@ -80,18 +122,78 @@ class AgentAIAssistant:
                 prompt_template, **prompt_context
             )
 
+            # Count tokens for cost tracking
+            prompt_text = (
+                f"{formatted_prompt['system']}\n\nUser: {formatted_prompt['user']}"
+            )
+            prompt_tokens = self.cost_tracker.count_tokens(prompt_text)
+
             # Make API call
+            api_start = time.time()
             response = self.anthropic_client.messages.create(
                 model="claude-3-haiku-20240307",
                 max_tokens=800,
                 system=formatted_prompt["system"],
                 messages=[{"role": "user", "content": formatted_prompt["user"]}],
             )
+            api_time = time.time() - api_start
 
-            return response.content[0].text
+            response_text = response.content[0].text
+            completion_tokens = self.cost_tracker.count_tokens(response_text)
+
+            # Generate confidence score based on response characteristics
+            confidence_score = self._calculate_confidence_score(
+                response_text, prompt_template
+            )
+
+            # Log comprehensive API usage
+            self.cost_tracker.log_usage(
+                agent_role=self.agent_role,
+                task=task_context,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                response_time=api_time,
+                rfe_id=rfe.id,
+                prompt_template_used=template_name,
+                success=True,
+                confidence_score=confidence_score,
+                decision_context=f"Guidance for {task_context}",
+            )
+
+            # Log agent decision
+            if self.activity_tracker:
+                decision_rationale = self._extract_decision_rationale(response_text)
+                self.activity_tracker.log_agent_decision(
+                    agent_role=self.agent_role,
+                    action="provide_guidance",
+                    decision_rationale=decision_rationale,
+                    confidence_score=confidence_score,
+                    prompt_template_used=template_name,
+                    context={
+                        "task_context": task_context,
+                        "response_length": len(response_text),
+                    },
+                    rfe_id=rfe.id,
+                    system_response=response_text,
+                )
+
+            return response_text
 
         except Exception as e:
-            return f"Error getting AI guidance: {e}"
+            error_time = time.time() - start_time
+            error_message = str(e)
+
+            # Log error
+            if self.activity_tracker:
+                self.activity_tracker.log_error(
+                    error_message="AI guidance request failed",
+                    error_details=error_message,
+                    agent_role=self.agent_role,
+                    context={"task_context": task_context, "error_time": error_time},
+                    rfe_id=rfe.id,
+                )
+
+            return f"Error getting AI guidance: {error_message}"
 
     def _get_task_context(self, rfe: RFE) -> str:
         """Get the current task context for this agent (to be overridden)"""
@@ -130,6 +232,88 @@ class AgentAIAssistant:
             context.update(additional_context)
 
         return context
+
+    def _calculate_confidence_score(
+        self, response_text: str, prompt_template: Dict[str, Any]
+    ) -> float:
+        """Calculate confidence score based on response characteristics"""
+        score = 0.5  # Base score
+
+        # Length-based confidence (longer responses often more comprehensive)
+        if len(response_text) > 500:
+            score += 0.1
+        elif len(response_text) < 100:
+            score -= 0.1
+
+        # Structured response indicators
+        if any(
+            marker in response_text.lower() for marker in ["1.", "2.", "-", "##", "**"]
+        ):
+            score += 0.1  # Structured responses tend to be more thought-out
+
+        # Uncertainty indicators
+        uncertainty_phrases = [
+            "might",
+            "could",
+            "possibly",
+            "perhaps",
+            "maybe",
+            "unsure",
+        ]
+        uncertainty_count = sum(
+            1 for phrase in uncertainty_phrases if phrase in response_text.lower()
+        )
+        score -= min(uncertainty_count * 0.05, 0.2)  # Cap penalty at 0.2
+
+        # Confidence indicators
+        confidence_phrases = [
+            "will",
+            "should",
+            "recommend",
+            "suggest",
+            "clear",
+            "definitely",
+        ]
+        confidence_count = sum(
+            1 for phrase in confidence_phrases if phrase in response_text.lower()
+        )
+        score += min(confidence_count * 0.05, 0.2)  # Cap bonus at 0.2
+
+        # Workflow awareness bonus
+        if prompt_template.get("workflow_aware", False):
+            score += 0.1
+
+        return max(0.0, min(1.0, score))  # Clamp between 0 and 1
+
+    def _extract_decision_rationale(self, response_text: str) -> str:
+        """Extract key decision rationale from response"""
+        # Simple heuristic: take the first few sentences or key points
+        sentences = response_text.split(". ")
+
+        # Look for rationale indicators
+        rationale_indicators = [
+            "because",
+            "due to",
+            "since",
+            "as",
+            "reason",
+            "therefore",
+        ]
+        rationale_sentences = []
+
+        for sentence in sentences[:5]:  # Check first 5 sentences
+            if any(indicator in sentence.lower() for indicator in rationale_indicators):
+                rationale_sentences.append(sentence.strip())
+
+        if rationale_sentences:
+            return ". ".join(rationale_sentences)
+        else:
+            # Fallback: return first 150 characters
+            return (
+                response_text[:150] + "..."
+                if len(response_text) > 150
+                else response_text
+            )
 
 
 class ParkerAIAssistant(AgentAIAssistant):
