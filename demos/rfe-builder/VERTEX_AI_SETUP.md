@@ -137,6 +137,10 @@ export ANTHROPIC_SMALL_FAST_MODEL='claude-3-5-haiku@20241022'
 export ANTHROPIC_TIMEOUT=30.0
 export ANTHROPIC_MAX_RETRIES=3
 
+# Optional: If using Vertex AI, you do NOT need an Anthropic API key.
+# Leave ANTHROPIC_API_KEY unset. If present in secrets, it will be ignored when
+# CLAUDE_CODE_USE_VERTEX=1 (you may also set ANTHROPIC_API_KEY="using-vertex-ai").
+
 # Reload your shell configuration
 source ~/.bashrc  # or ~/.zshrc
 ```
@@ -224,6 +228,7 @@ gcloud compute project-info describe --project=YOUR_PROJECT_ID
 | `ANTHROPIC_TIMEOUT` | No | Connection timeout (seconds) | `30.0` |
 | `ANTHROPIC_MAX_RETRIES` | No | Maximum retry attempts | `3` |
 | `GOOGLE_APPLICATION_CREDENTIALS` | Optional | Service account key path | `/path/to/key.json` |
+| `ANTHROPIC_API_KEY` | Not required in Vertex mode | Direct API key (only for non-Vertex usage) | `sk-ant-...` |
 
 ## Supported Regions and Models
 

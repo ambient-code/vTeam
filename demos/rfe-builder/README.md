@@ -104,6 +104,8 @@ The RFE Builder implements a 7-agent workflow system:
    python check_vertex_setup.py
    ```
    
+   Note: When running in Vertex AI mode, an Anthropic API key is not required. Leave `ANTHROPIC_API_KEY` unset (recommended). If you keep a `.streamlit/secrets.toml`, you may remove the key or set `ANTHROPIC_API_KEY = "using-vertex-ai"` to explicitly indicate Vertex usage.
+   
    📋 **For detailed Vertex AI setup:** See [`VERTEX_AI_SETUP.md`](./VERTEX_AI_SETUP.md)
 
 5. **Run the application**
@@ -197,6 +199,8 @@ If you see "I'm having trouble connecting to the AI service" with Vertex AI:
 If using direct Anthropic API:
 - Verify your API key in `.streamlit/secrets.toml`
 - Check your account has sufficient credits at https://console.anthropic.com/
+
+If you are using Vertex AI mode (`CLAUDE_CODE_USE_VERTEX=1`), `ANTHROPIC_API_KEY` is optional and can be omitted.
 
 ## 🧪 Testing
 
