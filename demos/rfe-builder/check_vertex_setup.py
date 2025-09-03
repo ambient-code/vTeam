@@ -134,7 +134,8 @@ def print_check_result(name: str, success: bool, details: str, required: bool = 
 def main():
     """Main diagnostic function"""
     print("🧪 Vertex AI Setup Verification for RFE Builder")
-    print("This script will help diagnose Vertex AI configuration issues.\n")
+    print("This script will help diagnose Vertex AI configuration issues.")
+    print("ℹ️  Note: This script displays project IDs and regions for diagnostic purposes.\n")
     
     all_good = True
     
@@ -144,6 +145,7 @@ def main():
     for var_name, is_set, description, required, value in env_results:
         if is_set:
             details = f"{description} ✓"
+            # Show values for diagnostic purposes (low sensitivity)
             if var_name in ["ANTHROPIC_VERTEX_PROJECT_ID", "CLOUD_ML_REGION"] and value:
                 details += f" (Value: {value})"
         else:

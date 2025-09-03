@@ -33,7 +33,7 @@ gcloud config get-value project
 
 ## Step 2: Authentication Setup
 
-### Option A: Application Default Credentials (Recommended)
+### Option A: Application Default Credentials (Recommended - Most Secure)
 ```bash
 # Login and set application default credentials
 gcloud auth application-default login
@@ -42,7 +42,12 @@ gcloud auth application-default login
 # ~/.config/gcloud/application_default_credentials.json
 ```
 
-### Option B: Service Account (For Production)
+**🔒 Security Note**: Application Default Credentials are the recommended approach as they:
+- Don't require downloading service account keys to local files
+- Automatically rotate and are managed by Google Cloud
+- Reduce risk of accidental credential exposure
+
+### Option B: Service Account (For Production Environments Only)
 ```bash
 # Create a service account
 gcloud iam service-accounts create vertex-ai-demo \
@@ -64,6 +69,12 @@ gcloud iam service-accounts keys create vertex-ai-key.json \
 # Set environment variable
 export GOOGLE_APPLICATION_CREDENTIALS="/path/to/vertex-ai-key.json"
 ```
+
+**⚠️ SECURITY WARNING**: 
+- **NEVER commit service account keys to version control**
+- Store keys securely and rotate them regularly
+- Use Application Default Credentials (Option A) whenever possible
+- Add `*.json` to your `.gitignore` to prevent accidental commits
 
 ## Step 3: Required IAM Permissions
 
@@ -103,10 +114,9 @@ gcloud ai models list --region=europe-west1 --filter="displayName:claude" --limi
 
 ### 4.2 Test Model Access
 ```bash
-# Test if you can access Claude models (replace with actual model ID)
-gcloud ai endpoints predict ENDPOINT_ID \
-    --region=us-east5 \
-    --json-request='{"instances": [{"content": "Hello"}]}'
+# Note: Direct model testing via gcloud is complex for Claude models
+# The RFE Builder demo will automatically test model access when you run it
+# If you need to test manually, use the check_vertex_setup.py script instead
 ```
 
 ## Step 5: Environment Variables Setup
