@@ -1,43 +1,57 @@
 flowchart TD
-    Start([Start]) --> PrioritizeRFE["1️⃣ 📊 Parker (PM)<br/>Prioritize RFEs"]
+    Start([Start]) --> CreateRFE["1. 📊 Parker (PM)<br/>Create RFE from customer,<br/>field/SSA, UX research, or<br/>product roadmap feedback"]
     
-    PrioritizeRFE --> ReviewRFE["2️⃣ RFE Council<br/>🏛️ Archie (Architect)<br/>Review RFE"]
-    ReviewRFE -.->|2a if necessary| AssessImpact["2a 👥 Lee (Team Lead) +<br/>💻 Taylor (Team Member)<br/>Assess Impact"]
-    AssessImpact -.->|return to 2️⃣| ReviewRFE
+    CreateRFE --> GetApproval["2. 🏢 Dan (Senior Director)<br/>Initial feedback & approval<br/>on strategic alignment<br/>and impact"]
     
-    ReviewRFE --> RFEComplete{"3️⃣ ⭐ Stella (Staff Engineer)<br/>RFE is Complete?"}
-    RFEComplete -->|3a missing details| AddInfo["3a 📋 Olivia (PO)<br/>Add missing information"]
-    AddInfo -->|return to 1️⃣| PrioritizeRFE
+    GetApproval -.->|if needed| UXDiscovery["3A. 📊 Parker (PM) +<br/>🎨 Uma (UX)<br/>Open RHOAIUX ticket<br/>for UX discovery"]
+    UXDiscovery -.->|if needed| UXResearch["3B. 📊 Parker (PM) +<br/>🔍 Ryan (UX Research)<br/>Open UXDR ticket<br/>for UX research"]
     
-    RFEComplete -->|3b Yes| RFEMeets{"4️⃣ RFE Council<br/>🏛️ Archie (Architect)<br/>RFE meets acceptance<br/>criteria?"}
+    GetApproval --> SubmitRFE["4. 📊 Parker (PM)<br/>Submit RFE for<br/>RFE Council review"]
     
-    RFEMeets -->|4a Yes| AcceptRFE["5️⃣ ⭐ Stella (Staff Engineer)<br/>Accept RFE<br/><i>(update ticket with<br/>assessment info)</i>"]
-    RFEMeets -->|4b No| RejectRFE["4b RFE Council<br/>🏛️ Archie (Architect)<br/>Reject RFE<br/><i>(update ticket with<br/>assessment info)</i>"]
+    SubmitRFE --> ArchieReview["5. RFE Council<br/>🏛️ Archie (Architect)<br/>Review RFE"]
     
-    RejectRFE --> CanChange{"4c 📋 Olivia (PO)<br/>Can RFE be changed<br/>to remedy concerns?"}
-    CanChange -->|4d Yes - return to 3a| AddInfo
-    CanChange -->|4e No| CommReject["6️⃣ 📊 Parker (PM)<br/>Communicate assessment<br/>to requester"]
+    ArchieReview --> MeetsAcceptance{"6. RFE Council<br/>🏛️ Archie (Architect)<br/>RFE meets acceptance<br/>criteria?"}
     
-    AcceptRFE --> CommAccept["6️⃣ 📊 Parker (PM)<br/>Communicate assessment<br/>to requester"]
+    MeetsAcceptance -->|No| PendingReject["Feedback/assessment +<br/>'Pending Rejection'"]
+    PendingReject --> CanRemedy{"Can RFE be changed<br/>to remedy concerns?"}
+    CanRemedy -->|Yes| CreateRFE
+    CanRemedy -->|No| CloseRFE["Change status to 'Closed'<br/>(another feature can address this)"]
     
-    CommReject --> CreateTicket["7️⃣ 🚀 Derek (Delivery Owner)<br/>Create Feature ticket<br/>and assign to owner"]
-    CommAccept --> CreateTicket
+    MeetsAcceptance -->|Yes| NeedsTechReview{"7. RFE needs deeper<br/>technical feasibility<br/>review?"}
     
-    CreateTicket --> End([End])
+    NeedsTechReview -->|Yes| TechReview["7A. 🏛️ Archie (Architect) +<br/>👥 Lee (Team Lead) +<br/>⭐ Stella (Staff Engineer)<br/>Technical Review"]
+    TechReview --> PendingApproval
+    
+    NeedsTechReview -->|No| PendingApproval["8. 🏛️ Archie (Architect)<br/>Change status to<br/>'Pending Approval'"]
+    
+    PendingApproval --> Approved["9. 📊 Parker (PM)<br/>Change to 'Approved' &<br/>clone RFE to RHOAISTRAT"]
+    
+    Approved --> PrioritizeSTRAT["10. 📊 Parker (PM) +<br/>🏢 Dan (Senior Director)<br/>Prioritize STRAT"]
+    
+    PrioritizeSTRAT --> AssignLee["11. 👥 Lee (Team Lead)<br/>Assigned to STRAT"]
+    
+    AssignLee --> FeatureRefinement["12. 📊 Parker (PM) +<br/>👥 Lee (Team Lead)<br/>Feature Refinement"]
+    
+    FeatureRefinement --> End([End])
+    CloseRFE --> End
     
     %% Agent role-based styling
     classDef startEnd fill:#28a745,stroke:#1e7e34,color:#fff
     classDef productManager fill:#6f42c1,stroke:#5a32a3,color:#fff
-    classDef productOwner fill:#17a2b8,stroke:#138496,color:#fff
+    classDef seniorDirector fill:#343a40,stroke:#212529,color:#fff
+    classDef ux fill:#e83e8c,stroke:#d91a72,color:#fff
+    classDef uxResearch fill:#fd7e14,stroke:#e8610e,color:#fff
     classDef architect fill:#dc3545,stroke:#c82333,color:#fff
-    classDef staffEngineer fill:#fd7e14,stroke:#e8610e,color:#fff
+    classDef staffEngineer fill:#28a745,stroke:#1e7e34,color:#fff
     classDef teamLead fill:#20c997,stroke:#1aa179,color:#fff
-    classDef deliveryOwner fill:#ffc107,stroke:#e0a800,color:#212529
+    classDef productOwner fill:#17a2b8,stroke:#138496,color:#fff
     
     class Start,End startEnd
-    class PrioritizeRFE,CommReject,CommAccept productManager
-    class AddInfo,CanChange productOwner
-    class ReviewRFE,RFEMeets,RejectRFE architect
-    class RFEComplete,AcceptRFE staffEngineer
-    class AssessImpact teamLead
-    class CreateTicket deliveryOwner
+    class CreateRFE,SubmitRFE,Approved,PrioritizeSTRAT,FeatureRefinement productManager
+    class GetApproval seniorDirector
+    class UXDiscovery ux
+    class UXResearch uxResearch
+    class ArchieReview,MeetsAcceptance,TechReview,PendingApproval architect
+    class NeedsTechReview staffEngineer
+    class AssignLee teamLead
+    class PendingReject,CanRemedy,CloseRFE productOwner
