@@ -1,0 +1,3 @@
+requests>=2.31.0
+claude-code-sdk>=0.0.21
+anthropic>=0.40.0

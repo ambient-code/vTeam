@@ -1,0 +1,39 @@
+# Root-level project files
+
+# Environment variables (contains secrets)
+.env
+.env.local
+.env.production
+.env.staging
+
+# IDE and Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS-specific files
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+
+# Logs at root level
+*.log
+
+# Temporary files at root level
+tmp/
+temp/
+*.tmp
+*.temp
+
+# Build artifacts at root level
+*.tar.gz
+*.zip

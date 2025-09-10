@@ -1,0 +1,45 @@
+# Go build outputs
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool, specifically when used with LiteIDE
+*.out
+
+# Go workspace file
+go.work
+go.work.sum
+
+# Dependency directories  
+vendor/
+
+# Go modules
+go.sum
+
+# Binary output
+backend
+main
+
+# Profiling files
+*.prof
+*.cpu
+*.mem
+
+# Air live reload tool
+tmp/
+
+# Gin debug logs
+gin-bin
+gin.log
+
+# Debug logs
+debug.log
+
+# Coverage reports
+coverage.html
+coverage.out

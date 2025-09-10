@@ -1,0 +1,118 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: researchsessions.research.example.com
+spec:
+  group: research.example.com
+  versions:
+  - name: v1
+    served: true
+    storage: true
+    schema:
+      openAPIV3Schema:
+        type: object
+        properties:
+          spec:
+            type: object
+            required:
+            - prompt
+            - websiteURL
+            properties:
+              prompt:
+                type: string
+                description: "The initial prompt for the research session"
+              websiteURL:
+                type: string
+                description: "The website URL to analyze"
+              displayName:
+                type: string
+                description: "A descriptive display name for the research session generated from prompt and website"
+              llmSettings:
+                type: object
+                properties:
+                  model:
+                    type: string
+                    default: "claude-3-5-sonnet-20241022"
+                  temperature:
+                    type: number
+                    default: 0.7
+                  maxTokens:
+                    type: integer
+                    default: 4000
+                description: "LLM configuration settings"
+              timeout:
+                type: integer
+                default: 300
+                description: "Timeout in seconds for the research session"
+          status:
+            type: object
+            properties:
+              phase:
+                type: string
+                enum:
+                - "Pending"
+                - "Creating"
+                - "Running"
+                - "Completed"
+                - "Failed"
+                - "Stopped"
+                - "Error"
+                default: "Pending"
+              message:
+                type: string
+                description: "Status message or error details"
+              startTime:
+                type: string
+                format: date-time
+              completionTime:
+                type: string
+                format: date-time
+              jobName:
+                type: string
+                description: "Name of the Kubernetes job created for this session"
+              finalOutput:
+                type: string
+                description: "The final research output from Claude (last message)"
+              cost:
+                type: number
+                description: "Total cost of the research session in USD"
+              messages:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    content:
+                      type: string
+                      description: "Message content - populated for TextBlock and ToolResultBlock"
+                    tool_use_id:
+                      type: string
+                      description: "Tool use identifier - populated for ToolUseBlock and ToolResultBlock"
+                    tool_use_name:
+                      type: string
+                      description: "Tool name - populated for ToolUseBlock and ToolResultBlock"
+                    tool_use_input:
+                      type: string
+                      description: "Tool input parameters as JSON string - populated for ToolUseBlock"
+                    tool_use_is_error:
+                      type: boolean
+                      description: "Whether tool result is an error - populated for ToolResultBlock"
+                description: "Array of message objects during the research session"
+    additionalPrinterColumns:
+    - name: Phase
+      type: string
+      description: Current phase of the research session
+      jsonPath: .status.phase
+    - name: Website
+      type: string
+      description: Target website URL
+      jsonPath: .spec.websiteURL
+    - name: Age
+      type: date
+      jsonPath: .metadata.creationTimestamp
+  scope: Namespaced
+  names:
+    plural: researchsessions
+    singular: researchsession
+    kind: ResearchSession
+    shortNames:
+    - rs

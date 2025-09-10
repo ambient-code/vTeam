@@ -1,0 +1,31 @@
+# Generated manifests
+*-generated.yaml
+*-temp.yaml
+*-backup.yaml
+
+# Secrets with real values (backups)
+*-secrets-real.yaml
+*-config-real.yaml
+
+# Helm generated files
+*.tgz
+charts/
+Chart.lock
+
+# Kustomize build outputs
+kustomization-build.yaml
+overlays/*/build/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Deployment logs
+deploy-*.log
+rollback-*.log
+
+# Environment-specific overrides (if generated)
+*-dev.yaml
+*-staging.yaml
+*-prod.yaml
