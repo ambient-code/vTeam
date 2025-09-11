@@ -2,7 +2,6 @@ apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
   name: rhoai-api
-  namespace: rhoai-ai-feature-sizing
   labels:
     app: rhoai-ai-feature-sizing
     component: api
@@ -22,7 +21,6 @@ apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
   name: rhoai-ui
-  namespace: rhoai-ai-feature-sizing
   labels:
     app: rhoai-ai-feature-sizing
     component: ui

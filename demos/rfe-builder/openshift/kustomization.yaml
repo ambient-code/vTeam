@@ -4,8 +4,8 @@ kind: Kustomization
 metadata:
   name: rhoai-ai-feature-sizing
 
-# Namespace for all resources
-namespace: rhoai-ai-feature-sizing
+# Namespace for all resources (can be overridden with kustomize edit set namespace)
+namespace: my-custom-namespace
 
 # Resources to include in deployment
 resources:
@@ -20,8 +20,8 @@ resources:
 # Common labels applied to all resources
 commonLabels:
   app: rhoai-ai-feature-sizing
-  version: v1.0.0
   managed-by: kustomize
+  version: v1.0.0
 
 # Common annotations applied to all resources
 commonAnnotations:
@@ -31,24 +31,24 @@ commonAnnotations:
 # namePrefix: rhoai-
 
 # Images to replace (for different environments)
+# Override with: kustomize edit set image quay.io/gkrumbach07/llama-index-demo/rhoai-ai-feature-sizing=your-registry.com/your-image:your-tag
 images:
-- name: your-registry.com/rhoai-ai-feature-sizing
-  newName: your-registry.com/rhoai-ai-feature-sizing
+- name: quay.io/gkrumbach07/llama-index-demo/rhoai-ai-feature-sizing
+  newName: quay.io/gkrumbach07/llama-index-demo/rhoai-ai-feature-sizing
   newTag: latest
 
 # Configuration patches for different environments
-patchesStrategicMerge: []
 
 # JSON 6902 patches
-patches: []
 
-# Config map and secret generators
-configMapGenerator:
-- name: rhoai-env-config
-  envs:
-  - .env.production
+# Config map and secret generators (uncomment and create .env.production/.env.secrets files to use)
+# Note: When using generators, remove configmap.yaml and secret.yaml from resources list above
+# configMapGenerator:
+# - envs:
+#   - .env.production
+#   name: rhoai-env-config
 
-secretGenerator:
-- name: rhoai-api-keys
-  envs:
-  - .env.secrets
+# secretGenerator:
+# - envs:
+#   - .env.secrets
+#   name: rhoai-api-keys

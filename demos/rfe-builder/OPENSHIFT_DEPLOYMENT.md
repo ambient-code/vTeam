@@ -48,32 +48,13 @@ docker login your-registry.com
 
 ## Quick Deployment
 
-### 1. Automated Deployment (Recommended)
-```bash
-# Run the automated deployment script
-./openshift/deploy.sh your-registry.com/rhoai latest
+> **📋 For build and deployment instructions, see [openshift/README.md](openshift/README.md)**
 
-# Or with OpenShift internal registry
-./openshift/deploy.sh image-registry.openshift-image-registry.svc:5000/rhoai-ai-feature-sizing latest
-```
-
-### 2. Manual Deployment
-If you prefer manual control:
-
-```bash
-# Build and push image
-docker build -t your-registry.com/rhoai-ai-feature-sizing:latest .
-docker push your-registry.com/rhoai-ai-feature-sizing:latest
-
-# Deploy to OpenShift
-oc apply -f openshift/namespace.yaml
-oc apply -f openshift/pvc.yaml
-oc apply -f openshift/configmap.yaml
-oc apply -f openshift/secret.yaml
-oc apply -f openshift/deployment.yaml
-oc apply -f openshift/service.yaml
-oc apply -f openshift/route.yaml
-```
+The OpenShift README covers:
+- Building images with podman/docker auto-detection
+- Deploy script usage with environment variables
+- Kustomize deployment
+- Individual manifest deployment
 
 ## Configuration
 

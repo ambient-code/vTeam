@@ -2,7 +2,6 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: rhoai-ai-feature-sizing
-  namespace: rhoai-ai-feature-sizing
   labels:
     app: rhoai-ai-feature-sizing
 spec:

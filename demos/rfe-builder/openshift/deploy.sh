@@ -1,7 +1,8 @@
 #!/bin/bash
 
 # OpenShift Deployment Script for RHOAI AI Feature Sizing Platform
-# Usage: ./deploy.sh [REGISTRY_URL] [IMAGE_TAG]
+# Usage: ./deploy.sh
+# Or with environment variables: NAMESPACE=my-namespace IMAGE_FULL_NAME=quay.io/my/image:latest ./deploy.sh
 # Note: This script deploys a pre-built image. Use build.sh first to build and push the image.
 
 set -e
@@ -14,19 +15,14 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Configuration
-NAMESPACE="rhoai-ai-feature-sizing"
-APP_NAME="rhoai-ai-feature-sizing"
-DEFAULT_REGISTRY="quay.io/gkrumbach07/llama-index-demo"
-DEFAULT_TAG="latest"
+NAMESPACE="${NAMESPACE:-rhoai-ai-feature-sizing}"
+DEFAULT_IMAGE="quay.io/gkrumbach07/llama-index-demo/rhoai-ai-feature-sizing:latest"
 
-# Parse arguments
-REGISTRY_URL=${1:-$DEFAULT_REGISTRY}
-IMAGE_TAG=${2:-$DEFAULT_TAG}
-IMAGE_FULL_NAME="${REGISTRY_URL}/${APP_NAME}:${IMAGE_TAG}"
+# Use IMAGE_FULL_NAME environment variable or default
+IMAGE_FULL_NAME="${IMAGE_FULL_NAME:-$DEFAULT_IMAGE}"
 
 echo -e "${BLUE}🚀 RHOAI AI Feature Sizing - OpenShift Deployment${NC}"
 echo -e "${BLUE}=================================================${NC}"
-echo -e "Registry: ${GREEN}${REGISTRY_URL}${NC}"
 echo -e "Image: ${GREEN}${IMAGE_FULL_NAME}${NC}"
 echo -e "Namespace: ${GREEN}${NAMESPACE}${NC}"
 echo ""
@@ -34,6 +30,19 @@ echo ""
 # Function to check if command exists
 command_exists() {
     command -v "$1" >/dev/null 2>&1
+}
+
+# Function to apply manifest (no namespace substitution needed)
+apply_manifest() {
+    local manifest_file="$1"
+    echo -e "${BLUE}📋 Applying ${manifest_file}...${NC}"
+    oc apply -f "openshift/${manifest_file}"
+}
+
+# Function to apply deployment with image substitution
+apply_deployment() {
+    echo -e "${BLUE}📋 Applying deployment.yaml with image ${IMAGE_FULL_NAME}...${NC}"
+    sed "s|image:.*|image: ${IMAGE_FULL_NAME}|g" "openshift/deployment.yaml" | oc apply -f -
 }
 
 # Check prerequisites
@@ -62,44 +71,41 @@ echo -e "Image: ${BLUE}${IMAGE_FULL_NAME}${NC}"
 echo -e "${YELLOW}💡 If image doesn't exist, run: ${BLUE}./openshift/build.sh${NC}"
 echo ""
 
-# Update deployment with new image
-echo -e "${YELLOW}🔧 Updating deployment manifest...${NC}"
-sed -i.bak "s|image:.*|image: ${IMAGE_FULL_NAME}|g" openshift/deployment.yaml
-echo -e "${GREEN}✅ Deployment manifest updated${NC}"
-echo ""
-
 # Deploy to OpenShift
 echo -e "${YELLOW}🚀 Deploying to OpenShift...${NC}"
 
-# Create namespace
-echo -e "${BLUE}📁 Creating namespace...${NC}"
-oc apply -f openshift/namespace.yaml
-
-# Check if namespace already exists and is active
-if oc get namespace ${NAMESPACE} >/dev/null 2>&1; then
-    echo -e "${GREEN}✅ Namespace already exists${NC}"
+# Create namespace first
+echo -e "${BLUE}📁 Creating namespace ${NAMESPACE}...${NC}"
+if [ "$NAMESPACE" != "rhoai-ai-feature-sizing" ]; then
+    # Create custom namespace
+    oc create namespace "$NAMESPACE" --dry-run=client -o yaml | oc apply -f -
 else
-    echo -e "${YELLOW}⏳ Waiting for namespace to be ready...${NC}"
-    # Wait for namespace to be ready with increased timeout
-    oc wait --for=condition=Active namespace/${NAMESPACE} --timeout=300s || {
-        echo -e "${RED}❌ Namespace creation timed out. Checking status...${NC}"
-        oc describe namespace ${NAMESPACE}
-        echo -e "${YELLOW}💡 Try running: oc delete namespace ${NAMESPACE} && sleep 10${NC}"
-        exit 1
-    }
+    # Use default namespace manifest
+    oc apply -f "openshift/namespace.yaml"
 fi
 
+# Wait for namespace to be ready
+echo -e "${YELLOW}⏳ Waiting for namespace to be ready...${NC}"
+oc wait --for=condition=Active namespace/${NAMESPACE} --timeout=300s || {
+    echo -e "${RED}❌ Namespace creation timed out. Checking status...${NC}"
+    oc describe namespace ${NAMESPACE}
+    echo -e "${YELLOW}💡 Try running: oc delete namespace ${NAMESPACE} && sleep 10${NC}"
+    exit 1
+}
+
+# Switch to the target namespace
+echo -e "${BLUE}🔄 Switching to namespace ${NAMESPACE}...${NC}"
+oc project ${NAMESPACE}
+
 # Create persistent volume claims
-echo -e "${BLUE}💾 Creating persistent volumes...${NC}"
-oc apply -f openshift/pvc.yaml
+apply_manifest "pvc.yaml"
 
 # Create config map and secrets
-echo -e "${BLUE}⚙️ Creating configuration...${NC}"
-oc apply -f openshift/configmap.yaml
+apply_manifest "configmap.yaml"
 
 # Check if secrets file exists and has content
 if [ -s openshift/secret.yaml ] && grep -q "OPENAI_API_KEY:" openshift/secret.yaml; then
-    oc apply -f openshift/secret.yaml
+    apply_manifest "secret.yaml"
 else
     echo -e "${YELLOW}⚠️  Secret file is empty or missing API keys. Creating empty secret...${NC}"
     echo -e "${YELLOW}   Please update the secret with your API keys:${NC}"
@@ -108,16 +114,13 @@ else
 fi
 
 # Deploy application
-echo -e "${BLUE}🚢 Deploying application...${NC}"
-oc apply -f openshift/deployment.yaml
+apply_deployment
 
 # Create services
-echo -e "${BLUE}🔗 Creating services...${NC}"
-oc apply -f openshift/service.yaml
+apply_manifest "service.yaml"
 
 # Create routes
-echo -e "${BLUE}🌐 Creating routes...${NC}"
-oc apply -f openshift/route.yaml
+apply_manifest "route.yaml"
 
 echo ""
 echo -e "${GREEN}✅ Deployment completed!${NC}"
@@ -148,5 +151,4 @@ echo -e "3. View logs:"
 echo -e "   ${BLUE}oc logs -f deployment/${APP_NAME} -n ${NAMESPACE}${NC}"
 echo ""
 
-# Restore original deployment file
-mv openshift/deployment.yaml.bak openshift/deployment.yaml 2>/dev/null || true
+# Note: No cleanup needed as we use in-memory substitution
