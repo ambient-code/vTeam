@@ -1,0 +1,83 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mcp-client-integration"
+version = "1.0.0"
+description = "MCP (Model Context Protocol) client integration library for llama-index"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.8"
+authors = [
+    {name = "vTeam", email = "vteam@example.com"},
+]
+keywords = ["mcp", "llama-index", "integration", "client", "protocol"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+]
+dependencies = [
+    "httpx[http2]>=0.28.1",
+    "websockets>=13.1",
+    "certifi>=2024.8.30",  # Ensure up-to-date CA certificates
+    "cryptography>=41.0.0",  # For secure connections
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3.5",
+    "pytest-asyncio>=0.24.0",
+    "pytest-cov>=5.0.0",
+    "black",
+    "isort",
+    "flake8",
+    "mypy",
+    "bandit",  # Security linting
+    "safety",  # Dependency vulnerability scanning
+]
+
+# Optional dependencies for different use cases
+llama = [
+    # Note: llama-index dependencies should be added by consuming applications
+    # as they have specific version requirements and Python constraints
+    # "llama-index-core>=0.10.0,<=0.11.23",
+    # "llama-index-embeddings-openai>=0.1.0",
+    # "llama-index-llms-anthropic>=0.1.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/red-hat-data-services/vTeam"
+Repository = "https://github.com/red-hat-data-services/vTeam"
+Issues = "https://github.com/red-hat-data-services/vTeam/issues"
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/",
+    "README.md",
+    "LICENSE",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]
+
+[tool.black]
+line-length = 88
+target-version = ['py38']
+
+[tool.isort]
+profile = "black"
+line_length = 88
+
+[tool.mypy]
+python_version = "3.8"
+ignore_missing_imports = true

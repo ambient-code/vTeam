@@ -115,3 +115,8 @@ demos/rfe-builder/.streamlit/secrets.toml
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+.playwright-mcp/
+.stories/
+.testplans/
+.spikes/
