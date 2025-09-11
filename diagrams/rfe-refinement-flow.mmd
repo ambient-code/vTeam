@@ -32,6 +32,7 @@ sequenceDiagram
     OH->>CG: Generate code
     CG->>GH: Open PR
     GH->>AR: Trigger checks / review
-    AR-->>HE: Feedback / fixes
-    AR-->>HE2: (Alternate) Assign to Human Eng 2
+    AR-->>HE: Human Engineer review
+    HE-->>HE2: Feedback / fixes
+    HE2-->>MERGE: (Alternate) Assign to Human Eng 2
     HE-->>MERGE: Approve / Merge
