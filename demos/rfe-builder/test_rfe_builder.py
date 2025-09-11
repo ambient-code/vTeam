@@ -7,6 +7,10 @@ import os
 import pytest
 from dotenv import load_dotenv
 
+# Import our new test modules to include them in the test suite
+from test_ui_imports import TestUIComponentImports, TestUIComponentDependencies
+from test_async_patterns import TestAsyncPatterns, TestStreamingPatterns
+
 # Import workflows
 from src.rfe_builder_workflow import create_rfe_builder_workflow
 # from src.artifact_editor_workflow import create_artifact_editor_workflow  # Not available
