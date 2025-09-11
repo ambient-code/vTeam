@@ -24,6 +24,12 @@ async def stream_structured_predict(
         response = await Settings.llm.astructured_predict(
             output_cls, prompt_template, **prompt_args
         )
+        
+        # Check if response is the expected type - sometimes LLM returns string
+        if not hasattr(response, 'model_dump'):
+            print(f"Warning: {persona} got unexpected response type {type(response)}, wrapping it")
+            return output_cls(analysis=str(response), persona=persona)
+        
         return response
     except Exception as e:
         print(f"Error in structured_predict for {persona}: {e}")
@@ -46,8 +52,8 @@ async def stream_structured_predict_with_events(
         }
         
         # Get the final response (non-streaming to avoid async iterator issues)
-        final_response = await Settings.llm.astructured_predict(
-            output_cls, prompt_template, **prompt_args
+        final_response = await stream_structured_predict(
+            output_cls, prompt_template, persona, **prompt_args
         )
         
         # Get the final text content
@@ -75,10 +81,19 @@ async def stream_structured_predict_with_events(
 
         # Yield final result
         if final_response:
+            # Handle both Pydantic models and string responses
+            if hasattr(final_response, 'model_dump'):
+                result = final_response.model_dump()
+            else:
+                # If it's a string or other type, wrap it appropriately
+                result = {
+                    "analysis": str(final_response),
+                    "persona": persona
+                }
             yield {
                 "type": "complete",
                 "persona": persona,
-                "result": final_response.model_dump(),
+                "result": result,
             }
         else:
             # Fallback if no streaming occurred

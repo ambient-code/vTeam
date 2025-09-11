@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: claude-research
+  labels:
+    name: claude-research
+    app.kubernetes.io/name: claude-research
+    app.kubernetes.io/part-of: claude-runner

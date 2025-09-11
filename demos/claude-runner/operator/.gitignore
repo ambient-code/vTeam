@@ -1,0 +1,46 @@
+# Go build outputs
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+
+# Go workspace file
+go.work
+go.work.sum
+
+# Dependency directories  
+vendor/
+
+# Go modules
+go.sum
+
+# Binary output
+operator
+main
+
+# Profiling files
+*.prof
+*.cpu
+*.mem
+
+# Air live reload tool
+tmp/
+
+# Debug logs
+debug.log
+
+# Coverage reports
+coverage.html
+coverage.out
+
+# Kubernetes client cache
+.kube/
+kubeconfig
+.kubeconfig

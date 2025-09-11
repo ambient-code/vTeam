@@ -1,0 +1,37 @@
+sequenceDiagram
+    autonumber
+
+    %% Humans
+    actor PM  as Human PM
+    actor HE  as Human Engineer
+    actor HE2 as Human Engineer 2
+
+    %% Agents
+    participant RA as Research Agent
+    participant PMA  as PM Agent
+    participant EX   as Orchestrator Agent
+    participant OH   as OpenHands
+    participant CG   as CodeGen
+    participant AR   as Automated Review
+
+    %% Systems
+    participant JMC  as Jira MCP
+    participant J    as Jira - Automated
+    participant GH   as PR / GitHub
+
+    %% Flow
+    PM->>RA: Provide context
+    RA-->>PMA: Research output
+    PMA-->>PM: Plan proposal
+    PM->>PM: Refine (chat loop)
+    PM->>JMC: GO!
+    JMC->>J: Create / update issues
+    J-->>HE: Assign work
+    HE->>EX: Execute task
+    EX->>OH: Tooling request
+    OH->>CG: Generate code
+    CG->>GH: Open PR
+    GH->>AR: Trigger checks / review
+    AR-->>HE: Feedback / fixes
+    AR-->>HE2: (Alternate) Assign to Human Eng 2
+    HE-->>MERGE: Approve / Merge

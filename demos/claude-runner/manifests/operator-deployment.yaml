@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: research-operator
+  namespace: claude-research
+  labels:
+    app: research-operator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: research-operator
+  template:
+    metadata:
+      labels:
+        app: research-operator
+    spec:
+      serviceAccountName: research-operator
+      containers:
+      - name: research-operator
+        image: quay.io/gkrumbach07/research-operator:latest
+        env:
+        - name: NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: BACKEND_API_URL
+          value: "http://backend-service:8080/api"
+        - name: CLAUDE_RUNNER_IMAGE
+          value: "quay.io/gkrumbach07/claude-runner:latest"
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 200m
+            memory: 256Mi
+        livenessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - "ps aux | grep '[o]perator' || exit 1"
+          initialDelaySeconds: 30
+          periodSeconds: 10
+      restartPolicy: Always
