@@ -26,11 +26,12 @@ import (
 )
 
 var (
-	k8sClient     *kubernetes.Clientset
-	dynamicClient dynamic.Interface
-	namespace     string
-	stateBaseDir  string
-	pvcBaseDir    string
+	k8sClient      *kubernetes.Clientset
+	dynamicClient  dynamic.Interface
+	namespace      string
+	stateBaseDir   string
+	pvcBaseDir     string
+	baseKubeConfig *rest.Config
 )
 
 func main() {
@@ -65,6 +66,9 @@ func main() {
 	// Setup Gin router
 	r := gin.Default()
 
+	// Middleware to populate user context from forwarded headers
+	r.Use(forwardedIdentityMiddleware())
+
 	// Configure CORS
 	config := cors.DefaultConfig()
 	config.AllowAllOrigins = true
@@ -72,7 +76,13 @@ func main() {
 	config.AllowHeaders = []string{"Origin", "Content-Length", "Content-Type", "Authorization"}
 	r.Use(cors.New(config))
 
-	// API routes
+	// Content service mode: expose minimal file APIs for per-namespace writer service
+	if os.Getenv("CONTENT_SERVICE_MODE") == "true" {
+		r.POST("/content/write", contentWrite)
+		r.GET("/content/file", contentRead)
+	}
+
+	// API routes (all consolidated under /api) remain available
 	api := r.Group("/api")
 	{
 		// Legacy agentic sessions (keep for backwards compatibility)
@@ -96,7 +106,51 @@ func main() {
 		api.POST("/rfe-workflows/:id/scan-artifacts", scanRFEWorkflowArtifacts)
 		api.GET("/rfe-workflows/:id/artifacts/*path", getRFEWorkflowArtifact)
 		api.PUT("/rfe-workflows/:id/artifacts/*path", updateRFEWorkflowArtifact)
+		// Project-scoped routes for multi-tenant session management
+		projectGroup := api.Group("/projects/:projectName", validateProjectContext())
+		{
+			// Access check (SSAR based)
+			projectGroup.GET("/access", accessCheck)
+			// Agentic sessions under a project
+			projectGroup.GET("/agentic-sessions", listSessions)
+			projectGroup.POST("/agentic-sessions", createSession)
+			projectGroup.GET("/agentic-sessions/:sessionName", getSession)
+			projectGroup.PUT("/agentic-sessions/:sessionName", updateSession)
+			projectGroup.DELETE("/agentic-sessions/:sessionName", deleteSession)
+			projectGroup.POST("/agentic-sessions/:sessionName/clone", cloneSession)
+			projectGroup.POST("/agentic-sessions/:sessionName/start", startSession)
+			projectGroup.POST("/agentic-sessions/:sessionName/stop", stopSession)
+			projectGroup.PUT("/agentic-sessions/:sessionName/status", updateSessionStatus)
+			projectGroup.PUT("/agentic-sessions/:sessionName/displayname", updateSessionDisplayName)
+
+			// Permissions (users & groups)
+			projectGroup.GET("/permissions", listProjectPermissions)
+			projectGroup.POST("/permissions", addProjectPermission)
+			projectGroup.DELETE("/permissions/:subjectType/:subjectName", removeProjectPermission)
+
+			// Project access keys
+			projectGroup.GET("/keys", listProjectKeys)
+			projectGroup.POST("/keys", createProjectKey)
+			projectGroup.DELETE("/keys/:keyId", deleteProjectKey)
+
+			// Runner secrets configuration and CRUD
+			projectGroup.GET("/secrets", listNamespaceSecrets)
+			projectGroup.GET("/runner-secrets/config", getRunnerSecretsConfig)
+			projectGroup.PUT("/runner-secrets/config", updateRunnerSecretsConfig)
+			projectGroup.GET("/runner-secrets", listRunnerSecrets)
+			projectGroup.PUT("/runner-secrets", updateRunnerSecrets)
+		}
+
+		// Project management (cluster-wide)
+		api.GET("/projects", listProjects)
+		api.POST("/projects", createProject)
+		api.GET("/projects/:projectName", getProject)
+		api.PUT("/projects/:projectName", updateProject)
+		api.DELETE("/projects/:projectName", deleteProject)
 	}
+
+	// Metrics endpoint
+	r.GET("/metrics", getMetrics)
 
 	// Health check endpoint
 	r.GET("/health", func(c *gin.Context) {
@@ -139,13 +193,42 @@ func initK8sClients() error {
 		return fmt.Errorf("failed to create Kubernetes client: %v", err)
 	}
 
-	// Create dynamic client for custom resources
-	dynamicClient, err = dynamic.NewForConfig(config)
-	if err != nil {
-		return fmt.Errorf("failed to create dynamic client: %v", err)
-	}
+	// Save base config for per-request impersonation/user-token clients
+	baseKubeConfig = config
 
 	return nil
+}
+
+// forwardedIdentityMiddleware populates Gin context from common OAuth proxy headers
+func forwardedIdentityMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if v := c.GetHeader("X-Forwarded-User"); v != "" {
+			c.Set("userID", v)
+		}
+		// Prefer preferred username; fallback to user id
+		name := c.GetHeader("X-Forwarded-Preferred-Username")
+		if name == "" {
+			name = c.GetHeader("X-Forwarded-User")
+		}
+		if name != "" {
+			c.Set("userName", name)
+		}
+		if v := c.GetHeader("X-Forwarded-Email"); v != "" {
+			c.Set("userEmail", v)
+		}
+		if v := c.GetHeader("X-Forwarded-Groups"); v != "" {
+			c.Set("userGroups", strings.Split(v, ","))
+		}
+		// Also expose access token if present
+		auth := c.GetHeader("Authorization")
+		if auth != "" {
+			c.Set("authorizationHeader", auth)
+		}
+		if v := c.GetHeader("X-Forwarded-Access-Token"); v != "" {
+			c.Set("forwardedAccessToken", v)
+		}
+		c.Next()
+	}
 }
 
 // AgenticSession represents the structure of our custom resource
@@ -158,12 +241,16 @@ type AgenticSession struct {
 }
 
 type AgenticSessionSpec struct {
-	Prompt      string     `json:"prompt" binding:"required"`
-	WebsiteURL  string     `json:"websiteURL" binding:"required,url"`
-	DisplayName string     `json:"displayName"`
-	LLMSettings LLMSettings `json:"llmSettings"`
-	Timeout     int        `json:"timeout"`
-	GitConfig   *GitConfig `json:"gitConfig,omitempty"`
+	Prompt            string             `json:"prompt" binding:"required"`
+	WebsiteURL        string             `json:"websiteURL" binding:"required,url"`
+	DisplayName       string             `json:"displayName"`
+	LLMSettings       LLMSettings        `json:"llmSettings"`
+	Timeout           int                `json:"timeout"`
+	UserContext       *UserContext       `json:"userContext,omitempty"`
+	BotAccount        *BotAccountRef     `json:"botAccount,omitempty"`
+	ResourceOverrides *ResourceOverrides `json:"resourceOverrides,omitempty"`
+	Project           string             `json:"project,omitempty"`
+	GitConfig         *GitConfig         `json:"gitConfig,omitempty"`
 }
 
 type LLMSettings struct {
@@ -211,61 +298,67 @@ type AgenticSessionStatus struct {
 	FinalOutput    string          `json:"finalOutput,omitempty"`
 	Cost           *float64        `json:"cost,omitempty"`
 	Messages       []MessageObject `json:"messages,omitempty"`
+	StateDir       string          `json:"stateDir,omitempty"`
+	ArtifactsCount int             `json:"artifactsCount,omitempty"`
+	MessagesCount  int             `json:"messagesCount,omitempty"`
 }
 
 type CreateAgenticSessionRequest struct {
-	Prompt      string       `json:"prompt" binding:"required"`
-	WebsiteURL  string       `json:"websiteURL" binding:"required,url"`
-	DisplayName string       `json:"displayName,omitempty"`
-	LLMSettings *LLMSettings `json:"llmSettings,omitempty"`
-	Timeout     *int         `json:"timeout,omitempty"`
-	GitConfig   *GitConfig   `json:"gitConfig,omitempty"`
+	Prompt            string             `json:"prompt" binding:"required"`
+	WebsiteURL        string             `json:"websiteURL" binding:"required,url"`
+	DisplayName       string             `json:"displayName,omitempty"`
+	LLMSettings       *LLMSettings       `json:"llmSettings,omitempty"`
+	Timeout           *int               `json:"timeout,omitempty"`
+	GitConfig         *GitConfig         `json:"gitConfig,omitempty"`
+	UserContext       *UserContext       `json:"userContext,omitempty"`
+	BotAccount        *BotAccountRef     `json:"botAccount,omitempty"`
+	ResourceOverrides *ResourceOverrides `json:"resourceOverrides,omitempty"`
 }
 
 // RFE Workflow Data Structures
 type RFEWorkflow struct {
-	ID                 string                  `json:"id"`
-	Title              string                  `json:"title"`
-	Description        string                  `json:"description"`
-	Status             string                  `json:"status"` // "draft", "in_progress", "completed", "failed"
-	CurrentPhase       string                  `json:"currentPhase"` // "specify", "plan", "tasks", "completed"
-	SelectedAgents     []string                `json:"selectedAgents"`
-	TargetRepoUrl      string                  `json:"targetRepoUrl"`
-	TargetRepoBranch   string                  `json:"targetRepoBranch"`
-	GitUserName        *string                 `json:"gitUserName,omitempty"`
-	GitUserEmail       *string                 `json:"gitUserEmail,omitempty"`
-	CreatedAt          string                  `json:"createdAt"`
-	UpdatedAt          string                  `json:"updatedAt"`
-	AgentSessions      []RFEAgentSession       `json:"agentSessions"`
-	Artifacts          []RFEArtifact          `json:"artifacts"`
-	PhaseResults       map[string]PhaseResult  `json:"phaseResults"` // "specify" -> result, "plan" -> result, etc.
+	ID               string                 `json:"id"`
+	Title            string                 `json:"title"`
+	Description      string                 `json:"description"`
+	Status           string                 `json:"status"`       // "draft", "in_progress", "completed", "failed"
+	CurrentPhase     string                 `json:"currentPhase"` // "specify", "plan", "tasks", "completed"
+	SelectedAgents   []string               `json:"selectedAgents"`
+	TargetRepoUrl    string                 `json:"targetRepoUrl"`
+	TargetRepoBranch string                 `json:"targetRepoBranch"`
+	GitUserName      *string                `json:"gitUserName,omitempty"`
+	GitUserEmail     *string                `json:"gitUserEmail,omitempty"`
+	CreatedAt        string                 `json:"createdAt"`
+	UpdatedAt        string                 `json:"updatedAt"`
+	AgentSessions    []RFEAgentSession      `json:"agentSessions"`
+	Artifacts        []RFEArtifact          `json:"artifacts"`
+	PhaseResults     map[string]PhaseResult `json:"phaseResults"` // "specify" -> result, "plan" -> result, etc.
 }
 
 type RFEAgentSession struct {
-	ID           string    `json:"id"`
-	AgentPersona string    `json:"agentPersona"` // e.g., "ENGINEERING_MANAGER"
-	Phase        string    `json:"phase"`        // "specify", "plan", "tasks"
-	Status       string    `json:"status"`       // "pending", "running", "completed", "failed"
-	StartedAt    *string   `json:"startedAt,omitempty"`
-	CompletedAt  *string   `json:"completedAt,omitempty"`
-	Result       *string   `json:"result,omitempty"`
-	Cost         *float64  `json:"cost,omitempty"`
+	ID           string   `json:"id"`
+	AgentPersona string   `json:"agentPersona"` // e.g., "ENGINEERING_MANAGER"
+	Phase        string   `json:"phase"`        // "specify", "plan", "tasks"
+	Status       string   `json:"status"`       // "pending", "running", "completed", "failed"
+	StartedAt    *string  `json:"startedAt,omitempty"`
+	CompletedAt  *string  `json:"completedAt,omitempty"`
+	Result       *string  `json:"result,omitempty"`
+	Cost         *float64 `json:"cost,omitempty"`
 }
 
 type RFEArtifact struct {
-	Path        string `json:"path"`
-	Name        string `json:"name"` // filename for display
-	Type        string `json:"type"` // "specification", "plan", "tasks", "code", "docs"
-	Phase       string `json:"phase"` // which phase created this artifact
-	CreatedBy   string `json:"createdBy"` // which agent created this
-	Size        int64  `json:"size"`
-	ModifiedAt  string `json:"modifiedAt"`
+	Path       string `json:"path"`
+	Name       string `json:"name"`      // filename for display
+	Type       string `json:"type"`      // "specification", "plan", "tasks", "code", "docs"
+	Phase      string `json:"phase"`     // which phase created this artifact
+	CreatedBy  string `json:"createdBy"` // which agent created this
+	Size       int64  `json:"size"`
+	ModifiedAt string `json:"modifiedAt"`
 }
 
 type PhaseResult struct {
 	Phase       string                 `json:"phase"`
-	Status      string                 `json:"status"` // "completed", "in_progress", "failed"
-	Agents      []string               `json:"agents"` // agents that worked on this phase
+	Status      string                 `json:"status"`    // "completed", "in_progress", "failed"
+	Agents      []string               `json:"agents"`    // agents that worked on this phase
 	Artifacts   []string               `json:"artifacts"` // artifact paths created in this phase
 	Summary     string                 `json:"summary"`
 	StartedAt   string                 `json:"startedAt"`
@@ -274,674 +367,177 @@ type PhaseResult struct {
 }
 
 type CreateRFEWorkflowRequest struct {
-	Title              string   `json:"title" binding:"required"`
-	Description        string   `json:"description" binding:"required"`
-	TargetRepoUrl      string   `json:"targetRepoUrl" binding:"required,url"`
-	TargetRepoBranch   string   `json:"targetRepoBranch" binding:"required"`
-	SelectedAgents     []string `json:"selectedAgents" binding:"required,min=1"`
-	GitUserName        *string  `json:"gitUserName,omitempty"`
-	GitUserEmail       *string  `json:"gitUserEmail,omitempty"`
+	Title            string   `json:"title" binding:"required"`
+	Description      string   `json:"description" binding:"required"`
+	TargetRepoUrl    string   `json:"targetRepoUrl" binding:"required,url"`
+	TargetRepoBranch string   `json:"targetRepoBranch" binding:"required"`
+	SelectedAgents   []string `json:"selectedAgents" binding:"required,min=1"`
+	GitUserName      *string  `json:"gitUserName,omitempty"`
+	GitUserEmail     *string  `json:"gitUserEmail,omitempty"`
 }
 
 type AdvancePhaseRequest struct {
 	Force bool `json:"force,omitempty"` // Force advance even if current phase isn't complete
 }
 
-// Helper function to create string pointer
-func stringPtr(s string) *string {
-	return &s
+// New types for multi-tenant support
+type UserContext struct {
+	UserID      string   `json:"userId" binding:"required"`
+	DisplayName string   `json:"displayName" binding:"required"`
+	Groups      []string `json:"groups" binding:"required"`
 }
 
-// loadGitConfigFromConfigMap reads Git configuration from the git-config ConfigMap
-func loadGitConfigFromConfigMap() (*GitConfig, error) {
-	configMap, err := k8sClient.CoreV1().ConfigMaps(namespace).Get(context.TODO(), "git-config", v1.GetOptions{})
-	if err != nil {
-		if errors.IsNotFound(err) {
-			log.Println("git-config ConfigMap not found, skipping default Git configuration")
-			return nil, nil
-		}
-		return nil, fmt.Errorf("failed to get git-config ConfigMap: %v", err)
-	}
-
-	gitConfig := &GitConfig{}
-
-	// Load user configuration
-	if name := configMap.Data["git-user-name"]; name != "" {
-		if gitConfig.User == nil {
-			gitConfig.User = &GitUser{}
-		}
-		gitConfig.User.Name = name
-	}
-	if email := configMap.Data["git-user-email"]; email != "" {
-		if gitConfig.User == nil {
-			gitConfig.User = &GitUser{}
-		}
-		gitConfig.User.Email = email
-	}
-
-	// Load authentication configuration
-	if sshKeySecret := configMap.Data["git-ssh-key-secret"]; sshKeySecret != "" {
-		if gitConfig.Authentication == nil {
-			gitConfig.Authentication = &GitAuthentication{}
-		}
-		gitConfig.Authentication.SSHKeySecret = &sshKeySecret
-	}
-	if tokenSecret := configMap.Data["git-token-secret"]; tokenSecret != "" {
-		if gitConfig.Authentication == nil {
-			gitConfig.Authentication = &GitAuthentication{}
-		}
-		gitConfig.Authentication.TokenSecret = &tokenSecret
-	}
-
-	// Load repositories configuration (simple list format)
-	if reposList := configMap.Data["git-repositories"]; reposList != "" {
-		lines := strings.Split(strings.TrimSpace(reposList), "\n")
-		var repos []GitRepository
-		for _, line := range lines {
-			line = strings.TrimSpace(line)
-			if line != "" && !strings.HasPrefix(line, "#") {
-				repos = append(repos, GitRepository{
-					URL:    line,
-					Branch: stringPtr("main"), // Default branch
-				})
-			}
-		}
-		if len(repos) > 0 {
-			gitConfig.Repositories = repos
-		}
-	}
-
-	return gitConfig, nil
+type BotAccountRef struct {
+	Name string `json:"name" binding:"required"`
 }
 
-// mergeGitConfigs merges user-provided GitConfig with ConfigMap defaults
-// User-provided config takes precedence over ConfigMap defaults
-func mergeGitConfigs(userConfig, defaultConfig *GitConfig) *GitConfig {
-	if userConfig == nil && defaultConfig == nil {
-		return nil
-	}
-	if userConfig == nil {
-		return defaultConfig
-	}
-	if defaultConfig == nil {
-		return userConfig
-	}
-
-	merged := &GitConfig{}
-
-	// Merge user configuration (user config takes precedence)
-	if userConfig.User != nil {
-		merged.User = userConfig.User
-	} else if defaultConfig.User != nil {
-		merged.User = defaultConfig.User
-	}
-
-	// Merge authentication configuration (user config takes precedence)
-	if userConfig.Authentication != nil {
-		merged.Authentication = userConfig.Authentication
-	} else if defaultConfig.Authentication != nil {
-		merged.Authentication = defaultConfig.Authentication
-	}
-
-	// Merge repositories (combine both, user repos first)
-	if len(userConfig.Repositories) > 0 || len(defaultConfig.Repositories) > 0 {
-		merged.Repositories = make([]GitRepository, 0, len(userConfig.Repositories)+len(defaultConfig.Repositories))
-		merged.Repositories = append(merged.Repositories, userConfig.Repositories...)
-
-		// Add default repos that don't conflict with user repos
-		for _, defaultRepo := range defaultConfig.Repositories {
-			hasConflict := false
-			for _, userRepo := range userConfig.Repositories {
-				if userRepo.URL == defaultRepo.URL {
-					hasConflict = true
-					break
-				}
-			}
-			if !hasConflict {
-				merged.Repositories = append(merged.Repositories, defaultRepo)
-			}
-		}
-	}
-
-	return merged
+type ResourceOverrides struct {
+	CPU           string `json:"cpu,omitempty"`
+	Memory        string `json:"memory,omitempty"`
+	StorageClass  string `json:"storageClass,omitempty"`
+	PriorityClass string `json:"priorityClass,omitempty"`
 }
 
-// getAgenticSessionResource returns the GroupVersionResource for AgenticSession
-func getAgenticSessionResource() schema.GroupVersionResource {
+// Project management types
+type AmbientProject struct {
+	Name              string            `json:"name"`
+	DisplayName       string            `json:"displayName"`
+	Description       string            `json:"description,omitempty"`
+	Labels            map[string]string `json:"labels"`
+	Annotations       map[string]string `json:"annotations"`
+	CreationTimestamp string            `json:"creationTimestamp"`
+	Status            string            `json:"status"`
+}
+
+type CreateProjectRequest struct {
+	Name        string `json:"name" binding:"required"`
+	DisplayName string `json:"displayName" binding:"required"`
+	Description string `json:"description,omitempty"`
+	// ProjectType removed
+	// ResourceQuota removed
+}
+
+// ResourceQuota types removed
+
+// ProjectSettings types
+type ProjectSettings struct {
+	APIVersion string                 `json:"apiVersion"`
+	Kind       string                 `json:"kind"`
+	Metadata   map[string]interface{} `json:"metadata"`
+	Spec       ProjectSettingsSpec    `json:"spec"`
+	Status     *ProjectSettingsStatus `json:"status,omitempty"`
+}
+
+type ProjectSettingsSpec struct {
+	Project       string        `json:"project" binding:"required"`
+	Bots          []BotConfig   `json:"bots,omitempty"`
+	GroupAccess   []GroupAccess `json:"groupAccess,omitempty"`
+	ResourceAvail ResourceAvail `json:"resourceAvailability"`
+	Constraints   Constraints   `json:"constraints"`
+	Integrations  Integrations  `json:"integrations"`
+}
+
+type BotConfig struct {
+	Name        string `json:"name" binding:"required"`
+	Description string `json:"description,omitempty"`
+	Enabled     bool   `json:"enabled"`
+	Token       string `json:"token,omitempty"`
+}
+
+type GroupAccess struct {
+	GroupName   string   `json:"groupName" binding:"required"`
+	Role        string   `json:"role" binding:"required"`
+	Permissions []string `json:"permissions,omitempty"`
+}
+
+type ResourceAvail struct {
+	Models          []string          `json:"models"`
+	Features        []string          `json:"features"`
+	ResourceLimits  map[string]string `json:"resourceLimits"`
+	PriorityClasses []string          `json:"priorityClasses"`
+}
+
+type Constraints struct {
+	MaxSessionsPerUser   int     `json:"maxSessionsPerUser"`
+	MaxCostPerSession    float64 `json:"maxCostPerSession"`
+	MaxCostPerUserPerDay float64 `json:"maxCostPerUserPerDay"`
+	AllowSessionCloning  bool    `json:"allowSessionCloning"`
+	AllowBotAccounts     bool    `json:"allowBotAccounts"`
+}
+
+type Integrations struct {
+	Jira JiraIntegration `json:"jira"`
+}
+
+type JiraIntegration struct {
+	Enabled    bool   `json:"enabled"`
+	WebhookURL string `json:"webhookUrl,omitempty"`
+	Secret     string `json:"secret,omitempty"`
+}
+
+type ProjectSettingsStatus struct {
+	Phase                string            `json:"phase,omitempty"`
+	BotsCreated          int               `json:"botsCreated,omitempty"`
+	GroupBindingsCreated int               `json:"groupBindingsCreated,omitempty"`
+	LastReconciled       *string           `json:"lastReconciled,omitempty"`
+	CurrentUsage         *ProjectUsage     `json:"currentUsage,omitempty"`
+	Conditions           []StatusCondition `json:"conditions,omitempty"`
+}
+
+type ProjectUsage struct {
+	ActiveSessions int     `json:"activeSessions"`
+	TotalCostToday float64 `json:"totalCostToday"`
+}
+
+type StatusCondition struct {
+	Type    string `json:"type" binding:"required"`
+	Status  string `json:"status" binding:"required"`
+	Reason  string `json:"reason" binding:"required"`
+	Message string `json:"message" binding:"required"`
+}
+
+// Request types
+type CloneSessionRequest struct {
+	TargetProject  string `json:"targetProject" binding:"required"`
+	NewSessionName string `json:"newSessionName" binding:"required"`
+}
+
+type JiraWebhookPayload struct {
+	WebhookEvent string                 `json:"webhookEvent"`
+	Issue        map[string]interface{} `json:"issue,omitempty"`
+	User         map[string]interface{} `json:"user,omitempty"`
+}
+
+// getAgenticSessionV1Alpha1Resource returns the GroupVersionResource for AgenticSession v1alpha1
+func getAgenticSessionV1Alpha1Resource() schema.GroupVersionResource {
 	return schema.GroupVersionResource{
 		Group:    "vteam.ambient-code",
-		Version:  "v1",
+		Version:  "v1alpha1",
 		Resource: "agenticsessions",
 	}
 }
 
-func listAgenticSessions(c *gin.Context) {
-	gvr := getAgenticSessionResource()
-
-	list, err := dynamicClient.Resource(gvr).Namespace(namespace).List(context.TODO(), v1.ListOptions{})
-	if err != nil {
-		log.Printf("Failed to list agentic sessions: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list agentic sessions"})
-		return
-	}
-
-	var sessions []AgenticSession
-	for _, item := range list.Items {
-		session := AgenticSession{
-			APIVersion: item.GetAPIVersion(),
-			Kind:       item.GetKind(),
-			Metadata:   item.Object["metadata"].(map[string]interface{}),
-		}
-
-		if spec, ok := item.Object["spec"].(map[string]interface{}); ok {
-			session.Spec = parseSpec(spec)
-		}
-
-		if status, ok := item.Object["status"].(map[string]interface{}); ok {
-			session.Status = parseStatus(status)
-			// Read additional data from files
-			if session.Status != nil {
-				sessionName := item.GetName()
-				readDataFromFiles(sessionName, session.Status)
-			}
-		}
-
-		sessions = append(sessions, session)
-	}
-
-	c.JSON(http.StatusOK, sessions)
-}
-
-func getAgenticSession(c *gin.Context) {
-	name := c.Param("name")
-	gvr := getAgenticSessionResource()
-
-	item, err := dynamicClient.Resource(gvr).Namespace(namespace).Get(context.TODO(), name, v1.GetOptions{})
-	if err != nil {
-		if errors.IsNotFound(err) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Agentic session not found"})
-			return
-		}
-		log.Printf("Failed to get agentic session %s: %v", name, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get agentic session"})
-		return
-	}
-
-	session := AgenticSession{
-		APIVersion: item.GetAPIVersion(),
-		Kind:       item.GetKind(),
-		Metadata:   item.Object["metadata"].(map[string]interface{}),
-	}
-
-	if spec, ok := item.Object["spec"].(map[string]interface{}); ok {
-		session.Spec = parseSpec(spec)
-	}
-
-	if status, ok := item.Object["status"].(map[string]interface{}); ok {
-		session.Status = parseStatus(status)
-		// Read additional data from files
-		if session.Status != nil {
-			readDataFromFiles(name, session.Status)
-		}
-	}
-
-	c.JSON(http.StatusOK, session)
-}
-
-func createAgenticSession(c *gin.Context) {
-	var req CreateAgenticSessionRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	// Set defaults for LLM settings if not provided
-	llmSettings := LLMSettings{
-		Model:       "claude-3-5-sonnet-20241022",
-		Temperature: 0.7,
-		MaxTokens:   4000,
-	}
-	if req.LLMSettings != nil {
-		if req.LLMSettings.Model != "" {
-			llmSettings.Model = req.LLMSettings.Model
-		}
-		if req.LLMSettings.Temperature != 0 {
-			llmSettings.Temperature = req.LLMSettings.Temperature
-		}
-		if req.LLMSettings.MaxTokens != 0 {
-			llmSettings.MaxTokens = req.LLMSettings.MaxTokens
-		}
-	}
-
-	timeout := 300
-	if req.Timeout != nil {
-		timeout = *req.Timeout
-	}
-
-	// Generate unique name
-	timestamp := time.Now().Unix()
-	name := fmt.Sprintf("agentic-session-%d", timestamp)
-
-	// Create the custom resource spec
-	spec := map[string]interface{}{
-		"prompt":      req.Prompt,
-		"websiteURL":  req.WebsiteURL,
-		"displayName": req.DisplayName,
-		"llmSettings": map[string]interface{}{
-			"model":       llmSettings.Model,
-			"temperature": llmSettings.Temperature,
-			"maxTokens":   llmSettings.MaxTokens,
-		},
-		"timeout": timeout,
-	}
-
-	// Load Git configuration from ConfigMap and merge with user-provided config
-	defaultGitConfig, err := loadGitConfigFromConfigMap()
-	if err != nil {
-		log.Printf("Warning: failed to load Git config from ConfigMap: %v", err)
-		// Continue without default config
-	}
-
-	// Merge user-provided config with defaults
-	mergedGitConfig := mergeGitConfigs(req.GitConfig, defaultGitConfig)
-
-	// Add Git configuration if available (either from user or ConfigMap)
-	if mergedGitConfig != nil {
-		gitConfig := map[string]interface{}{}
-
-		if mergedGitConfig.User != nil {
-			gitConfig["user"] = map[string]interface{}{
-				"name":  mergedGitConfig.User.Name,
-				"email": mergedGitConfig.User.Email,
-			}
-		}
-
-		if mergedGitConfig.Authentication != nil {
-			auth := map[string]interface{}{}
-			if mergedGitConfig.Authentication.SSHKeySecret != nil {
-				auth["sshKeySecret"] = *mergedGitConfig.Authentication.SSHKeySecret
-			}
-			if mergedGitConfig.Authentication.TokenSecret != nil {
-				auth["tokenSecret"] = *mergedGitConfig.Authentication.TokenSecret
-			}
-			if len(auth) > 0 {
-				gitConfig["authentication"] = auth
-			}
-		}
-
-		if len(mergedGitConfig.Repositories) > 0 {
-			repos := make([]map[string]interface{}, len(mergedGitConfig.Repositories))
-			for i, repo := range mergedGitConfig.Repositories {
-				repoMap := map[string]interface{}{
-					"url": repo.URL,
-				}
-				if repo.Branch != nil {
-					repoMap["branch"] = *repo.Branch
-				}
-				if repo.ClonePath != nil {
-					repoMap["clonePath"] = *repo.ClonePath
-				}
-				repos[i] = repoMap
-			}
-			gitConfig["repositories"] = repos
-		}
-
-		if len(gitConfig) > 0 {
-			spec["gitConfig"] = gitConfig
-		}
-	}
-
-	// Create the custom resource
-	session := map[string]interface{}{
-		"apiVersion": "vteam.ambient-code/v1",
-		"kind":       "AgenticSession",
-		"metadata": map[string]interface{}{
-			"name":      name,
-			"namespace": namespace,
-		},
-		"spec": spec,
-		"status": map[string]interface{}{
-			"phase": "Pending",
-		},
-	}
-
-	gvr := getAgenticSessionResource()
-	obj := &unstructured.Unstructured{Object: session}
-
-	created, err := dynamicClient.Resource(gvr).Namespace(namespace).Create(context.TODO(), obj, v1.CreateOptions{})
-	if err != nil {
-		log.Printf("Failed to create agentic session: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create agentic session"})
-		return
-	}
-
-	c.JSON(http.StatusCreated, gin.H{
-		"message": "Agentic session created successfully",
-		"name":    name,
-		"uid":     created.GetUID(),
-	})
-}
-
-func deleteAgenticSession(c *gin.Context) {
-	name := c.Param("name")
-	gvr := getAgenticSessionResource()
-
-	err := dynamicClient.Resource(gvr).Namespace(namespace).Delete(context.TODO(), name, v1.DeleteOptions{})
-	if err != nil {
-		if errors.IsNotFound(err) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Agentic session not found"})
-			return
-		}
-		log.Printf("Failed to delete agentic session %s: %v", name, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete agentic session"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"message": "Agentic session deleted successfully"})
-}
-
-func updateAgenticSessionStatus(c *gin.Context) {
-	name := c.Param("name")
-
-	var statusUpdate map[string]interface{}
-	if err := c.ShouldBindJSON(&statusUpdate); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	gvr := getAgenticSessionResource()
-
-	// Get current resource
-	item, err := dynamicClient.Resource(gvr).Namespace(namespace).Get(context.TODO(), name, v1.GetOptions{})
-	if err != nil {
-		if errors.IsNotFound(err) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Agentic session not found"})
-			return
-		}
-		log.Printf("Failed to get agentic session %s: %v", name, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get agentic session"})
-		return
-	}
-
-	// Update status
-	if item.Object["status"] == nil {
-		item.Object["status"] = make(map[string]interface{})
-	}
-
-	status := item.Object["status"].(map[string]interface{})
-
-	// Write data to files before updating CR
-	writeDataToFiles(name, statusUpdate)
-
-	for key, value := range statusUpdate {
-		status[key] = value
-	}
-
-	// Update the resource
-	_, err = dynamicClient.Resource(gvr).Namespace(namespace).Update(context.TODO(), item, v1.UpdateOptions{})
-	if err != nil {
-		log.Printf("Failed to update agentic session status %s: %v", name, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update agentic session status"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"message": "Agentic session status updated successfully"})
-}
-
-func updateAgenticSessionDisplayName(c *gin.Context) {
-	name := c.Param("name")
-
-	var displayNameUpdate struct {
-		DisplayName string `json:"displayName" binding:"required"`
-	}
-	if err := c.ShouldBindJSON(&displayNameUpdate); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	gvr := getAgenticSessionResource()
-
-	// Get current resource
-	item, err := dynamicClient.Resource(gvr).Namespace(namespace).Get(context.TODO(), name, v1.GetOptions{})
-	if err != nil {
-		if errors.IsNotFound(err) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Agentic session not found"})
-			return
-		}
-		log.Printf("Failed to get agentic session %s: %v", name, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get agentic session"})
-		return
-	}
-
-	// Update displayName in spec
-	if item.Object["spec"] == nil {
-		item.Object["spec"] = make(map[string]interface{})
-	}
-
-	spec := item.Object["spec"].(map[string]interface{})
-	spec["displayName"] = displayNameUpdate.DisplayName
-
-	// Update the resource
-	_, err = dynamicClient.Resource(gvr).Namespace(namespace).Update(context.TODO(), item, v1.UpdateOptions{})
-	if err != nil {
-		log.Printf("Failed to update agentic session displayName %s: %v", name, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update agentic session displayName"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"message": "Agentic session displayName updated successfully"})
-}
-
-func stopAgenticSession(c *gin.Context) {
-	name := c.Param("name")
-	gvr := getAgenticSessionResource()
-
-	// Get current resource
-	item, err := dynamicClient.Resource(gvr).Namespace(namespace).Get(context.TODO(), name, v1.GetOptions{})
-	if err != nil {
-		if errors.IsNotFound(err) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Agentic session not found"})
-			return
-		}
-		log.Printf("Failed to get agentic session %s: %v", name, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get agentic session"})
-		return
-	}
-
-	// Check current status
-	status, ok := item.Object["status"].(map[string]interface{})
-	if !ok {
-		status = make(map[string]interface{})
-		item.Object["status"] = status
-	}
-
-	currentPhase, _ := status["phase"].(string)
-	if currentPhase == "Completed" || currentPhase == "Failed" || currentPhase == "Stopped" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Cannot stop session in %s state", currentPhase)})
-		return
-	}
-
-	log.Printf("Attempting to stop agentic session %s (current phase: %s)", name, currentPhase)
-
-	// Get job name from status
-	jobName, jobExists := status["jobName"].(string)
-	if jobExists && jobName != "" {
-		// Delete the job
-		err := k8sClient.BatchV1().Jobs(namespace).Delete(context.TODO(), jobName, v1.DeleteOptions{})
-		if err != nil && !errors.IsNotFound(err) {
-			log.Printf("Failed to delete job %s: %v", jobName, err)
-			// Don't fail the request if job deletion fails - continue with status update
-			log.Printf("Continuing with status update despite job deletion failure")
-		} else {
-			log.Printf("Deleted job %s for agentic session %s", jobName, name)
-		}
-	} else {
-		// Handle case where job was never created or jobName is missing
-		log.Printf("No job found to delete for agentic session %s", name)
-	}
-
-	// Update status to Stopped
-	status["phase"] = "Stopped"
-	status["message"] = "Agentic session stopped by user"
-	status["completionTime"] = time.Now().Format(time.RFC3339)
-
-	// Update the resource
-	_, err = dynamicClient.Resource(gvr).Namespace(namespace).Update(context.TODO(), item, v1.UpdateOptions{})
-	if err != nil {
-		if errors.IsNotFound(err) {
-			// Session was deleted while we were trying to update it
-			log.Printf("Agentic session %s was deleted during stop operation", name)
-			c.JSON(http.StatusOK, gin.H{"message": "Agentic session no longer exists (already deleted)"})
-			return
-		}
-		log.Printf("Failed to update agentic session status %s: %v", name, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update agentic session status"})
-		return
-	}
-
-	log.Printf("Successfully stopped agentic session %s", name)
-	c.JSON(http.StatusOK, gin.H{"message": "Agentic session stopped successfully"})
-}
-
-// Helper functions for parsing
-func parseSpec(spec map[string]interface{}) AgenticSessionSpec {
-	result := AgenticSessionSpec{}
-
-	if prompt, ok := spec["prompt"].(string); ok {
-		result.Prompt = prompt
-	}
-
-	if websiteURL, ok := spec["websiteURL"].(string); ok {
-		result.WebsiteURL = websiteURL
-	}
-
-	if displayName, ok := spec["displayName"].(string); ok {
-		result.DisplayName = displayName
-	}
-
-	if timeout, ok := spec["timeout"].(float64); ok {
-		result.Timeout = int(timeout)
-	}
-
-	if llmSettings, ok := spec["llmSettings"].(map[string]interface{}); ok {
-		if model, ok := llmSettings["model"].(string); ok {
-			result.LLMSettings.Model = model
-		}
-		if temperature, ok := llmSettings["temperature"].(float64); ok {
-			result.LLMSettings.Temperature = temperature
-		}
-		if maxTokens, ok := llmSettings["maxTokens"].(float64); ok {
-			result.LLMSettings.MaxTokens = int(maxTokens)
-		}
-	}
-
-	// Parse Git configuration
-	if gitConfig, ok := spec["gitConfig"].(map[string]interface{}); ok {
-		result.GitConfig = &GitConfig{}
-
-		// Parse user
-		if user, ok := gitConfig["user"].(map[string]interface{}); ok {
-			result.GitConfig.User = &GitUser{}
-			if name, ok := user["name"].(string); ok {
-				result.GitConfig.User.Name = name
-			}
-			if email, ok := user["email"].(string); ok {
-				result.GitConfig.User.Email = email
-			}
-		}
-
-		// Parse authentication
-		if auth, ok := gitConfig["authentication"].(map[string]interface{}); ok {
-			result.GitConfig.Authentication = &GitAuthentication{}
-			if sshKeySecret, ok := auth["sshKeySecret"].(string); ok {
-				result.GitConfig.Authentication.SSHKeySecret = &sshKeySecret
-			}
-			if tokenSecret, ok := auth["tokenSecret"].(string); ok {
-				result.GitConfig.Authentication.TokenSecret = &tokenSecret
-			}
-		}
-
-		// Parse repositories
-		if repos, ok := gitConfig["repositories"].([]interface{}); ok {
-			result.GitConfig.Repositories = make([]GitRepository, len(repos))
-			for i, repo := range repos {
-				if repoMap, ok := repo.(map[string]interface{}); ok {
-					gitRepo := GitRepository{}
-					if url, ok := repoMap["url"].(string); ok {
-						gitRepo.URL = url
-					}
-					if branch, ok := repoMap["branch"].(string); ok {
-						gitRepo.Branch = &branch
-					}
-					if clonePath, ok := repoMap["clonePath"].(string); ok {
-						gitRepo.ClonePath = &clonePath
-					}
-					result.GitConfig.Repositories[i] = gitRepo
-				}
-			}
-		}
-	}
-
-	return result
-}
-
-// Write session data to persistent files
-func writeDataToFiles(sessionName string, statusUpdate map[string]interface{}) {
-	// Create session directory
-	sessionDir := filepath.Join(stateBaseDir, sessionName)
-	if err := os.MkdirAll(sessionDir, 0755); err != nil {
-		log.Printf("Warning: failed to create session directory %s: %v", sessionDir, err)
-		return
-	}
-
-	// Write final output to file if present
-	if finalOutput, ok := statusUpdate["finalOutput"].(string); ok && finalOutput != "" {
-		finalOutputFile := filepath.Join(sessionDir, "final-output.txt")
-		if err := ioutil.WriteFile(finalOutputFile, []byte(finalOutput), 0644); err != nil {
-			log.Printf("Warning: failed to write final output for %s: %v", sessionName, err)
-		} else {
-			log.Printf("Wrote final output to file for session %s (%d chars)", sessionName, len(finalOutput))
-			// Remove from status update to avoid storing in CR
-			delete(statusUpdate, "finalOutput")
-		}
-	}
-
-	// Write messages to file if present
-	if messages, ok := statusUpdate["messages"].([]interface{}); ok && len(messages) > 0 {
-		messagesFile := filepath.Join(sessionDir, "messages.json")
-		if messagesBytes, err := json.MarshalIndent(messages, "", "  "); err == nil {
-			if err := ioutil.WriteFile(messagesFile, messagesBytes, 0644); err != nil {
-				log.Printf("Warning: failed to write messages for %s: %v", sessionName, err)
-			} else {
-				log.Printf("Wrote %d messages to file for session %s", len(messages), sessionName)
-				// Remove from status update to avoid storing in CR
-				delete(statusUpdate, "messages")
-			}
-		}
+// getProjectSettingsResource returns the GroupVersionResource for ProjectSettings
+func getProjectSettingsResource() schema.GroupVersionResource {
+	return schema.GroupVersionResource{
+		Group:    "vteam.ambient-code",
+		Version:  "v1alpha1",
+		Resource: "projectsettings",
 	}
 }
 
-// Read session data from persistent files and populate status
-func readDataFromFiles(sessionName string, status *AgenticSessionStatus) {
-	sessionDir := filepath.Join(stateBaseDir, sessionName)
-
-	// Read final output from file if it exists
-	finalOutputFile := filepath.Join(sessionDir, "final-output.txt")
-	if finalOutputBytes, err := ioutil.ReadFile(finalOutputFile); err == nil {
-		status.FinalOutput = string(finalOutputBytes)
-	}
-
-	// Read messages from file if it exists
-	messagesFile := filepath.Join(sessionDir, "messages.json")
-	if messagesBytes, err := ioutil.ReadFile(messagesFile); err == nil {
-		var messages []MessageObject
-		if err := json.Unmarshal(messagesBytes, &messages); err == nil {
-			status.Messages = messages
-		} else {
-			log.Printf("Warning: failed to unmarshal messages for %s: %v", sessionName, err)
-		}
+// getOpenShiftProjectResource returns the GroupVersionResource for OpenShift Project
+func getOpenShiftProjectResource() schema.GroupVersionResource {
+	return schema.GroupVersionResource{
+		Group:    "project.openshift.io",
+		Version:  "v1",
+		Resource: "projects",
 	}
 }
+
+// Removed legacy v1 handlers
+
+// Helper functions for parsing moved to handlers.go to avoid duplication
 
 func parseStatus(status map[string]interface{}) *AgenticSessionStatus {
 	result := &AgenticSessionStatus{}
@@ -1003,6 +599,16 @@ func parseStatus(status map[string]interface{}) *AgenticSessionStatus {
 				result.Messages[i] = messageObj
 			}
 		}
+	}
+
+	if stateDir, ok := status["stateDir"].(string); ok {
+		result.StateDir = stateDir
+	}
+	if ac, ok := status["artifactsCount"].(float64); ok {
+		result.ArtifactsCount = int(ac)
+	}
+	if mc, ok := status["messagesCount"].(float64); ok {
+		result.MessagesCount = int(mc)
 	}
 
 	return result
@@ -1438,7 +1044,7 @@ func createAgentSessionsForPhase(workflow *RFEWorkflow, phase string) error {
 		// Note: For RFE workflows, we do NOT set websiteURL - this allows the claude-code-runner to
 		// detect it as an agent-specific session and run _handle_agent_rfe_session() instead of browser automation
 		sessionSpec := map[string]interface{}{
-			"prompt": fmt.Sprintf("/%s %s", phase, workflow.Description),
+			"prompt":      fmt.Sprintf("/%s %s", phase, workflow.Description),
 			"displayName": fmt.Sprintf("%s - %s (%s)", workflow.Title, agentPersona, phase),
 			"llmSettings": map[string]interface{}{
 				"model":       "claude-3-5-sonnet-20241022",
@@ -1556,19 +1162,19 @@ func scanAndUpdateWorkflowArtifacts(workflow *RFEWorkflow) error {
 				pathParts := strings.Split(relPath, string(filepath.Separator))
 				var agent, phase string
 				if len(pathParts) >= 3 && pathParts[0] == "agents" {
-					phase = pathParts[1]  // e.g., "specify"
-					agentFile := pathParts[2]  // e.g., "engineering-manager.md"
+					phase = pathParts[1]      // e.g., "specify"
+					agentFile := pathParts[2] // e.g., "engineering-manager.md"
 					agent = strings.TrimSuffix(agentFile, ".md")
 				}
 
 				artifact := RFEArtifact{
-					Path:         relPath,
-					Name:         info.Name(),
-					Type:         "specification", // Default type for agent-generated files
-					Phase:        phase,
-					CreatedBy:    agent,
-					Size:         info.Size(),
-					ModifiedAt:   info.ModTime().UTC().Format(time.RFC3339),
+					Path:       relPath,
+					Name:       info.Name(),
+					Type:       "specification", // Default type for agent-generated files
+					Phase:      phase,
+					CreatedBy:  agent,
+					Size:       info.Size(),
+					ModifiedAt: info.ModTime().UTC().Format(time.RFC3339),
 				}
 
 				artifacts = append(artifacts, artifact)
@@ -1628,7 +1234,7 @@ func createRFEWorkflow(c *gin.Context) {
 		log.Printf("📝 Request payload validation failed for: %+v", req)
 		log.Printf("🔍 SelectedAgents received: %+v (length: %d)", req.SelectedAgents, len(req.SelectedAgents))
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Validation failed: " + err.Error(),
+			"error":   "Validation failed: " + err.Error(),
 			"details": "Check required fields: title, description, targetRepoUrl, targetRepoBranch, selectedAgents",
 		})
 		return
@@ -1872,7 +1478,7 @@ func pushRFEWorkflowToGit(c *gin.Context) {
 	if err != nil {
 		log.Printf("❌ Failed to push workflow %s to Git: %v", id, err)
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to push to Git repository",
+			"error":   "Failed to push to Git repository",
 			"details": err.Error(),
 		})
 		return
@@ -1887,9 +1493,9 @@ func pushRFEWorkflowToGit(c *gin.Context) {
 	log.Printf("✅ Successfully pushed workflow %s artifacts to Git: %s", id, workflow.TargetRepoUrl)
 
 	c.JSON(http.StatusOK, gin.H{
-		"message": "Successfully pushed to Git repository",
+		"message":    "Successfully pushed to Git repository",
 		"repository": workflow.TargetRepoUrl,
-		"branch": workflow.TargetRepoBranch,
+		"branch":     workflow.TargetRepoBranch,
 	})
 }
 
@@ -1906,14 +1512,14 @@ func scanRFEWorkflowArtifacts(c *gin.Context) {
 	if err != nil {
 		log.Printf("❌ Failed to scan artifacts for workflow %s: %v", id, err)
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to scan workspace artifacts",
+			"error":   "Failed to scan workspace artifacts",
 			"details": err.Error(),
 		})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"message": "Artifacts scanned successfully",
+		"message":       "Artifacts scanned successfully",
 		"artifactCount": len(workflow.Artifacts),
 	})
 }
@@ -2003,8 +1609,7 @@ func updateRFEWorkflowArtifact(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Artifact updated successfully",
-		"path": artifactPath,
-		"size": len(content),
+		"path":    artifactPath,
+		"size":    len(content),
 	})
 }
-

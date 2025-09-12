@@ -73,7 +73,7 @@ clean: ## Clean up all Kubernetes resources
 
 
 
-push-all: build-all ## Push all images to registry
+push-all: ## Push all images to registry
 	$(CONTAINER_ENGINE) tag $(FRONTEND_IMAGE) $(REGISTRY)/$(FRONTEND_IMAGE)
 	$(CONTAINER_ENGINE) tag $(BACKEND_IMAGE) $(REGISTRY)/$(BACKEND_IMAGE)
 	$(CONTAINER_ENGINE) tag $(OPERATOR_IMAGE) $(REGISTRY)/$(OPERATOR_IMAGE)

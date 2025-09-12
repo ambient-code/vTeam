@@ -1,299 +1,254 @@
-# vTeam - AI Automation Platform
+****# Ambient Agentic Runner
 
-A Kubernetes-native AI automation platform that combines Claude Code CLI with browser automation and spec-driven development capabilities. Create AI sessions for website analysis, generate specifications, implementation plans, and development tasks.
+A Kubernetes application for running automated agentic sessions using Ambient Code AI with integrated MCP server capabilities. This system allows users to create agentic jobs that use AI to perform various tasks including website analysis, automation, and data processing through MCP.
 
 ## ✨ Features
 
-- **Web-based UI**: React frontend for creating and monitoring AI sessions
-- **Website Analysis**: AI-powered browser automation using Playwright MCP
-- **Spec-Driven Development**: Generate specifications, plans, and tasks with `/specify`, `/plan`, `/tasks` commands
-- **Git Integration**: Clone repositories, configure Git users, support SSH/token authentication
-- **Configurable Defaults**: Set organization-wide Git repositories via ConfigMap
-- **Kubernetes Native**: Built with Custom Resources and Operators
-- **Real-time Updates**: Live status updates of AI session progress
+- **Web-based UI**: Modern NextJS application with Shadcn UI components
+- **Agentic Job Management**: Create, monitor, and view results of agentic sessions
+- **AI Integration**: Leverages Ambient Code AI for intelligent analysis
+- **MCP Integration**: Uses AI with Playwright MCP server for web automation
+- **Kubernetes Native**: Built with Kubernetes Custom Resources and Operators
+- **Scalable Architecture**: Containerized microservices with proper RBAC
+- **Real-time Updates**: Live status updates of agentic job progress
 
 ## 🏗️ Architecture
 
 ```mermaid
 graph TB
     subgraph "User Interface"
-        UI[React Frontend<br/>Next.js + Shadcn UI]
+        UI[NextJS Frontend<br/>Shadcn UI]
     end
-
+    
     subgraph "Kubernetes Cluster"
         API[Backend API<br/>Go + Gin]
         OP[Agentic Operator<br/>Go]
         CR[(AgenticSession<br/>Custom Resource)]
-        CM[Git ConfigMap<br/>Default Settings]
-
+        
         subgraph "Job Execution"
             JOB[Kubernetes Job]
-            POD[Claude Runner Pod<br/>Python + Claude Code CLI]
-            MCP[Playwright MCP Server<br/>Browser Automation]
-            SPEK[SpekKit Integration<br/>Spec-Driven Development]
+            POD[Ambient Runner Pod<br/>Python + AI CLI]
+            MCP[Playwright MCP Server<br/>via AI]
         end
     end
-
+    
     subgraph "External Services"
-        CLAUDE[Claude API]
-        WEB[Target Websites]
-        GIT[Git Repositories]
+        AMBIENT[Ambient Code AI API]
+        WEB[Target Website]
     end
-
+    
     UI --> API
     API --> CR
     CR --> OP
     OP --> JOB
     JOB --> POD
     POD --> MCP
-    POD --> SPEK
-    POD --> CLAUDE
-    POD --> GIT
+    POD --> AMBIENT
     MCP --> WEB
     POD --> API
-    CM --> POD
 ```
 
 ## 🚀 Components
 
 | Component | Technology | Description |
 |-----------|------------|-------------|
-| **Frontend** | Next.js + Shadcn | User interface for managing AI sessions |
+| **Frontend** | NextJS + Shadcn | User interface for managing agentic sessions |
 | **Backend API** | Go + Gin | REST API for managing Kubernetes Custom Resources |
-| **Agentic Operator** | Go | Kubernetes operator that creates and monitors Jobs |
-| **Claude Runner** | Python + Claude Code CLI | Executes AI tasks with browser automation and SpekKit |
-| **Git ConfigMap** | Kubernetes ConfigMap | Default Git configuration and repositories |
+| **Agentic Operator** | Go | Kubernetes operator that watches CRs and creates Jobs |
+| **Ambient Runner** | Python + AI CLI | Pod that executes AI with Playwright MCP server |
+| **Playwright MCP** | MCP Server | Provides browser automation capabilities to AI |
 
-## 🎯 AI Session Types
+### Directory Structure
 
-### 1. Website Analysis
-- Navigate and analyze websites with AI-powered browser automation
-- Take screenshots, extract content, interact with elements
-- Generate comprehensive analysis reports
+```
+components/
+├── frontend/                   # NextJS application with Shadcn UI
+├── backend/                    # Go API service using Kubernetes SDK
+├── operator/                   # Kubernetes operator in Go
+├── runners/                    # AI runner services
+│   └── claude-code-runner/     # Python service running Claude Code CLI with MCP
+├── manifests/                  # Kubernetes deployment manifests
+└── README.md                   # This documentation
+```
 
-### 2. Spec-Driven Development
-- **`/specify [requirements]`**: Generate feature specifications from natural language
-- **`/plan [tech details]`**: Create detailed implementation plans
-- **`/tasks [notes]`**: Break down features into actionable development tasks
+## 🎯 Agentic Session Flow
 
-### 3. Git Integration
-- Clone and work with repositories during AI sessions
-- Support for SSH keys and personal access tokens
-- Configurable default repositories via ConfigMap
+1. **Create Session**: User creates a new agentic session via the web UI
+2. **API Processing**: Backend creates an `AgenticSession` Custom Resource in Kubernetes
+3. **Job Scheduling**: Operator detects the CR and creates a Kubernetes Job
+4. **Execution**: Job runs a pod with AI CLI and Playwright MCP server
+5. **Task Execution**: AI executes the specified task using MCP capabilities
+6. **Result Storage**: Results are stored back in the Custom Resource
+7. **UI Update**: Frontend displays the completed agentic session with results
 
-## 🔧 Building Images
+## ⚡ Quick Start
 
 ### Prerequisites
-- Docker, Podman or compatible container runtime
-- Access to container registry (default: quay.io/ambient_code)
+- Kubernetes cluster (local or cloud)
+- kubectl configured
+- Docker for building images
+- Anthropic API key
 
-### Build All Images
+### Deploy
 ```bash
-# Navigate to components directory
+# Clone the repository
+git clone <repository-url>
 cd components
 
-# Build frontend
-cd frontend
-podman build --platform=linux/amd64 -t quay.io/ambient_code/vteam_frontend:latest .
+# Build all images
+docker build --platform=linux/amd64 -t backend:latest ./backend/
+docker build --platform=linux/amd64 -t frontend:latest ./frontend/
+docker build --platform=linux/amd64 -t operator:latest ./operator/
+docker build --platform=linux/amd64 -t claude-code-runner:latest ./runners/claude-code-runner/
 
-# Build backend
-cd backend
-podman build --platform=linux/amd64 -t quay.io/ambient_code/vteam_backend:latest .
+# Configure your Anthropic API key
+echo -n "your-api-key" | base64  # Use this in secrets.yaml
 
-# Build operator
-cd operator
-podman build --platform=linux/amd64 -t quay.io/ambient_code/vteam_operator:latest .
-
-# Build claude runner
-cd runners/claude-code-runner
-podman build --platform=linux/amd64 -t quay.io/ambient_code/vteam_claude_runner:latest .
-
-# Push to registry
-podman push quay.io/ambient_code/vteam_frontend:latest
-podman push quay.io/ambient_code/vteam_backend:latest
-podman push quay.io/ambient_code/vteam_operator:latest
-podman push quay.io/ambient_code/vteam_claude_runner:latest
-```
-
-### Custom Registry
-To use your own registry, update image references in:
-- `manifests/kustomization.yaml` (image names)
-- `manifests/operator-deployment.yaml` (AMBIENT_CODE_RUNNER_IMAGE env var)
-
-## 🚀 Deployment
-
-### Option 1: Deploy with Default Images
-Uses pre-built images from quay.io/ambient_code:
-
-```bash
-cd components/manifests
+# Deploy to Kubernetes (namespace: ambient-code)
+cd manifests
 ./deploy.sh
 ```
 
-### Option 2: Deploy with Custom Images
-Build and push your images, then deploy with environment variables:
-
+### Access
 ```bash
-# Deploy with custom images
-cd components/manifests
-NAMESPACE=your-namespace-here \
-DEFAULT_BACKEND_IMAGE=quay.io/sallyom/vteam:backend-git \
-DEFAULT_FRONTEND_IMAGE=quay.io/sallyom/vteam:frontend-git \
-DEFAULT_OPERATOR_IMAGE=quay.io/sallyom/vteam:operator-git \
-DEFAULT_RUNNER_IMAGE=quay.io/sallyom/vteam:claude-runner-git \
-./deploy.sh
+# Port forward to access the UI (ambient-code namespace)
+kubectl port-forward svc/frontend-service 3000:3000 -n ambient-code
+
+# Open http://localhost:3000 in your browser
 ```
 
-Alternative: Update `manifests/kustomization.yaml` with your registry and run `./deploy.sh`
-
-## 🔐 Required Secrets
-
-**IMPORTANT**: Create secrets manually before deployment. Secrets are not included in Kustomize for security.
-
-### Create Anthropic API Key Secret
-```bash
-kubectl create secret generic anthropic-api-key \
-  --from-literal=api-key="your-anthropic-api-key-here"
-```
-
-### Optional Git Secrets
-For private repository access:
-
-```bash
-# SSH Key (for SSH-based Git access)
-kubectl create secret generic git-ssh-key \
-  --from-file=ssh-privatekey=/path/to/private/key
-
-# Personal Access Token (for HTTPS-based Git access)
-kubectl create secret generic git-token \
-  --from-literal=token="your-git-token-here"
-```
-
-## ⚙️ Configuration
-
-### Git ConfigMap (Optional)
-Configure default Git settings and repositories:
-
-```yaml
-# Edit manifests/git-configmap.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: git-config
-data:
-  git-user-name: "vTeam Bot"
-  git-user-email: "vteam@example.com"
-  git-ssh-key-secret: "git-ssh-key"
-  git-token-secret: "git-token"
-  git-repositories: |
-    https://github.com/your-org/project.git
-    https://github.com/your-org/docs.git
-```
+## 🔧 Configuration
 
 ### Environment Variables
 
-**Operator Configuration:**
-- `IMAGE_PULL_POLICY`: Image pull policy for claude-runner jobs (default: "Always")
-- `AMBIENT_CODE_RUNNER_IMAGE`: Claude runner image to use
+**Ambient Runner Pod:**
+- `AMBIENT_API_KEY`: Your Ambient Code AI API key (required)
+- `AGENTIC_SESSION_NAME`: Name of the agentic session
+- `PROMPT`: Prompt for AI
+- `WEBSITE_URL`: Website to analyze
+- `LLM_MODEL`: AI model to use (default: ambient-ai-v1)
+- `LLM_TEMPERATURE`: Model temperature (default: 0.7)
+- `LLM_MAX_TOKENS`: Maximum tokens (default: 4000)
+- `TIMEOUT`: Session timeout in seconds (default: 300)
 
-**Per-Session Variables** (set automatically):
-- `ANTHROPIC_API_KEY`: Claude API key (from secret)
-- `AGENTIC_SESSION_NAME`: Session identifier
-- `PROMPT`: User-provided prompt
-- `WEBSITE_URL`: Target website URL
-- `TIMEOUT`: Session timeout (default: 300s)
+**MCP Configuration:**
+- Playwright MCP server is automatically configured via `.mcp.json`
+- Chrome runs in headless mode with vision capabilities enabled
+- Browser automation tools are available to AI via MCP protocol
 
-## 📖 Access and Usage
+### Supported AI Models
+- `ambient-ai-v1` (Default)
+- `ambient-ai-fast`
+- `ambient-ai-advanced`
 
-### Access the UI
+## 📖 Documentation
+
+- [**Setup Guide**](./docs/SETUP.md) - Detailed installation and configuration
+- [**API Documentation**](./docs/API.md) - REST API reference and examples
+
+## 🔍 Example Usage
+
+1. **Access the web interface** at `http://localhost:3000`
+2. **Click "New Agentic Session"** to create an agentic job
+3. **Fill out the form:**
+   - **Prompt**: "Analyze this website's user experience and identify key features"
+   - **Website URL**: "https://example.com"
+   - **Model**: "Ambient AI v1"
+   - **Settings**: Adjust temperature and token limits as needed
+4. **Submit** and monitor the job progress in real-time
+5. **View results** once the analysis is complete
+
+## 🛠️ Development
+
+### Local Development
 ```bash
-# Check for OpenShift route
-oc get route frontend-route
+# Frontend development
+cd frontend && npm run dev
 
-# Or port forward
-kubectl port-forward svc/frontend-service 3000:3000
-# Open http://localhost:3000
+# Backend development  
+cd backend && go run main.go
+
+# Test with local Kubernetes cluster
+kind create cluster --name ambient-agentic
 ```
 
-### Example Usage
+### Building Images
+```bash
+# Build all images with one command
+make build-all
 
-1. **Website Analysis**:
-   - Prompt: "Analyze the pricing page and summarize the tiers"
-   - Website: "https://example.com/pricing"
+# Or build individually
+make build-frontend
+make build-backend  
+make build-operator
+make build-runner
+```
 
-2. **Spec-Driven Development**:
-   - Prompt: "/specify Build a user dashboard with charts and data filters"
-   - Follow with: "/plan Use React and Node.js with PostgreSQL"
-   - Complete with: "/tasks Focus on backend API development first"
+## 📊 Monitoring
 
-3. **Git Integration**:
-   - Configure Git settings in the UI or use ConfigMap defaults
-   - AI sessions can clone and work with repositories
-
-## 🔍 Monitoring
+Monitor your agentic sessions:
 
 ```bash
-# Check deployment status
-kubectl get pods -l app=backend-api
-kubectl get pods -l app=frontend
-kubectl get pods -l app=agentic-operator
+# Check pod status
+kubectl get pods -l app=ambient-agentic
 
-# Monitor AI sessions
+# View logs (ambient-code namespace)
+kubectl logs -n ambient-code deployment/agentic-operator
+kubectl logs -n ambient-code deployment/backend-api
+
+# Monitor agentic sessions
 kubectl get agenticsessions
 kubectl describe agenticsession <session-name>
-
-# View logs
-kubectl logs -l app=agentic-operator -f
-kubectl logs -l app=backend-api -f
-
-# Check Job execution
-kubectl get jobs
-kubectl logs job/<job-name>
 ```
+
+## 🔐 Security Considerations
+
+- **API Keys**: Stored securely in Kubernetes secrets
+- **RBAC**: Proper role-based access control configured. Ambient-managed projects must be labeled `ambient-code.io/managed=true`. Group access is managed via RoleBindings to cluster roles `ambient-project-admin`, `ambient-project-edit`, `ambient-project-view`.
+- **Network Policies**: Restrict pod-to-pod communication as needed
+- **Resource Limits**: CPU and memory limits set on all containers
+
+## 🚧 Roadmap
+
+- [ ] **Session Control**: Add pause/resume functionality for long-running sessions
+- [ ] **Authentication**: Add user authentication and authorization
+- [ ] **Monitoring**: Prometheus metrics and Grafana dashboards
+- [ ] **WebSocket Support**: Real-time status updates via WebSocket
+- [ ] **Multi-tenancy**: Support for multiple users and organizations
 
 ## 🐛 Troubleshooting
 
-### Common Issues
+Common issues and solutions:
+
 ```bash
-# Check if secrets exist
-kubectl get secrets
+# Check if all services are healthy
+kubectl get pods --all-namespaces | grep ambient
 
-# Verify ConfigMap
-kubectl get configmap git-config -o yaml
+# View operator logs for job creation issues
+kubectl logs -n ambient-code deployment/agentic-operator -f
 
-# Check operator logs for job creation issues
-kubectl logs -l app=agentic-operator -f
-
-# Test API connectivity
+# Check API connectivity
 kubectl port-forward svc/backend-service 8080:8080
 curl http://localhost:8080/health
 ```
 
-### Image Pull Issues
-- Verify `imagePullPolicy: Always` is set in deployments
-- Check registry credentials and image availability
-- Review operator logs for container creation errors
-
-## 🧹 Cleanup
-
-```bash
-cd components/manifests
-kubectl delete -f .
-kubectl delete crd agenticsessions.vteam.ambient-code
-```
-
-## 📚 Additional Documentation
-
-- [**OpenShift Deployment Guide**](../OPENSHIFT_DEPLOY.md) - Quick deployment reference
-- [**Secret Setup Guide**](./SECRET_SETUP.md) - Detailed secret configuration
+See the repository root `README.md` for deployment and troubleshooting guides.
 
 ## 🤝 Contributing
 
 1. Fork the repository
 2. Create a feature branch
-3. Build and test your changes
-4. Submit a pull request
+3. Make your changes
+4. Add tests if applicable
+5. Submit a pull request
 
 ## 📄 License
 
-This project is licensed under the MIT License.
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## 🙏 Acknowledgments
+
+- [Ambient Code](https://ambient-code.com/) for Ambient AI and AI CLI
+- [Playwright MCP](https://github.com/microsoft/playwright) for web automation capabilities  
+- [Shadcn/ui](https://ui.shadcn.com/) for beautiful UI components
+- The Kubernetes community for the excellent operator framework

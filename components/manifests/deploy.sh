@@ -21,10 +21,13 @@ command_exists() {
 
 # Configuration
 NAMESPACE="${NAMESPACE:-ambient-code}"
-DEFAULT_BACKEND_IMAGE="${DEFAULT_BACKEND_IMAGE:-quay.io/ambient_code/vteam_backend:latest}"
-DEFAULT_FRONTEND_IMAGE="${DEFAULT_FRONTEND_IMAGE:-quay.io/ambient_code/vteam_frontend:latest}"
-DEFAULT_OPERATOR_IMAGE="${DEFAULT_OPERATOR_IMAGE:-quay.io/ambient_code/vteam_operator:latest}"
-DEFAULT_RUNNER_IMAGE="${DEFAULT_RUNNER_IMAGE:-quay.io/ambient_code/vteam_claude_runner:latest}"
+# Allow overriding images via CONTAINER_REGISTRY/IMAGE_TAG or explicit DEFAULT_*_IMAGE
+CONTAINER_REGISTRY="${CONTAINER_REGISTRY:-quay.io/ambient_code}"
+IMAGE_TAG="${IMAGE_TAG:-latest}"
+DEFAULT_BACKEND_IMAGE="${DEFAULT_BACKEND_IMAGE:-${CONTAINER_REGISTRY}/vteam_backend:${IMAGE_TAG}}"
+DEFAULT_FRONTEND_IMAGE="${DEFAULT_FRONTEND_IMAGE:-${CONTAINER_REGISTRY}/vteam_frontend:${IMAGE_TAG}}"
+DEFAULT_OPERATOR_IMAGE="${DEFAULT_OPERATOR_IMAGE:-${CONTAINER_REGISTRY}/vteam_operator:${IMAGE_TAG}}"
+DEFAULT_RUNNER_IMAGE="${DEFAULT_RUNNER_IMAGE:-${CONTAINER_REGISTRY}/vteam_claude_runner:${IMAGE_TAG}}"
 
 # Handle uninstall command early
 if [ "${1:-}" = "uninstall" ]; then
@@ -99,8 +102,8 @@ fi
 echo -e "${GREEN}✅ Authenticated as: $(oc whoami)${NC}"
 echo ""
 
-# Check environment file
-echo -e "${YELLOW}Checking environment configuration...${NC}"
+# Load optional environment file
+echo -e "${YELLOW}Loading optional environment configuration (.env)...${NC}"
 ENV_FILE=".env"
 if [[ ! -f "$ENV_FILE" ]]; then
     echo -e "${RED}❌ .env file not found${NC}"
@@ -109,16 +112,6 @@ if [[ ! -f "$ENV_FILE" ]]; then
     echo "  # Edit .env and add your actual API key and Git configuration"
     exit 1
 fi
-
-# Source environment variables
-source "$ENV_FILE"
-
-if [[ -z "$ANTHROPIC_API_KEY" ]]; then
-    echo -e "${RED}❌ ANTHROPIC_API_KEY not set in .env file${NC}"
-    exit 1
-fi
-
-echo -e "${GREEN}✅ Environment configuration loaded${NC}"
 echo ""
 
 # Update git-configmap with environment variables if they exist
@@ -187,13 +180,8 @@ echo -e "${GREEN}✅ Namespace ${NAMESPACE} is active${NC}"
 echo -e "${BLUE}Switching to namespace ${NAMESPACE}...${NC}"
 oc project ${NAMESPACE}
 
-# Create API key secret (kustomize creates empty secret, we populate it)
-echo -e "${BLUE}Creating API key secret...${NC}"
-oc patch secret ambient-code-secrets -n ${NAMESPACE} -p "{\"stringData\":{\"anthropic-api-key\":\"$ANTHROPIC_API_KEY\"}}" || {
-    echo -e "${YELLOW}Secret patch failed, ensuring secret exists and retrying...${NC}"
-    sleep 1
-    oc patch secret ambient-code-secrets -n ${NAMESPACE} -p "{\"stringData\":{\"anthropic-api-key\":\"$ANTHROPIC_API_KEY\"}}"
-}
+# Secrets are now managed through the UI. Skip creating or patching any secrets here.
+echo -e "${BLUE}Skipping secret management (handled via UI).${NC}"
 
 # Apply git configuration if we created a patch
 if [[ -f "/tmp/git-config-patch.yaml" ]]; then
@@ -216,8 +204,8 @@ oc rollout status deployment/backend-api --namespace=${NAMESPACE} --timeout=300s
 oc rollout status deployment/agentic-operator --namespace=${NAMESPACE} --timeout=300s
 oc rollout status deployment/frontend --namespace=${NAMESPACE} --timeout=300s
 
-# Get service information
-echo -e "${BLUE}Getting service information...${NC}"
+# Get service and route information
+echo -e "${BLUE}Getting service and route information...${NC}"
 echo ""
 echo -e "${GREEN}🎉 Deployment successful!${NC}"
 echo -e "${GREEN}========================${NC}"
@@ -229,19 +217,29 @@ echo -e "${BLUE}Pod Status:${NC}"
 oc get pods -n ${NAMESPACE}
 echo ""
 
-# Show services
+# Show services and route
 echo -e "${BLUE}Services:${NC}"
 oc get services -n ${NAMESPACE}
 echo ""
+echo -e "${BLUE}Routes:${NC}"
+oc get route -n ${NAMESPACE} || true
+ROUTE_HOST=$(oc get route frontend -n ${NAMESPACE} -o jsonpath='{.spec.host}' 2>/dev/null || true)
+echo ""
 
 echo -e "${YELLOW}Next steps:${NC}"
-echo -e "1. Access the RFE workflow frontend:"
-echo -e "   ${BLUE}oc port-forward svc/frontend-service 3000:3000 -n ${NAMESPACE}${NC}"
-echo -e "   Then open: http://localhost:3000"
-echo -e "   Create new RFE workflows at: http://localhost:3000/rfe/new"
-echo -e "2. Monitor the deployment:"
+if [[ -n "${ROUTE_HOST}" ]]; then
+    echo -e "1. Access the frontend via Route:"
+    echo -e "   ${BLUE}https://${ROUTE_HOST}${NC}"
+else
+    echo -e "1. Access the frontend (fallback via port-forward):"
+    echo -e "   ${BLUE}oc port-forward svc/frontend-service 3000:3000 -n ${NAMESPACE}${NC}"
+    echo -e "   Then open: http://localhost:3000"
+fi
+echo -e "2. Configure secrets in the UI (Runner/API keys, project settings)."
+echo -e "   Open the app and follow Settings → Runner Secrets."
+echo -e "3. Monitor the deployment:"
 echo -e "   ${BLUE}oc get pods -n ${NAMESPACE} -w${NC}"
-echo -e "3. View logs:"
+echo -e "4. View logs:"
 echo -e "   ${BLUE}oc logs -f deployment/backend-api -n ${NAMESPACE}${NC}"
 echo -e "   ${BLUE}oc logs -f deployment/agentic-operator -n ${NAMESPACE}${NC}"
 echo -e "4. Monitor RFE workflows:"

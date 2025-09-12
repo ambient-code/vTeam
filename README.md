@@ -50,7 +50,7 @@ The system implements a 7-step refinement process with specialized AI agents:
 7. **Derek (Delivery Owner)** - Feature Ticket Creation
 
 ### Integration Points
-- **Jira API** - Epic creation and synchronization (implemented)
+- **Jira integration (optional)** - Bot accounts/webhook patterns available; not enabled by default
 - **Anthropic Claude** - Conversational AI and agent assistance
 - **Google Vertex AI** - Alternative AI provider support
 - **Git Repositories** - Future integration for code context
@@ -61,7 +61,7 @@ The system implements a 7-step refinement process with specialized AI agents:
 - **Multi-Agent Workflow**: Specialized AI agents model realistic software team dynamics
 - **Visual Workflow Tracking**: Progress visualization with step-by-step status updates
 - **Cost Management**: Built-in API usage tracking and response caching
-- **Jira Integration**: Automated Epic creation from refined RFEs
+- **Optional Jira Automation**: Bot/webhook-driven session creation (no default Epic sync)
 - **Agent Dashboard**: Role-specific views for different team members
 
 ### Components
@@ -69,111 +69,143 @@ The system implements a 7-step refinement process with specialized AI agents:
 | Component | Technology | Description |
 |-----------|------------|-------------|
 | **Frontend** | NextJS + Shadcn | User interface for managing agentic sessions |
-| **Backend API** | Go + Gin | REST API for managing Kubernetes Custom Resources |
+| **Backend API** | Go + Gin | REST API for managing Kubernetes Custom Resources (multi-tenant: projects, agentic-sessions, groups, keys) |
 | **Agentic Operator** | Go | Kubernetes operator that watches CRs and creates Jobs |
 | **Ambient Runner** | Python + AI CLI | Pod that executes AI with Playwright MCP server |
 | **Playwright MCP** | MCP Server | Provides browser automation capabilities to AI |
 
 ## Prerequisites
 
-### For Using Pre-built Images (Recommended)
-- **Kubernetes cluster** (local with minikube/kind or cloud-based) or **OpenShift**
-- **kubectl** v1.28+ configured to access your cluster
-- **Anthropic API Key** - Get one from [Anthropic Console](https://console.anthropic.com/)
+Before deploying the Ambient Agentic Runner, ensure you have:
 
-### For Building Images from Source (Advanced)
+### Required Tools
+- **Kubernetes cluster** (local with minikube/kind or cloud-based like EKS/GKE/AKS)
+- **kubectl** v1.28+ configured to access your cluster  
 - **Docker or Podman** for building container images
 - **Container registry access** (Docker Hub, Quay.io, ECR, etc.)
-- **Go 1.24+** for building backend services
-- **Node.js 18+** and **npm/pnpm** for the frontend
+- **Go 1.24+** for building backend services (if building from source)
+- **Node.js 18+** and **npm/pnpm** for the frontend (if building from source)
+
+### Required Accounts & API Keys
+- **Anthropic API Key** - Get one from [Anthropic Console](https://console.anthropic.com/)
+  - Provide keys via the app UI after deployment (Settings → Runner Secrets)
+
+### OpenShift OAuth (Recommended)
+- For cluster login and auth in front of the UI, follow [OpenShift OAuth Setup](docs/OPENSHIFT_OAUTH.md)
 
 
 ## Quick Start
 
-### **Common Setup (All Deployment Options)**
-
-1. **Clone and Setup**
-   ```bash
-   git clone https://github.com/your-org/vTeam.git
-   cd vTeam
-   ```
-
-2. **Configure Environment**
-   ```bash
-   cd components/manifests
-   cp env.example .env
-   # Edit .env and add: ANTHROPIC_API_KEY=your-actual-key-here
-   ```
-
-Now choose your deployment path:
-
-### 🚀 **Option A: OpenShift Deployment (Recommended)**
-
-For complete OpenShift deployment with pre-built images and HTTPS routes:
+### 1. Verify Prerequisites
 
 ```bash
-# Deploy (includes route with automatic HTTPS)
+# Check required tools
+kubectl version --client
+docker --version  # or podman --version
+git --version
+
+# Verify cluster access
+kubectl cluster-info
+kubectl get nodes
+```
+
+### 2. Clone and Setup
+
+```bash
+# Clone the repository
+git clone https://github.com/your-org/vTeam.git
+cd vTeam
+```
+
+### 3. Configure Container Registry
+
+```bash
+# Set your container registry (replace with your registry)
+export REGISTRY="your-registry.com"  # e.g., "quay.io/your-username"
+
+# Login to your container registry
+docker login $REGISTRY
+```
+
+### 4. Build and Push Images
+
+```bash
+# Build all container images
+make build-all REGISTRY=$REGISTRY
+
+# Push images to registry
+make push-all REGISTRY=$REGISTRY
+```
+
+### 5. Configure Environment (optional overrides)
+
+```bash
+# Navigate to deployment folder
+cd components/manifests
+
+# Create optional environment file for overrides (namespace, images)
+cp env.example .env
+
+# Edit .env to set NAMESPACE, CONTAINER_REGISTRY, IMAGE_TAG if desired
+nano .env  # or your preferred editor
+```
+
+Notes:
+- Secrets (e.g., Anthropic API keys) are configured in the UI after deployment: Settings → Runner Secrets
+- For OAuth-protected access on OpenShift, complete [OpenShift OAuth Setup](../../docs/OPENSHIFT_OAUTH.md)
+
+### 6. (Optional) Override Images
+
+The deploy script supports image overrides without editing YAML. You can set these via environment or `.env`:
+
+```bash
+# Example (one-off):
+CONTAINER_REGISTRY="quay.io/your-username" IMAGE_TAG="latest" ./deploy.sh
+
+# Or in .env (preferred):
+# CONTAINER_REGISTRY=quay.io/your-username
+# IMAGE_TAG=latest
+# DEFAULT_BACKEND_IMAGE=
+# DEFAULT_FRONTEND_IMAGE=
+# DEFAULT_OPERATOR_IMAGE=
+# DEFAULT_RUNNER_IMAGE=
+```
+
+### 7. Deploy to OpenShift/Kubernetes
+
+```bash
+# From components/manifests
 ./deploy.sh
-
-# Get the HTTPS route URL
-oc get route frontend-route -n ambient-code -o jsonpath='{.spec.host}'
-# Open browser to the displayed URL
 ```
 
-### ⚡ **Option B: Kubernetes Deployment**
-
-For basic Kubernetes deployment with pre-built images:
+### 8. Verify Deployment
 
 ```bash
-# Comment out route.yaml in kustomization.yaml (not needed for regular K8s)
-sed -i 's/^- route.yaml$/# - route.yaml/' kustomization.yaml
+# Check all pods are running
+oc get pods -n ambient-code
 
-# Deploy with kubectl and kustomize
-kubectl apply -k .
-
-# Access via port forward
-kubectl port-forward svc/frontend-service 3000:3000 -n ambient-code
-# Open browser to: http://localhost:3000
+# Check services are available
+oc get services -n ambient-code
 ```
 
-### 🔧 **Option C: Build from Source**
+### 9. Access the Application
 
-For custom images or development:
+```bash
+# On OpenShift (recommended): use the Route
+oc -n ambient-code get route frontend -o jsonpath='{.spec.host}' | sed 's#^#https://#'
 
-1. **Build All Images**
-   ```bash
-   # Using Docker
-   make build-all
+# Fallback (testing): Port forward locally
+kubectl -n ambient-code port-forward svc/frontend-service 3000:3000
+# Open: http://localhost:3000
+```
 
-   # Using Podman
-   make build-all CONTAINER_ENGINE=podman
-
-   # For specific platform
-   make build-all PLATFORM=linux/amd64
-   ```
-
-2. **Push to Registry (if using custom registry)**
-   ```bash
-   make push-all REGISTRY=your-registry.com
-   ```
-
-3. **Update Image References**
-   ```bash
-   # Edit components/manifests/kustomization.yaml
-   # Uncomment and modify the images: section
-   ```
-
-4. **Deploy**
-   ```bash
-   cd components/manifests
-   ./deploy.sh
-   ```
+For configuring cluster login for the UI, see [OpenShift OAuth Setup](docs/OPENSHIFT_OAUTH.md).
 
 ## Usage
 
 Once deployed, you can create and manage agentic sessions through the web interface:
 
-### Creating an Agentic Session
+### Creating an Agentic Session (project-scoped)
 
 1. **Access the Web Interface**
    - Navigate to `http://localhost:3000` (if using port forwarding)
@@ -184,7 +216,7 @@ Once deployed, you can create and manage agentic sessions through the web interf
    - Fill out the form with:
      - **Prompt**: Task description for the AI (e.g., "Analyze this website's user experience")
      - **Website URL**: Target website to analyze
-     - **Model**: Choose AI model (Ambient AI v1, etc.)
+   - **Model**: Choose AI model (e.g., Claude Sonnet/Haiku)
      - **Settings**: Adjust temperature, token limits as needed
 
 3. **Monitor Progress**
@@ -223,10 +255,10 @@ kubectl top pods -n ambient-code
 #### API Connection Issues
 ```bash
 # Check service endpoints
-kubectl get endpoints -n ambient-code
+oc get endpoints -n ambient-code
 
 # Test API connectivity
-kubectl exec -it <pod-name> -n ambient-code -- curl http://backend-service:8080/health
+oc exec -it <pod-name> -n ambient-code -- curl http://backend-service:8080/health
 ```
 
 #### Image Pull Errors
@@ -244,13 +276,13 @@ sed -i "s|old-registry|new-registry|g" manifests/*.yaml
 #### Job Failures
 ```bash
 # List jobs
-kubectl get jobs -n ambient-code
+oc get jobs -n ambient-code
 
 # Check job details
-kubectl describe job <job-name> -n ambient-code
+oc describe job <job-name> -n ambient-code
 
 # Check failed pod logs
-kubectl logs <failed-pod-name> -n ambient-code
+oc logs <failed-pod-name> -n ambient-code
 ```
 
 ### Verification Commands
@@ -305,8 +337,11 @@ go run main.go
 
 # Testing with Kind
 kind create cluster --name ambient-agentic
-kind load docker-image backend:latest --name ambient-agentic
-kind load docker-image frontend:latest --name ambient-agentic
+# Load images built locally (names must match Makefile tags)
+kind load docker-image vteam_backend:latest --name ambient-agentic
+kind load docker-image vteam_frontend:latest --name ambient-agentic
+kind load docker-image vteam_operator:latest --name ambient-agentic
+kind load docker-image vteam_claude_runner:latest --name ambient-agentic
 ```
 
 ### Building from Source

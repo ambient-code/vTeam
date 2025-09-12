@@ -1,36 +1,98 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+## Ambient Agentic Runner — Frontend (Next.js)
 
-## Getting Started
+Next.js UI for managing Agentic Sessions and Projects. In local development it proxies API calls to the backend and forwards incoming auth/context headers; it does not spoof identities.
 
-First, run the development server:
+### Prerequisites
+- Node.js 20+ and npm
+- Go 1.24+ (to run the backend locally)
+- oc/kubectl configured to your OpenShift/Kubernetes cluster
 
+### Backend (local) quick start
+Run the backend locally while targeting your cluster.
+
+1) Install CRDs to your cluster
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+oc apply -f ../manifests/crd.yaml
+oc apply -f ../manifests/projectsettings-crd.yaml
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+2) Create/label a project namespace (example: my-project)
+```bash
+oc new-project my-project || oc project my-project
+oc label namespace my-project ambient-code.io/managed=true --overwrite
+oc annotate namespace my-project \
+  ambient-code.io/display-name="My Project" --overwrite
+```
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+3) Start the backend (defaults to port 8080)
+```bash
+cd ../backend
+export KUBECONFIG="$HOME/.kube/config"   # or your kubeconfig path
+go run .
+# Health: curl http://localhost:8080/health
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### Frontend (local) quick start
+1) From this directory, install and run:
+```bash
+npm ci
+export BACKEND_URL=http://localhost:8080/api
+npm run dev
+# Open http://localhost:3000
+```
 
-## Learn More
+### Header forwarding model (dev and prod)
+Next.js API routes forward incoming headers to the backend. They do not auto-inject user identity. In development, you can optionally provide values via environment or `oc`:
 
-To learn more about Next.js, take a look at the following resources:
+- Forwarded when present on the request:
+  - `X-Forwarded-User`, `X-Forwarded-Email`, `X-Forwarded-Preferred-Username`
+  - `X-Forwarded-Groups`
+  - `X-OpenShift-Project`
+  - `Authorization: Bearer <token>` (forwarded as `X-Forwarded-Access-Token`)
+- Optional dev helpers:
+  - `OC_USER`, `OC_EMAIL`, `OC_TOKEN`
+  - `ENABLE_OC_WHOAMI=1` to let the server call `oc whoami` / `oc whoami -t`
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+In production, put an OAuth/ingress proxy in front of the app to set these headers.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### Environment variables
+- `BACKEND_URL` (default: `http://localhost:8080/api`)
+  - Used by server-side API routes to reach the backend.
+- Optional dev helpers: `OC_USER`, `OC_EMAIL`, `OC_TOKEN`, `ENABLE_OC_WHOAMI=1`
 
-## Deploy on Vercel
+You can also put these in a `.env.local` file in this folder:
+```
+BACKEND_URL=http://localhost:8080/api
+# Optional dev helpers
+# OC_USER=your.name
+# OC_EMAIL=your.name@example.com
+# OC_TOKEN=...
+# ENABLE_OC_WHOAMI=1
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### Verifying requests
+Backend directly (requires headers):
+```bash
+curl -i http://localhost:8080/api/projects/my-project/agentic-sessions \
+  -H "X-OpenShift-Project: my-project" \
+  -H "X-Forwarded-User: dev" \
+  -H "X-Forwarded-Groups: ambient-project:my-project:admin"
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Through the frontend route (forwards headers to backend):
+```bash
+curl -i http://localhost:3000/api/projects/my-project/agentic-sessions \
+  -H "X-OpenShift-Project: my-project"
+```
+
+### Common issues
+- 400 “Project is required …”
+  - Use path `/api/projects/{project}/…` or include `X-OpenShift-Project`.
+- 403 “Project is not managed by Ambient”
+  - Ensure namespace is labeled `ambient-code.io/managed=true`.
+- Missing auth header
+  - In dev, provide `Authorization: Bearer <token>` (or use `OC_TOKEN` / `ENABLE_OC_WHOAMI`).
+
+### Production notes
+- Do not spoof identities. Forward real headers from your OAuth/ingress proxy.
+- Provide a project selection mechanism and forward it as `X-OpenShift-Project` (or use project path in API URLs).

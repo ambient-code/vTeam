@@ -14,10 +14,11 @@ spec:
       labels:
         app: frontend
     spec:
+      serviceAccountName: frontend
       containers:
       - name: frontend
-        image: quay.io/ambient_code/vteam_frontend:latest
         imagePullPolicy: Always
+        image: quay.io/ambient_code/vteam_frontend:latest
         ports:
         - containerPort: 3000
           name: http
@@ -45,6 +46,57 @@ spec:
             port: http
           initialDelaySeconds: 5
           periodSeconds: 5
+      - name: oauth-proxy
+        image: quay.io/openshift/origin-oauth-proxy:4.14
+        args:
+        - --https-address=:8443
+        - --provider=openshift
+        - --upstream=http://localhost:3000
+        - --client-id=ambient-frontend
+        - --client-secret-file=/etc/oauth/config/client-secret
+        - --cookie-secret-file=/etc/oauth/config/cookie_secret
+        - --tls-cert=/etc/tls/private/tls.crt
+        - --tls-key=/etc/tls/private/tls.key
+        - --cookie-expire=23h0m0s
+        - --pass-access-token
+        - --scope=user:full
+        - '--openshift-delegate-urls={"/": {"resource": "projects", "verb": "list"}}'
+        - --skip-auth-regex=^/metrics
+        ports:
+        - containerPort: 8443
+          name: dashboard-ui
+        livenessProbe:
+          httpGet:
+            path: /oauth/healthz
+            port: dashboard-ui
+            scheme: HTTPS
+          initialDelaySeconds: 30
+          timeoutSeconds: 1
+          periodSeconds: 5
+          successThreshold: 1
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /oauth/healthz
+            port: dashboard-ui
+            scheme: HTTPS
+          initialDelaySeconds: 5
+          timeoutSeconds: 1
+          periodSeconds: 5
+          successThreshold: 1
+          failureThreshold: 3
+        volumeMounts:
+        - mountPath: /etc/oauth/config
+          name: oauth-config
+        - mountPath: /etc/tls/private
+          name: proxy-tls
+      volumes:
+      - name: oauth-config
+        secret:
+          secretName: frontend-oauth-config
+      - name: proxy-tls
+        secret:
+          secretName: dashboard-proxy-tls
 ---
 apiVersion: v1
 kind: Service
@@ -52,6 +104,8 @@ metadata:
   name: frontend-service
   labels:
     app: frontend
+  annotations:
+    service.beta.openshift.io/serving-cert-secret-name: dashboard-proxy-tls
 spec:
   selector:
     app: frontend
@@ -61,3 +115,8 @@ spec:
     protocol: TCP
     name: http
   type: LoadBalancer
+  - port: 8443
+    targetPort: dashboard-ui
+    protocol: TCP
+    name: dashboard-ui
+  type: ClusterIP

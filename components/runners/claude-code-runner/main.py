@@ -20,6 +20,8 @@ from git_integration import GitIntegration
 
 # Import agent support
 from agent_loader import AgentLoader, get_agent_loader
+# Import authentication handler and backend client
+from auth_handler import AuthHandler, BackendClient
 
 # Configure logging with immediate flush for container visibility
 log_level = (
@@ -52,6 +54,9 @@ class ClaudeRunner:
         self.workflow_phase = os.getenv("WORKFLOW_PHASE", "")  # e.g., "specify", "plan", "tasks"
         self.parent_rfe = os.getenv("PARENT_RFE", "")  # e.g., "001-user-auth"
         self.shared_workspace = os.getenv("SHARED_WORKSPACE", "/workspace")  # PVC mount
+        # Initialize authentication handler (T050: ServiceAccount token support)
+        self.auth_handler = AuthHandler()
+        self.backend_client = BackendClient(self.backend_api_url, self.auth_handler)
 
         # Validate Anthropic API key for Claude Code
         api_key = os.getenv("ANTHROPIC_API_KEY")
@@ -707,22 +712,12 @@ Provide your enhanced version as a complete, production-ready document that a de
     async def update_session_status(self, status_update: Dict[str, Any]):
         """Update the AgenticSession status via the backend API"""
         try:
-            url = f"{self.backend_api_url}/agentic-sessions/{self.session_name}/status"
+            logger.info(f"Updating session status: {status_update.get('phase', 'unknown')}")
 
-            logger.info(
-                f"Updating session status: {status_update.get('phase', 'unknown')}"
-            )
-
-            response = await asyncio.get_event_loop().run_in_executor(
-                None, lambda: requests.put(url, json=status_update, timeout=30)
-            )
-
-            if response.status_code != 200:
-                logger.error(
-                    f"Failed to update session status: {response.status_code} - {response.text}"
-                )
-            else:
-                logger.info("Session status updated successfully")
+            # Use authenticated backend client with project-scoped API
+            ok = await self.backend_client.update_session_status(self.session_name, status_update)
+            if not ok:
+                logger.error("Failed to update session status via backend client")
 
         except Exception as e:
             logger.error(f"Error updating session status: {str(e)}")

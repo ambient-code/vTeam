@@ -6,15 +6,19 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"time"
 
+	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	intstr "k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
@@ -28,6 +32,7 @@ var (
 	namespace              string
 	ambientCodeRunnerImage string
 	imagePullPolicy        corev1.PullPolicy
+	contentServiceImage    string
 )
 
 func main() {
@@ -48,6 +53,12 @@ func main() {
 		ambientCodeRunnerImage = "quay.io/ambient_code/vteam_claude_runner:latest"
 	}
 
+	// Image for per-namespace content service (defaults to backend image)
+	contentServiceImage = os.Getenv("CONTENT_SERVICE_IMAGE")
+	if contentServiceImage == "" {
+		contentServiceImage = "quay.io/ambient_code/vteam_backend:latest"
+	}
+
 	// Get image pull policy from environment or use default
 	imagePullPolicyStr := os.Getenv("IMAGE_PULL_POLICY")
 	if imagePullPolicyStr == "" {
@@ -60,6 +71,12 @@ func main() {
 
 	// Start watching AgenticSession resources
 	go watchAgenticSessions()
+
+	// Start watching for managed namespaces
+	go watchNamespaces()
+
+	// Start watching ProjectSettings resources
+	go watchProjectSettings()
 
 	// Keep the operator running
 	select {}
@@ -100,8 +117,16 @@ func initK8sClients() error {
 func getAgenticSessionResource() schema.GroupVersionResource {
 	return schema.GroupVersionResource{
 		Group:    "vteam.ambient-code",
-		Version:  "v1",
+		Version:  "v1alpha1",
 		Resource: "agenticsessions",
+	}
+}
+
+func getProjectSettingsResource() schema.GroupVersionResource {
+	return schema.GroupVersionResource{
+		Group:    "vteam.ambient-code",
+		Version:  "v1alpha1",
+		Resource: "projectsettings",
 	}
 }
 
@@ -109,19 +134,35 @@ func watchAgenticSessions() {
 	gvr := getAgenticSessionResource()
 
 	for {
-		watcher, err := dynamicClient.Resource(gvr).Namespace(namespace).Watch(context.TODO(), v1.ListOptions{})
+		// Watch AgenticSessions across all namespaces
+		watcher, err := dynamicClient.Resource(gvr).Watch(context.TODO(), v1.ListOptions{})
 		if err != nil {
-			log.Printf("Failed to create watcher: %v", err)
+			log.Printf("Failed to create AgenticSession watcher: %v", err)
 			time.Sleep(5 * time.Second)
 			continue
 		}
 
-		log.Println("Watching for AgenticSession events...")
+		log.Println("Watching for AgenticSession events across all namespaces...")
 
 		for event := range watcher.ResultChan() {
 			switch event.Type {
 			case watch.Added, watch.Modified:
 				obj := event.Object.(*unstructured.Unstructured)
+
+				// Only process resources in managed namespaces
+				ns := obj.GetNamespace()
+				if ns == "" {
+					continue
+				}
+				nsObj, err := k8sClient.CoreV1().Namespaces().Get(context.TODO(), ns, v1.GetOptions{})
+				if err != nil {
+					log.Printf("Failed to get namespace %s: %v", ns, err)
+					continue
+				}
+				if nsObj.Labels["ambient-code.io/managed"] != "true" {
+					// Skip unmanaged namespaces
+					continue
+				}
 
 				// Add small delay to avoid race conditions with rapid create/delete cycles
 				time.Sleep(100 * time.Millisecond)
@@ -132,17 +173,19 @@ func watchAgenticSessions() {
 			case watch.Deleted:
 				obj := event.Object.(*unstructured.Unstructured)
 				sessionName := obj.GetName()
-				log.Printf("AgenticSession %s deleted", sessionName)
+				sessionNamespace := obj.GetNamespace()
+				log.Printf("AgenticSession %s/%s deleted", sessionNamespace, sessionName)
 
 				// Cancel any ongoing job monitoring for this session
 				// (We could implement this with a context cancellation if needed)
+				// OwnerReferences handle cleanup of per-session resources
 			case watch.Error:
 				obj := event.Object.(*unstructured.Unstructured)
 				log.Printf("Watch error for AgenticSession: %v", obj)
 			}
 		}
 
-		log.Println("Watch channel closed, restarting...")
+		log.Println("AgenticSession watch channel closed, restarting...")
 		watcher.Stop()
 		time.Sleep(2 * time.Second)
 	}
@@ -150,10 +193,11 @@ func watchAgenticSessions() {
 
 func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 	name := obj.GetName()
+	sessionNamespace := obj.GetNamespace()
 
-	// Verify the resource still exists before processing
+	// Verify the resource still exists before processing (in its own namespace)
 	gvr := getAgenticSessionResource()
-	currentObj, err := dynamicClient.Resource(gvr).Namespace(namespace).Get(context.TODO(), name, v1.GetOptions{})
+	currentObj, err := dynamicClient.Resource(gvr).Namespace(sessionNamespace).Get(context.TODO(), name, v1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			log.Printf("AgenticSession %s no longer exists, skipping processing", name)
@@ -162,34 +206,39 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 		return fmt.Errorf("failed to verify AgenticSession %s exists: %v", name, err)
 	}
 
-	// Get the current status from the fresh object
-	status, _, _ := unstructured.NestedMap(currentObj.Object, "status")
-	phase, _, _ := unstructured.NestedString(status, "phase")
+	// Get the current status from the fresh object (status may be empty right after creation
+	// because the API server drops .status on create when the status subresource is enabled)
+	stMap, found, _ := unstructured.NestedMap(currentObj.Object, "status")
+	phase := ""
+	if found {
+		if p, ok := stMap["phase"].(string); ok {
+			phase = p
+		}
+	}
+	// If status.phase is missing, treat as Pending and initialize it
+	if phase == "" {
+		_ = updateAgenticSessionStatus(sessionNamespace, name, map[string]interface{}{"phase": "Pending"})
+		phase = "Pending"
+	}
 
 	log.Printf("Processing AgenticSession %s with phase %s", name, phase)
 
-	// Only process if status is Pending or not set (newly created resources)
-	if phase != "Pending" && phase != "" {
+	// Only process if status is Pending
+	if phase != "Pending" {
 		return nil
 	}
 
-	// If phase is empty (new resource), initialize it to Pending
-	if phase == "" {
-		if err := updateAgenticSessionStatus(name, map[string]interface{}{
-			"phase": "Pending",
-		}); err != nil {
-			log.Printf("Failed to initialize AgenticSession status to Pending: %v", err)
-			return err
-		}
-		phase = "Pending"
-		log.Printf("Initialized AgenticSession %s status to Pending", name)
+	// Ensure a per-project workspace PVC exists for runner artifacts
+	if err := ensureProjectWorkspacePVC(sessionNamespace); err != nil {
+		log.Printf("Failed to ensure workspace PVC in %s: %v", sessionNamespace, err)
+		// Continue; job may still run with ephemeral storage
 	}
 
 	// Create a Kubernetes Job for this AgenticSession
 	jobName := fmt.Sprintf("%s-job", name)
 
-	// Check if job already exists
-	_, err = k8sClient.BatchV1().Jobs(namespace).Get(context.TODO(), jobName, v1.GetOptions{})
+	// Check if job already exists in the session's namespace
+	_, err = k8sClient.BatchV1().Jobs(sessionNamespace).Get(context.TODO(), jobName, v1.GetOptions{})
 	if err == nil {
 		log.Printf("Job %s already exists for AgenticSession %s", jobName, name)
 		return nil
@@ -200,8 +249,6 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 	prompt, _, _ := unstructured.NestedString(spec, "prompt")
 	websiteURL, _, _ := unstructured.NestedString(spec, "websiteURL")
 	timeout, _, _ := unstructured.NestedInt64(spec, "timeout")
-
-	// For RFE workflows, websiteURL may be empty - this is expected and valid
 
 	llmSettings, _, _ := unstructured.NestedMap(spec, "llmSettings")
 	model, _, _ := unstructured.NestedString(llmSettings, "model")
@@ -228,15 +275,15 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 		}
 	}
 
-	// Extract additional environment variables (for RFE workflows and other custom configurations)
-	additionalEnvVars := make(map[string]string)
-	if envVars, envVarsExist, _ := unstructured.NestedMap(spec, "environmentVariables"); envVarsExist {
-		for key, value := range envVars {
-			if strValue, ok := value.(string); ok {
-				additionalEnvVars[key] = strValue
-			} else {
-				// Convert other types to string
-				additionalEnvVars[key] = fmt.Sprintf("%v", value)
+	// Read runner secrets configuration from ProjectSettings in the session's namespace
+	runnerSecretsName := ""
+	{
+		psGvr := getProjectSettingsResource()
+		if psObj, err := dynamicClient.Resource(psGvr).Namespace(sessionNamespace).Get(context.TODO(), "projectsettings", v1.GetOptions{}); err == nil {
+			if psSpec, ok := psObj.Object["spec"].(map[string]interface{}); ok {
+				if v, ok := psSpec["runnerSecretsName"].(string); ok {
+					runnerSecretsName = strings.TrimSpace(v)
+				}
 			}
 		}
 	}
@@ -245,7 +292,7 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 	job := &batchv1.Job{
 		ObjectMeta: v1.ObjectMeta{
 			Name:      jobName,
-			Namespace: namespace,
+			Namespace: sessionNamespace,
 			Labels: map[string]string{
 				"agentic-session": name,
 				"app":             "ambient-code-runner",
@@ -275,40 +322,46 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 					// Annotations: map[string]string{"sidecar.istio.io/inject": "false"},
 				},
 				Spec: corev1.PodSpec{
-					RestartPolicy:      corev1.RestartPolicyNever,
-					ServiceAccountName: "claude-runner",
+					// Hard anti-race: prefer runner to schedule on same node as ambient-content for RWO PVCs
+					Affinity: &corev1.Affinity{
+						PodAffinity: &corev1.PodAffinity{
+							PreferredDuringSchedulingIgnoredDuringExecution: []corev1.WeightedPodAffinityTerm{
+								{
+									Weight: 100,
+									PodAffinityTerm: corev1.PodAffinityTerm{
+										LabelSelector: &v1.LabelSelector{MatchLabels: map[string]string{"app": "ambient-content"}},
+										Namespaces:    []string{sessionNamespace},
+										TopologyKey:   "kubernetes.io/hostname",
+									},
+								},
+							},
+						},
+					},
+					RestartPolicy: corev1.RestartPolicyNever,
 
 					// ⚠️ Let OpenShift SCC choose UID/GID dynamically (restricted-v2 compatible)
 					// SecurityContext omitted to allow SCC assignment
 
-					// 🔧 Shared memory volume for browser and workspace storage for RFE workflows
-					Volumes: func() []corev1.Volume {
-						volumes := []corev1.Volume{
-							{
-								Name: "dshm",
-								VolumeSource: corev1.VolumeSource{
-									EmptyDir: &corev1.EmptyDirVolumeSource{
-										Medium:    corev1.StorageMediumMemory,
-										SizeLimit: resource.NewQuantity(256*1024*1024, resource.BinarySI),
-									},
+					// 🔧 Shared memory volume for browser
+					Volumes: []corev1.Volume{
+						{
+							Name: "dshm",
+							VolumeSource: corev1.VolumeSource{
+								EmptyDir: &corev1.EmptyDirVolumeSource{
+									Medium:    corev1.StorageMediumMemory,
+									SizeLimit: resource.NewQuantity(256*1024*1024, resource.BinarySI),
 								},
 							},
-						}
-
-						// Add workspace PVC for RFE workflows if SHARED_WORKSPACE env var is set
-						if _, hasSharedWorkspace := additionalEnvVars["SHARED_WORKSPACE"]; hasSharedWorkspace {
-							volumes = append(volumes, corev1.Volume{
-								Name: "workspace",
-								VolumeSource: corev1.VolumeSource{
-									PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-										ClaimName: "vteam-workspace-pvc",
-									},
+						},
+						{
+							Name: "workspace",
+							VolumeSource: corev1.VolumeSource{
+								PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+									ClaimName: "ambient-workspace",
 								},
-							})
-						}
-
-						return volumes
-					}(),
+							},
+						},
+					},
 
 					Containers: []corev1.Container{
 						{
@@ -324,28 +377,16 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 								},
 							},
 
-							// 📦 Mount shared memory volume and workspace for RFE workflows
-							VolumeMounts: func() []corev1.VolumeMount {
-								mounts := []corev1.VolumeMount{
-									{Name: "dshm", MountPath: "/dev/shm"},
-								}
-
-								// Add workspace mount for RFE workflows if SHARED_WORKSPACE env var is set
-								if _, hasSharedWorkspace := additionalEnvVars["SHARED_WORKSPACE"]; hasSharedWorkspace {
-									mounts = append(mounts, corev1.VolumeMount{
-										Name:      "workspace",
-										MountPath: "/workspace",
-									})
-								}
-
-								return mounts
-							}(),
+							// 📦 Mount shared memory volume only
+							VolumeMounts: []corev1.VolumeMount{
+								{Name: "dshm", MountPath: "/dev/shm"},
+								{Name: "workspace", MountPath: "/workspace"},
+							},
 
 							Env: func() []corev1.EnvVar {
-								// Base environment variables
-								baseEnvVars := []corev1.EnvVar{
+								base := []corev1.EnvVar{
 									{Name: "AGENTIC_SESSION_NAME", Value: name},
-									{Name: "AGENTIC_SESSION_NAMESPACE", Value: namespace},
+									{Name: "AGENTIC_SESSION_NAMESPACE", Value: sessionNamespace},
 									{Name: "PROMPT", Value: prompt},
 									{Name: "WEBSITE_URL", Value: websiteURL},
 									{Name: "LLM_MODEL", Value: model},
@@ -354,18 +395,7 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 									{Name: "TIMEOUT", Value: fmt.Sprintf("%d", timeout)},
 									{Name: "BACKEND_API_URL", Value: os.Getenv("BACKEND_API_URL")},
 
-									// 🔑 Anthropic key from Secret
-									{
-										Name: "ANTHROPIC_API_KEY",
-										ValueFrom: &corev1.EnvVarSource{
-											SecretKeyRef: &corev1.SecretKeySelector{
-												LocalObjectReference: corev1.LocalObjectReference{Name: "ambient-code-secrets"},
-												Key:                  "anthropic-api-key",
-											},
-										},
-									},
-
-									// 🔧 Git configuration environment variables
+									// 🔑 Git configuration environment variables
 									{Name: "GIT_USER_NAME", Value: gitUserName},
 									{Name: "GIT_USER_EMAIL", Value: gitUserEmail},
 									{Name: "GIT_REPOSITORIES", Value: gitRepositoriesJSON},
@@ -386,16 +416,51 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 									// { Name: "HTTPS_PROXY", Value: "http://proxy.corp:3128" },
 									// { Name: "NO_PROXY",    Value: ".svc,.cluster.local,10.0.0.0/8" },
 								}
-
-								// Add additional environment variables from spec (for RFE workflows and custom configurations)
-								for key, value := range additionalEnvVars {
-									baseEnvVars = append(baseEnvVars, corev1.EnvVar{
-										Name:  key,
-										Value: value,
-									})
+								// Always attempt to map ANTHROPIC_API_KEY from the runner secret in this namespace.
+								// Fallback to default name if ProjectSettings.spec.runnerSecretsName is not set.
+								secretName := runnerSecretsName
+								if secretName == "" {
+									secretName = "ambient-code-secrets"
 								}
+								base = append(base, corev1.EnvVar{
+									Name: "ANTHROPIC_API_KEY",
+									ValueFrom: &corev1.EnvVarSource{
+										SecretKeyRef: &corev1.SecretKeySelector{
+											LocalObjectReference: corev1.LocalObjectReference{Name: secretName},
+											Key:                  "anthropic-api-key",
+										},
+									},
+								})
+								// If backend annotated the session with a runner token secret, inject bot token envs
+								gvr := getAgenticSessionResource()
+								if obj, err := dynamicClient.Resource(gvr).Namespace(sessionNamespace).Get(context.TODO(), name, v1.GetOptions{}); err == nil {
+									if meta, ok := obj.Object["metadata"].(map[string]interface{}); ok {
+										if anns, ok := meta["annotations"].(map[string]interface{}); ok {
+											if v, ok := anns["ambient-code.io/runner-token-secret"].(string); ok && strings.TrimSpace(v) != "" {
+												secretName := strings.TrimSpace(v)
+												base = append(base, corev1.EnvVar{Name: "AUTH_MODE", Value: "bot_token"})
+												base = append(base, corev1.EnvVar{
+													Name: "BOT_TOKEN",
+													ValueFrom: &corev1.EnvVarSource{SecretKeyRef: &corev1.SecretKeySelector{
+														LocalObjectReference: corev1.LocalObjectReference{Name: secretName},
+														Key:                  "token",
+													}},
+												})
+											}
+										}
+									}
+								}
+								return base
+							}(),
 
-								return baseEnvVars
+							// If configured, import all keys from the runner Secret as environment variables
+							EnvFrom: func() []corev1.EnvFromSource {
+								if runnerSecretsName == "" {
+									return nil
+								}
+								return []corev1.EnvFromSource{
+									{SecretRef: &corev1.SecretEnvSource{LocalObjectReference: corev1.LocalObjectReference{Name: runnerSecretsName}}},
+								}
 							}(),
 
 							Resources: corev1.ResourceRequirements{
@@ -416,7 +481,7 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 	}
 
 	// Update status to Creating before attempting job creation
-	if err := updateAgenticSessionStatus(name, map[string]interface{}{
+	if err := updateAgenticSessionStatus(sessionNamespace, name, map[string]interface{}{
 		"phase":   "Creating",
 		"message": "Creating Kubernetes job",
 	}); err != nil {
@@ -425,11 +490,11 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 	}
 
 	// Create the job
-	_, err = k8sClient.BatchV1().Jobs(namespace).Create(context.TODO(), job, v1.CreateOptions{})
+	_, err = k8sClient.BatchV1().Jobs(sessionNamespace).Create(context.TODO(), job, v1.CreateOptions{})
 	if err != nil {
 		log.Printf("Failed to create job %s: %v", jobName, err)
 		// Update status to Error if job creation fails and resource still exists
-		updateAgenticSessionStatus(name, map[string]interface{}{
+		updateAgenticSessionStatus(sessionNamespace, name, map[string]interface{}{
 			"phase":   "Error",
 			"message": fmt.Sprintf("Failed to create job: %v", err),
 		})
@@ -439,7 +504,7 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 	log.Printf("Created job %s for AgenticSession %s", jobName, name)
 
 	// Update AgenticSession status to Running
-	if err := updateAgenticSessionStatus(name, map[string]interface{}{
+	if err := updateAgenticSessionStatus(sessionNamespace, name, map[string]interface{}{
 		"phase":     "Running",
 		"message":   "Job created and running",
 		"startTime": time.Now().Format(time.RFC3339),
@@ -451,20 +516,124 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 	}
 
 	// Start monitoring the job
-	go monitorJob(jobName, name)
+	go monitorJob(jobName, name, sessionNamespace)
 
 	return nil
 }
 
-func monitorJob(jobName, sessionName string) {
-	log.Printf("Starting job monitoring for %s (session: %s)", jobName, sessionName)
+// ensureProjectWorkspacePVC creates a per-namespace PVC for runner workspace if missing
+func ensureProjectWorkspacePVC(namespace string) error {
+	// Check if PVC exists
+	if _, err := k8sClient.CoreV1().PersistentVolumeClaims(namespace).Get(context.TODO(), "ambient-workspace", v1.GetOptions{}); err == nil {
+		return nil
+	} else if !errors.IsNotFound(err) {
+		return err
+	}
+
+	pvc := &corev1.PersistentVolumeClaim{
+		ObjectMeta: v1.ObjectMeta{
+			Name:      "ambient-workspace",
+			Namespace: namespace,
+			Labels:    map[string]string{"app": "ambient-workspace"},
+		},
+		Spec: corev1.PersistentVolumeClaimSpec{
+			AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+			Resources: corev1.VolumeResourceRequirements{
+				Requests: corev1.ResourceList{
+					corev1.ResourceStorage: resource.MustParse("5Gi"),
+				},
+			},
+		},
+	}
+	if _, err := k8sClient.CoreV1().PersistentVolumeClaims(namespace).Create(context.TODO(), pvc, v1.CreateOptions{}); err != nil {
+		if errors.IsAlreadyExists(err) {
+			return nil
+		}
+		return err
+	}
+	return nil
+}
+
+// ensureContentService deploys a per-namespace content service that mounts the project PVC RW
+func ensureContentService(namespace string) error {
+	// Check Service
+	if _, err := k8sClient.CoreV1().Services(namespace).Get(context.TODO(), "ambient-content", v1.GetOptions{}); err == nil {
+		return nil
+	} else if !errors.IsNotFound(err) {
+		return err
+	}
+
+	// Deployment
+	replicas := int32(1)
+	deploy := &appsv1.Deployment{
+		ObjectMeta: v1.ObjectMeta{
+			Name:      "ambient-content",
+			Namespace: namespace,
+			Labels:    map[string]string{"app": "ambient-content"},
+		},
+		Spec: appsv1.DeploymentSpec{
+			Replicas: &replicas,
+			Selector: &v1.LabelSelector{MatchLabels: map[string]string{"app": "ambient-content"}},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: v1.ObjectMeta{Labels: map[string]string{"app": "ambient-content"}},
+				Spec: corev1.PodSpec{
+					// Keep content service singleton for RWO PVC; rely on runner job podAffinity (set below) to co-locate with content if needed
+					Containers: []corev1.Container{
+						{
+							Name:  "content",
+							Image: contentServiceImage,
+							Env: []corev1.EnvVar{
+								{Name: "NAMESPACE", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.namespace"}}},
+								{Name: "CONTENT_SERVICE_MODE", Value: "true"},
+								{Name: "STATE_BASE_DIR", Value: "/data"},
+							},
+							Ports:        []corev1.ContainerPort{{ContainerPort: 8080, Name: "http"}},
+							VolumeMounts: []corev1.VolumeMount{{Name: "workspace", MountPath: "/data"}},
+						},
+					},
+					Volumes: []corev1.Volume{
+						{Name: "workspace", VolumeSource: corev1.VolumeSource{PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: "ambient-workspace"}}},
+					},
+				},
+			},
+		},
+	}
+	if _, err := k8sClient.AppsV1().Deployments(namespace).Create(context.TODO(), deploy, v1.CreateOptions{}); err != nil && !errors.IsAlreadyExists(err) {
+		return err
+	}
+
+	// Service
+	svc := &corev1.Service{
+		ObjectMeta: v1.ObjectMeta{
+			Name:      "ambient-content",
+			Namespace: namespace,
+			Labels:    map[string]string{"app": "ambient-content"},
+		},
+		Spec: corev1.ServiceSpec{
+			Selector: map[string]string{"app": "ambient-content"},
+			Ports:    []corev1.ServicePort{{Name: "http", Port: 8080, TargetPort: intstrFromString("http")}},
+			Type:     corev1.ServiceTypeClusterIP,
+		},
+	}
+	if _, err := k8sClient.CoreV1().Services(namespace).Create(context.TODO(), svc, v1.CreateOptions{}); err != nil && !errors.IsAlreadyExists(err) {
+		return err
+	}
+	return nil
+}
+
+// cleanupSessionResources removes per-session resources (SA, Role, RoleBinding, Secret)
+// created for a given AgenticSession. Best-effort; ignores not found errors.
+// cleanup handled via Kubernetes OwnerReferences on session-scoped resources
+
+func monitorJob(jobName, sessionName, sessionNamespace string) {
+	log.Printf("Starting job monitoring for %s (session: %s/%s)", jobName, sessionNamespace, sessionName)
 
 	for {
 		time.Sleep(10 * time.Second)
 
 		// First check if the AgenticSession still exists
 		gvr := getAgenticSessionResource()
-		if _, err := dynamicClient.Resource(gvr).Namespace(namespace).Get(context.TODO(), sessionName, v1.GetOptions{}); err != nil {
+		if _, err := dynamicClient.Resource(gvr).Namespace(sessionNamespace).Get(context.TODO(), sessionName, v1.GetOptions{}); err != nil {
 			if errors.IsNotFound(err) {
 				log.Printf("AgenticSession %s no longer exists, stopping job monitoring for %s", sessionName, jobName)
 				return
@@ -473,7 +642,7 @@ func monitorJob(jobName, sessionName string) {
 			// Continue monitoring even if we can't check the session
 		}
 
-		job, err := k8sClient.BatchV1().Jobs(namespace).Get(context.TODO(), jobName, v1.GetOptions{})
+		job, err := k8sClient.BatchV1().Jobs(sessionNamespace).Get(context.TODO(), jobName, v1.GetOptions{})
 		if err != nil {
 			if errors.IsNotFound(err) {
 				log.Printf("Job %s not found, stopping monitoring", jobName)
@@ -488,11 +657,12 @@ func monitorJob(jobName, sessionName string) {
 			log.Printf("Job %s completed successfully", jobName)
 
 			// Update AgenticSession status to Completed
-			updateAgenticSessionStatus(sessionName, map[string]interface{}{
+			updateAgenticSessionStatus(sessionNamespace, sessionName, map[string]interface{}{
 				"phase":          "Completed",
 				"message":        "Job completed successfully",
 				"completionTime": time.Now().Format(time.RFC3339),
 			})
+			// OwnerReferences handle cleanup after successful completion
 			return
 		}
 
@@ -501,12 +671,12 @@ func monitorJob(jobName, sessionName string) {
 
 			// Get pod logs for error information
 			errorMessage := "Job failed"
-			if pods, err := k8sClient.CoreV1().Pods(namespace).List(context.TODO(), v1.ListOptions{
+			if pods, err := k8sClient.CoreV1().Pods(sessionNamespace).List(context.TODO(), v1.ListOptions{
 				LabelSelector: fmt.Sprintf("job-name=%s", jobName),
 			}); err == nil && len(pods.Items) > 0 {
 				// Try to get logs from the first pod
 				pod := pods.Items[0]
-				if logs, err := k8sClient.CoreV1().Pods(namespace).GetLogs(pod.Name, &corev1.PodLogOptions{}).DoRaw(context.TODO()); err == nil {
+				if logs, err := k8sClient.CoreV1().Pods(sessionNamespace).GetLogs(pod.Name, &corev1.PodLogOptions{}).DoRaw(context.TODO()); err == nil {
 					errorMessage = fmt.Sprintf("Job failed: %s", string(logs))
 					if len(errorMessage) > 500 {
 						errorMessage = errorMessage[:500] + "..."
@@ -515,21 +685,22 @@ func monitorJob(jobName, sessionName string) {
 			}
 
 			// Update AgenticSession status to Failed
-			updateAgenticSessionStatus(sessionName, map[string]interface{}{
+			updateAgenticSessionStatus(sessionNamespace, sessionName, map[string]interface{}{
 				"phase":          "Failed",
 				"message":        errorMessage,
 				"completionTime": time.Now().Format(time.RFC3339),
 			})
+			// OwnerReferences handle cleanup after failure
 			return
 		}
 	}
 }
 
-func updateAgenticSessionStatus(name string, statusUpdate map[string]interface{}) error {
+func updateAgenticSessionStatus(sessionNamespace, name string, statusUpdate map[string]interface{}) error {
 	gvr := getAgenticSessionResource()
 
 	// Get current resource
-	obj, err := dynamicClient.Resource(gvr).Namespace(namespace).Get(context.TODO(), name, v1.GetOptions{})
+	obj, err := dynamicClient.Resource(gvr).Namespace(sessionNamespace).Get(context.TODO(), name, v1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			log.Printf("AgenticSession %s no longer exists, skipping status update", name)
@@ -549,7 +720,7 @@ func updateAgenticSessionStatus(name string, statusUpdate map[string]interface{}
 	}
 
 	// Update the resource with retry logic
-	_, err = dynamicClient.Resource(gvr).Namespace(namespace).UpdateStatus(context.TODO(), obj, v1.UpdateOptions{})
+	_, err = dynamicClient.Resource(gvr).Namespace(sessionNamespace).UpdateStatus(context.TODO(), obj, v1.UpdateOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			log.Printf("AgenticSession %s was deleted during status update, skipping", name)
@@ -561,8 +732,282 @@ func updateAgenticSessionStatus(name string, statusUpdate map[string]interface{}
 	return nil
 }
 
+func watchNamespaces() {
+	for {
+		watcher, err := k8sClient.CoreV1().Namespaces().Watch(context.TODO(), v1.ListOptions{
+			LabelSelector: "ambient-code.io/managed=true",
+		})
+		if err != nil {
+			log.Printf("Failed to create namespace watcher: %v", err)
+			time.Sleep(5 * time.Second)
+			continue
+		}
+
+		log.Println("Watching for managed namespaces...")
+
+		for event := range watcher.ResultChan() {
+			switch event.Type {
+			case watch.Added:
+				namespace := event.Object.(*corev1.Namespace)
+				log.Printf("Detected new managed namespace: %s", namespace.Name)
+
+				// Auto-create ProjectSettings for this namespace
+				if err := createDefaultProjectSettings(namespace.Name); err != nil {
+					log.Printf("Error creating default ProjectSettings for namespace %s: %v", namespace.Name, err)
+				}
+
+				// Ensure shared workspace PVC and content service exist
+				if err := ensureProjectWorkspacePVC(namespace.Name); err != nil {
+					log.Printf("Failed to ensure workspace PVC in %s: %v", namespace.Name, err)
+				}
+				if err := ensureContentService(namespace.Name); err != nil {
+					log.Printf("Failed to ensure content service in %s: %v", namespace.Name, err)
+				}
+			case watch.Error:
+				obj := event.Object.(*unstructured.Unstructured)
+				log.Printf("Watch error for namespaces: %v", obj)
+			}
+		}
+
+		log.Println("Namespace watch channel closed, restarting...")
+		watcher.Stop()
+		time.Sleep(2 * time.Second)
+	}
+}
+
+func watchProjectSettings() {
+	gvr := getProjectSettingsResource()
+
+	for {
+		// Watch across all namespaces for ProjectSettings
+		watcher, err := dynamicClient.Resource(gvr).Watch(context.TODO(), v1.ListOptions{})
+		if err != nil {
+			log.Printf("Failed to create ProjectSettings watcher: %v", err)
+			time.Sleep(5 * time.Second)
+			continue
+		}
+
+		log.Println("Watching for ProjectSettings events...")
+
+		for event := range watcher.ResultChan() {
+			switch event.Type {
+			case watch.Added, watch.Modified:
+				obj := event.Object.(*unstructured.Unstructured)
+
+				// Add small delay to avoid race conditions
+				time.Sleep(100 * time.Millisecond)
+
+				if err := handleProjectSettingsEvent(obj); err != nil {
+					log.Printf("Error handling ProjectSettings event: %v", err)
+				}
+			case watch.Deleted:
+				obj := event.Object.(*unstructured.Unstructured)
+				settingsName := obj.GetName()
+				settingsNamespace := obj.GetNamespace()
+				log.Printf("ProjectSettings %s/%s deleted", settingsNamespace, settingsName)
+			case watch.Error:
+				obj := event.Object.(*unstructured.Unstructured)
+				log.Printf("Watch error for ProjectSettings: %v", obj)
+			}
+		}
+
+		log.Println("ProjectSettings watch channel closed, restarting...")
+		watcher.Stop()
+		time.Sleep(2 * time.Second)
+	}
+}
+
+func createDefaultProjectSettings(namespaceName string) error {
+	gvr := getProjectSettingsResource()
+
+	// Check if ProjectSettings already exists in this namespace (singleton named 'projectsettings')
+	_, err := dynamicClient.Resource(gvr).Namespace(namespaceName).Get(context.TODO(), "projectsettings", v1.GetOptions{})
+	if err == nil {
+		log.Printf("ProjectSettings already exists in namespace %s", namespaceName)
+		return nil
+	}
+
+	if !errors.IsNotFound(err) {
+		return fmt.Errorf("error checking existing ProjectSettings: %v", err)
+	}
+
+	// Create default ProjectSettings (minimal: only groupAccess)
+	defaultSettings := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "vteam.ambient-code/v1alpha1",
+			"kind":       "ProjectSettings",
+			"metadata": map[string]interface{}{
+				// Enforce singleton: fixed name 'projectsettings'
+				"name":      "projectsettings",
+				"namespace": namespaceName,
+			},
+			"spec": map[string]interface{}{
+				"groupAccess": []interface{}{},
+			},
+		},
+	}
+
+	_, err = dynamicClient.Resource(gvr).Namespace(namespaceName).Create(context.TODO(), defaultSettings, v1.CreateOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to create default ProjectSettings: %v", err)
+	}
+
+	log.Printf("Created default ProjectSettings for namespace %s", namespaceName)
+	return nil
+}
+
+func handleProjectSettingsEvent(obj *unstructured.Unstructured) error {
+	name := obj.GetName()
+	namespace := obj.GetNamespace()
+
+	// Verify the resource still exists before processing
+	gvr := getProjectSettingsResource()
+	currentObj, err := dynamicClient.Resource(gvr).Namespace(namespace).Get(context.TODO(), name, v1.GetOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			log.Printf("ProjectSettings %s/%s no longer exists, skipping processing", namespace, name)
+			return nil
+		}
+		return fmt.Errorf("failed to verify ProjectSettings %s/%s exists: %v", namespace, name, err)
+	}
+
+	log.Printf("Reconciling ProjectSettings %s/%s", namespace, name)
+	return reconcileProjectSettings(currentObj)
+}
+
+func reconcileProjectSettings(obj *unstructured.Unstructured) error {
+	namespace := obj.GetNamespace()
+	name := obj.GetName()
+
+	spec, _, _ := unstructured.NestedMap(obj.Object, "spec")
+
+	// Reconcile group access (RoleBindings)
+	groupBindingsCreated := 0
+	if groupAccess, found, _ := unstructured.NestedSlice(spec, "groupAccess"); found {
+		for _, accessInterface := range groupAccess {
+			access := accessInterface.(map[string]interface{})
+			groupName, _, _ := unstructured.NestedString(access, "groupName")
+			role, _, _ := unstructured.NestedString(access, "role")
+			if groupName != "" && role != "" {
+				if err := ensureRoleBinding(namespace, groupName, role); err != nil {
+					log.Printf("Error creating RoleBinding for group %s in namespace %s: %v", groupName, namespace, err)
+					continue
+				}
+				groupBindingsCreated++
+			}
+		}
+	}
+
+	// Update status with reconciliation results (only fields defined in CRD)
+	statusUpdate := map[string]interface{}{
+		"groupBindingsCreated": groupBindingsCreated,
+	}
+
+	return updateProjectSettingsStatus(namespace, name, statusUpdate)
+}
+
+// Bot ServiceAccounts are no longer managed here; access keys handle authentication.
+
+func ensureRoleBinding(namespace, groupName, role string) error {
+	// Map role to ClusterRole used for ambient project access
+	roleName := mapRoleToKubernetesRole(role)
+	rbName := fmt.Sprintf("%s-%s", groupName, role)
+
+	// Check if RoleBinding already exists
+	_, err := k8sClient.RbacV1().RoleBindings(namespace).Get(context.TODO(), rbName, v1.GetOptions{})
+	if err == nil {
+		log.Printf("RoleBinding %s already exists in namespace %s", rbName, namespace)
+		return nil
+	}
+
+	if !errors.IsNotFound(err) {
+		return fmt.Errorf("error checking existing RoleBinding: %v", err)
+	}
+
+	// Create RoleBinding
+	rb := &rbacv1.RoleBinding{
+		ObjectMeta: v1.ObjectMeta{
+			Name:      rbName,
+			Namespace: namespace,
+			Labels: map[string]string{
+				"ambient-code.io/managed": "true",
+			},
+		},
+		RoleRef: rbacv1.RoleRef{
+			APIGroup: "rbac.authorization.k8s.io",
+			Kind:     "ClusterRole",
+			Name:     roleName,
+		},
+		Subjects: []rbacv1.Subject{
+			{
+				Kind:     "Group",
+				Name:     groupName,
+				APIGroup: "rbac.authorization.k8s.io",
+			},
+		},
+	}
+
+	_, err = k8sClient.RbacV1().RoleBindings(namespace).Create(context.TODO(), rb, v1.CreateOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to create RoleBinding: %v", err)
+	}
+
+	log.Printf("Created RoleBinding %s for group %s in namespace %s", rbName, groupName, namespace)
+	return nil
+}
+
+func mapRoleToKubernetesRole(role string) string {
+	switch strings.ToLower(role) {
+	case "admin":
+		return "ambient-project-admin"
+	case "edit":
+		return "ambient-project-edit"
+	case "view":
+		return "ambient-project-view"
+	default:
+		return "ambient-project-view" // Default to view role
+	}
+}
+
+func updateProjectSettingsStatus(namespace, name string, statusUpdate map[string]interface{}) error {
+	gvr := getProjectSettingsResource()
+
+	// Get current resource
+	obj, err := dynamicClient.Resource(gvr).Namespace(namespace).Get(context.TODO(), name, v1.GetOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			log.Printf("ProjectSettings %s/%s no longer exists, skipping status update", namespace, name)
+			return nil
+		}
+		return fmt.Errorf("failed to get ProjectSettings %s/%s: %v", namespace, name, err)
+	}
+
+	// Update status
+	if obj.Object["status"] == nil {
+		obj.Object["status"] = make(map[string]interface{})
+	}
+
+	status := obj.Object["status"].(map[string]interface{})
+	for key, value := range statusUpdate {
+		status[key] = value
+	}
+
+	// Update the resource
+	_, err = dynamicClient.Resource(gvr).Namespace(namespace).UpdateStatus(context.TODO(), obj, v1.UpdateOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			log.Printf("ProjectSettings %s/%s was deleted during status update, skipping", namespace, name)
+			return nil
+		}
+		return fmt.Errorf("failed to update ProjectSettings status: %v", err)
+	}
+
+	return nil
+}
+
 var (
-	boolPtr  = func(b bool) *bool { return &b }
-	int32Ptr = func(i int32) *int32 { return &i }
-	int64Ptr = func(i int64) *int64 { return &i }
+	boolPtr          = func(b bool) *bool { return &b }
+	int32Ptr         = func(i int32) *int32 { return &i }
+	int64Ptr         = func(i int64) *int64 { return &i }
+	intstrFromString = func(s string) intstr.IntOrString { return intstr.Parse(s) }
 )

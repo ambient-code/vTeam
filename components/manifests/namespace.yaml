@@ -9,3 +9,5 @@ metadata:
   annotations:
     openshift.io/description: "vTeam Ambient Agentic Runner - AI-powered automation system"
     openshift.io/display-name: "vTeam Ambient Runner"
+    app.kubernetes.io/name: ambient-code
+    app.kubernetes.io/part-of: ambient-code

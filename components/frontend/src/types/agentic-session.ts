@@ -35,6 +35,7 @@ export type AgenticSessionSpec = {
 	timeout: number;
 	displayName?: string;
 	gitConfig?: GitConfig;
+	project?: string;
 };
 
 export type MessageObject = {
@@ -73,6 +74,7 @@ export type CreateAgenticSessionRequest = {
 	llmSettings?: Partial<LLMSettings>;
 	timeout?: number;
 	gitConfig?: GitConfig;
+	project?: string;
 	// New fields for agent sessions
 	agentPersona?: string;
 	workflowPhase?: string;
@@ -161,3 +163,5 @@ export type RFEWorkflowStatus = {
 	artifactCount: number;
 	lastActivity: string;
 };
+
+export type { Project } from "@/types/project";
