@@ -11,31 +11,17 @@ from llama_index.core.storage import StorageContext
 from pydantic import BaseModel, Field
 
 from src.prompts import PROMPT_NAMES, get_prompt
+from src.safe_prediction import safe_structured_predict, safe_model_dump
 
 
 # Simple streaming helper - returns final result directly
 async def stream_structured_predict(
     output_cls, prompt_template, persona: str, **prompt_args
 ):
-    """Non-streaming structured predict to avoid async iterator issues"""
-    try:
-        # Use non-streaming version to avoid coroutine/async iterator issues
-        response = await Settings.llm.astructured_predict(
-            output_cls, prompt_template, **prompt_args
-        )
-
-        # Check if response is the expected type - sometimes LLM returns string
-        if not hasattr(response, "model_dump"):
-            print(
-                f"Warning: {persona} got unexpected response type {type(response)}, wrapping it"
-            )
-            return output_cls(analysis=str(response), persona=persona)
-
-        return response
-    except Exception as e:
-        print(f"Error in structured_predict for {persona}: {e}")
-        # Return a basic response object
-        return output_cls(analysis=f"Error during analysis: {str(e)}", persona=persona)
+    """Non-streaming structured predict using safe prediction wrapper"""
+    return await safe_structured_predict(
+        output_cls, prompt_template, persona, **prompt_args
+    )
 
 
 # Event-based helper that simulates streaming
@@ -81,12 +67,20 @@ async def stream_structured_predict_with_events(
 
         # Yield final result
         if final_response:
-            # Handle both Pydantic models and string responses
-            if hasattr(final_response, "model_dump"):
-                result = final_response.model_dump()
-            else:
-                # If it's a string or other type, wrap it appropriately
-                result = {"analysis": str(final_response), "persona": persona}
+            # Use safe model dump for consistent handling
+            result = safe_model_dump(
+                final_response,
+                {
+                    "analysis": (
+                        str(final_response) if final_response else "No response"
+                    ),
+                    "persona": persona,
+                    "estimatedComplexity": "UNKNOWN",
+                    "concerns": ["Response format error in streaming"],
+                    "recommendations": ["Verify agent prompt configuration"],
+                    "requiredComponents": ["Response parsing repair needed"],
+                },
+            )
             yield {
                 "type": "complete",
                 "persona": persona,
@@ -301,7 +295,19 @@ class RFEAgentManager:
         response = await stream_structured_predict(
             Synthesis, prompt_template, "SYNTHESIZER"
         )
-        return response.model_dump()
+        return safe_model_dump(
+            response,
+            {
+                "overallComplexity": "UNKNOWN",
+                "consensusRecommendations": [
+                    "Synthesis failed - manual review required"
+                ],
+                "criticalRisks": ["System error during synthesis"],
+                "requiredCapabilities": ["Error recovery needed"],
+                "estimatedTimeline": "Unknown due to error",
+                "synthesis": "Synthesis failed due to processing error",
+            },
+        )
 
     async def generate_component_teams(self, synthesis: Dict) -> List[Dict]:
         """Simple component teams generation"""
@@ -318,7 +324,29 @@ class RFEAgentManager:
         response = await stream_structured_predict(
             ComponentTeamsList, prompt_template, "TEAM_PLANNER"
         )
-        return [team.model_dump() for team in response.teams]
+
+        # Safe extraction of teams data
+        response_data = safe_model_dump(response, {"teams": []})
+        teams_data = response_data.get("teams", [])
+
+        # Ensure each team has valid structure
+        safe_teams = []
+        for team in teams_data:
+            if isinstance(team, dict):
+                safe_teams.append(team)
+            else:
+                # Handle case where team is not a dict
+                safe_teams.append(
+                    {
+                        "teamName": "Error Recovery Team",
+                        "components": ["Team data corrupted"],
+                        "responsibilities": ["Resolve team generation error"],
+                        "epicTitle": "Fix Team Generation Error",
+                        "epicDescription": "Address team planning system issues",
+                    }
+                )
+
+        return safe_teams
 
     async def generate_architecture(self, synthesis: Dict) -> Dict:
         """Simple architecture generation"""
@@ -335,7 +363,16 @@ class RFEAgentManager:
         response = await stream_structured_predict(
             Architecture, prompt_template, "ARCHITECT"
         )
-        return response.model_dump()
+        return safe_model_dump(
+            response,
+            {
+                "type": "error",
+                "mermaidCode": "graph TD\n    A[Error] --> B[Architecture Generation Failed]",
+                "description": "Architecture generation failed due to processing error",
+                "components": ["Error recovery system"],
+                "integrations": ["Manual intervention required"],
+            },
+        )
 
 
 async def get_agent_personas() -> Dict[str, Dict]:

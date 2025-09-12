@@ -51,6 +51,16 @@ def get_inline_annotations(message: ChatMessage) -> List[Any]:
         except (json.JSONDecodeError, ValidationError) as error:
             # Skip invalid annotations - they might be malformed JSON or invalid schema
             print(f"Failed to parse annotation: {error}")
+            # Log for debugging but continue processing
+            import logging
+
+            logger = logging.getLogger(__name__)
+            logger.warning(
+                f"Skipped malformed annotation: {error}",
+                extra={
+                    "annotation_content": json_content[:100] if json_content else None
+                },
+            )
 
     return inline_annotations
 
