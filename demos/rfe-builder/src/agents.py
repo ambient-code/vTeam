@@ -1,17 +1,16 @@
-import yaml
 import json
-import asyncio
 from pathlib import Path
-from typing import Dict, List, Any, Optional, Union, AsyncGenerator
+from typing import Any, AsyncGenerator, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+import yaml
 from llama_index.core import VectorStoreIndex
-from llama_index.core.storage import StorageContext
 from llama_index.core.indices import load_index_from_storage
-from llama_index.core.settings import Settings
 from llama_index.core.prompts import PromptTemplate
+from llama_index.core.settings import Settings
+from llama_index.core.storage import StorageContext
+from pydantic import BaseModel, Field
 
-from src.prompts import get_prompt, PROMPT_NAMES
+from src.prompts import PROMPT_NAMES, get_prompt
 
 
 # Simple streaming helper - returns final result directly
@@ -24,12 +23,14 @@ async def stream_structured_predict(
         response = await Settings.llm.astructured_predict(
             output_cls, prompt_template, **prompt_args
         )
-        
+
         # Check if response is the expected type - sometimes LLM returns string
-        if not hasattr(response, 'model_dump'):
-            print(f"Warning: {persona} got unexpected response type {type(response)}, wrapping it")
+        if not hasattr(response, "model_dump"):
+            print(
+                f"Warning: {persona} got unexpected response type {type(response)}, wrapping it"
+            )
             return output_cls(analysis=str(response), persona=persona)
-        
+
         return response
     except Exception as e:
         print(f"Error in structured_predict for {persona}: {e}")
@@ -45,30 +46,30 @@ async def stream_structured_predict_with_events(
     try:
         # Emit starting event
         yield {
-            "type": "streaming", 
+            "type": "streaming",
             "persona": persona,
             "partial_content": "",
-            "streaming_type": "thinking"
+            "streaming_type": "thinking",
         }
-        
+
         # Get the final response (non-streaming to avoid async iterator issues)
         final_response = await stream_structured_predict(
             output_cls, prompt_template, persona, **prompt_args
         )
-        
+
         # Get the final text content
         final_text = (
             getattr(final_response, "analysis", "")
             or getattr(final_response, "synthesis", "")
             or str(final_response)
         )
-        
+
         # Emit progress events to simulate streaming
         if len(final_text) > 0:
             # Break text into chunks for simulated streaming
             chunk_size = 50
             for i in range(0, len(final_text), chunk_size):
-                chunk = final_text[:i + chunk_size]
+                chunk = final_text[: i + chunk_size]
                 yield {
                     "type": "streaming",
                     "persona": persona,
@@ -76,20 +77,16 @@ async def stream_structured_predict_with_events(
                     "streaming_type": "writing",
                 }
                 # Small delay to simulate streaming (optional)
-                import asyncio
-                await asyncio.sleep(0.01)
+                await __import__("asyncio").sleep(0.01)
 
         # Yield final result
         if final_response:
             # Handle both Pydantic models and string responses
-            if hasattr(final_response, 'model_dump'):
+            if hasattr(final_response, "model_dump"):
                 result = final_response.model_dump()
             else:
                 # If it's a string or other type, wrap it appropriately
-                result = {
-                    "analysis": str(final_response),
-                    "persona": persona
-                }
+                result = {"analysis": str(final_response), "persona": persona}
             yield {
                 "type": "complete",
                 "persona": persona,

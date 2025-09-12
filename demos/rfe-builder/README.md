@@ -20,6 +20,7 @@ RHOAI uses 7 specialized AI agents working together to provide comprehensive fea
 - **🟨 Modern TypeScript Frontend**: Professional chat UI powered by @llamaindex/server
 - **🤖 Multi-Agent Analysis**: Each agent analyzes RFEs from their specialized perspective
 - **📚 RAG Knowledge Bases**: Agents access domain-specific knowledge from configured data sources
+- **🔗 MCP Integration**: Connect to JIRA, GitHub, and Confluence via Model Context Protocol
 - **🚀 Production Ready**: Enterprise-grade deployment, monitoring, and scaling
 - **🔗 API Access**: Full REST API for programmatic integration
 - **📊 Real-time Progress**: Streaming responses and workflow observability
@@ -57,7 +58,63 @@ You must also install `pnpm` globally
 npm i -g pnpm
 ```
 
-Please setup their API keys in the `src/.env` file.
+Please setup their API keys in the `.env` file (copy from `.env.template`).
+
+## MCP Integration
+
+RFE Builder now supports Model Context Protocol (MCP) integration to enhance RFE creation with real-time data from external systems:
+
+### Supported MCP Servers
+- **Atlassian (JIRA)**: Search for related tickets and project context
+- **GitHub**: Repository information and development context  
+- **Confluence**: Documentation and knowledge base search
+
+### MCP Configuration
+
+1. Copy the environment template:
+   ```bash
+   cp .env.template .env
+   ```
+
+2. Configure MCP servers in `.env`:
+   ```bash
+   MCP_SERVERS='{
+     "atlassian": "https://your-mcp-atlassian-server/sse",
+     "github": "https://your-mcp-github-server/sse",
+     "confluence": "https://your-mcp-confluence-server/sse"
+   }'
+   ```
+
+3. Test MCP integration:
+   ```bash
+   uv run python -m src.mcp_cli validate
+   uv run python -m src.mcp_cli health
+   uv run python -m src.mcp_cli test
+   ```
+
+### MCP CLI Commands
+
+The RFE Builder includes comprehensive CLI tools for MCP management:
+
+```bash
+# Validate MCP configuration
+uv run python -m src.mcp_cli validate
+
+# Check system health
+uv run python -m src.mcp_cli health
+
+# Test connectivity
+uv run python -m src.mcp_cli test
+
+# Search JIRA tickets
+uv run python -m src.mcp_cli search-jira --query "authentication" --project "PROJ"
+
+# Get GitHub repository info
+uv run python -m src.mcp_cli github-info --owner "myorg" --repo "myrepo"
+
+# Search Confluence docs
+uv run python -m src.mcp_cli search-confluence --query "api documentation"
+```
 
 ## Installation
 

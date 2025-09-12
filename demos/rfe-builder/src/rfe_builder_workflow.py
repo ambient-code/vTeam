@@ -1,12 +1,19 @@
 """Simple RFE Builder: user input -> agents -> RFE -> artifacts -> done"""
 
-import time
-import json
 import asyncio
-from typing import Any, Dict, List, Literal, Optional
+import logging
+import time
 from enum import Enum
+from typing import Any, Dict, List, Optional
 
+from dotenv import load_dotenv
 from llama_index.core import Settings
+from llama_index.core.chat_ui.events import ArtifactEvent, UIEvent
+from llama_index.core.chat_ui.models.artifact import (
+    Artifact,
+    ArtifactType,
+    DocumentArtifactData,
+)
 from llama_index.core.llms import LLM
 from llama_index.core.workflow import (
     Context,
@@ -16,17 +23,14 @@ from llama_index.core.workflow import (
     Workflow,
     step,
 )
-from llama_index.core.chat_ui.models.artifact import (
-    Artifact,
-    ArtifactType,
-    DocumentArtifactData,
-)
-from llama_index.core.chat_ui.events import UIEvent, ArtifactEvent
-from pydantic import BaseModel, Field
-from dotenv import load_dotenv
+from pydantic import BaseModel
 
-from src.settings import init_settings
 from src.agents import RFEAgentManager, get_agent_personas
+from src.mcp_config_validator import RFEBuilderMCPConfig
+from src.services.mcp_service import get_mcp_service, initialize_mcp_service
+from src.settings import init_settings
+
+logger = logging.getLogger(__name__)
 
 
 class RFEPhase(str, Enum):
@@ -82,12 +86,20 @@ class RFEBuilderUIEventData(BaseModel):
 def create_rfe_builder_workflow() -> Workflow:
     load_dotenv()
     init_settings()
-    return RFEBuilderWorkflow(timeout=300.0)
+
+    # Create workflow instance
+    workflow = RFEBuilderWorkflow(timeout=300.0)
+
+    # Initialize MCP integration asynchronously
+    # Note: This will be handled during workflow execution
+    logger.info("RFE Builder Workflow created with MCP integration capability")
+
+    return workflow
 
 
 class RFEBuilderWorkflow(Workflow):
     """RFE builder with editing support: user input -> agents -> artifacts -> editing
-    
+
     Note on State Management:
     - Instance variables (session_artifacts, artifacts_generated) are reset on each new request
     - This ensures the 7-agent consultation always runs for fresh RFE creation
@@ -102,6 +114,9 @@ class RFEBuilderWorkflow(Workflow):
         # Session state to track artifacts (reset per request to ensure fresh agent consultation)
         self.session_artifacts: Dict[str, str] = {}
         self.artifacts_generated = False
+        # MCP integration status
+        self.mcp_enabled = False
+        self.mcp_status: Dict[str, Any] = {}
 
     @step
     async def start_rfe_builder(
@@ -109,20 +124,39 @@ class RFEBuilderWorkflow(Workflow):
     ) -> GenerateArtifactsEvent | EditArtifactEvent:
         """Route to editing if artifacts exist, otherwise create new RFE"""
         user_msg = ev.get("user_msg", "")
-        
+
         # Reset state for each new request to ensure fresh agent consultation
         # This prevents the workflow from getting "stuck" in editing mode
         # and ensures the 7 agents are consulted for every new RFE creation
         self.artifacts_generated = False
         self.session_artifacts.clear()
-        
+
+        # Initialize MCP integration if not already done
+        if not self.mcp_enabled:
+            try:
+                mcp_status = await self.initialize_mcp_integration()
+                self.mcp_enabled = mcp_status.get("mcp_enabled", False)
+                self.mcp_status = mcp_status
+
+                if self.mcp_enabled:
+                    logger.info(
+                        "MCP integration initialized successfully for this workflow"
+                    )
+                else:
+                    logger.warning(
+                        f"MCP integration failed: {mcp_status.get('error', 'Unknown error')}"
+                    )
+            except Exception as e:
+                logger.error(f"Failed to initialize MCP integration: {e}")
+                self.mcp_enabled = False
+
         # Since we reset state above, this condition will never be true now
         # Keeping the logic for potential future enhancement (e.g., explicit edit mode)
         if self.artifacts_generated and self.session_artifacts:
             return EditArtifactEvent(
                 user_input=user_msg,
                 existing_artifacts=self.session_artifacts.copy(),
-                edit_instruction=user_msg
+                edit_instruction=user_msg,
             )
 
         # Get agent personas and build RFE
@@ -132,7 +166,7 @@ class RFEBuilderWorkflow(Workflow):
         filtered_agents = {
             "UX_RESEARCHER",
             "UX_FEATURE_LEAD",
-            "ENGINEERING_MANAGER", 
+            "ENGINEERING_MANAGER",
             "STAFF_ENGINEER",
             "TECHNICAL_WRITER",
             "UX_ARCHITECT",
@@ -384,11 +418,9 @@ class RFEBuilderWorkflow(Workflow):
         return response.text.strip()
 
     @step
-    async def edit_artifact(
-        self, ctx: Context, ev: EditArtifactEvent
-    ) -> StopEvent:
+    async def edit_artifact(self, ctx: Context, ev: EditArtifactEvent) -> StopEvent:
         """Edit existing artifacts based on user input"""
-        
+
         ctx.write_event_to_stream(
             UIEvent(
                 type="rfe_builder_progress",
@@ -402,8 +434,10 @@ class RFEBuilderWorkflow(Workflow):
         )
 
         # Determine which artifact to edit (default to RFE if unclear)
-        target_artifact = await self._determine_target_artifact(ev.user_input, ev.existing_artifacts)
-        
+        target_artifact = await self._determine_target_artifact(
+            ev.user_input, ev.existing_artifacts
+        )
+
         ctx.write_event_to_stream(
             UIEvent(
                 type="rfe_builder_progress",
@@ -420,16 +454,16 @@ class RFEBuilderWorkflow(Workflow):
         updated_content = await self._edit_artifact_content(
             target_artifact, ev.edit_instruction, ev.existing_artifacts[target_artifact]
         )
-        
+
         # Update session state
         self.session_artifacts[target_artifact] = updated_content
 
         # Emit updated artifact
         display_names = {
             "rfe_description": "RFE Description",
-            "feature_refinement": "Feature Refinement"
+            "feature_refinement": "Feature Refinement",
         }
-        
+
         ctx.write_event_to_stream(
             ArtifactEvent(
                 data=Artifact(
@@ -437,7 +471,9 @@ class RFEBuilderWorkflow(Workflow):
                     type=ArtifactType.DOCUMENT,
                     created_at=int(time.time()),
                     data=DocumentArtifactData(
-                        title=display_names.get(target_artifact, target_artifact.title()),
+                        title=display_names.get(
+                            target_artifact, target_artifact.title()
+                        ),
                         content=updated_content,
                         type="markdown",
                         sources=[],
@@ -473,7 +509,7 @@ class RFEBuilderWorkflow(Workflow):
     ) -> str:
         """Determine which artifact the user wants to edit"""
         user_lower = user_input.lower()
-        
+
         # Simple keyword matching
         if any(word in user_lower for word in ["refinement", "feature", "technical"]):
             return "feature_refinement"
@@ -484,7 +520,7 @@ class RFEBuilderWorkflow(Workflow):
         self, artifact_type: str, edit_instruction: str, current_content: str
     ) -> str:
         """Edit artifact content based on instruction"""
-        
+
         prompt = f"""
         Edit the following document based on the user's instruction:
         
@@ -501,9 +537,112 @@ class RFEBuilderWorkflow(Workflow):
         
         Return the complete updated document:
         """
-        
+
         response = await self.llm.acomplete(prompt)
         return response.text.strip()
+
+    async def initialize_mcp_integration(self) -> Dict[str, Any]:
+        """
+        Initialize MCP integration for enhanced RFE building.
+
+        Returns:
+            MCP initialization status
+        """
+        try:
+            # Validate MCP configuration
+            config_validator = RFEBuilderMCPConfig()
+            config_result = config_validator.validate_configuration()
+
+            if not config_result["valid"]:
+                logger.warning(
+                    f"MCP configuration invalid: {config_result.get('error')}"
+                )
+                return {
+                    "mcp_enabled": False,
+                    "error": config_result.get("error"),
+                    "status": "configuration_invalid",
+                }
+
+            # Initialize MCP service
+            mcp_service = await initialize_mcp_service()
+            connection_status = await mcp_service.get_connection_status()
+
+            self.mcp_enabled = True
+            self.mcp_status = connection_status
+
+            logger.info(
+                f"MCP Integration initialized. Healthy servers: {connection_status['healthy_count']}"
+            )
+
+            return {
+                "mcp_enabled": True,
+                "connection_status": connection_status,
+                "status": "initialized",
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to initialize MCP integration: {e}")
+            return {
+                "mcp_enabled": False,
+                "error": str(e),
+                "status": "initialization_failed",
+            }
+
+    async def enhance_rfe_with_mcp_data(
+        self, rfe_content: Dict[str, Any], project_context: Optional[Dict] = None
+    ) -> Dict[str, Any]:
+        """
+        Enhance RFE content with data from MCP servers.
+
+        Args:
+            rfe_content: Current RFE content
+            project_context: Optional project context for targeted queries
+
+        Returns:
+            Enhanced RFE content with MCP data
+        """
+        try:
+            mcp_service = get_mcp_service()
+
+            # Get contextual data from MCP servers
+            contextual_data = await mcp_service.get_contextual_data_for_rfe(
+                rfe_title=rfe_content.get("title", ""),
+                rfe_description=rfe_content.get("description", ""),
+                project_context=project_context,
+            )
+
+            # Enhance RFE content with contextual data
+            enhanced_content = rfe_content.copy()
+            enhanced_content["mcp_context"] = contextual_data
+
+            # Add related tickets to requirements if available
+            jira_data = contextual_data["data_sources"].get("jira_tickets", {})
+            if jira_data.get("success") and jira_data.get("tickets"):
+                enhanced_content["related_tickets"] = jira_data["tickets"]
+
+            # Add repository information if available
+            github_data = contextual_data["data_sources"].get("github_repo", {})
+            if github_data.get("success") and github_data.get("repository"):
+                enhanced_content["repository_context"] = github_data["repository"]
+
+            # Add documentation references if available
+            confluence_data = contextual_data["data_sources"].get("confluence_docs", {})
+            if confluence_data.get("success") and confluence_data.get("documents"):
+                enhanced_content["documentation_references"] = confluence_data[
+                    "documents"
+                ]
+
+            logger.info(
+                f"Enhanced RFE with {contextual_data['summary']['total_data_points']} data points from MCP"
+            )
+
+            return enhanced_content
+
+        except Exception as e:
+            logger.error(f"Failed to enhance RFE with MCP data: {e}")
+            # Return original content if enhancement fails
+            rfe_content["mcp_enhancement_error"] = str(e)
+            return rfe_content
 
 
 # Export for LlamaDeploy

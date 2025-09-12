@@ -1,9 +1,10 @@
 import os
-from typing import Optional, Dict, Any, Type
+from typing import Any, Dict, Optional, Type
+
 from dotenv import load_dotenv
-from llama_index.core.settings import Settings
-from llama_index.core.llms import LLM
 from llama_index.core.embeddings import BaseEmbedding
+from llama_index.core.llms import LLM
+from llama_index.core.settings import Settings
 
 
 class ProviderRegistry:
@@ -140,3 +141,64 @@ def init_settings(
     Settings.chunk_overlap = global_settings.get(
         "chunk_overlap", int(os.getenv("CHUNK_OVERLAP", "50"))
     )
+
+
+def configure_mcp_integration(
+    config_override: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """
+    Configure MCP integration for RFE Builder.
+
+    Args:
+        config_override: Optional configuration overrides
+
+    Returns:
+        MCP configuration dictionary
+    """
+    from .mcp_config_validator import RFEBuilderMCPConfig
+
+    # Create MCP configuration
+    mcp_config = RFEBuilderMCPConfig()
+
+    # Validate configuration
+    validation_result = mcp_config.validate_configuration()
+
+    # Apply any overrides
+    if config_override:
+        # Apply configuration overrides here if needed
+        pass
+
+    return {
+        "mcp_validation": validation_result,
+        "mcp_enabled": validation_result.get("valid", False),
+        "production_mode": mcp_config.production_mode,
+    }
+
+
+def init_settings_with_mcp(
+    llm_provider: Optional[str] = None,
+    embedding_provider: Optional[str] = None,
+    llm_config: Optional[Dict[str, Any]] = None,
+    embedding_config: Optional[Dict[str, Any]] = None,
+    mcp_config: Optional[Dict[str, Any]] = None,
+    **global_settings,
+) -> Dict[str, Any]:
+    """
+    Initialize LlamaIndex settings with MCP integration.
+
+    Returns:
+        Initialization results including MCP status
+    """
+    # Initialize LlamaIndex settings
+    init_settings(
+        llm_provider,
+        embedding_provider,
+        llm_config,
+        embedding_config,
+        **global_settings,
+    )
+
+    # Configure MCP integration
+    mcp_status = configure_mcp_integration(mcp_config)
+
+    return {"llama_index_initialized": True, "mcp_status": mcp_status}

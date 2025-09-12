@@ -1,8 +1,7 @@
 import json
 import re
-from typing import List, Optional, Any
+from typing import Any, List, Optional
 
-from pydantic import ValidationError
 from llama_index.core.chat_ui.models.artifact import (
     Artifact,
     ArtifactType,
@@ -10,6 +9,7 @@ from llama_index.core.chat_ui.models.artifact import (
     DocumentArtifactData,
 )
 from llama_index.core.llms import ChatMessage
+from pydantic import ValidationError
 
 INLINE_ANNOTATION_KEY = "annotation"
 

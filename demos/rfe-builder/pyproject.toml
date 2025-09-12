@@ -3,7 +3,7 @@ name = "backend"
 version = "0.1.0"
 description = "RHOAI AI Feature Sizing Backend with Multi-Agent RAG"
 readme = "README.md"
-requires-python = ">=3.11,<3.14"
+requires-python = ">=3.11,<3.15"
 dependencies = [
     # Core LlamaIndex (compatible version)
     "llama-index-core>=0.12.0,<0.13.0",
@@ -23,6 +23,8 @@ dependencies = [
     "aiostream>=0.5.2,<0.6.0",
     "docx2txt>=0.8,<0.9",
     "llama-index-llms-anthropic>=0.7.6",
+    # MCP Client Integration
+    "mcp-client-integration",
 ]
 
 [project.scripts]
@@ -33,10 +35,14 @@ generate = "src.generate:generate_indices"
 dev = [
     "mypy>=1.8.0,<2.0.0",
     "pytest>=8.3.5,<9.0.0", 
-    "pytest-asyncio>=0.25.3,<0.26.0"
+    "pytest-asyncio>=0.25.3,<0.26.0",
+    "black>=24.0.0",
+    "isort>=5.13.0",
+    "flake8>=7.0.0"
 ]
 
 [tool.uv.sources]
+mcp-client-integration = { path = "../../src/mcp_client_integration", editable = true }
 [tool.uv.sources.llama-deploy]
 git = "https://github.com/run-llama/llama_deploy"
 
@@ -70,3 +76,13 @@ packages = ["src"]
 [build-system]
 requires = ["hatchling>=1.24"]
 build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "black>=25.1.0",
+    "flake8>=7.3.0",
+    "isort>=6.0.1",
+    "mypy>=1.17.1",
+    "pytest>=8.4.1",
+    "pytest-asyncio>=0.25.3",
+]

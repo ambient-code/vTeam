@@ -68,7 +68,7 @@ include = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["."]
+packages = ["mcp_client_integration"]
 
 [tool.black]
 line-length = 88

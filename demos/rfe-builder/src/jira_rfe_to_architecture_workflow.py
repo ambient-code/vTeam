@@ -10,7 +10,15 @@ import re
 import time
 from typing import Any, Dict, List, Literal, Optional
 
+from dotenv import load_dotenv
 from llama_index.core import Settings
+from llama_index.core.chat_ui.events import ArtifactEvent, UIEvent
+from llama_index.core.chat_ui.models.artifact import (
+    Artifact,
+    ArtifactType,
+    DocumentArtifactData,
+    DocumentArtifactSource,
+)
 from llama_index.core.llms import LLM
 from llama_index.core.prompts import PromptTemplate
 from llama_index.core.workflow import (
@@ -21,21 +29,10 @@ from llama_index.core.workflow import (
     Workflow,
     step,
 )
-from llama_index.core.chat_ui.models.artifact import (
-    Artifact,
-    ArtifactType,
-    DocumentArtifactData,
-    DocumentArtifactSource,
-)
-from llama_index.core.chat_ui.events import (
-    UIEvent,
-    ArtifactEvent,
-)
-
-from src.settings import init_settings
-from src.agents import RFEAgentManager, get_agent_personas
 from pydantic import BaseModel, Field
-from dotenv import load_dotenv
+
+from src.agents import RFEAgentManager, get_agent_personas
+from src.settings import init_settings
 
 
 def create_jira_rfe_to_architecture_workflow() -> Workflow:
