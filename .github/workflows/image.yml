@@ -39,7 +39,7 @@ jobs:
 
     - name: Build and push Docker image only for merge into main
       if: github.ref == 'refs/heads/main'
-      uses: docker/build-push-action@v5
+      uses: docker/build-push-action@v6
       with:
         context: demos/rfe-builder
         push: true
@@ -47,7 +47,7 @@ jobs:
 
     - name: Build Docker image for pull requests but don't push
       if: github.ref != 'refs/heads/main'
-      uses: docker/build-push-action@v5
+      uses: docker/build-push-action@v6
       with:
         context: demos/rfe-builder
         push: false
