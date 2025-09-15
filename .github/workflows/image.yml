@@ -3,7 +3,7 @@ name: Build and Push Docker Image
 on:
   push:
     branches: [ main ]
-  pull_request_target:
+  pull_request:
     branches: [ main ]
 
 jobs:
@@ -30,25 +30,13 @@ jobs:
         username: ${{ secrets.QUAY_USERNAME }}
         password: ${{ secrets.QUAY_PASSWORD }}
 
-    - name: Log in to Red Hat Container Registry
-      uses: docker/login-action@v3
-      with:
-        registry: registry.redhat.io
-        username: ${{ secrets.REDHAT_USERNAME }}
-        password: ${{ secrets.REDHAT_PASSWORD }}
 
-    - name: Build and push Docker image only for merge into main
-      if: github.ref == 'refs/heads/main'
+
+    - name: Build and push Docker image
       uses: docker/build-push-action@v5
       with:
         context: demos/rfe-builder
-        push: true
-        tags: quay.io/ambient_code/vteam
-
-    - name: Build Docker image for pull requests but don't push
-      if: github.ref != 'refs/heads/main'
-      uses: docker/build-push-action@v5
-      with:
-        context: demos/rfe-builder
-        push: false
-        tags: quay.io/ambient_code/vteam:pr-${{ github.event.pull_request.number }}
+        push: ${{ github.ref == 'refs/heads/main' }}
+        tags: |
+          quay.io/ambient_code/vteam
+          ${{ github.ref != 'refs/heads/main' && format('quay.io/ambient_code/vteam:pr-{0}', github.event.pull_request.number) || '' }}
