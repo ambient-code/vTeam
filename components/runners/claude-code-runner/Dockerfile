@@ -4,7 +4,7 @@ FROM python:3.11-slim
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies + debugging tools + browser dependencies
+# Install system dependencies + debugging tools + browser dependencies + git for spek-kit
 RUN apt-get update && apt-get install -y \
     curl \
     wget \
@@ -14,6 +14,7 @@ RUN apt-get update && apt-get install -y \
     procps \
     lsof \
     xvfb \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Node.js 18+ (required for Claude Code)
@@ -56,8 +57,9 @@ RUN echo '#!/bin/bash\n' \
 
 # Copy the application files with proper permissions
 COPY main.py /app/
+COPY spek_kit_integration.py /app/
 COPY CLAUDE.md /app/
-RUN chmod 755 /app/main.py && chmod 644 /app/CLAUDE.md
+RUN chmod 755 /app/main.py && chmod 644 /app/spek_kit_integration.py && chmod 644 /app/CLAUDE.md
 
 # Set OpenShift-compatible environment variables
 ENV PYTHONUNBUFFERED=1

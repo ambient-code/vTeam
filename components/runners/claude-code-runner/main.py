@@ -11,6 +11,9 @@ from datetime import datetime, timezone
 # Import Claude Code Python SDK
 from claude_code_sdk import ClaudeSDKClient, ClaudeCodeOptions
 
+# Import spek-kit integration
+from spek_kit_integration import SpekKitIntegration
+
 # Configure logging with immediate flush for container visibility
 log_level = (
     logging.DEBUG
@@ -42,15 +45,18 @@ class ClaudeRunner:
         if not api_key:
             raise ValueError("ANTHROPIC_API_KEY environment variable is required")
 
+        # Initialize spek-kit integration
+        self.spek_kit = SpekKitIntegration()
+
         logger.info(f"Initialized ClaudeRunner for session: {self.session_name}")
         logger.info(f"Website URL: {self.website_url}")
-        logger.info("Using Claude Code CLI with Playwright MCP")
+        logger.info("Using Claude Code CLI with Playwright MCP and spek-kit integration")
 
     async def run_agentic_session(self):
         """Main method to run the agentic session"""
         try:
             logger.info(
-                "Starting agentic session with Claude Code + Playwright MCP..."
+                "Starting agentic session with Claude Code + Playwright MCP + spek-kit..."
             )
 
             # Verify browser setup before starting
@@ -59,56 +65,14 @@ class ClaudeRunner:
             # Generate and set display name
             await self._generate_and_set_display_name()
 
-            # Update status to indicate we're starting
-            await self.update_session_status(
-                {
-                    "phase": "Running",
-                    "message": "Initializing Claude Code with Playwright MCP browser capabilities",
-                    "startTime": datetime.now(timezone.utc).isoformat(),
-                }
-            )
+            # Check if this is a spek-kit command
+            spek_command = self.spek_kit.detect_spek_kit_command(self.prompt)
+            if spek_command:
+                await self._handle_spek_kit_session(spek_command)
+                return
 
-            # Create comprehensive agentic prompt for Claude Code with MCP tools
-            agentic_prompt = self._create_agentic_prompt()
-
-            # Update status
-            await self.update_session_status(
-                {
-                    "phase": "Running",
-                    "message": f"Claude Code analyzing {self.website_url} with agentic browser automation",
-                }
-            )
-
-            # Run Claude Code with our agentic prompt
-            logger.info("Running Claude Code with MCP browser automation...")
-
-            result, cost, all_messages = await self._run_claude_code(agentic_prompt)
-
-            logger.info("Received comprehensive agentic analysis from Claude Code")
-
-            # Log the complete agentic results to console
-            print("\n" + "=" * 80)
-            print("🔬 AGENTIC ANALYSIS RESULTS")
-            print("=" * 80)
-            print(result)
-            print("=" * 80 + "\n")
-
-            # Also log to structured logging
-            logger.info(f"FINAL AGENTIC RESULTS:\n{result}")
-
-            # Update the session with the final result
-            await self.update_session_status(
-                {
-                    "phase": "Completed",
-                    "message": "Agentic analysis completed successfully using Claude Code + Playwright MCP",
-                    "completionTime": datetime.now(timezone.utc).isoformat(),
-                    "finalOutput": result,
-                    "cost": cost,
-                    "messages": all_messages,
-                }
-            )
-
-            logger.info("Agentic session completed successfully")
+            # Standard agentic session with website analysis
+            await self._handle_standard_session()
 
         except Exception as e:
             logger.error(f"Agentic session failed: {str(e)}")
@@ -123,6 +87,130 @@ class ClaudeRunner:
             )
 
             sys.exit(1)
+
+    async def _handle_spek_kit_session(self, spek_command):
+        """Handle a spek-kit specific session"""
+        command, args = spek_command
+
+        logger.info(f"Processing spek-kit command: /{command}")
+
+        # Update status to indicate we're starting spek-kit workflow
+        await self.update_session_status(
+            {
+                "phase": "Running",
+                "message": f"Initializing spek-kit workflow for /{command} command",
+                "startTime": datetime.now(timezone.utc).isoformat(),
+            }
+        )
+
+        # Set up spek-kit workspace
+        if not await self.spek_kit.setup_workspace():
+            raise RuntimeError("Failed to setup spek-kit workspace")
+
+        # Update status
+        await self.update_session_status(
+            {
+                "phase": "Running",
+                "message": f"Executing spek-kit /{command} command with spec-driven development",
+            }
+        )
+
+        # Execute the spek-kit command
+        spek_result = await self.spek_kit.execute_spek_command(command, args)
+
+        if not spek_result.get("success", False):
+            raise RuntimeError(f"Spek-kit command failed: {spek_result.get('error', 'Unknown error')}")
+
+        # Now run Claude Code to enhance the generated specs
+        enhanced_prompt = self._create_spek_enhanced_prompt(command, args, spek_result)
+
+        logger.info("Running Claude Code to enhance spek-kit specifications...")
+        result, cost, all_messages = await self._run_claude_code(enhanced_prompt)
+
+        # Collect project artifacts
+        artifacts = self.spek_kit.get_project_artifacts()
+
+        # Log the results
+        print("\n" + "=" * 80)
+        print("📋 SPEK-KIT SPECIFICATION RESULTS")
+        print("=" * 80)
+        print(f"Command: /{command}")
+        print(f"Generated Files: {len(artifacts['files'])}")
+        print("\nGenerated Specifications:")
+        print(result)
+        print("=" * 80 + "\n")
+
+        logger.info(f"SPEK-KIT RESULTS:\n{result}")
+
+        # Update the session with the final result including artifacts
+        await self.update_session_status(
+            {
+                "phase": "Completed",
+                "message": f"Spek-kit /{command} completed successfully with spec-driven development artifacts",
+                "completionTime": datetime.now(timezone.utc).isoformat(),
+                "finalOutput": result,
+                "cost": cost,
+                "messages": all_messages,
+                "spekKitCommand": command,
+                "spekKitArtifacts": artifacts,
+                "spekKitResult": spek_result,
+            }
+        )
+
+        logger.info("Spek-kit session completed successfully")
+
+    async def _handle_standard_session(self):
+        """Handle a standard agentic session with website analysis"""
+        # Update status to indicate we're starting
+        await self.update_session_status(
+            {
+                "phase": "Running",
+                "message": "Initializing Claude Code with Playwright MCP browser capabilities",
+                "startTime": datetime.now(timezone.utc).isoformat(),
+            }
+        )
+
+        # Create agentic prompt for Claude Code with MCP tools
+        agentic_prompt = self._create_agentic_prompt()
+
+        # Update status
+        await self.update_session_status(
+            {
+                "phase": "Running",
+                "message": f"Claude Code analyzing {self.website_url} with agentic browser automation",
+            }
+        )
+
+        # Run Claude Code with our agentic prompt
+        logger.info("Running Claude Code with MCP browser automation...")
+
+        result, cost, all_messages = await self._run_claude_code(agentic_prompt)
+
+        logger.info("Received agentic analysis from Claude Code")
+
+        # Log the complete agentic results to console
+        print("\n" + "=" * 80)
+        print("🔬 AGENTIC ANALYSIS RESULTS")
+        print("=" * 80)
+        print(result)
+        print("=" * 80 + "\n")
+
+        # Also log to structured logging
+        logger.info(f"FINAL AGENTIC RESULTS:\n{result}")
+
+        # Update the session with the final result
+        await self.update_session_status(
+            {
+                "phase": "Completed",
+                "message": "Agentic analysis completed successfully using Claude Code + Playwright MCP",
+                "completionTime": datetime.now(timezone.utc).isoformat(),
+                "finalOutput": result,
+                "cost": cost,
+                "messages": all_messages,
+            }
+        )
+
+        logger.info("Agentic session completed successfully")
 
     async def _verify_browser_setup(self):
         """Verify browser installation and permissions for OpenShift compatibility"""
@@ -469,6 +557,75 @@ Use your browser automation tools to:
 4. Navigate to additional pages if necessary to find the answer
 
 Provide a clear, direct answer to the agentic query based on what you find on the website. Focus on answering the specific question rather than providing a comprehensive website analysis."""
+
+    def _create_spek_enhanced_prompt(self, command: str, args: str, spek_result: Dict[str, Any]) -> str:
+        """Create an enhanced prompt for Claude Code to work with spek-kit generated content"""
+
+        base_prompt = f"""You are working in a spek-kit project where a /{command} command has been executed.
+
+SPEK-KIT COMMAND: /{command} {args}
+
+GENERATED ARTIFACTS:
+"""
+
+        # Add information about generated files
+        if spek_result.get("files_created"):
+            base_prompt += f"Files created: {', '.join(spek_result['files_created'])}\n"
+
+        # Add the generated content
+        if command == "specify" and "spec_content" in spek_result:
+            base_prompt += f"\nGenerated Specification:\n{spek_result['spec_content']}\n"
+        elif command == "plan" and "plan_content" in spek_result:
+            base_prompt += f"\nGenerated Plan:\n{spek_result['plan_content']}\n"
+        elif command == "tasks" and "tasks_content" in spek_result:
+            base_prompt += f"\nGenerated Tasks:\n{spek_result['tasks_content']}\n"
+
+        base_prompt += f"""
+
+ENHANCEMENT INSTRUCTIONS:
+Please review and enhance the generated {command} content above. Your goal is to:
+
+1. **Analyze and improve** the generated content for completeness and quality
+2. **Add specific technical details** that may be missing
+3. **Provide actionable recommendations** for implementation
+4. **Ensure best practices** are reflected in the specifications
+5. **Make the content more comprehensive** while maintaining clarity
+
+"""
+
+        if command == "specify":
+            base_prompt += """
+For specifications, focus on:
+- More detailed user stories with clear acceptance criteria
+- Comprehensive functional and non-functional requirements
+- Technical constraints and dependencies
+- Risk assessment and mitigation strategies
+- Clear success metrics
+"""
+        elif command == "plan":
+            base_prompt += """
+For implementation plans, focus on:
+- Detailed technical architecture decisions
+- Clear development phases with timelines
+- Specific technology choices and justifications
+- Integration patterns and data flow
+- Testing and deployment strategies
+"""
+        elif command == "tasks":
+            base_prompt += """
+For task breakdowns, focus on:
+- More granular and actionable tasks
+- Clear effort estimations and dependencies
+- Specific deliverables for each task
+- Quality gates and definition of done
+- Resource allocation recommendations
+"""
+
+        base_prompt += """
+Provide your enhanced version as a complete, production-ready document that a development team could immediately use to start implementation.
+"""
+
+        return base_prompt
 
     async def update_session_status(self, status_update: Dict[str, Any]):
         """Update the AgenticSession status via the backend API"""
