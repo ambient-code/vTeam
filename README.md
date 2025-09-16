@@ -126,7 +126,7 @@ For basic Kubernetes deployment with pre-built images:
 
 ```bash
 # Comment out route.yaml in kustomization.yaml (not needed for regular K8s)
-sed -i 's/^- route.yaml$/# - route.yaml/' kustomization.yaml
+sed -i '' 's/^- route.yaml$/# - route.yaml/' kustomization.yaml
 
 # Deploy with kubectl and kustomize
 kubectl apply -k .
@@ -230,6 +230,12 @@ kubectl exec -it <pod-name> -n ambient-code -- curl http://backend-service:8080/
 ```
 
 #### Image Pull Errors
+
+**Common Symptoms:**
+- Pods stuck in `ImagePullBackOff` or `ErrImagePull` status
+- Error: `401 UNAUTHORIZED` when pulling from private registries
+
+**For Public Images:**
 ```bash
 # Verify registry access
 docker pull $REGISTRY/backend:latest
@@ -238,7 +244,79 @@ docker pull $REGISTRY/backend:latest
 grep "image:" manifests/*.yaml
 
 # Update registry references if needed
-sed -i "s|old-registry|new-registry|g" manifests/*.yaml
+sed -i '' "s|old-registry|new-registry|g" manifests/*.yaml
+```
+
+**For Private Images (e.g., quay.io, Docker Hub private repos):**
+
+1. **Create Registry Secret:**
+```bash
+# Method 1: Using explicit credentials
+kubectl create secret docker-registry registry-secret \
+  --docker-server=quay.io \
+  --docker-username=YOUR_USERNAME \
+  --docker-password=YOUR_PASSWORD \
+  --docker-email=YOUR_EMAIL \
+  --namespace=ambient-code
+
+# Method 2: Using robot account (recommended for quay.io)
+kubectl create secret docker-registry registry-secret \
+  --docker-server=quay.io \
+  --docker-username=YOUR_ROBOT_ACCOUNT \
+  --docker-password=YOUR_ROBOT_TOKEN \
+  --docker-email=YOUR_EMAIL \
+  --namespace=ambient-code
+```
+
+2. **Configure Service Accounts (No Manifest Changes Required):**
+```bash
+# Add image pull secrets to existing service accounts
+kubectl patch serviceaccount backend-api -n ambient-code \
+  -p '{"imagePullSecrets": [{"name": "registry-secret"}]}'
+
+kubectl patch serviceaccount agentic-operator -n ambient-code \
+  -p '{"imagePullSecrets": [{"name": "registry-secret"}]}'
+
+# For deployments using default service account (like frontend)
+kubectl patch serviceaccount default -n ambient-code \
+  -p '{"imagePullSecrets": [{"name": "registry-secret"}]}'
+```
+
+3. **Restart Deployments:**
+```bash
+kubectl rollout restart deployment backend-api -n ambient-code
+kubectl rollout restart deployment agentic-operator -n ambient-code
+kubectl rollout restart deployment frontend -n ambient-code
+```
+
+4. **Verify Configuration:**
+```bash
+# Check if secret exists and is properly formatted
+kubectl get secret registry-secret -n ambient-code -o yaml
+kubectl get secret registry-secret -n ambient-code -o jsonpath='{.data.\.dockerconfigjson}' | base64 -d
+
+# Verify service accounts have image pull secrets
+kubectl get serviceaccount backend-api -n ambient-code -o yaml
+kubectl get serviceaccount agentic-operator -n ambient-code -o yaml
+kubectl get serviceaccount default -n ambient-code -o yaml
+
+# Check pod status
+kubectl get pods -n ambient-code
+kubectl describe pod <failing-pod-name> -n ambient-code
+```
+
+**Troubleshooting Private Image Issues:**
+```bash
+# If using Docker Desktop credential store, create explicit config
+docker --config /tmp/docker-config login quay.io
+kubectl create secret generic registry-secret \
+  --from-file=.dockerconfigjson=/tmp/docker-config/config.json \
+  --type=kubernetes.io/dockerconfigjson \
+  --namespace=ambient-code
+rm -rf /tmp/docker-config
+
+# Test local access to verify credentials
+docker pull quay.io/your-username/your-image:latest
 ```
 
 #### Job Failures
