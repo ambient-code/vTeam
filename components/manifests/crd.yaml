@@ -44,6 +44,51 @@ spec:
                 type: integer
                 default: 300
                 description: "Timeout in seconds for the agentic session"
+              gitConfig:
+                type: object
+                properties:
+                  user:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                        description: "Git user name for commits"
+                      email:
+                        type: string
+                        description: "Git user email for commits"
+                    description: "Git user configuration"
+                  authentication:
+                    type: object
+                    properties:
+                      sshKeySecret:
+                        type: string
+                        description: "Name of Kubernetes secret containing SSH private key"
+                      tokenSecret:
+                        type: string
+                        description: "Name of Kubernetes secret containing Git access token"
+                      knownHostsSecret:
+                        type: string
+                        description: "Name of Kubernetes secret containing SSH known_hosts"
+                    description: "Git authentication configuration"
+                  repositories:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        url:
+                          type: string
+                          description: "Git repository URL"
+                        branch:
+                          type: string
+                          default: "main"
+                          description: "Git branch to work with"
+                        clonePath:
+                          type: string
+                          description: "Path to clone repository (relative to workspace)"
+                      required:
+                        - url
+                    description: "Git repositories to clone and work with"
+                description: "Git configuration for repository access and commits"
           status:
             type: object
             properties:

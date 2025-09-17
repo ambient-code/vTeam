@@ -18,6 +18,7 @@ spec:
       containers:
       - name: backend-api
         image: quay.io/ambient_code/vteam_backend:latest
+        imagePullPolicy: Always
         ports:
         - containerPort: 8080
           name: http

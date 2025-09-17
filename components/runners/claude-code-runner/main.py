@@ -7,12 +7,16 @@ import requests
 import sys
 from typing import Dict, Any
 from datetime import datetime, timezone
+from pathlib import Path
 
 # Import Claude Code Python SDK
 from claude_code_sdk import ClaudeSDKClient, ClaudeCodeOptions
 
 # Import spek-kit integration
 from spek_kit_integration import SpekKitIntegration
+
+# Import Git integration
+from git_integration import GitIntegration
 
 # Configure logging with immediate flush for container visibility
 log_level = (
@@ -45,8 +49,14 @@ class ClaudeRunner:
         if not api_key:
             raise ValueError("ANTHROPIC_API_KEY environment variable is required")
 
-        # Initialize spek-kit integration
-        self.spek_kit = SpekKitIntegration()
+        # Use persistent workspace for shared storage across agent sessions
+        workspace_dir = "/workspace"
+
+        # Initialize spek-kit integration with persistent workspace
+        self.spek_kit = SpekKitIntegration(workspace_dir=workspace_dir)
+
+        # Initialize Git integration
+        self.git = GitIntegration()
 
         logger.info(f"Initialized ClaudeRunner for session: {self.session_name}")
         logger.info(f"Website URL: {self.website_url}")
@@ -61,6 +71,9 @@ class ClaudeRunner:
 
             # Verify browser setup before starting
             await self._verify_browser_setup()
+
+            # Set up Git configuration
+            await self._setup_git_integration()
 
             # Generate and set display name
             await self._generate_and_set_display_name()
@@ -650,6 +663,50 @@ Provide your enhanced version as a complete, production-ready document that a de
         except Exception as e:
             logger.error(f"Error updating session status: {str(e)}")
             # Don't raise here as this shouldn't stop the main process
+
+    async def _setup_git_integration(self):
+        """Set up Git configuration and authentication"""
+        try:
+            logger.info("Setting up Git integration...")
+
+            # Set up Git configuration
+            git_setup_success = await self.git.setup_git_config()
+            if git_setup_success:
+                logger.info("Git configuration completed successfully")
+
+                # Log authentication status
+                auth_status = self.git.get_auth_status()
+                logger.info(f"Git auth status: {auth_status}")
+
+                # Clone repositories if configured
+                if self.git.repositories:
+                    logger.info(f"Cloning {len(self.git.repositories)} configured repositories...")
+                    workspace_path = Path("/workspace/git-repos")
+                    try:
+                        workspace_path.mkdir(parents=True, exist_ok=True)
+                        logger.info(f"Created Git workspace: {workspace_path}")
+                    except (PermissionError, OSError) as e:
+                        logger.warning(f"Cannot create Git workspace at {workspace_path}: {e}")
+                        # Fall back to user home directory
+                        workspace_path = Path.home() / "git-repos"
+                        workspace_path.mkdir(parents=True, exist_ok=True)
+                        logger.info(f"Using fallback Git workspace: {workspace_path}")
+
+                    cloned_repos = await self.git.clone_repositories(workspace_path)
+                    logger.info(f"Successfully cloned {len(cloned_repos)} repositories")
+
+                    # Store cloned repository paths for later use
+                    self.cloned_repositories = cloned_repos
+                else:
+                    logger.info("No repositories configured for cloning")
+                    self.cloned_repositories = {}
+            else:
+                logger.warning("Git configuration failed, continuing without Git support")
+                self.cloned_repositories = {}
+
+        except Exception as e:
+            logger.error(f"Error setting up Git integration: {e}")
+            self.cloned_repositories = {}
 
 
 async def main():

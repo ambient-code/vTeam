@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -26,6 +27,7 @@ var (
 	dynamicClient          dynamic.Interface
 	namespace              string
 	ambientCodeRunnerImage string
+	imagePullPolicy        corev1.PullPolicy
 )
 
 func main() {
@@ -46,8 +48,23 @@ func main() {
 		ambientCodeRunnerImage = "quay.io/ambient_code/vteam_claude_runner:latest"
 	}
 
+	// Get image pull policy from environment or use default
+	imagePullPolicyStr := os.Getenv("IMAGE_PULL_POLICY")
+	switch imagePullPolicyStr {
+	case "Always":
+		imagePullPolicy = corev1.PullAlways
+	case "Never":
+		imagePullPolicy = corev1.PullNever
+	case "IfNotPresent", "":
+		imagePullPolicy = corev1.PullIfNotPresent
+	default:
+		log.Printf("Warning: Unknown IMAGE_PULL_POLICY '%s', defaulting to IfNotPresent", imagePullPolicyStr)
+		imagePullPolicy = corev1.PullIfNotPresent
+	}
+
 	log.Printf("Agentic Session Operator starting in namespace: %s", namespace)
 	log.Printf("Using ambient-code runner image: %s", ambientCodeRunnerImage)
+	log.Printf("Using image pull policy: %s", imagePullPolicy)
 
 	// Start watching AgenticSession resources
 	go watchAgenticSessions()
@@ -185,6 +202,25 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 	temperature, _, _ := unstructured.NestedFloat64(llmSettings, "temperature")
 	maxTokens, _, _ := unstructured.NestedInt64(llmSettings, "maxTokens")
 
+	// Extract Git configuration
+	gitConfig, gitConfigExists, _ := unstructured.NestedMap(spec, "gitConfig")
+	var gitUserName, gitUserEmail string
+	var gitSSHKeySecret, gitTokenSecret, gitKnownHostsSecret string
+	var gitRepositories []interface{}
+
+	if gitConfigExists {
+		if gitUser, exists, _ := unstructured.NestedMap(gitConfig, "user"); exists {
+			gitUserName, _, _ = unstructured.NestedString(gitUser, "name")
+			gitUserEmail, _, _ = unstructured.NestedString(gitUser, "email")
+		}
+		if gitAuth, exists, _ := unstructured.NestedMap(gitConfig, "authentication"); exists {
+			gitSSHKeySecret, _, _ = unstructured.NestedString(gitAuth, "sshKeySecret")
+			gitTokenSecret, _, _ = unstructured.NestedString(gitAuth, "tokenSecret")
+			gitKnownHostsSecret, _, _ = unstructured.NestedString(gitAuth, "knownHostsSecret")
+		}
+		gitRepositories, _, _ = unstructured.NestedSlice(gitConfig, "repositories")
+	}
+
 	// Create the Job
 	job := &batchv1.Job{
 		ObjectMeta: v1.ObjectMeta{
@@ -224,23 +260,30 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 					// ⚠️ Let OpenShift SCC choose UID/GID dynamically (restricted-v2 compatible)
 					// SecurityContext omitted to allow SCC assignment
 
-					// 🔧 Shared memory volume for browser
-					Volumes: []corev1.Volume{
+					// 🔧 Volumes for browser and Git secrets
+					Volumes: buildVolumes(gitSSHKeySecret, gitTokenSecret, gitKnownHostsSecret),
+
+					// Init container to fix workspace permissions
+					InitContainers: []corev1.Container{
 						{
-							Name: "dshm",
-							VolumeSource: corev1.VolumeSource{
-								EmptyDir: &corev1.EmptyDirVolumeSource{
-									Medium:    corev1.StorageMediumMemory,
-									SizeLimit: resource.NewQuantity(256*1024*1024, resource.BinarySI),
-								},
+							Name:  "workspace-permissions",
+							Image: "registry.redhat.io/ubi8/ubi-minimal:latest",
+							Command: []string{"sh", "-c", "mkdir -p /workspace && chown -R 1001:0 /workspace && chmod -R g+rwX /workspace"},
+							VolumeMounts: []corev1.VolumeMount{
+								{Name: "shared-workspace", MountPath: "/workspace"},
+							},
+							SecurityContext: &corev1.SecurityContext{
+								RunAsUser:  int64Ptr(0), // Run as root to change ownership
+								RunAsGroup: int64Ptr(0),
 							},
 						},
 					},
 
 					Containers: []corev1.Container{
 						{
-							Name:  "ambient-code-runner",
-							Image: ambientCodeRunnerImage,
+							Name:            "ambient-code-runner",
+							Image:           ambientCodeRunnerImage,
+							ImagePullPolicy: imagePullPolicy,
 							// 🔒 Container-level security (SCC-compatible, no privileged capabilities)
 							SecurityContext: &corev1.SecurityContext{
 								AllowPrivilegeEscalation: boolPtr(false),
@@ -250,49 +293,10 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 								},
 							},
 
-							// 📦 Mount shared memory volume only
-							VolumeMounts: []corev1.VolumeMount{
-								{Name: "dshm", MountPath: "/dev/shm"},
-							},
+							// 📦 Mount volumes for browser and Git secrets
+							VolumeMounts: buildVolumeMounts(gitSSHKeySecret, gitTokenSecret, gitKnownHostsSecret),
 
-							Env: []corev1.EnvVar{
-								{Name: "AGENTIC_SESSION_NAME", Value: name},
-								{Name: "AGENTIC_SESSION_NAMESPACE", Value: namespace},
-								{Name: "PROMPT", Value: prompt},
-								{Name: "WEBSITE_URL", Value: websiteURL},
-								{Name: "LLM_MODEL", Value: model},
-								{Name: "LLM_TEMPERATURE", Value: fmt.Sprintf("%.2f", temperature)},
-								{Name: "LLM_MAX_TOKENS", Value: fmt.Sprintf("%d", maxTokens)},
-								{Name: "TIMEOUT", Value: fmt.Sprintf("%d", timeout)},
-								{Name: "BACKEND_API_URL", Value: os.Getenv("BACKEND_API_URL")},
-
-								// 🔑 Anthropic key from Secret
-								{
-									Name: "ANTHROPIC_API_KEY",
-									ValueFrom: &corev1.EnvVarSource{
-										SecretKeyRef: &corev1.SecretKeySelector{
-											LocalObjectReference: corev1.LocalObjectReference{Name: "ambient-code-secrets"},
-											Key:                  "anthropic-api-key",
-										},
-									},
-								},
-
-								// ✅ Use /tmp for SCC-assigned random UID (OpenShift compatible)
-								{Name: "HOME", Value: "/tmp"},
-								{Name: "XDG_CONFIG_HOME", Value: "/tmp/.config"},
-								{Name: "XDG_CACHE_HOME", Value: "/tmp/.cache"},
-								{Name: "XDG_DATA_HOME", Value: "/tmp/.local/share"},
-
-								// 🧊 Playwright/Chromium optimized for containers with shared memory
-								{Name: "PW_CHROMIUM_ARGS", Value: "--no-sandbox --disable-gpu"},
-
-								// 📁 Playwright browser cache in writable location
-								{Name: "PLAYWRIGHT_BROWSERS_PATH", Value: "/tmp/.cache/ms-playwright"},
-
-								// (Optional) proxy envs if your cluster requires them:
-								// { Name: "HTTPS_PROXY", Value: "http://proxy.corp:3128" },
-								// { Name: "NO_PROXY",    Value: ".svc,.cluster.local,10.0.0.0/8" },
-							},
+							Env: buildEnvironmentVariables(name, namespace, prompt, websiteURL, model, temperature, maxTokens, timeout, gitUserName, gitUserEmail, gitRepositories),
 
 							Resources: corev1.ResourceRequirements{
 								Requests: corev1.ResourceList{
@@ -455,6 +459,163 @@ func updateAgenticSessionStatus(name string, statusUpdate map[string]interface{}
 	}
 
 	return nil
+}
+
+// Helper function to build environment variables with Git configuration
+func buildEnvironmentVariables(name, namespace, prompt, websiteURL, model string, temperature float64, maxTokens, timeout int64, gitUserName, gitUserEmail string, gitRepositories []interface{}) []corev1.EnvVar {
+	envVars := []corev1.EnvVar{
+		{Name: "AGENTIC_SESSION_NAME", Value: name},
+		{Name: "AGENTIC_SESSION_NAMESPACE", Value: namespace},
+		{Name: "PROMPT", Value: prompt},
+		{Name: "WEBSITE_URL", Value: websiteURL},
+		{Name: "LLM_MODEL", Value: model},
+		{Name: "LLM_TEMPERATURE", Value: fmt.Sprintf("%.2f", temperature)},
+		{Name: "LLM_MAX_TOKENS", Value: fmt.Sprintf("%d", maxTokens)},
+		{Name: "TIMEOUT", Value: fmt.Sprintf("%d", timeout)},
+		{Name: "BACKEND_API_URL", Value: os.Getenv("BACKEND_API_URL")},
+
+		// 🔑 Anthropic key from Secret
+		{
+			Name: "ANTHROPIC_API_KEY",
+			ValueFrom: &corev1.EnvVarSource{
+				SecretKeyRef: &corev1.SecretKeySelector{
+					LocalObjectReference: corev1.LocalObjectReference{Name: "ambient-code-secrets"},
+					Key:                  "anthropic-api-key",
+				},
+			},
+		},
+
+		// ✅ Use /tmp for SCC-assigned random UID (OpenShift compatible)
+		{Name: "HOME", Value: "/tmp"},
+		{Name: "XDG_CONFIG_HOME", Value: "/tmp/.config"},
+		{Name: "XDG_CACHE_HOME", Value: "/tmp/.cache"},
+		{Name: "XDG_DATA_HOME", Value: "/tmp/.local/share"},
+
+		// 🧊 Playwright/Chromium optimized for containers with shared memory
+		{Name: "PW_CHROMIUM_ARGS", Value: "--no-sandbox --disable-gpu"},
+
+		// 📁 Playwright browser cache in writable location
+		{Name: "PLAYWRIGHT_BROWSERS_PATH", Value: "/tmp/.cache/ms-playwright"},
+	}
+
+	// Add Git configuration if provided
+	if gitUserName != "" {
+		envVars = append(envVars, corev1.EnvVar{Name: "GIT_USER_NAME", Value: gitUserName})
+	}
+	if gitUserEmail != "" {
+		envVars = append(envVars, corev1.EnvVar{Name: "GIT_USER_EMAIL", Value: gitUserEmail})
+	}
+
+	// Add Git repositories as JSON string if provided
+	if len(gitRepositories) > 0 {
+		if reposJSON, err := json.Marshal(gitRepositories); err == nil {
+			envVars = append(envVars, corev1.EnvVar{Name: "GIT_REPOSITORIES", Value: string(reposJSON)})
+		}
+	}
+
+	return envVars
+}
+
+// Helper function to build volumes with Git secrets
+func buildVolumes(gitSSHKeySecret, gitTokenSecret, gitKnownHostsSecret string) []corev1.Volume {
+	volumes := []corev1.Volume{
+		{
+			Name: "dshm",
+			VolumeSource: corev1.VolumeSource{
+				EmptyDir: &corev1.EmptyDirVolumeSource{
+					Medium:    corev1.StorageMediumMemory,
+					SizeLimit: resource.NewQuantity(256*1024*1024, resource.BinarySI),
+				},
+			},
+		},
+		{
+			Name: "shared-workspace",
+			VolumeSource: corev1.VolumeSource{
+				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+					ClaimName: "vteam-shared-workspace-pvc-rwo",
+				},
+			},
+		},
+	}
+
+	// Add SSH key volume if provided
+	if gitSSHKeySecret != "" {
+		volumes = append(volumes, corev1.Volume{
+			Name: "git-ssh-key",
+			VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{
+					SecretName: gitSSHKeySecret,
+					DefaultMode: int32Ptr(0600),
+				},
+			},
+		})
+	}
+
+	// Add Git token volume if provided
+	if gitTokenSecret != "" {
+		volumes = append(volumes, corev1.Volume{
+			Name: "git-token",
+			VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{
+					SecretName: gitTokenSecret,
+					DefaultMode: int32Ptr(0600),
+				},
+			},
+		})
+	}
+
+	// Add known_hosts volume if provided
+	if gitKnownHostsSecret != "" {
+		volumes = append(volumes, corev1.Volume{
+			Name: "git-known-hosts",
+			VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{
+					SecretName: gitKnownHostsSecret,
+					DefaultMode: int32Ptr(0644),
+				},
+			},
+		})
+	}
+
+	return volumes
+}
+
+// Helper function to build volume mounts with Git secrets
+func buildVolumeMounts(gitSSHKeySecret, gitTokenSecret, gitKnownHostsSecret string) []corev1.VolumeMount {
+	volumeMounts := []corev1.VolumeMount{
+		{Name: "dshm", MountPath: "/dev/shm"},
+		{Name: "shared-workspace", MountPath: "/workspace"},
+	}
+
+	// Add SSH key mount if provided
+	if gitSSHKeySecret != "" {
+		volumeMounts = append(volumeMounts, corev1.VolumeMount{
+			Name:      "git-ssh-key",
+			MountPath: "/tmp/.ssh",
+			ReadOnly:  true,
+		})
+	}
+
+	// Add Git token mount if provided
+	if gitTokenSecret != "" {
+		volumeMounts = append(volumeMounts, corev1.VolumeMount{
+			Name:      "git-token",
+			MountPath: "/tmp/.git-credentials",
+			ReadOnly:  true,
+		})
+	}
+
+	// Add known_hosts mount if provided
+	if gitKnownHostsSecret != "" {
+		volumeMounts = append(volumeMounts, corev1.VolumeMount{
+			Name:      "git-known-hosts",
+			MountPath: "/tmp/.ssh/known_hosts",
+			SubPath:   "known_hosts",
+			ReadOnly:  true,
+		})
+	}
+
+	return volumeMounts
 }
 
 var (

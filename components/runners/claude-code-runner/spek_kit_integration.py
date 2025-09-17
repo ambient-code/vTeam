@@ -28,8 +28,21 @@ class SpekKitIntegration:
         try:
             logger.info("Setting up spek-kit workspace...")
 
-            # Create workspace directory
-            self.workspace_dir.mkdir(parents=True, exist_ok=True)
+            # Create workspace directory with proper error handling for OpenShift
+            try:
+                self.workspace_dir.mkdir(parents=True, exist_ok=True)
+                # Test write access
+                test_file = self.workspace_dir / ".test_write"
+                test_file.write_text("test")
+                test_file.unlink()
+                logger.info(f"Workspace directory ready with write access: {self.workspace_dir}")
+            except (PermissionError, OSError) as e:
+                logger.warning(f"Cannot write to {self.workspace_dir}: {e}")
+                # Fall back to a user-writable directory
+                fallback_dir = Path.home() / "spek-workspace"
+                logger.info(f"Using fallback workspace: {fallback_dir}")
+                self.workspace_dir = fallback_dir
+                self.workspace_dir.mkdir(parents=True, exist_ok=True)
 
             # Install spek-kit using uvx if available, otherwise use pip
             await self._install_spek_kit()
@@ -42,68 +55,30 @@ class SpekKitIntegration:
             return False
 
     async def _install_spek_kit(self):
-        """Install spek-kit CLI tool"""
+        """Spek-kit is pre-installed in the container via requirements.txt"""
         try:
-            # First try uvx (preferred)
-            try:
-                result = await asyncio.create_subprocess_exec(
-                    "uvx", "--from", "git+https://github.com/github/spec-kit.git", "specify", "check",
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE
-                )
-                stdout, stderr = await result.communicate()
+            # Check if specify command is available (use --help since --version isn't supported)
+            result = await asyncio.create_subprocess_exec(
+                "specify", "--help",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await result.communicate()
 
-                if result.returncode == 0:
-                    logger.info("Spek-kit installed via uvx")
-                    self.spek_kit_path = "uvx --from git+https://github.com/github/spec-kit.git specify"
-                    return
-            except FileNotFoundError:
-                logger.info("uvx not available, trying pip install")
+            if result.returncode == 0:
+                output = stdout.decode().strip()
+                self.spek_kit_path = "specify"
+                logger.info(f"Using pre-installed spek-kit CLI (help output received)")
+                return
+            else:
+                logger.error(f"spek-kit CLI check failed: {stderr.decode()}")
+                raise RuntimeError("spek-kit CLI not responding correctly")
 
-            # Fallback to cloning and using directly
-            spek_kit_repo = self.workspace_dir / "spec-kit"
-            if not spek_kit_repo.exists():
-                logger.info("Cloning spek-kit repository...")
-                result = await asyncio.create_subprocess_exec(
-                    "git", "clone", "https://github.com/github/spec-kit.git", str(spek_kit_repo),
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE
-                )
-                await result.communicate()
-
-                if result.returncode != 0:
-                    raise RuntimeError("Failed to clone spek-kit repository")
-
-            # Install dependencies for the cloned spek-kit
-            logger.info("Installing spek-kit dependencies...")
-
-            # Try to install from requirements.txt if it exists
-            requirements_file = spek_kit_repo / "requirements.txt"
-            if requirements_file.exists():
-                pip_install_result = await asyncio.create_subprocess_exec(
-                    "pip", "install", "-r", str(requirements_file),
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE
-                )
-                await pip_install_result.communicate()
-
-            # Install common spek-kit dependencies explicitly
-            common_deps = ["readchar", "click", "pydantic", "pyyaml", "jinja2", "gitpython"]
-            for dep in common_deps:
-                logger.info(f"Installing {dep}...")
-                dep_result = await asyncio.create_subprocess_exec(
-                    "pip", "install", dep,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE
-                )
-                await dep_result.communicate()
-
-            # Use the cloned version
-            self.spek_kit_path = f"python {spek_kit_repo / 'src' / 'specify_cli' / '__init__.py'}"
-            logger.info("Using cloned spek-kit")
-
+        except FileNotFoundError:
+            logger.error("spek-kit CLI not found in PATH")
+            raise RuntimeError("spek-kit CLI not installed")
         except Exception as e:
-            logger.error(f"Failed to install spek-kit: {e}")
+            logger.error(f"Error checking spek-kit installation: {e}")
             raise
 
     def detect_spek_kit_command(self, prompt: str) -> Optional[Tuple[str, str]]:

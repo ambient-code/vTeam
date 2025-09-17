@@ -25,6 +25,7 @@ DEFAULT_BACKEND_IMAGE="${DEFAULT_BACKEND_IMAGE:-quay.io/ambient_code/vteam_backe
 DEFAULT_FRONTEND_IMAGE="${DEFAULT_FRONTEND_IMAGE:-quay.io/ambient_code/vteam_frontend:latest}"
 DEFAULT_OPERATOR_IMAGE="${DEFAULT_OPERATOR_IMAGE:-quay.io/ambient_code/vteam_operator:latest}"
 DEFAULT_RUNNER_IMAGE="${DEFAULT_RUNNER_IMAGE:-quay.io/ambient_code/vteam_claude_runner:latest}"
+IMAGE_PULL_POLICY="${IMAGE_PULL_POLICY:-Always}"
 
 # Handle uninstall command early
 if [ "${1:-}" = "uninstall" ]; then
@@ -72,6 +73,7 @@ echo -e "Backend Image: ${GREEN}${DEFAULT_BACKEND_IMAGE}${NC}"
 echo -e "Frontend Image: ${GREEN}${DEFAULT_FRONTEND_IMAGE}${NC}"
 echo -e "Operator Image: ${GREEN}${DEFAULT_OPERATOR_IMAGE}${NC}"
 echo -e "Runner Image: ${GREEN}${DEFAULT_RUNNER_IMAGE}${NC}"
+echo -e "Image Pull Policy: ${GREEN}${IMAGE_PULL_POLICY}${NC}"
 echo ""
 
 # Check prerequisites
@@ -160,17 +162,9 @@ echo -e "${GREEN}✅ Namespace ${NAMESPACE} is active${NC}"
 echo -e "${BLUE}Switching to namespace ${NAMESPACE}...${NC}"
 oc project ${NAMESPACE}
 
-# Create API key secret (kustomize creates empty secret, we populate it)
-echo -e "${BLUE}Creating API key secret...${NC}"
-oc patch secret ambient-code-secrets -n ${NAMESPACE} -p "{\"stringData\":{\"anthropic-api-key\":\"$ANTHROPIC_API_KEY\"}}" || {
-    echo -e "${YELLOW}Secret patch failed, ensuring secret exists and retrying...${NC}"
-    sleep 1
-    oc patch secret ambient-code-secrets -n ${NAMESPACE} -p "{\"stringData\":{\"anthropic-api-key\":\"$ANTHROPIC_API_KEY\"}}"
-}
-
-# Update operator deployment with custom runner image
-echo -e "${BLUE}Updating operator with custom runner image...${NC}"
-oc patch deployment agentic-operator -n ${NAMESPACE} -p "{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"agentic-operator\",\"env\":[{\"name\":\"AMBIENT_CODE_RUNNER_IMAGE\",\"value\":\"${DEFAULT_RUNNER_IMAGE}\"}]}]}}}}" --type=strategic
+# Update operator deployment with custom runner image and pull policy
+echo -e "${BLUE}Updating operator with custom runner image and pull policy...${NC}"
+oc patch deployment agentic-operator -n ${NAMESPACE} -p "{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"agentic-operator\",\"env\":[{\"name\":\"AMBIENT_CODE_RUNNER_IMAGE\",\"value\":\"${DEFAULT_RUNNER_IMAGE}\"},{\"name\":\"IMAGE_PULL_POLICY\",\"value\":\"${IMAGE_PULL_POLICY}\"}]}]}}}}" --type=strategic
 
 echo ""
 echo -e "${GREEN}✅ Deployment completed!${NC}"

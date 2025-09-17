@@ -58,8 +58,9 @@ RUN echo '#!/bin/bash\n' \
 # Copy the application files with proper permissions
 COPY main.py /app/
 COPY spek_kit_integration.py /app/
+COPY git_integration.py /app/
 COPY CLAUDE.md /app/
-RUN chmod 755 /app/main.py && chmod 644 /app/spek_kit_integration.py && chmod 644 /app/CLAUDE.md
+RUN chmod 755 /app/main.py && chmod 644 /app/spek_kit_integration.py && chmod 644 /app/git_integration.py && chmod 644 /app/CLAUDE.md
 
 # Set OpenShift-compatible environment variables
 ENV PYTHONUNBUFFERED=1

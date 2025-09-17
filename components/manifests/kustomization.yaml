@@ -5,16 +5,17 @@ metadata:
   name: vteam-ambient-runner
 
 # Namespace for all resources (can be overridden with kustomize edit set namespace)
-#namespace: sallyom-vteam
 namespace: ambient-code
+#namespace: ambient-code
 
 # Resources to include in deployment
+#- secrets.yaml
 resources:
 - namespace.yaml
 - pvc.yaml
 - crd.yaml
 - rbac.yaml
-- secrets.yaml
+- configmap.yaml
 - backend-deployment.yaml
 - frontend-deployment.yaml
 - operator-deployment.yaml

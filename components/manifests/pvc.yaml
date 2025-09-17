@@ -12,3 +12,17 @@ spec:
   resources:
     requests:
       storage: 10Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: vteam-shared-workspace-pvc-rwo
+  labels:
+    app: vteam
+    component: shared-workspace
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi

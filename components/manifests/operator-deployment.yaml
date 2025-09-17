@@ -18,6 +18,7 @@ spec:
       containers:
       - name: agentic-operator
         image: quay.io/ambient_code/vteam_operator:latest
+        imagePullPolicy: Always
         env:
         - name: NAMESPACE
           valueFrom:
@@ -27,6 +28,8 @@ spec:
           value: "http://backend-service:8080/api"
         - name: AMBIENT_CODE_RUNNER_IMAGE
           value: "quay.io/ambient_code/vteam_claude_runner:latest"
+        - name: IMAGE_PULL_POLICY
+          value: "Always"
         resources:
           requests:
             cpu: 50m
