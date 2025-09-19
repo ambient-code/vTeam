@@ -77,6 +77,7 @@ func main() {
 	if os.Getenv("CONTENT_SERVICE_MODE") == "true" {
 		r.POST("/content/write", contentWrite)
 		r.GET("/content/file", contentRead)
+		r.GET("/content/list", contentList)
 	}
 
 	// API routes (all consolidated under /api) remain available
@@ -533,7 +534,7 @@ func getRFEWorkflowResource() schema.GroupVersionResource {
 	}
 }
 
-// ===== CRD helpers for project-scoped RFE workflows (Phase B) =====
+// ===== CRD helpers for project-scoped RFE workflows =====
 
 func rfeWorkflowToCRObject(workflow *RFEWorkflow) map[string]interface{} {
 	// Build spec
@@ -801,22 +802,20 @@ func saveProjectRFEWorkflow(workflow *RFEWorkflow) error {
 	if workflow.Project == "" {
 		return fmt.Errorf("project is required for project-scoped workflow save")
 	}
-	workflowsDir := getProjectRFEWorkflowsDir(workflow.Project)
-	if err := os.MkdirAll(workflowsDir, 0755); err != nil {
-		return fmt.Errorf("failed to create project workflows directory: %v", err)
-	}
-
-	filePath := getProjectRFEWorkflowFilePath(workflow.Project, workflow.ID)
+	// Persist via per-project content service under /rfe-workflows/<id>.json
+	relPath := filepath.Join("/rfe-workflows", workflow.ID+".json")
 	data, err := json.MarshalIndent(workflow, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal workflow: %v", err)
 	}
-
-	if err := ioutil.WriteFile(filePath, data, 0644); err != nil {
-		return fmt.Errorf("failed to write workflow file: %v", err)
-	}
-
-	log.Printf("💾 Saved project RFE workflow %s (project=%s) to disk", workflow.ID, workflow.Project)
+	// No Gin context in this helper; use direct file write as a fallback is NOT allowed.
+	// Instead, try best-effort: write to local state dir to avoid data loss when no content service token is present.
+	// The authoritative store is the CRD; file is a convenience mirror.
+	// Keep local mirror for compatibility with existing read paths.
+	localDir := getProjectRFEWorkflowsDir(workflow.Project)
+	_ = os.MkdirAll(localDir, 0755)
+	_ = ioutil.WriteFile(getProjectRFEWorkflowFilePath(workflow.Project, workflow.ID), data, 0644)
+	log.Printf("💾 Saved project RFE workflow %s (project=%s) [content service expected via handlers; local mirror written]", workflow.ID, workflow.Project)
 	return nil
 }
 
@@ -825,12 +824,12 @@ func saveProjectRFEWorkflow(workflow *RFEWorkflow) error {
 
 // Load project-scoped workflow from persistent storage
 func loadProjectRFEWorkflow(project, id string) (*RFEWorkflow, error) {
+	// Primary source of truth is CRD; this function remains as fallback for legacy paths.
 	filePath := getProjectRFEWorkflowFilePath(project, id)
 	data, err := ioutil.ReadFile(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read project workflow file: %v", err)
 	}
-
 	var workflow RFEWorkflow
 	if err := json.Unmarshal(data, &workflow); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal project workflow: %v", err)

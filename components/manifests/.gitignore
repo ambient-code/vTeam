@@ -29,3 +29,6 @@ rollback-*.log
 *-dev.yaml
 *-staging.yaml
 *-prod.yaml
+
+# Local env inputs for secretGenerator
+oauth-secret.env

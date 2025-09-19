@@ -106,8 +106,8 @@ fi
 echo -e "${GREEN}✅ Authenticated as: $(oc whoami)${NC}"
 echo ""
 
-# Load optional environment file
-echo -e "${YELLOW}Loading optional environment configuration (.env)...${NC}"
+# Load required environment file
+echo -e "${YELLOW}Loading environment configuration (.env)...${NC}"
 ENV_FILE=".env"
 if [[ ! -f "$ENV_FILE" ]]; then
     echo -e "${RED}❌ .env file not found${NC}"
@@ -116,6 +116,27 @@ if [[ ! -f "$ENV_FILE" ]]; then
     echo "  # Edit .env and add your actual API key and Git configuration"
     exit 1
 fi
+set -a
+source "$ENV_FILE"
+set +a
+echo ""
+
+# Prepare oauth secret env file for kustomize secretGenerator
+echo -e "${YELLOW}Preparing oauth secret env for kustomize...${NC}"
+OAUTH_ENV_FILE="oauth-secret.env"
+CLIENT_SECRET_VALUE="${OCP_OAUTH_CLIENT_SECRET:-}"
+COOKIE_SECRET_VALUE="${OCP_OAUTH_COOKIE_SECRET:-}"
+if [[ -z "$CLIENT_SECRET_VALUE" ]]; then
+    CLIENT_SECRET_VALUE=$(openssl rand -base64 32)
+fi
+if [[ -z "$COOKIE_SECRET_VALUE" ]]; then
+    COOKIE_SECRET_VALUE=$(openssl rand -base64 32)
+fi
+cat > "$OAUTH_ENV_FILE" << EOF
+client-secret=${CLIENT_SECRET_VALUE}
+cookie_secret=${COOKIE_SECRET_VALUE}
+EOF
+echo -e "${GREEN}✅ Generated ${OAUTH_ENV_FILE}${NC}"
 echo ""
 
 # Update git-configmap with environment variables if they exist
@@ -229,6 +250,10 @@ echo -e "${BLUE}Routes:${NC}"
 oc get route -n ${NAMESPACE} || true
 ROUTE_HOST=$(oc get route frontend-route -n ${NAMESPACE} -o jsonpath='{.spec.host}' 2>/dev/null || true)
 echo ""
+
+# Cleanup generated files
+echo -e "${BLUE}Cleaning up generated files...${NC}"
+rm -f "$OAUTH_ENV_FILE"
 
 echo -e "${YELLOW}Next steps:${NC}"
 if [[ -n "${ROUTE_HOST}" ]]; then

@@ -1560,6 +1560,176 @@ func proxyContentWrites(c *gin.Context, project, sessionName string, statusUpdat
 	return nil
 }
 
+// writeProjectContentFile writes arbitrary file content to the per-namespace content service
+// using the caller's Authorization token. The path must be absolute (starts with "/").
+func writeProjectContentFile(c *gin.Context, project string, absPath string, data []byte) error {
+	token := c.GetHeader("Authorization")
+	if strings.TrimSpace(token) == "" {
+		// Fallback to X-Forwarded-Access-Token if present
+		token = c.GetHeader("X-Forwarded-Access-Token")
+	}
+	if !strings.HasPrefix(absPath, "/") {
+		absPath = "/" + absPath
+	}
+	base := os.Getenv("CONTENT_SERVICE_BASE")
+	if base == "" {
+		base = "http://ambient-content.%s.svc:8080"
+	}
+	endpoint := fmt.Sprintf(base, project)
+	type writeReq struct {
+		Path     string `json:"path"`
+		Content  string `json:"content"`
+		Encoding string `json:"encoding"`
+	}
+	reqBody := writeReq{Path: absPath, Content: string(data), Encoding: "utf8"}
+	b, _ := json.Marshal(reqBody)
+	httpReq, _ := http.NewRequestWithContext(c.Request.Context(), http.MethodPost, endpoint+"/content/write", strings.NewReader(string(b)))
+	if strings.TrimSpace(token) != "" {
+		httpReq.Header.Set("Authorization", token)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(httpReq)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("content write failed: status %d", resp.StatusCode)
+	}
+	return nil
+}
+
+// readProjectContentFile reads file content from the per-namespace content service
+// using the caller's Authorization token. The path must be absolute (starts with "/").
+func readProjectContentFile(c *gin.Context, project string, absPath string) ([]byte, error) {
+	token := c.GetHeader("Authorization")
+	if !strings.HasPrefix(absPath, "/") {
+		absPath = "/" + absPath
+	}
+	base := os.Getenv("CONTENT_SERVICE_BASE")
+	if base == "" {
+		base = "http://ambient-content.%s.svc:8080"
+	}
+	endpoint := fmt.Sprintf(base, project)
+	u := fmt.Sprintf("%s/content/file?path=%s", endpoint, url.QueryEscape(absPath))
+	httpReq, _ := http.NewRequestWithContext(c.Request.Context(), http.MethodGet, u, nil)
+	if strings.TrimSpace(token) != "" {
+		httpReq.Header.Set("Authorization", token)
+	}
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("content read failed: status %d", resp.StatusCode)
+	}
+	return ioutil.ReadAll(resp.Body)
+}
+
+type contentListItem struct {
+	Name       string `json:"name"`
+	Path       string `json:"path"`
+	IsDir      bool   `json:"isDir"`
+	Size       int64  `json:"size"`
+	ModifiedAt string `json:"modifiedAt"`
+}
+
+// listProjectContent lists directory entries from the per-namespace content service
+func listProjectContent(c *gin.Context, project string, absPath string) ([]contentListItem, error) {
+	token := c.GetHeader("Authorization")
+	if !strings.HasPrefix(absPath, "/") {
+		absPath = "/" + absPath
+	}
+	base := os.Getenv("CONTENT_SERVICE_BASE")
+	if base == "" {
+		base = "http://ambient-content.%s.svc:8080"
+	}
+	endpoint := fmt.Sprintf(base, project)
+	u := fmt.Sprintf("%s/content/list?path=%s", endpoint, url.QueryEscape(absPath))
+	req, _ := http.NewRequestWithContext(c.Request.Context(), http.MethodGet, u, nil)
+	if strings.TrimSpace(token) != "" {
+		req.Header.Set("Authorization", token)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("list failed: status %d", resp.StatusCode)
+	}
+	var out struct {
+		Items []contentListItem `json:"items"`
+	}
+	b, _ := ioutil.ReadAll(resp.Body)
+	if err := json.Unmarshal(b, &out); err != nil {
+		return nil, err
+	}
+	return out.Items, nil
+}
+
+// convertAgentOutputsToSpecKitViaContent builds consolidated spec-kit files by reading
+// agent outputs through the content service and writing consolidated files back to PVC.
+func convertAgentOutputsToSpecKitViaContent(c *gin.Context, project string, wf *RFEWorkflow) error {
+	phases := []string{"specify", "plan", "tasks"}
+	workspaceDir := getProjectRFEWorkspaceDir(project, wf.ID)
+	agentsDir := getProjectRFEAgentsDir(project, wf.ID)
+	specsDir := filepath.Join(workspaceDir, "specs", wf.ID)
+
+	for _, phase := range phases {
+		phaseDir := filepath.Join(agentsDir, phase)
+		entries, err := listProjectContent(c, project, phaseDir)
+		if err != nil {
+			// Skip phase if listing fails
+			continue
+		}
+		var consolidatedContent strings.Builder
+		phaseTitle := strings.Title(phase)
+		consolidatedContent.WriteString(fmt.Sprintf("# %s Phase: %s\n\n", phaseTitle, wf.Title))
+		consolidatedContent.WriteString(fmt.Sprintf("**RFE ID**: %s  \n", wf.ID))
+		consolidatedContent.WriteString(fmt.Sprintf("**Repository**: %s  \n", wf.TargetRepoUrl))
+		consolidatedContent.WriteString(fmt.Sprintf("**Branch**: %s  \n\n", wf.TargetRepoBranch))
+		if phase == "specify" {
+			consolidatedContent.WriteString("## Feature Specification\n\n")
+			consolidatedContent.WriteString(fmt.Sprintf("**Description**: %s\n\n", wf.Description))
+		}
+		for _, item := range entries {
+			if item.IsDir || !strings.HasSuffix(strings.ToLower(item.Name), ".md") {
+				continue
+			}
+			b, err := readProjectContentFile(c, project, item.Path)
+			if err != nil {
+				continue
+			}
+			agentName := strings.TrimSuffix(item.Name, ".md")
+			agentTitle := strings.Title(strings.ReplaceAll(agentName, "-", " "))
+			consolidatedContent.WriteString(fmt.Sprintf("## %s Agent Output\n\n", agentTitle))
+			consolidatedContent.WriteString(string(b))
+			consolidatedContent.WriteString("\n\n---\n\n")
+		}
+		var outputFile string
+		switch phase {
+		case "specify":
+			outputFile = "spec.md"
+		case "plan":
+			outputFile = "plan.md"
+		case "tasks":
+			outputFile = "tasks.md"
+		default:
+			outputFile = fmt.Sprintf("%s.md", phase)
+		}
+		_ = writeProjectContentFile(c, project, filepath.Join(specsDir, outputFile), []byte(consolidatedContent.String()))
+	}
+	// README
+	readmeContent := fmt.Sprintf("# RFE %s: %s\n\n**Status**: %s\n**Phase**: %s\n**Repository**: %s\n**Branch**: %s\n\n",
+		wf.ID, wf.Title, wf.Status, wf.CurrentPhase, wf.TargetRepoUrl, wf.TargetRepoBranch)
+	_ = writeProjectContentFile(c, project, filepath.Join(specsDir, "README.md"), []byte(readmeContent))
+	return nil
+}
+
 // contentWrite handles POST /content/write when running in CONTENT_SERVICE_MODE
 // Body: { path: "/sessions/<name>/status.json", content: "...", encoding: "utf8"|"base64" }
 func contentWrite(c *gin.Context) {
@@ -1618,6 +1788,53 @@ func contentRead(c *gin.Context) {
 		return
 	}
 	c.Data(http.StatusOK, "application/octet-stream", b)
+}
+
+// contentList handles GET /content/list?path=
+// Returns directory entries (non-recursive) under the provided path rooted at stateBaseDir
+func contentList(c *gin.Context) {
+	path := filepath.Clean("/" + strings.TrimSpace(c.Query("path")))
+	if path == "/" || strings.Contains(path, "..") {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid path"})
+		return
+	}
+	abs := filepath.Join(stateBaseDir, path)
+	info, err := os.Stat(abs)
+	if err != nil {
+		if os.IsNotExist(err) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "stat failed"})
+		}
+		return
+	}
+	if !info.IsDir() {
+		// If it's a file, return single entry metadata
+		c.JSON(http.StatusOK, gin.H{"items": []gin.H{{
+			"name":       filepath.Base(abs),
+			"path":       path,
+			"isDir":      false,
+			"size":       info.Size(),
+			"modifiedAt": info.ModTime().UTC().Format(time.RFC3339),
+		}}})
+		return
+	}
+	entries, err := ioutil.ReadDir(abs)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "readdir failed"})
+		return
+	}
+	items := make([]gin.H, 0, len(entries))
+	for _, e := range entries {
+		items = append(items, gin.H{
+			"name":       e.Name(),
+			"path":       filepath.Join(path, e.Name()),
+			"isDir":      e.IsDir(),
+			"size":       e.Size(),
+			"modifiedAt": e.ModTime().UTC().Format(time.RFC3339),
+		})
+	}
+	c.JSON(http.StatusOK, gin.H{"items": items})
 }
 
 // Project management handlers
@@ -2467,11 +2684,13 @@ func createProjectRFEWorkflow(c *gin.Context) {
 		Artifacts:        []RFEArtifact{},
 		PhaseResults:     make(map[string]PhaseResult),
 	}
-	if err := createProjectRFEWorkspace(project, workflowID); err != nil {
-		log.Printf("⚠️ Failed to create project workspace: %v", err)
-	}
-	if err := saveProjectRFEWorkflow(workflow); err != nil {
-		log.Printf("⚠️ Failed to save project workflow: %v", err)
+	// Persist workflow JSON to project PVC via content service
+	if b, jerr := json.MarshalIndent(workflow, "", "  "); jerr == nil {
+		if werr := writeProjectContentFile(c, project, "/rfe-workflows/"+workflow.ID+".json", b); werr != nil {
+			log.Printf("⚠️ Failed to write workflow JSON to content service: %v", werr)
+		}
+	} else {
+		log.Printf("⚠️ Failed to marshal workflow for content write: %v", jerr)
 	}
 	if err := upsertProjectRFEWorkflowCR(workflow); err != nil {
 		log.Printf("⚠️ Failed to upsert RFEWorkflow CR: %v", err)
@@ -2487,7 +2706,13 @@ func getProjectRFEWorkflow(c *gin.Context) {
 	id := c.Param("id")
 	wf, err := loadProjectRFEWorkflowFromCR(project, id)
 	if err != nil {
-		wf, err = loadProjectRFEWorkflow(project, id)
+		if b, rerr := readProjectContentFile(c, project, "/rfe-workflows/"+id+".json"); rerr == nil {
+			var tmp RFEWorkflow
+			if uerr := json.Unmarshal(b, &tmp); uerr == nil {
+				wf = &tmp
+				err = nil
+			}
+		}
 	}
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Workflow not found"})
@@ -2495,9 +2720,6 @@ func getProjectRFEWorkflow(c *gin.Context) {
 	}
 	if err := syncAgentSessionStatuses(wf); err != nil {
 		log.Printf("⚠️ Failed to sync statuses for workflow %s (project=%s): %v", id, project, err)
-	}
-	if err := scanAndUpdateWorkflowArtifactsProject(wf); err != nil {
-		log.Printf("⚠️ Failed to scan artifacts for workflow %s (project=%s): %v", id, project, err)
 	}
 	c.JSON(http.StatusOK, wf)
 }
@@ -2508,10 +2730,7 @@ func deleteProjectRFEWorkflow(c *gin.Context) {
 	// Delete CR
 	gvr := getRFEWorkflowResource()
 	_ = dynamicClient.Resource(gvr).Namespace(namespace).Delete(context.TODO(), id, v1.DeleteOptions{})
-	if err := deleteProjectRFEWorkflowFile(project, id); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete workflow"})
-		return
-	}
+	// No content-service delete; file on PVC remains for audit/history
 	c.JSON(http.StatusOK, gin.H{"message": "Workflow deleted successfully"})
 }
 
@@ -2525,7 +2744,9 @@ func pauseProjectRFEWorkflow(c *gin.Context) {
 	}
 	wf.Status = "paused"
 	wf.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
-	_ = saveProjectRFEWorkflow(wf)
+	if b, jerr := json.MarshalIndent(wf, "", "  "); jerr == nil {
+		_ = writeProjectContentFile(c, project, "/rfe-workflows/"+id+".json", b)
+	}
 	_ = upsertProjectRFEWorkflowCR(wf)
 	c.JSON(http.StatusOK, wf)
 }
@@ -2540,7 +2761,9 @@ func resumeProjectRFEWorkflow(c *gin.Context) {
 	}
 	wf.Status = "in_progress"
 	wf.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
-	_ = saveProjectRFEWorkflow(wf)
+	if b, jerr := json.MarshalIndent(wf, "", "  "); jerr == nil {
+		_ = writeProjectContentFile(c, project, "/rfe-workflows/"+id+".json", b)
+	}
 	c.JSON(http.StatusOK, wf)
 }
 
@@ -2579,7 +2802,9 @@ func advanceProjectRFEWorkflowPhase(c *gin.Context) {
 		wf.Status = "completed"
 	}
 	wf.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
-	_ = saveProjectRFEWorkflow(wf)
+	if b, jerr := json.MarshalIndent(wf, "", "  "); jerr == nil {
+		_ = writeProjectContentFile(c, project, "/rfe-workflows/"+id+".json", b)
+	}
 	c.JSON(http.StatusOK, wf)
 }
 
@@ -2596,7 +2821,9 @@ func pushProjectRFEWorkflowToGit(c *gin.Context) {
 		return
 	}
 	wf.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
-	_ = saveProjectRFEWorkflow(wf)
+	if b, jerr := json.MarshalIndent(wf, "", "  "); jerr == nil {
+		_ = writeProjectContentFile(c, project, "/rfe-workflows/"+id+".json", b)
+	}
 	c.JSON(http.StatusOK, gin.H{"message": "Successfully pushed to Git repository", "repository": wf.TargetRepoUrl, "branch": wf.TargetRepoBranch})
 }
 
@@ -2610,24 +2837,13 @@ func exportProjectRFEWorkflowSpecKit(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Workflow not found"})
 		return
 	}
-	gitRepoDir := getProjectRFEGitRepoDir(project, wf.ID)
+	// Compose paths within the project workspace on PVC
 	workspaceDir := getProjectRFEWorkspaceDir(project, wf.ID)
-	specsDir := filepath.Join(gitRepoDir, "specs", wf.ID)
-	// Ensure repo dir exists; if not, create local specs dir under workspace as fallback
-	if _, err := os.Stat(gitRepoDir); os.IsNotExist(err) {
-		specsDir = filepath.Join(workspaceDir, "specs", wf.ID)
-		if err := os.MkdirAll(specsDir, 0755); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create specs directory", "details": err.Error()})
-			return
-		}
-	} else {
-		if err := os.MkdirAll(specsDir, 0755); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create specs directory", "details": err.Error()})
-			return
-		}
-	}
 	agentsDir := getProjectRFEAgentsDir(project, wf.ID)
-	if err := convertAgentOutputsToSpecKit(agentsDir, specsDir, wf); err != nil {
+	specsDir := filepath.Join(workspaceDir, "specs", wf.ID)
+	// Ensure specs dir by writing placeholder file via content service
+	_ = writeProjectContentFile(c, project, filepath.Join(specsDir, ".placeholder"), []byte(""))
+	if err := convertAgentOutputsToSpecKitViaContent(c, project, wf); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate spec-kit", "details": err.Error()})
 		return
 	}
@@ -2660,18 +2876,13 @@ func getProjectRFEWorkflowArtifact(c *gin.Context) {
 	id := c.Param("id")
 	artifactPath := c.Param("path")
 	fullPath := getProjectRFEArtifactPath(project, id, artifactPath)
-	content, err := ioutil.ReadFile(fullPath)
+	b, err := readProjectContentFile(c, project, fullPath)
 	if err != nil {
-		if os.IsNotExist(err) {
-			c.Header("Content-Type", "text/plain")
-			c.String(http.StatusOK, "")
-			return
-		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read artifact content"})
 		return
 	}
 	c.Header("Content-Type", "text/plain")
-	c.String(http.StatusOK, string(content))
+	c.String(http.StatusOK, string(b))
 }
 
 func updateProjectRFEWorkflowArtifact(c *gin.Context) {
@@ -2689,11 +2900,7 @@ func updateProjectRFEWorkflowArtifact(c *gin.Context) {
 		return
 	}
 	fullPath := getProjectRFEArtifactPath(project, id, artifactPath)
-	if err := os.MkdirAll(filepath.Dir(fullPath), 0755); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create directory"})
-		return
-	}
-	if err := ioutil.WriteFile(fullPath, content, 0644); err != nil {
+	if err := writeProjectContentFile(c, project, fullPath, content); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to write artifact content"})
 		return
 	}
@@ -2706,7 +2913,9 @@ func updateProjectRFEWorkflowArtifact(c *gin.Context) {
 		}
 	}
 	wf.UpdatedAt = now
-	_ = saveProjectRFEWorkflow(wf)
+	if b, jerr := json.MarshalIndent(wf, "", "  "); jerr == nil {
+		_ = writeProjectContentFile(c, project, "/rfe-workflows/"+id+".json", b)
+	}
 	c.JSON(http.StatusOK, gin.H{"message": "Artifact updated successfully", "path": artifactPath, "size": len(content)})
 }
 
