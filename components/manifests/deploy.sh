@@ -127,10 +127,17 @@ OAUTH_ENV_FILE="oauth-secret.env"
 CLIENT_SECRET_VALUE="${OCP_OAUTH_CLIENT_SECRET:-}"
 COOKIE_SECRET_VALUE="${OCP_OAUTH_COOKIE_SECRET:-}"
 if [[ -z "$CLIENT_SECRET_VALUE" ]]; then
-    CLIENT_SECRET_VALUE=$(openssl rand -base64 32)
+    CLIENT_SECRET_VALUE=$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32)
 fi
+# cookie_secret must be exactly 16, 24, or 32 bytes. Use 32 ASCII bytes by default.
 if [[ -z "$COOKIE_SECRET_VALUE" ]]; then
-    COOKIE_SECRET_VALUE=$(openssl rand -base64 32)
+    COOKIE_SECRET_VALUE=$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32)
+fi
+# If provided via .env, ensure it meets required length
+COOKIE_LEN=${#COOKIE_SECRET_VALUE}
+if [[ $COOKIE_LEN -ne 16 && $COOKIE_LEN -ne 24 && $COOKIE_LEN -ne 32 ]]; then
+    echo -e "${YELLOW}Provided OCP_OAUTH_COOKIE_SECRET length ($COOKIE_LEN) is invalid; regenerating 32-byte value...${NC}"
+    COOKIE_SECRET_VALUE=$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32)
 fi
 cat > "$OAUTH_ENV_FILE" << EOF
 client-secret=${CLIENT_SECRET_VALUE}

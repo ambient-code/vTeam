@@ -2725,7 +2725,6 @@ func getProjectRFEWorkflow(c *gin.Context) {
 }
 
 func deleteProjectRFEWorkflow(c *gin.Context) {
-	project := c.Param("projectName")
 	id := c.Param("id")
 	// Delete CR
 	gvr := getRFEWorkflowResource()
@@ -2839,7 +2838,7 @@ func exportProjectRFEWorkflowSpecKit(c *gin.Context) {
 	}
 	// Compose paths within the project workspace on PVC
 	workspaceDir := getProjectRFEWorkspaceDir(project, wf.ID)
-	agentsDir := getProjectRFEAgentsDir(project, wf.ID)
+	// agentsDir := getProjectRFEAgentsDir(project, wf.ID)
 	specsDir := filepath.Join(workspaceDir, "specs", wf.ID)
 	// Ensure specs dir by writing placeholder file via content service
 	_ = writeProjectContentFile(c, project, filepath.Join(specsDir, ".placeholder"), []byte(""))

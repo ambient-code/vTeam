@@ -802,8 +802,7 @@ func saveProjectRFEWorkflow(workflow *RFEWorkflow) error {
 	if workflow.Project == "" {
 		return fmt.Errorf("project is required for project-scoped workflow save")
 	}
-	// Persist via per-project content service under /rfe-workflows/<id>.json
-	relPath := filepath.Join("/rfe-workflows", workflow.ID+".json")
+	// Persist via per-project content service under /rfe-workflows/<id>.json (handled at call sites)
 	data, err := json.MarshalIndent(workflow, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal workflow: %v", err)
