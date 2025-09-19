@@ -85,14 +85,7 @@ func main() {
 	// API routes (all consolidated under /api) remain available
 	api := r.Group("/api")
 	{
-		// Legacy agentic sessions (keep for backwards compatibility)
-		api.GET("/agentic-sessions", listAgenticSessions)
-		api.GET("/agentic-sessions/:name", getAgenticSession)
-		api.POST("/agentic-sessions", createAgenticSession)
-		api.DELETE("/agentic-sessions/:name", deleteAgenticSession)
-		api.PUT("/agentic-sessions/:name/status", updateAgenticSessionStatus)
-		api.PUT("/agentic-sessions/:name/displayname", updateAgenticSessionDisplayName)
-		api.POST("/agentic-sessions/:name/stop", stopAgenticSession)
+		// Legacy non-project agentic session routes removed
 
 		// RFE workflow endpoints
 		api.GET("/rfe-workflows", listRFEWorkflows)

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
 import { Button } from "@/components/ui/button";
@@ -80,6 +80,8 @@ function calculatePhaseProgress(workflow: RFEWorkflow, phase: WorkflowPhase): nu
 export default function RFEWorkflowDetailPage() {
   const params = useParams();
   const workflowId = params.id as string;
+  const searchParams = useSearchParams();
+  const project = searchParams.get("project");
 
   const [workflow, setWorkflow] = useState<RFEWorkflow | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -91,7 +93,10 @@ export default function RFEWorkflowDetailPage() {
   const fetchWorkflow = useCallback(async () => {
     try {
       setIsLoading(true);
-      const response = await fetch(`${getApiUrl()}/rfe-workflows/${workflowId}`);
+      const url = project
+        ? `${getApiUrl()}/projects/${encodeURIComponent(project)}/rfe-workflows/${workflowId}`
+        : `${getApiUrl()}/rfe-workflows/${workflowId}`;
+      const response = await fetch(url);
 
       if (!response.ok) {
         if (response.status === 404) {
@@ -119,7 +124,10 @@ export default function RFEWorkflowDetailPage() {
 
     try {
       setIsUpdatingDynamicData(true);
-      const response = await fetch(`${getApiUrl()}/rfe-workflows/${workflowId}`);
+      const url = project
+        ? `${getApiUrl()}/projects/${encodeURIComponent(project)}/rfe-workflows/${workflowId}`
+        : `${getApiUrl()}/rfe-workflows/${workflowId}`;
+      const response = await fetch(url);
       if (!response.ok) return;
 
       const data = await response.json();
@@ -167,7 +175,10 @@ export default function RFEWorkflowDetailPage() {
 
     setIsStartingPhase(true);
     try {
-      const response = await fetch(`${getApiUrl()}/rfe-workflows/${workflowId}/advance-phase`, {
+      const url = project
+        ? `${getApiUrl()}/projects/${encodeURIComponent(project)}/rfe-workflows/${workflowId}/advance-phase`
+        : `${getApiUrl()}/rfe-workflows/${workflowId}/advance-phase`;
+      const response = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ nextPhase }),
@@ -189,7 +200,10 @@ export default function RFEWorkflowDetailPage() {
     if (!workflow) return;
 
     try {
-      const response = await fetch(`${getApiUrl()}/rfe-workflows/${workflowId}/push-to-git`, {
+      const url = project
+        ? `${getApiUrl()}/projects/${encodeURIComponent(project)}/rfe-workflows/${workflowId}/push-to-git`
+        : `${getApiUrl()}/rfe-workflows/${workflowId}/push-to-git`;
+      const response = await fetch(url, {
         method: "POST",
       });
 
@@ -255,7 +269,7 @@ export default function RFEWorkflowDetailPage() {
         {/* Header */}
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-4">
-            <Link href="/rfe">
+              <Link href={project ? `/rfe?project=${encodeURIComponent(project)}` : "/rfe"}>
               <Button variant="ghost" size="sm">
                 <ArrowLeft className="h-4 w-4 mr-2" />
                 Back to RFE Workflows
@@ -268,7 +282,7 @@ export default function RFEWorkflowDetailPage() {
           </div>
 
           <div className="flex gap-2">
-            <Link href={`/rfe/${workflowId}/edit`}>
+            <Link href={project ? `/rfe/${workflowId}/edit?project=${encodeURIComponent(project)}` : `/rfe/${workflowId}/edit`}>
               <Button variant="outline" size="sm">
                 <Edit className="mr-2 h-4 w-4" />
                 Edit Artifacts

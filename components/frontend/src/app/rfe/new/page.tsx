@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -50,6 +50,8 @@ type FormValues = z.infer<typeof formSchema>;
 
 export default function NewRFEWorkflowPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const project = searchParams.get("project");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -118,7 +120,10 @@ export default function NewRFEWorkflowPage() {
       console.log("Creating RFE workflow with request:", request);
       console.log("Selected agents:", values.selectedAgents);
 
-      const response = await fetch(`${getApiUrl()}/rfe-workflows`, {
+      const url = project
+        ? `${getApiUrl()}/projects/${encodeURIComponent(project)}/rfe-workflows`
+        : `${getApiUrl()}/rfe-workflows`;
+      const response = await fetch(url, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -136,7 +141,8 @@ export default function NewRFEWorkflowPage() {
       console.log("RFE workflow created successfully:", result);
 
       // Redirect to the RFE workflow detail page
-      router.push(`/rfe/${result.id}`);
+      const next = project ? `/rfe/${result.id}?project=${encodeURIComponent(project)}` : `/rfe/${result.id}`;
+      router.push(next);
     } catch (err) {
       console.error("Error creating RFE workflow:", err);
       setError(

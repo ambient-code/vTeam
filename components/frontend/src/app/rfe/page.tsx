@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { formatDistanceToNow } from "date-fns";
 import { Button } from "@/components/ui/button";
 import {
@@ -97,6 +98,8 @@ function calculateProgress(workflow: RFEWorkflow): number {
 }
 
 export default function RFEWorkflowsPage() {
+  const searchParams = useSearchParams();
+  const project = searchParams.get("project");
   const [workflows, setWorkflows] = useState<RFEWorkflow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -104,7 +107,10 @@ export default function RFEWorkflowsPage() {
   const fetchWorkflows = async () => {
     try {
       setIsLoading(true);
-      const response = await fetch(`${getApiUrl()}/rfe-workflows`);
+      const base = project
+        ? `${getApiUrl()}/projects/${encodeURIComponent(project)}/rfe-workflows`
+        : `${getApiUrl()}/rfe-workflows`;
+      const response = await fetch(base);
 
       if (!response.ok) {
         throw new Error(`Failed to fetch RFE workflows: ${response.status}`);
@@ -127,7 +133,8 @@ export default function RFEWorkflowsPage() {
 
   useEffect(() => {
     fetchWorkflows();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project]);
 
   const handleDeleteWorkflow = async (workflowId: string) => {
     if (!confirm("Are you sure you want to delete this RFE workflow?")) {
@@ -135,7 +142,10 @@ export default function RFEWorkflowsPage() {
     }
 
     try {
-      const response = await fetch(`${getApiUrl()}/rfe-workflows/${workflowId}`, {
+      const url = project
+        ? `${getApiUrl()}/projects/${encodeURIComponent(project)}/rfe-workflows/${workflowId}`
+        : `${getApiUrl()}/rfe-workflows/${workflowId}`;
+      const response = await fetch(url, {
         method: "DELETE",
       });
 
@@ -152,7 +162,10 @@ export default function RFEWorkflowsPage() {
 
   const handlePauseWorkflow = async (workflowId: string) => {
     try {
-      const response = await fetch(`${getApiUrl()}/rfe-workflows/${workflowId}/pause`, {
+      const url = project
+        ? `${getApiUrl()}/projects/${encodeURIComponent(project)}/rfe-workflows/${workflowId}/pause`
+        : `${getApiUrl()}/rfe-workflows/${workflowId}/pause`;
+      const response = await fetch(url, {
         method: "POST",
       });
 
@@ -166,7 +179,10 @@ export default function RFEWorkflowsPage() {
 
   const handleResumeWorkflow = async (workflowId: string) => {
     try {
-      const response = await fetch(`${getApiUrl()}/rfe-workflows/${workflowId}/resume`, {
+      const url = project
+        ? `${getApiUrl()}/projects/${encodeURIComponent(project)}/rfe-workflows/${workflowId}/resume`
+        : `${getApiUrl()}/rfe-workflows/${workflowId}/resume`;
+      const response = await fetch(url, {
         method: "POST",
       });
 
@@ -209,7 +225,7 @@ export default function RFEWorkflowsPage() {
             <RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
             Refresh
           </Button>
-          <Link href="/rfe/new">
+          <Link href={project ? `/rfe/new?project=${encodeURIComponent(project)}` : "/rfe/new"}>
             <Button>
               <Plus className="mr-2 h-4 w-4" />
               Create RFE Workflow
@@ -243,7 +259,7 @@ export default function RFEWorkflowsPage() {
           <p className="text-muted-foreground mb-4">
             Get started by creating your first RFE workflow
           </p>
-          <Link href="/rfe/new">
+          <Link href={project ? `/rfe/new?project=${encodeURIComponent(project)}` : "/rfe/new"}>
             <Button>
               <Plus className="mr-2 h-4 w-4" />
               Create RFE Workflow
@@ -284,7 +300,7 @@ function RFEWorkflowCard({ workflow, onDelete, onPause, onResume }: RFEWorkflowC
         <div className="flex items-start justify-between">
           <div className="flex-1">
             <CardTitle className="text-lg">
-              <Link href={`/rfe/${workflow.id}`} className="hover:underline">
+              <Link href={project ? `/rfe/${workflow.id}?project=${encodeURIComponent(project)}` : `/rfe/${workflow.id}`} className="hover:underline">
                 {workflow.title}
               </Link>
             </CardTitle>
@@ -301,13 +317,13 @@ function RFEWorkflowCard({ workflow, onDelete, onPause, onResume }: RFEWorkflowC
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem asChild>
-                <Link href={`/rfe/${workflow.id}`}>
+                <Link href={project ? `/rfe/${workflow.id}?project=${encodeURIComponent(project)}` : `/rfe/${workflow.id}`}>
                   <ExternalLink className="mr-2 h-4 w-4" />
                   View Details
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
-                <Link href={`/rfe/${workflow.id}/edit`}>
+                <Link href={project ? `/rfe/${workflow.id}/edit?project=${encodeURIComponent(project)}` : `/rfe/${workflow.id}/edit`}>
                   <FileText className="mr-2 h-4 w-4" />
                   Edit Artifacts
                 </Link>
