@@ -49,14 +49,13 @@ spec:
       - name: oauth-proxy
         image: quay.io/openshift/origin-oauth-proxy:4.14
         args:
-        - --https-address=:8443
+        - --http-address=:8443
+        - --https-address=
         - --provider=openshift
         - --upstream=http://localhost:3000
         - --client-id=ambient-frontend
         - --client-secret-file=/etc/oauth/config/client-secret
         - --cookie-secret-file=/etc/oauth/config/cookie_secret
-        - --tls-cert=/etc/tls/private/tls.crt
-        - --tls-key=/etc/tls/private/tls.key
         - --cookie-expire=23h0m0s
         - --pass-access-token
         - --scope=user:full
@@ -69,7 +68,7 @@ spec:
           httpGet:
             path: /oauth/healthz
             port: dashboard-ui
-            scheme: HTTPS
+            scheme: HTTP
           initialDelaySeconds: 30
           timeoutSeconds: 1
           periodSeconds: 5
@@ -79,7 +78,7 @@ spec:
           httpGet:
             path: /oauth/healthz
             port: dashboard-ui
-            scheme: HTTPS
+            scheme: HTTP
           initialDelaySeconds: 5
           timeoutSeconds: 1
           periodSeconds: 5

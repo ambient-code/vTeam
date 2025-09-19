@@ -2605,26 +2605,104 @@ agenticsession_total 0
 
 // ========================= Project-scoped RFE Handlers =========================
 
+// rfeFromUnstructured converts an unstructured RFEWorkflow CR into our RFEWorkflow struct
+func rfeFromUnstructured(item *unstructured.Unstructured) *RFEWorkflow {
+	if item == nil {
+		return nil
+	}
+	obj := item.Object
+	spec, _ := obj["spec"].(map[string]interface{})
+	status, _ := obj["status"].(map[string]interface{})
+
+	wf := &RFEWorkflow{
+		ID:               item.GetName(),
+		Title:            fmt.Sprintf("%v", spec["title"]),
+		Description:      fmt.Sprintf("%v", spec["description"]),
+		Status:           fmt.Sprintf("%v", status["status"]),
+		CurrentPhase:     fmt.Sprintf("%v", status["currentPhase"]),
+		SelectedAgents:   []string{},
+		TargetRepoUrl:    fmt.Sprintf("%v", spec["targetRepoUrl"]),
+		TargetRepoBranch: fmt.Sprintf("%v", spec["targetRepoBranch"]),
+		Project:          fmt.Sprintf("%v", spec["project"]),
+		CreatedAt:        "",
+		UpdatedAt:        time.Now().UTC().Format(time.RFC3339),
+		AgentSessions:    []RFEAgentSession{},
+		Artifacts:        []RFEArtifact{},
+		PhaseResults:     map[string]PhaseResult{},
+	}
+	if sa, ok := spec["selectedAgents"].([]interface{}); ok {
+		for _, v := range sa {
+			wf.SelectedAgents = append(wf.SelectedAgents, fmt.Sprintf("%v", v))
+		}
+	}
+	if sess, ok := status["agentSessions"].([]interface{}); ok {
+		for _, v := range sess {
+			if m, ok := v.(map[string]interface{}); ok {
+				s := RFEAgentSession{
+					ID:           fmt.Sprintf("%v", m["id"]),
+					AgentPersona: fmt.Sprintf("%v", m["agentPersona"]),
+					Phase:        fmt.Sprintf("%v", m["phase"]),
+					Status:       fmt.Sprintf("%v", m["state"]),
+				}
+				if started, ok := m["startedAt"].(string); ok {
+					s.StartedAt = &started
+				}
+				if completed, ok := m["completedAt"].(string); ok {
+					s.CompletedAt = &completed
+				}
+				wf.AgentSessions = append(wf.AgentSessions, s)
+			}
+		}
+	}
+	if arts, ok := status["artifacts"].([]interface{}); ok {
+		for _, v := range arts {
+			if m, ok := v.(map[string]interface{}); ok {
+				a := RFEArtifact{
+					Path:       fmt.Sprintf("%v", m["path"]),
+					Name:       fmt.Sprintf("%v", m["name"]),
+					Type:       fmt.Sprintf("%v", m["type"]),
+					Phase:      fmt.Sprintf("%v", m["phase"]),
+					CreatedBy:  fmt.Sprintf("%v", m["createdBy"]),
+					Size:       0,
+					ModifiedAt: fmt.Sprintf("%v", m["modifiedAt"]),
+				}
+				if sizef, ok := m["size"].(float64); ok {
+					a.Size = int64(sizef)
+				}
+				wf.Artifacts = append(wf.Artifacts, a)
+			}
+		}
+	}
+	if pr, ok := status["phaseResults"].(map[string]interface{}); ok {
+		for k, v := range pr {
+			if m, ok := v.(map[string]interface{}); ok {
+				wf.PhaseResults[k] = PhaseResult{
+					Summary: fmt.Sprintf("%v", m["summary"]),
+				}
+			}
+		}
+	}
+	return wf
+}
+
 func listProjectRFEWorkflows(c *gin.Context) {
 	project := c.Param("projectName")
 	var workflows []RFEWorkflow
-	// Prefer CRD list; fallback to file scan if CRD list fails
+	// Prefer CRD list with request-scoped client; fallback to file scan if unavailable or fails
 	gvr := getRFEWorkflowResource()
-	list, err := dynamicClient.Resource(gvr).Namespace(namespace).List(context.TODO(), v1.ListOptions{LabelSelector: fmt.Sprintf("project=%s", project)})
-	if err == nil {
-		for _, item := range list.Items {
-			name := item.GetName()
-			wf, lerr := loadProjectRFEWorkflowFromCR(project, name)
-			if lerr != nil {
-				log.Printf("⚠️ Failed to parse RFEWorkflow CR %s: %v", name, lerr)
-				continue
+	_, reqDyn := getK8sClientsForRequest(c)
+	if reqDyn != nil {
+		if list, err := reqDyn.Resource(gvr).Namespace(namespace).List(context.TODO(), v1.ListOptions{LabelSelector: fmt.Sprintf("project=%s", project)}); err == nil {
+			for _, item := range list.Items {
+				wf := rfeFromUnstructured(&item)
+				if wf == nil {
+					continue
+				}
+				workflows = append(workflows, *wf)
 			}
-			if err := syncAgentSessionStatuses(wf); err == nil {
-				_ = upsertProjectRFEWorkflowCR(wf)
-			}
-			workflows = append(workflows, *wf)
 		}
-	} else {
+	}
+	if len(workflows) == 0 {
 		dir := getProjectRFEWorkflowsDir(project)
 		_ = os.MkdirAll(dir, 0755)
 		files, ferr := ioutil.ReadDir(dir)
@@ -2640,10 +2718,6 @@ func listProjectRFEWorkflows(c *gin.Context) {
 			wf, lerr := loadProjectRFEWorkflow(project, id)
 			if lerr != nil {
 				continue
-			}
-			if err := syncAgentSessionStatuses(wf); err == nil {
-				_ = saveProjectRFEWorkflow(wf)
-				_ = upsertProjectRFEWorkflowCR(wf)
 			}
 			workflows = append(workflows, *wf)
 		}
@@ -2685,17 +2759,18 @@ func createProjectRFEWorkflow(c *gin.Context) {
 		PhaseResults:     make(map[string]PhaseResult),
 	}
 	// Persist workflow JSON to project PVC via content service
-	if b, jerr := json.MarshalIndent(workflow, "", "  "); jerr == nil {
+    if b, jerr := json.MarshalIndent(workflow, "", "  "); jerr == nil {
 		if werr := writeProjectContentFile(c, project, "/rfe-workflows/"+workflow.ID+".json", b); werr != nil {
 			log.Printf("⚠️ Failed to write workflow JSON to content service: %v", werr)
 		}
 	} else {
 		log.Printf("⚠️ Failed to marshal workflow for content write: %v", jerr)
 	}
-	if err := upsertProjectRFEWorkflowCR(workflow); err != nil {
+    _, reqDyn := getK8sClientsForRequest(c)
+    if err := upsertProjectRFEWorkflowCR(reqDyn, workflow); err != nil {
 		log.Printf("⚠️ Failed to upsert RFEWorkflow CR: %v", err)
 	}
-	if err := createAgentSessionsForPhaseProject(workflow, "specify"); err != nil {
+    if err := createAgentSessionsForPhaseProject(reqDyn, workflow, "specify"); err != nil {
 		log.Printf("⚠️ Failed to create project agent sessions for specify: %v", err)
 	}
 	c.JSON(http.StatusCreated, workflow)
@@ -2704,8 +2779,22 @@ func createProjectRFEWorkflow(c *gin.Context) {
 func getProjectRFEWorkflow(c *gin.Context) {
 	project := c.Param("projectName")
 	id := c.Param("id")
-	wf, err := loadProjectRFEWorkflowFromCR(project, id)
-	if err != nil {
+	// Try CRD with request-scoped client first
+	gvr := getRFEWorkflowResource()
+	_, reqDyn := getK8sClientsForRequest(c)
+	var wf *RFEWorkflow
+	var err error
+	if reqDyn != nil {
+		if item, gerr := reqDyn.Resource(gvr).Namespace(namespace).Get(context.TODO(), id, v1.GetOptions{}); gerr == nil {
+			wf = rfeFromUnstructured(item)
+			err = nil
+		} else {
+			err = gerr
+		}
+	} else {
+		err = fmt.Errorf("no k8s client")
+	}
+	if wf == nil || err != nil {
 		if b, rerr := readProjectContentFile(c, project, "/rfe-workflows/"+id+".json"); rerr == nil {
 			var tmp RFEWorkflow
 			if uerr := json.Unmarshal(b, &tmp); uerr == nil {
@@ -2718,9 +2807,6 @@ func getProjectRFEWorkflow(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Workflow not found"})
 		return
 	}
-	if err := syncAgentSessionStatuses(wf); err != nil {
-		log.Printf("⚠️ Failed to sync statuses for workflow %s (project=%s): %v", id, project, err)
-	}
 	c.JSON(http.StatusOK, wf)
 }
 
@@ -2728,7 +2814,10 @@ func deleteProjectRFEWorkflow(c *gin.Context) {
 	id := c.Param("id")
 	// Delete CR
 	gvr := getRFEWorkflowResource()
-	_ = dynamicClient.Resource(gvr).Namespace(namespace).Delete(context.TODO(), id, v1.DeleteOptions{})
+	_, reqDyn := getK8sClientsForRequest(c)
+	if reqDyn != nil {
+		_ = reqDyn.Resource(gvr).Namespace(namespace).Delete(context.TODO(), id, v1.DeleteOptions{})
+	}
 	// No content-service delete; file on PVC remains for audit/history
 	c.JSON(http.StatusOK, gin.H{"message": "Workflow deleted successfully"})
 }
@@ -2746,7 +2835,8 @@ func pauseProjectRFEWorkflow(c *gin.Context) {
 	if b, jerr := json.MarshalIndent(wf, "", "  "); jerr == nil {
 		_ = writeProjectContentFile(c, project, "/rfe-workflows/"+id+".json", b)
 	}
-	_ = upsertProjectRFEWorkflowCR(wf)
+    _, reqDyn := getK8sClientsForRequest(c)
+    _ = upsertProjectRFEWorkflowCR(reqDyn, wf)
 	c.JSON(http.StatusOK, wf)
 }
 
@@ -2791,8 +2881,9 @@ func advanceProjectRFEWorkflowPhase(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Cannot advance from current phase"})
 		return
 	}
-	if nextPhase != "completed" {
-		if err := createAgentSessionsForPhaseProject(wf, nextPhase); err != nil {
+    if nextPhase != "completed" {
+        _, reqDyn := getK8sClientsForRequest(c)
+        if err := createAgentSessionsForPhaseProject(reqDyn, wf, nextPhase); err != nil {
 			log.Printf("⚠️ Failed to create agent sessions for phase %s (project=%s): %v", nextPhase, project, err)
 		}
 	}
@@ -2922,9 +3013,14 @@ func updateProjectRFEWorkflowArtifact(c *gin.Context) {
 func listProjectRFEWorkflowSessions(c *gin.Context) {
 	project := c.Param("projectName")
 	id := c.Param("id")
-	gvr := getAgenticSessionV1Alpha1Resource()
-	selector := fmt.Sprintf("rfe-workflow=%s,project=%s", id, project)
-	list, err := dynamicClient.Resource(gvr).Namespace(namespace).List(context.TODO(), v1.ListOptions{LabelSelector: selector})
+    gvr := getAgenticSessionV1Alpha1Resource()
+    selector := fmt.Sprintf("rfe-workflow=%s,project=%s", id, project)
+    _, reqDyn := getK8sClientsForRequest(c)
+    if reqDyn == nil {
+        c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing or invalid user token"})
+        return
+    }
+    list, err := reqDyn.Resource(gvr).Namespace(namespace).List(context.TODO(), v1.ListOptions{LabelSelector: selector})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list sessions", "details": err.Error()})
 		return
@@ -2964,8 +3060,13 @@ func addProjectRFEWorkflowSession(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "existingName is required for linking in this version"})
 		return
 	}
-	gvr := getAgenticSessionV1Alpha1Resource()
-	obj, err := dynamicClient.Resource(gvr).Namespace(namespace).Get(context.TODO(), req.ExistingName, v1.GetOptions{})
+    gvr := getAgenticSessionV1Alpha1Resource()
+    _, reqDyn := getK8sClientsForRequest(c)
+    if reqDyn == nil {
+        c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing or invalid user token"})
+        return
+    }
+    obj, err := reqDyn.Resource(gvr).Namespace(namespace).Get(context.TODO(), req.ExistingName, v1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Session not found"})
@@ -2986,7 +3087,7 @@ func addProjectRFEWorkflowSession(c *gin.Context) {
 		labels["rfe-phase"] = req.Phase
 	}
 	// Update the resource
-	updated, err := dynamicClient.Resource(gvr).Namespace(namespace).Update(context.TODO(), obj, v1.UpdateOptions{})
+    updated, err := reqDyn.Resource(gvr).Namespace(namespace).Update(context.TODO(), obj, v1.UpdateOptions{})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update session labels", "details": err.Error()})
 		return
@@ -3001,8 +3102,13 @@ func removeProjectRFEWorkflowSession(c *gin.Context) {
 	_ = project // currently unused but kept for parity/logging if needed
 	id := c.Param("id")
 	sessionName := c.Param("sessionName")
-	gvr := getAgenticSessionV1Alpha1Resource()
-	obj, err := dynamicClient.Resource(gvr).Namespace(namespace).Get(context.TODO(), sessionName, v1.GetOptions{})
+    gvr := getAgenticSessionV1Alpha1Resource()
+    _, reqDyn := getK8sClientsForRequest(c)
+    if reqDyn == nil {
+        c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing or invalid user token"})
+        return
+    }
+    obj, err := reqDyn.Resource(gvr).Namespace(namespace).Get(context.TODO(), sessionName, v1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Session not found"})
@@ -3017,7 +3123,7 @@ func removeProjectRFEWorkflowSession(c *gin.Context) {
 		delete(labels, "rfe-workflow")
 		delete(labels, "rfe-phase")
 	}
-	if _, err := dynamicClient.Resource(gvr).Namespace(namespace).Update(context.TODO(), obj, v1.UpdateOptions{}); err != nil {
+    if _, err := reqDyn.Resource(gvr).Namespace(namespace).Update(context.TODO(), obj, v1.UpdateOptions{}); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update session labels", "details": err.Error()})
 		return
 	}

@@ -27,7 +27,6 @@ import (
 
 var (
 	k8sClient      *kubernetes.Clientset
-	dynamicClient  dynamic.Interface
 	namespace      string
 	stateBaseDir   string
 	pvcBaseDir     string
@@ -597,18 +596,21 @@ func rfeWorkflowToCRObject(workflow *RFEWorkflow) map[string]interface{} {
 	}
 }
 
-func upsertProjectRFEWorkflowCR(workflow *RFEWorkflow) error {
+func upsertProjectRFEWorkflowCR(dyn dynamic.Interface, workflow *RFEWorkflow) error {
 	if workflow.Project == "" {
 		// Only manage CRD for project-scoped workflows
 		return nil
 	}
+	if dyn == nil {
+		return fmt.Errorf("no dynamic client provided")
+	}
 	gvr := getRFEWorkflowResource()
 	obj := &unstructured.Unstructured{Object: rfeWorkflowToCRObject(workflow)}
 	// Try create, if exists then update
-	_, err := dynamicClient.Resource(gvr).Namespace(namespace).Create(context.TODO(), obj, v1.CreateOptions{})
+	_, err := dyn.Resource(gvr).Namespace(namespace).Create(context.TODO(), obj, v1.CreateOptions{})
 	if err != nil {
 		if errors.IsAlreadyExists(err) {
-			_, uerr := dynamicClient.Resource(gvr).Namespace(namespace).Update(context.TODO(), obj, v1.UpdateOptions{})
+			_, uerr := dyn.Resource(gvr).Namespace(namespace).Update(context.TODO(), obj, v1.UpdateOptions{})
 			if uerr != nil {
 				return fmt.Errorf("failed to update RFEWorkflow CR: %v", uerr)
 			}
@@ -619,9 +621,12 @@ func upsertProjectRFEWorkflowCR(workflow *RFEWorkflow) error {
 	return nil
 }
 
-func loadProjectRFEWorkflowFromCR(project, id string) (*RFEWorkflow, error) {
+func loadProjectRFEWorkflowFromCRWithClient(dyn dynamic.Interface, project, id string) (*RFEWorkflow, error) {
 	gvr := getRFEWorkflowResource()
-	item, err := dynamicClient.Resource(gvr).Namespace(namespace).Get(context.TODO(), id, v1.GetOptions{})
+	if dyn == nil {
+		return nil, fmt.Errorf("no dynamic client provided")
+	}
+	item, err := dyn.Resource(gvr).Namespace(namespace).Get(context.TODO(), id, v1.GetOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -853,7 +858,7 @@ func deleteProjectRFEWorkflowFile(project, id string) error {
 }
 
 // Sync agent session statuses from Kubernetes AgenticSession resources
-func syncAgentSessionStatuses(workflow *RFEWorkflow) error {
+func syncAgentSessionStatuses(dyn dynamic.Interface, workflow *RFEWorkflow) error {
 	if workflow == nil || len(workflow.AgentSessions) == 0 {
 		return nil
 	}
@@ -866,7 +871,7 @@ func syncAgentSessionStatuses(workflow *RFEWorkflow) error {
 		sessionName := session.ID
 
 		// Get the AgenticSession resource from Kubernetes
-		item, err := dynamicClient.Resource(gvr).Namespace(namespace).Get(context.TODO(), sessionName, v1.GetOptions{})
+		item, err := dyn.Resource(gvr).Namespace(namespace).Get(context.TODO(), sessionName, v1.GetOptions{})
 		if err != nil {
 			if errors.IsNotFound(err) {
 				log.Printf("AgenticSession %s not found in Kubernetes, keeping status as %s", sessionName, session.Status)
@@ -1210,9 +1215,12 @@ func buildRFESessionSpecAndLabels(workflow *RFEWorkflow, phase, agentPersona str
 // Legacy non-project session creation removed
 
 // Project-scoped: Create AgenticSessions for all selected agents
-func createAgentSessionsForPhaseProject(workflow *RFEWorkflow, phase string) error {
+func createAgentSessionsForPhaseProject(dyn dynamic.Interface, workflow *RFEWorkflow, phase string) error {
 	if len(workflow.SelectedAgents) == 0 {
 		return fmt.Errorf("no agents selected for workflow %s", workflow.ID)
+	}
+	if dyn == nil {
+		return fmt.Errorf("no dynamic client provided")
 	}
 	var createdSessions []RFEAgentSession
 	for _, agentPersona := range workflow.SelectedAgents {
@@ -1231,7 +1239,7 @@ func createAgentSessionsForPhaseProject(workflow *RFEWorkflow, phase string) err
 		}
 		gvr := getAgenticSessionV1Alpha1Resource()
 		obj := &unstructured.Unstructured{Object: session}
-		if _, err := dynamicClient.Resource(gvr).Namespace(namespace).Create(context.TODO(), obj, v1.CreateOptions{}); err != nil {
+		if _, err := dyn.Resource(gvr).Namespace(namespace).Create(context.TODO(), obj, v1.CreateOptions{}); err != nil {
 			log.Printf("❌ Failed to create AgenticSession %s: %v", sessionName, err)
 			return fmt.Errorf("failed to create agent session %s: %v", sessionName, err)
 		}
