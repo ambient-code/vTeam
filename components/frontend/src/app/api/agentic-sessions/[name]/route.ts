@@ -1,11 +1,10 @@
 import { BACKEND_URL } from '@/lib/config';
 
-type RouteContext = {
-  params: Promise<{ name: string }>;
-};
-
 // GET /api/agentic-sessions/[name] - Get a specific agentic session
-export async function GET(request: Request, { params }: RouteContext) {
+export async function GET(
+  request: Request,
+  { params }: { params: Promise<{ name: string }> },
+) {
   try {
     const { name } = await params;
     const response = await fetch(`${BACKEND_URL}/agentic-sessions/${name}`);

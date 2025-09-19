@@ -1,11 +1,10 @@
 import { BACKEND_URL } from '@/lib/config';
 
-type RouteContext = {
-	params: Promise<{ name: string }>;
-};
-
 // POST /api/agentic-sessions/[name]/stop - Stop an agentic session
-export async function POST(request: Request, { params }: RouteContext) {
+export async function POST(
+  request: Request,
+  { params }: { params: Promise<{ name: string }> },
+) {
 	try {
 		const { name } = await params;
 

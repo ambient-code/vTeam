@@ -1,11 +1,10 @@
 import { BACKEND_URL } from '@/lib/config';
 
-type RouteContext = {
-	params: Promise<{ name: string }>;
-};
-
 // DELETE /api/agentic-sessions/[name] - Delete an agentic session
-export async function DELETE(request: Request, { params }: RouteContext) {
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ name: string }> },
+) {
 	try {
 		const { name } = await params;
 

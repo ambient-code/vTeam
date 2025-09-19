@@ -25,8 +25,6 @@ import { Plus, RefreshCw, Trash2 } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { getApiUrl } from "@/lib/config";
 
-// Project phase display is deprecated in UI
-
 export default function ProjectsPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
