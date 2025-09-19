@@ -44,7 +44,11 @@ rules:
 - apiGroups: ["apps"]
   resources: ["deployments"]
   verbs: ["create"]
-# RoleBindings (create group access bindings)
+# ServiceAccounts (create runner ServiceAccounts in project namespaces)
+- apiGroups: [""]
+  resources: ["serviceaccounts"]
+  verbs: ["get", "create"]
+# RoleBindings (create group access bindings and runner access bindings)
 - apiGroups: ["rbac.authorization.k8s.io"]
   resources: ["rolebindings"]
   verbs: ["get", "create"]

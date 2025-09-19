@@ -294,6 +294,11 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 		}
 	}
 
+	// Ensure ServiceAccount exists in the target namespace
+	if err := ensureServiceAccount(sessionNamespace); err != nil {
+		log.Printf("Warning: Failed to ensure ServiceAccount in namespace %s: %v", sessionNamespace, err)
+	}
+
 	// Create the Job
 	job := &batchv1.Job{
 		ObjectMeta: v1.ObjectMeta{
@@ -343,7 +348,8 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 							},
 						},
 					},
-					RestartPolicy: corev1.RestartPolicyNever,
+					RestartPolicy:      corev1.RestartPolicyNever,
+					ServiceAccountName: "claude-runner",
 
 					// ⚠️ Let OpenShift SCC choose UID/GID dynamically (restricted-v2 compatible)
 					// SecurityContext omitted to allow SCC assignment
@@ -398,7 +404,7 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 									{Name: "LLM_TEMPERATURE", Value: fmt.Sprintf("%.2f", temperature)},
 									{Name: "LLM_MAX_TOKENS", Value: fmt.Sprintf("%d", maxTokens)},
 									{Name: "TIMEOUT", Value: fmt.Sprintf("%d", timeout)},
-									{Name: "BACKEND_API_URL", Value: getBackendAPIURL()},
+									{Name: "BACKEND_API_URL", Value: fmt.Sprintf("http://backend-service.%s.svc.cluster.local:8080/api", backendNamespace)},
 
 									// 🔑 Git configuration environment variables
 									{Name: "GIT_USER_NAME", Value: gitUserName},
@@ -1010,18 +1016,60 @@ func updateProjectSettingsStatus(namespace, name string, statusUpdate map[string
 	return nil
 }
 
-// getBackendAPIURL returns the fully qualified backend API URL for cross-namespace communication
-func getBackendAPIURL() string {
-	// Check if a custom backend API URL is provided
-	if customURL := os.Getenv("BACKEND_API_URL"); customURL != "" {
-		// If it already contains a fully qualified domain, use it as-is
-		if strings.Contains(customURL, ".svc.cluster.local") || strings.Contains(customURL, "://") {
-			return customURL
-		}
+
+// ensureServiceAccount creates a ServiceAccount and RoleBinding for the runner in the target namespace
+func ensureServiceAccount(targetNamespace string) error {
+	// Create ServiceAccount if it doesn't exist
+	serviceAccount := &corev1.ServiceAccount{
+		ObjectMeta: v1.ObjectMeta{
+			Name:      "claude-runner",
+			Namespace: targetNamespace,
+		},
 	}
 
-	// Construct fully qualified service name for cross-namespace communication
-	return fmt.Sprintf("http://backend-service.%s.svc.cluster.local:8080/api", backendNamespace)
+	_, err := k8sClient.CoreV1().ServiceAccounts(targetNamespace).Get(context.TODO(), "claude-runner", v1.GetOptions{})
+	if errors.IsNotFound(err) {
+		_, err = k8sClient.CoreV1().ServiceAccounts(targetNamespace).Create(context.TODO(), serviceAccount, v1.CreateOptions{})
+		if err != nil {
+			return fmt.Errorf("failed to create ServiceAccount: %v", err)
+		}
+		log.Printf("Created ServiceAccount claude-runner in namespace %s", targetNamespace)
+	} else if err != nil {
+		return fmt.Errorf("failed to get ServiceAccount: %v", err)
+	}
+
+	// Create RoleBinding to give the ServiceAccount access to the project
+	roleBinding := &rbacv1.RoleBinding{
+		ObjectMeta: v1.ObjectMeta{
+			Name:      "claude-runner-project-access",
+			Namespace: targetNamespace,
+		},
+		Subjects: []rbacv1.Subject{
+			{
+				Kind:      "ServiceAccount",
+				Name:      "claude-runner",
+				Namespace: targetNamespace,
+			},
+		},
+		RoleRef: rbacv1.RoleRef{
+			APIGroup: "rbac.authorization.k8s.io",
+			Kind:     "ClusterRole",
+			Name:     "edit", // Standard Kubernetes edit role for project access
+		},
+	}
+
+	_, err = k8sClient.RbacV1().RoleBindings(targetNamespace).Get(context.TODO(), "claude-runner-project-access", v1.GetOptions{})
+	if errors.IsNotFound(err) {
+		_, err = k8sClient.RbacV1().RoleBindings(targetNamespace).Create(context.TODO(), roleBinding, v1.CreateOptions{})
+		if err != nil {
+			return fmt.Errorf("failed to create RoleBinding: %v", err)
+		}
+		log.Printf("Created RoleBinding claude-runner-project-access in namespace %s", targetNamespace)
+	} else if err != nil {
+		return fmt.Errorf("failed to get RoleBinding: %v", err)
+	}
+
+	return nil
 }
 
 var (

@@ -179,7 +179,7 @@ Return only the display name, nothing else."""
     async def _update_display_name(self, display_name: str):
         """Update the display name via backend API"""
         try:
-            url = f"{self.backend_api_url}/agentic-sessions/{self.session_name}/displayname"
+            url = f"{self.backend_api_url}/projects/{self.session_namespace}/agentic-sessions/{self.session_name}/displayname"
 
             payload = {"displayName": display_name}
 
