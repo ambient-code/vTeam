@@ -2692,7 +2692,7 @@ func listProjectRFEWorkflows(c *gin.Context) {
 	gvr := getRFEWorkflowResource()
 	_, reqDyn := getK8sClientsForRequest(c)
 	if reqDyn != nil {
-		if list, err := reqDyn.Resource(gvr).Namespace(namespace).List(context.TODO(), v1.ListOptions{LabelSelector: fmt.Sprintf("project=%s", project)}); err == nil {
+		if list, err := reqDyn.Resource(gvr).Namespace(project).List(context.TODO(), v1.ListOptions{LabelSelector: fmt.Sprintf("project=%s", project)}); err == nil {
 			for _, item := range list.Items {
 				wf := rfeFromUnstructured(&item)
 				if wf == nil {
@@ -2785,7 +2785,7 @@ func getProjectRFEWorkflow(c *gin.Context) {
 	var wf *RFEWorkflow
 	var err error
 	if reqDyn != nil {
-		if item, gerr := reqDyn.Resource(gvr).Namespace(namespace).Get(context.TODO(), id, v1.GetOptions{}); gerr == nil {
+		if item, gerr := reqDyn.Resource(gvr).Namespace(project).Get(context.TODO(), id, v1.GetOptions{}); gerr == nil {
 			wf = rfeFromUnstructured(item)
 			err = nil
 		} else {
@@ -2816,7 +2816,7 @@ func deleteProjectRFEWorkflow(c *gin.Context) {
 	gvr := getRFEWorkflowResource()
 	_, reqDyn := getK8sClientsForRequest(c)
 	if reqDyn != nil {
-		_ = reqDyn.Resource(gvr).Namespace(namespace).Delete(context.TODO(), id, v1.DeleteOptions{})
+		_ = reqDyn.Resource(gvr).Namespace(c.Param("projectName")).Delete(context.TODO(), id, v1.DeleteOptions{})
 	}
 	// No content-service delete; file on PVC remains for audit/history
 	c.JSON(http.StatusOK, gin.H{"message": "Workflow deleted successfully"})
@@ -3020,7 +3020,7 @@ func listProjectRFEWorkflowSessions(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing or invalid user token"})
 		return
 	}
-	list, err := reqDyn.Resource(gvr).Namespace(namespace).List(context.TODO(), v1.ListOptions{LabelSelector: selector})
+	list, err := reqDyn.Resource(gvr).Namespace(project).List(context.TODO(), v1.ListOptions{LabelSelector: selector})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list sessions", "details": err.Error()})
 		return
@@ -3066,7 +3066,7 @@ func addProjectRFEWorkflowSession(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing or invalid user token"})
 		return
 	}
-	obj, err := reqDyn.Resource(gvr).Namespace(namespace).Get(context.TODO(), req.ExistingName, v1.GetOptions{})
+	obj, err := reqDyn.Resource(gvr).Namespace(project).Get(context.TODO(), req.ExistingName, v1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Session not found"})
@@ -3087,7 +3087,7 @@ func addProjectRFEWorkflowSession(c *gin.Context) {
 		labels["rfe-phase"] = req.Phase
 	}
 	// Update the resource
-	updated, err := reqDyn.Resource(gvr).Namespace(namespace).Update(context.TODO(), obj, v1.UpdateOptions{})
+	updated, err := reqDyn.Resource(gvr).Namespace(project).Update(context.TODO(), obj, v1.UpdateOptions{})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update session labels", "details": err.Error()})
 		return
@@ -3108,7 +3108,7 @@ func removeProjectRFEWorkflowSession(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing or invalid user token"})
 		return
 	}
-	obj, err := reqDyn.Resource(gvr).Namespace(namespace).Get(context.TODO(), sessionName, v1.GetOptions{})
+	obj, err := reqDyn.Resource(gvr).Namespace(project).Get(context.TODO(), sessionName, v1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Session not found"})
@@ -3123,7 +3123,7 @@ func removeProjectRFEWorkflowSession(c *gin.Context) {
 		delete(labels, "rfe-workflow")
 		delete(labels, "rfe-phase")
 	}
-	if _, err := reqDyn.Resource(gvr).Namespace(namespace).Update(context.TODO(), obj, v1.UpdateOptions{}); err != nil {
+	if _, err := reqDyn.Resource(gvr).Namespace(project).Update(context.TODO(), obj, v1.UpdateOptions{}); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update session labels", "details": err.Error()})
 		return
 	}

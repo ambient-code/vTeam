@@ -588,7 +588,7 @@ func rfeWorkflowToCRObject(workflow *RFEWorkflow) map[string]interface{} {
 		"kind":       "RFEWorkflow",
 		"metadata": map[string]interface{}{
 			"name":      workflow.ID,
-			"namespace": namespace,
+			"namespace": workflow.Project,
 			"labels":    labels,
 		},
 		"spec":   spec,
@@ -607,10 +607,10 @@ func upsertProjectRFEWorkflowCR(dyn dynamic.Interface, workflow *RFEWorkflow) er
 	gvr := getRFEWorkflowResource()
 	obj := &unstructured.Unstructured{Object: rfeWorkflowToCRObject(workflow)}
 	// Try create, if exists then update
-	_, err := dyn.Resource(gvr).Namespace(namespace).Create(context.TODO(), obj, v1.CreateOptions{})
+	_, err := dyn.Resource(gvr).Namespace(workflow.Project).Create(context.TODO(), obj, v1.CreateOptions{})
 	if err != nil {
 		if errors.IsAlreadyExists(err) {
-			_, uerr := dyn.Resource(gvr).Namespace(namespace).Update(context.TODO(), obj, v1.UpdateOptions{})
+			_, uerr := dyn.Resource(gvr).Namespace(workflow.Project).Update(context.TODO(), obj, v1.UpdateOptions{})
 			if uerr != nil {
 				return fmt.Errorf("failed to update RFEWorkflow CR: %v", uerr)
 			}
@@ -626,7 +626,7 @@ func loadProjectRFEWorkflowFromCRWithClient(dyn dynamic.Interface, project, id s
 	if dyn == nil {
 		return nil, fmt.Errorf("no dynamic client provided")
 	}
-	item, err := dyn.Resource(gvr).Namespace(namespace).Get(context.TODO(), id, v1.GetOptions{})
+	item, err := dyn.Resource(gvr).Namespace(project).Get(context.TODO(), id, v1.GetOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -871,7 +871,7 @@ func syncAgentSessionStatuses(dyn dynamic.Interface, workflow *RFEWorkflow) erro
 		sessionName := session.ID
 
 		// Get the AgenticSession resource from Kubernetes
-		item, err := dyn.Resource(gvr).Namespace(namespace).Get(context.TODO(), sessionName, v1.GetOptions{})
+		item, err := dyn.Resource(gvr).Namespace(workflow.Project).Get(context.TODO(), sessionName, v1.GetOptions{})
 		if err != nil {
 			if errors.IsNotFound(err) {
 				log.Printf("AgenticSession %s not found in Kubernetes, keeping status as %s", sessionName, session.Status)
@@ -949,9 +949,7 @@ func getProjectRFEAgentsDir(project, workflowID string) string {
 
 // Legacy non-project UI edits dir removed
 
-func getProjectRFEUIEditsDir(project, workflowID string) string {
-	return filepath.Join(getProjectRFEWorkspaceDir(project, workflowID), "ui-edits")
-}
+// Deprecated: UI edits dir no longer used
 
 // Create workspace directory structure for RFE
 // Legacy non-project workspace creation removed
@@ -966,7 +964,6 @@ func createProjectRFEWorkspace(project, workflowID string) error {
 		filepath.Join(getProjectRFEAgentsDir(project, workflowID), "specify"),
 		filepath.Join(getProjectRFEAgentsDir(project, workflowID), "plan"),
 		filepath.Join(getProjectRFEAgentsDir(project, workflowID), "tasks"),
-		getProjectRFEUIEditsDir(project, workflowID),
 		filepath.Join(workspaceDir, "sessions"),
 	}
 	for _, dir := range dirs {
@@ -1227,11 +1224,11 @@ func createAgentSessionsForPhaseProject(dyn dynamic.Interface, workflow *RFEWork
 		sessionName := fmt.Sprintf("%s-%s-%s", workflow.ID, phase, strings.ToLower(strings.ReplaceAll(agentPersona, "_", "-")))
 		sessionSpec, labels := buildRFESessionSpecAndLabels(workflow, phase, agentPersona, &workflow.Project)
 		session := map[string]interface{}{
-			"apiVersion": "vteam.ambient-code/v1",
+			"apiVersion": "vteam.ambient-code/v1alpha1",
 			"kind":       "AgenticSession",
 			"metadata": map[string]interface{}{
 				"name":      sessionName,
-				"namespace": namespace,
+				"namespace": workflow.Project,
 				"labels":    labels,
 			},
 			"spec":   sessionSpec,
@@ -1239,7 +1236,7 @@ func createAgentSessionsForPhaseProject(dyn dynamic.Interface, workflow *RFEWork
 		}
 		gvr := getAgenticSessionV1Alpha1Resource()
 		obj := &unstructured.Unstructured{Object: session}
-		if _, err := dyn.Resource(gvr).Namespace(namespace).Create(context.TODO(), obj, v1.CreateOptions{}); err != nil {
+		if _, err := dyn.Resource(gvr).Namespace(workflow.Project).Create(context.TODO(), obj, v1.CreateOptions{}); err != nil {
 			log.Printf("❌ Failed to create AgenticSession %s: %v", sessionName, err)
 			return fmt.Errorf("failed to create agent session %s: %v", sessionName, err)
 		}
