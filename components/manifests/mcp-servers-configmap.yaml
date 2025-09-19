@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mcp-servers-config
+  labels:
+    app: ambient-code-runner
+    component: configuration
+data:
+  .mcp.json: |
+    {
+      "mcpServers": {
+        "playwright": {
+          "command": "npx",
+          "args": [
+            "@playwright/mcp",
+            "--headless",
+            "--browser",
+            "chromium",
+            "--no-sandbox"
+          ]
+        }
+      }
+    }

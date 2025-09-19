@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import asyncio
+import json
 import logging
 import os
 import requests
@@ -75,13 +76,64 @@ class ClaudeRunner:
         logger.info(f"Workflow phase: {self.workflow_phase}")
         logger.info(f"Parent RFE: {self.parent_rfe}")
         logger.info(f"Website URL: {self.website_url}")
-        logger.info("Using Claude Code CLI with Playwright MCP and spek-kit integration")
+        logger.info("Using Claude Code CLI with MCP and spek-kit integration")
+
+    @staticmethod
+    def _load_mcp_servers_config() -> Dict[str, Any]:
+        """Load MCP servers configuration from /app/.mcp.json with fallback to hardcoded default"""
+        
+        # Default hardcoded configuration (existing setup)
+        default_config = {
+            "playwright": {
+                "command": "npx",
+                "args": [
+                    "@playwright/mcp",
+                    "--headless",
+                    "--browser",
+                    "chromium",
+                    "--no-sandbox",
+                ],
+            }
+        }
+        
+        config_file_path = "/app/.mcp.json"
+        
+        try:
+            # Check if config file exists
+            if not os.path.exists(config_file_path):
+                logger.info(f"MCP config file {config_file_path} not found, using default configuration")
+                return default_config
+            
+            # Try to load and parse the JSON file
+            with open(config_file_path, 'r') as f:
+                config_data = json.load(f)
+            
+            # Check if the loaded data has the required structure
+            if not isinstance(config_data, dict) or "mcpServers" not in config_data:
+                logger.warning(f"Invalid MCP config structure in {config_file_path}, missing 'mcpServers' key. Using default configuration")
+                return default_config
+            
+            mcp_servers = config_data["mcpServers"]
+            if not isinstance(mcp_servers, dict):
+                logger.warning(f"Invalid 'mcpServers' value in {config_file_path}, expected dict. Using default configuration")
+                return default_config
+            
+            logger.info(f"Successfully loaded MCP servers configuration from {config_file_path}")
+            logger.info(f"Loaded MCP servers: {list(mcp_servers.keys())}")
+            return mcp_servers
+            
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse JSON from {config_file_path}: {e}. Using default configuration")
+            return default_config
+        except Exception as e:
+            logger.error(f"Error loading MCP config from {config_file_path}: {e}. Using default configuration")
+            return default_config
 
     async def run_agentic_session(self):
         """Main method to run the agentic session"""
         try:
             logger.info(
-                "Starting agentic session with Claude Code + Playwright MCP + spek-kit..."
+                "Starting agentic session with Claude Code + MCP + spek-kit..."
             )
 
             # Verify browser setup before starting
@@ -257,26 +309,15 @@ Return only the display name, nothing else."""
         try:
             logger.info("Initializing Claude Code Python SDK with MCP server...")
 
-            # Configure MCP servers for OpenShift compatibility
-            mcp_servers = {
-                "playwright": {
-                    "command": "npx",
-                    "args": [
-                        "@playwright/mcp",
-                        "--headless",
-                        "--browser",
-                        "chromium",
-                        "--no-sandbox",
-                    ],
-                }
-            }
+            # Load MCP servers configuration from file or use default
+            mcp_servers = ClaudeRunner._load_mcp_servers_config()
 
             # Configure SDK with direct MCP server configuration
             options = ClaudeCodeOptions(
-                system_prompt="You are an agentic assistant with browser automation capabilities via Playwright MCP tools.",
+                system_prompt="You are an agentic assistant with browser automation capabilities via MCP tools.",
                 max_turns=25,
                 permission_mode="acceptEdits",
-                allowed_tools=["mcp__playwright"],
+                allowed_tools=["mcp__playwright", "mcp__atlassian-mcp"],
                 mcp_servers=mcp_servers,
                 cwd="/app",
             )
@@ -806,7 +847,21 @@ Provide your enhanced version as a complete, production-ready document that a de
 
 async def main():
     """Main entry point"""
-    logger.info("Claude Agentic Runner with Claude Code + Playwright MCP starting...")
+    logger.info("Claude Agentic Runner with Claude Code starting...")
+
+    # Load and display MCP configuration early for verification (before API key check)
+    logger.info("Loading MCP servers configuration for verification...")
+    mcp_config = ClaudeRunner._load_mcp_servers_config()
+    logger.info(f"MCP Configuration loaded with {len(mcp_config)} servers: {list(mcp_config.keys())}")
+    
+    # Log detailed configuration for each server
+    for server_name, config in mcp_config.items():
+        if 'command' in config:
+            logger.info(f"  {server_name}: command={config['command']} args={config.get('args', [])}")
+        elif 'url' in config:
+            logger.info(f"  {server_name}: url={config['url']}")
+        else:
+            logger.info(f"  {server_name}: {config}")
 
     # Validate required environment variables
     required_vars = [

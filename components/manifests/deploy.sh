@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # OpenShift Deployment Script for vTeam Ambient Agentic Runner
-# Usage: ./deploy.sh
+# Usage: ./deploy.sh [--atlassian-mcp-url=http://atlassian-mcp:8080/v1/sse]
 # Or with environment variables: NAMESPACE=my-namespace ./deploy.sh
 # Note: This script deploys pre-built images. Build and push images first.
 
@@ -25,6 +25,112 @@ DEFAULT_BACKEND_IMAGE="${DEFAULT_BACKEND_IMAGE:-quay.io/ambient_code/vteam_backe
 DEFAULT_FRONTEND_IMAGE="${DEFAULT_FRONTEND_IMAGE:-quay.io/ambient_code/vteam_frontend:latest}"
 DEFAULT_OPERATOR_IMAGE="${DEFAULT_OPERATOR_IMAGE:-quay.io/ambient_code/vteam_operator:latest}"
 DEFAULT_RUNNER_IMAGE="${DEFAULT_RUNNER_IMAGE:-quay.io/ambient_code/vteam_claude_runner:latest}"
+
+# Parse command line arguments
+ATLASSIAN_MCP_URL=""
+for arg in "$@"; do
+    case $arg in
+        --atlassian-mcp-url=*)
+            ATLASSIAN_MCP_URL="${arg#*=}"
+            shift
+            ;;
+        uninstall)
+            # Keep uninstall as a positional argument
+            ;;
+        *)
+            # Unknown option
+            echo -e "${RED}❌ Unknown option: $arg${NC}"
+            echo "Usage: $0 [--atlassian-mcp-url=http://atlassian-mcp:8080/v1/sse] [uninstall]"
+            exit 1
+            ;;
+    esac
+done
+
+# Function to validate Atlassian MCP URL
+validate_atlassian_mcp_url() {
+    local url="$1"
+    
+    if [[ -z "$url" ]]; then
+        return 0  # Empty URL is valid (optional parameter)
+    fi
+    
+    # Basic URL validation - must start with http or https
+    if [[ ! "$url" =~ ^https?:// ]]; then
+        echo -e "${RED}❌ Invalid Atlassian MCP URL format: $url${NC}"
+        echo -e "${YELLOW}URL must start with http:// or https://${NC}"
+        return 1
+    fi
+    
+    # Check if URL contains a valid domain or host
+    if [[ ! "$url" =~ ^https?://[a-zA-Z0-9.-]+(:[0-9]+)?(/.*)?$ ]]; then
+        echo -e "${RED}❌ Invalid Atlassian MCP URL format: $url${NC}"
+        echo -e "${YELLOW}URL must be a valid MCP server endpoint${NC}"
+        return 1
+    fi
+    
+    echo -e "${GREEN}✅ Atlassian MCP URL validation passed: $url${NC}"
+    return 0
+}
+
+# Validate Atlassian MCP URL if provided
+if [[ -n "$ATLASSIAN_MCP_URL" ]]; then
+    if ! validate_atlassian_mcp_url "$ATLASSIAN_MCP_URL"; then
+        exit 1
+    fi
+fi
+
+# Function to create MCP servers ConfigMap
+create_mcp_servers_configmap() {
+    local namespace="$1"
+    local atlassian_mcp_url="$2"
+    
+    echo -e "${BLUE}Creating MCP servers ConfigMap...${NC}"
+    
+    # Base configuration with playwright
+    local mcp_config='{
+  "mcpServers": {
+    "playwright": {
+      "command": "npx",
+      "args": [
+        "@playwright/mcp",
+        "--headless",
+        "--browser",
+        "chromium",
+        "--no-sandbox"
+      ]
+    }'
+    
+    # Add atlassian-mcp if MCP URL is provided
+    if [[ -n "$atlassian_mcp_url" ]]; then
+        echo -e "${YELLOW}Adding Atlassian MCP server for URL: ${atlassian_mcp_url}${NC}"
+        mcp_config="$mcp_config"',
+    "atlassian-mcp": {
+      "type": "sse",
+      "url": "'"$atlassian_mcp_url"'"
+    }'
+    fi
+    
+    # Close the JSON structure
+    mcp_config="$mcp_config"'
+  }
+}'
+    
+    # Create or update the ConfigMap
+    if oc get configmap mcp-servers-config -n "$namespace" >/dev/null 2>&1; then
+        echo -e "${YELLOW}Updating existing MCP servers ConfigMap...${NC}"
+        oc delete configmap mcp-servers-config -n "$namespace"
+    fi
+    
+    oc create configmap mcp-servers-config \
+        --from-literal=".mcp.json=$mcp_config" \
+        -n "$namespace"
+    
+    echo -e "${GREEN}✅ MCP servers ConfigMap created successfully${NC}"
+    
+    if [[ -n "$atlassian_mcp_url" ]]; then
+        echo -e "${YELLOW}Note: Ensure the atlassian-mcp service is deployed and accessible at ${atlassian_mcp_url}${NC}"
+    fi
+}
 
 # Handle uninstall command early
 if [ "${1:-}" = "uninstall" ]; then
@@ -72,6 +178,9 @@ echo -e "Backend Image: ${GREEN}${DEFAULT_BACKEND_IMAGE}${NC}"
 echo -e "Frontend Image: ${GREEN}${DEFAULT_FRONTEND_IMAGE}${NC}"
 echo -e "Operator Image: ${GREEN}${DEFAULT_OPERATOR_IMAGE}${NC}"
 echo -e "Runner Image: ${GREEN}${DEFAULT_RUNNER_IMAGE}${NC}"
+if [[ -n "$ATLASSIAN_MCP_URL" ]]; then
+    echo -e "Atlassian MCP URL: ${GREEN}${ATLASSIAN_MCP_URL}${NC} (Atlassian MCP enabled)"
+fi
 echo ""
 
 # Check prerequisites
@@ -168,6 +277,9 @@ kustomize edit set image quay.io/ambient_code/vteam_claude_runner:latest=${DEFAU
 echo -e "${BLUE}Building and applying manifests...${NC}"
 kustomize build . | oc apply -f -
 
+# Create or update MCP servers ConfigMap with optional Atlassian MCP support
+create_mcp_servers_configmap "$NAMESPACE" "$ATLASSIAN_MCP_URL"
+
 # Check if namespace exists and is active
 echo -e "${YELLOW}Checking namespace status...${NC}"
 if ! oc get namespace ${NAMESPACE} >/dev/null 2>&1; then
@@ -246,6 +358,11 @@ echo -e "   ${BLUE}oc logs -f deployment/backend-api -n ${NAMESPACE}${NC}"
 echo -e "   ${BLUE}oc logs -f deployment/agentic-operator -n ${NAMESPACE}${NC}"
 echo -e "4. Monitor RFE workflows:"
 echo -e "   ${BLUE}oc get agenticsessions -n ${NAMESPACE}${NC}"
+if [[ -n "$ATLASSIAN_MCP_URL" ]]; then
+echo -e "5. Atlassian MCP server:"
+echo -e "   ${YELLOW}Note: Atlassian MCP is configured but requires a separate deployment${NC}"
+echo -e "   ${YELLOW}Ensure atlassian-mcp service is available at ${ATLASSIAN_MCP_URL}${NC}"
+fi
 echo ""
 
 # Restore kustomization if we modified it

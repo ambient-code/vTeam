@@ -281,7 +281,7 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 					// ⚠️ Let OpenShift SCC choose UID/GID dynamically (restricted-v2 compatible)
 					// SecurityContext omitted to allow SCC assignment
 
-					// 🔧 Shared memory volume for browser and workspace storage for RFE workflows
+					// 🔧 Shared memory volume for browser, workspace storage for RFE workflows, and MCP servers config
 					Volumes: func() []corev1.Volume {
 						volumes := []corev1.Volume{
 							{
@@ -290,6 +290,22 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 									EmptyDir: &corev1.EmptyDirVolumeSource{
 										Medium:    corev1.StorageMediumMemory,
 										SizeLimit: resource.NewQuantity(256*1024*1024, resource.BinarySI),
+									},
+								},
+							},
+							{
+								Name: "mcp-servers-config",
+								VolumeSource: corev1.VolumeSource{
+									ConfigMap: &corev1.ConfigMapVolumeSource{
+										LocalObjectReference: corev1.LocalObjectReference{
+											Name: "mcp-servers-config",
+										},
+										Items: []corev1.KeyToPath{
+											{
+												Key:  ".mcp.json",
+												Path: ".mcp.json",
+											},
+										},
 									},
 								},
 							},
@@ -324,10 +340,11 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 								},
 							},
 
-							// 📦 Mount shared memory volume and workspace for RFE workflows
+							// 📦 Mount shared memory volume, workspace for RFE workflows, and MCP servers config
 							VolumeMounts: func() []corev1.VolumeMount {
 								mounts := []corev1.VolumeMount{
 									{Name: "dshm", MountPath: "/dev/shm"},
+									{Name: "mcp-servers-config", MountPath: "/app/.mcp.json", SubPath: ".mcp.json"},
 								}
 
 								// Add workspace mount for RFE workflows if SHARED_WORKSPACE env var is set

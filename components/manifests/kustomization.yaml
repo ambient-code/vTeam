@@ -17,6 +17,7 @@ resources:
 - rbac.yaml
 - secrets.yaml
 - git-configmap.yaml
+- mcp-servers-configmap.yaml
 - backend-deployment.yaml
 - frontend-deployment.yaml
 - operator-deployment.yaml
