@@ -2759,18 +2759,18 @@ func createProjectRFEWorkflow(c *gin.Context) {
 		PhaseResults:     make(map[string]PhaseResult),
 	}
 	// Persist workflow JSON to project PVC via content service
-    if b, jerr := json.MarshalIndent(workflow, "", "  "); jerr == nil {
+	if b, jerr := json.MarshalIndent(workflow, "", "  "); jerr == nil {
 		if werr := writeProjectContentFile(c, project, "/rfe-workflows/"+workflow.ID+".json", b); werr != nil {
 			log.Printf("⚠️ Failed to write workflow JSON to content service: %v", werr)
 		}
 	} else {
 		log.Printf("⚠️ Failed to marshal workflow for content write: %v", jerr)
 	}
-    _, reqDyn := getK8sClientsForRequest(c)
-    if err := upsertProjectRFEWorkflowCR(reqDyn, workflow); err != nil {
+	_, reqDyn := getK8sClientsForRequest(c)
+	if err := upsertProjectRFEWorkflowCR(reqDyn, workflow); err != nil {
 		log.Printf("⚠️ Failed to upsert RFEWorkflow CR: %v", err)
 	}
-    if err := createAgentSessionsForPhaseProject(reqDyn, workflow, "specify"); err != nil {
+	if err := createAgentSessionsForPhaseProject(reqDyn, workflow, "specify"); err != nil {
 		log.Printf("⚠️ Failed to create project agent sessions for specify: %v", err)
 	}
 	c.JSON(http.StatusCreated, workflow)
@@ -2835,8 +2835,8 @@ func pauseProjectRFEWorkflow(c *gin.Context) {
 	if b, jerr := json.MarshalIndent(wf, "", "  "); jerr == nil {
 		_ = writeProjectContentFile(c, project, "/rfe-workflows/"+id+".json", b)
 	}
-    _, reqDyn := getK8sClientsForRequest(c)
-    _ = upsertProjectRFEWorkflowCR(reqDyn, wf)
+	_, reqDyn := getK8sClientsForRequest(c)
+	_ = upsertProjectRFEWorkflowCR(reqDyn, wf)
 	c.JSON(http.StatusOK, wf)
 }
 
@@ -2881,9 +2881,9 @@ func advanceProjectRFEWorkflowPhase(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Cannot advance from current phase"})
 		return
 	}
-    if nextPhase != "completed" {
-        _, reqDyn := getK8sClientsForRequest(c)
-        if err := createAgentSessionsForPhaseProject(reqDyn, wf, nextPhase); err != nil {
+	if nextPhase != "completed" {
+		_, reqDyn := getK8sClientsForRequest(c)
+		if err := createAgentSessionsForPhaseProject(reqDyn, wf, nextPhase); err != nil {
 			log.Printf("⚠️ Failed to create agent sessions for phase %s (project=%s): %v", nextPhase, project, err)
 		}
 	}
@@ -3013,14 +3013,14 @@ func updateProjectRFEWorkflowArtifact(c *gin.Context) {
 func listProjectRFEWorkflowSessions(c *gin.Context) {
 	project := c.Param("projectName")
 	id := c.Param("id")
-    gvr := getAgenticSessionV1Alpha1Resource()
-    selector := fmt.Sprintf("rfe-workflow=%s,project=%s", id, project)
-    _, reqDyn := getK8sClientsForRequest(c)
-    if reqDyn == nil {
-        c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing or invalid user token"})
-        return
-    }
-    list, err := reqDyn.Resource(gvr).Namespace(namespace).List(context.TODO(), v1.ListOptions{LabelSelector: selector})
+	gvr := getAgenticSessionV1Alpha1Resource()
+	selector := fmt.Sprintf("rfe-workflow=%s,project=%s", id, project)
+	_, reqDyn := getK8sClientsForRequest(c)
+	if reqDyn == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing or invalid user token"})
+		return
+	}
+	list, err := reqDyn.Resource(gvr).Namespace(namespace).List(context.TODO(), v1.ListOptions{LabelSelector: selector})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list sessions", "details": err.Error()})
 		return
@@ -3060,13 +3060,13 @@ func addProjectRFEWorkflowSession(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "existingName is required for linking in this version"})
 		return
 	}
-    gvr := getAgenticSessionV1Alpha1Resource()
-    _, reqDyn := getK8sClientsForRequest(c)
-    if reqDyn == nil {
-        c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing or invalid user token"})
-        return
-    }
-    obj, err := reqDyn.Resource(gvr).Namespace(namespace).Get(context.TODO(), req.ExistingName, v1.GetOptions{})
+	gvr := getAgenticSessionV1Alpha1Resource()
+	_, reqDyn := getK8sClientsForRequest(c)
+	if reqDyn == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing or invalid user token"})
+		return
+	}
+	obj, err := reqDyn.Resource(gvr).Namespace(namespace).Get(context.TODO(), req.ExistingName, v1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Session not found"})
@@ -3087,7 +3087,7 @@ func addProjectRFEWorkflowSession(c *gin.Context) {
 		labels["rfe-phase"] = req.Phase
 	}
 	// Update the resource
-    updated, err := reqDyn.Resource(gvr).Namespace(namespace).Update(context.TODO(), obj, v1.UpdateOptions{})
+	updated, err := reqDyn.Resource(gvr).Namespace(namespace).Update(context.TODO(), obj, v1.UpdateOptions{})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update session labels", "details": err.Error()})
 		return
@@ -3102,13 +3102,13 @@ func removeProjectRFEWorkflowSession(c *gin.Context) {
 	_ = project // currently unused but kept for parity/logging if needed
 	id := c.Param("id")
 	sessionName := c.Param("sessionName")
-    gvr := getAgenticSessionV1Alpha1Resource()
-    _, reqDyn := getK8sClientsForRequest(c)
-    if reqDyn == nil {
-        c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing or invalid user token"})
-        return
-    }
-    obj, err := reqDyn.Resource(gvr).Namespace(namespace).Get(context.TODO(), sessionName, v1.GetOptions{})
+	gvr := getAgenticSessionV1Alpha1Resource()
+	_, reqDyn := getK8sClientsForRequest(c)
+	if reqDyn == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing or invalid user token"})
+		return
+	}
+	obj, err := reqDyn.Resource(gvr).Namespace(namespace).Get(context.TODO(), sessionName, v1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Session not found"})
@@ -3123,7 +3123,7 @@ func removeProjectRFEWorkflowSession(c *gin.Context) {
 		delete(labels, "rfe-workflow")
 		delete(labels, "rfe-phase")
 	}
-    if _, err := reqDyn.Resource(gvr).Namespace(namespace).Update(context.TODO(), obj, v1.UpdateOptions{}); err != nil {
+	if _, err := reqDyn.Resource(gvr).Namespace(namespace).Update(context.TODO(), obj, v1.UpdateOptions{}); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update session labels", "details": err.Error()})
 		return
 	}
