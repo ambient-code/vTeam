@@ -36,6 +36,7 @@ import {
 import { getApiUrl } from "@/lib/config";
 import { WORKFLOW_PHASE_LABELS, WORKFLOW_PHASE_DESCRIPTIONS, getAgentByPersona } from "@/lib/agents";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Input } from "@/components/ui/input";
 
 const getSessionStatusIcon = (status: string) => {
   switch (status.toLowerCase()) {
@@ -88,6 +89,10 @@ export default function RFEWorkflowDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [isStartingPhase, setIsStartingPhase] = useState(false);
   const [isUpdatingDynamicData, setIsUpdatingDynamicData] = useState(false);
+  const [linkedSessions, setLinkedSessions] = useState<Array<{ name: string; phase?: string; labels?: Record<string, string> }>>([]);
+  const [linking, setLinking] = useState(false);
+  const [linkName, setLinkName] = useState("");
+  const [linkPhase, setLinkPhase] = useState<string>("");
 
   // Initial fetch for complete workflow data
   const fetchWorkflow = useCallback(async () => {
@@ -152,6 +157,19 @@ export default function RFEWorkflowDetailPage() {
     }
   }, [workflowId, workflow]);
 
+  // Fetch linked sessions (project-scoped only)
+  const fetchLinkedSessions = useCallback(async () => {
+    if (!project) return;
+    try {
+      const resp = await fetch(`${getApiUrl()}/projects/${encodeURIComponent(project)}/rfe-workflows/${workflowId}/sessions`);
+      if (!resp.ok) return;
+      const data = await resp.json();
+      setLinkedSessions(Array.isArray(data.sessions) ? data.sessions : []);
+    } catch (e) {
+      // ignore for now
+    }
+  }, [project, workflowId]);
+
   useEffect(() => {
     fetchWorkflow();
   }, [workflowId, fetchWorkflow]);
@@ -163,6 +181,11 @@ export default function RFEWorkflowDetailPage() {
     const interval = setInterval(fetchDynamicUpdates, 3000); // More frequent updates for dynamic data
     return () => clearInterval(interval);
   }, [workflow, fetchDynamicUpdates]);
+
+  // Load linked sessions when project or workflow changes
+  useEffect(() => {
+    fetchLinkedSessions();
+  }, [fetchLinkedSessions]);
 
   const handleStartNextPhase = async () => {
     if (!workflow) return;
@@ -215,6 +238,34 @@ export default function RFEWorkflowDetailPage() {
     } catch (err) {
       console.error("Error pushing to git:", err);
     }
+  };
+
+  const handleLinkSession = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!project || !linkName) return;
+    try {
+      setLinking(true);
+      const resp = await fetch(`${getApiUrl()}/projects/${encodeURIComponent(project)}/rfe-workflows/${workflowId}/sessions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ existingName: linkName, phase: linkPhase || undefined }),
+      });
+      if (resp.ok) {
+        setLinkName("");
+        setLinkPhase("");
+        fetchLinkedSessions();
+      }
+    } finally {
+      setLinking(false);
+    }
+  };
+
+  const handleUnlinkSession = async (sessionName: string) => {
+    if (!project) return;
+    await fetch(`${getApiUrl()}/projects/${encodeURIComponent(project)}/rfe-workflows/${workflowId}/sessions/${encodeURIComponent(sessionName)}`, {
+      method: "DELETE",
+    });
+    fetchLinkedSessions();
   };
 
   if (isLoading) {
@@ -498,6 +549,62 @@ export default function RFEWorkflowDetailPage() {
             </Tabs>
           </CardContent>
         </Card>
+
+        {/* Linked Sessions (project-scoped) */}
+        {project && (
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Linked Sessions</CardTitle>
+                  <CardDescription>
+                    Any session linked to this RFE via labels (add by name)
+                  </CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <form onSubmit={handleLinkSession} className="flex flex-col md:flex-row gap-3">
+                <Input
+                  placeholder="Existing session name"
+                  value={linkName}
+                  onChange={(e) => setLinkName(e.target.value)}
+                />
+                <Input
+                  placeholder="Phase (optional)"
+                  value={linkPhase}
+                  onChange={(e) => setLinkPhase(e.target.value)}
+                />
+                <Button type="submit" disabled={linking || !linkName}>
+                  {linking ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                  Link Session
+                </Button>
+              </form>
+
+              <div className="grid gap-3">
+                {linkedSessions.length === 0 ? (
+                  <div className="text-sm text-muted-foreground">No linked sessions yet</div>
+                ) : (
+                  linkedSessions.map((s) => (
+                    <div key={s.name} className="flex items-center justify-between p-3 border rounded-lg">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">{s.name}</span>
+                        {s.phase ? (
+                          <Badge variant="outline">{s.phase}</Badge>
+                        ) : null}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button variant="outline" size="sm" onClick={() => handleUnlinkSession(s.name)}>
+                          Unlink
+                        </Button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Generated Artifacts */}
         {(workflow.artifacts || []).length > 0 && (

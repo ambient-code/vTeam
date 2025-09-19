@@ -58,10 +58,7 @@ func main() {
 		pvcBaseDir = "/workspace"
 	}
 
-	// Load existing RFE workflows from persistent storage
-	if err := loadAllRFEWorkflows(); err != nil {
-		log.Printf("⚠️ Failed to load RFE workflows: %v", err)
-	}
+	// Project-scoped storage; no global preload required
 
 	// Setup Gin router
 	r := gin.Default()
@@ -87,18 +84,7 @@ func main() {
 	{
 		// Legacy non-project agentic session routes removed
 
-		// RFE workflow endpoints
-		api.GET("/rfe-workflows", listRFEWorkflows)
-		api.POST("/rfe-workflows", createRFEWorkflow)
-		api.GET("/rfe-workflows/:id", getRFEWorkflow)
-		api.DELETE("/rfe-workflows/:id", deleteRFEWorkflow)
-		api.POST("/rfe-workflows/:id/pause", pauseRFEWorkflow)
-		api.POST("/rfe-workflows/:id/resume", resumeRFEWorkflow)
-		api.POST("/rfe-workflows/:id/advance-phase", advanceRFEWorkflowPhase)
-		api.POST("/rfe-workflows/:id/push-to-git", pushRFEWorkflowToGit)
-		api.POST("/rfe-workflows/:id/scan-artifacts", scanRFEWorkflowArtifacts)
-		api.GET("/rfe-workflows/:id/artifacts/*path", getRFEWorkflowArtifact)
-		api.PUT("/rfe-workflows/:id/artifacts/*path", updateRFEWorkflowArtifact)
+		// RFE workflows are project-scoped only (legacy non-project routes removed)
 		// Project-scoped routes for multi-tenant session management
 		projectGroup := api.Group("/projects/:projectName", validateProjectContext())
 		{
@@ -125,6 +111,7 @@ func main() {
 			projectGroup.POST("/rfe-workflows/:id/resume", resumeProjectRFEWorkflow)
 			projectGroup.POST("/rfe-workflows/:id/advance-phase", advanceProjectRFEWorkflowPhase)
 			projectGroup.POST("/rfe-workflows/:id/push-to-git", pushProjectRFEWorkflowToGit)
+			projectGroup.POST("/rfe-workflows/:id/export-spec-kit", exportProjectRFEWorkflowSpecKit)
 			projectGroup.POST("/rfe-workflows/:id/scan-artifacts", scanProjectRFEWorkflowArtifacts)
 			projectGroup.GET("/rfe-workflows/:id/artifacts/*path", getProjectRFEWorkflowArtifact)
 			projectGroup.PUT("/rfe-workflows/:id/artifacts/*path", updateProjectRFEWorkflowArtifact)
@@ -537,6 +524,171 @@ func getProjectSettingsResource() schema.GroupVersionResource {
 	}
 }
 
+// getRFEWorkflowResource returns the GroupVersionResource for RFEWorkflow CRD
+func getRFEWorkflowResource() schema.GroupVersionResource {
+	return schema.GroupVersionResource{
+		Group:    "vteam.ambient-code",
+		Version:  "v1alpha1",
+		Resource: "rfeworkflows",
+	}
+}
+
+// ===== CRD helpers for project-scoped RFE workflows (Phase B) =====
+
+func rfeWorkflowToCRObject(workflow *RFEWorkflow) map[string]interface{} {
+	// Build spec
+	spec := map[string]interface{}{
+		"project":          workflow.Project,
+		"title":            workflow.Title,
+		"description":      workflow.Description,
+		"selectedAgents":   workflow.SelectedAgents,
+		"targetRepoUrl":    workflow.TargetRepoUrl,
+		"targetRepoBranch": workflow.TargetRepoBranch,
+	}
+
+	// Build status
+	sessions := make([]map[string]interface{}, 0, len(workflow.AgentSessions))
+	for _, s := range workflow.AgentSessions {
+		sessions = append(sessions, map[string]interface{}{
+			"id":           s.ID,
+			"agentPersona": s.AgentPersona,
+			"phase":        s.Phase,
+			"state":        s.Status,
+			"startedAt":    s.StartedAt,
+			"completedAt":  s.CompletedAt,
+		})
+	}
+	artifacts := make([]map[string]interface{}, 0, len(workflow.Artifacts))
+	for _, a := range workflow.Artifacts {
+		artifacts = append(artifacts, map[string]interface{}{
+			"path":       a.Path,
+			"name":       a.Name,
+			"type":       a.Type,
+			"phase":      a.Phase,
+			"createdBy":  a.CreatedBy,
+			"size":       a.Size,
+			"modifiedAt": a.ModifiedAt,
+		})
+	}
+	status := map[string]interface{}{
+		"status":        workflow.Status,
+		"currentPhase":  workflow.CurrentPhase,
+		"agentSessions": sessions,
+		"artifacts":     artifacts,
+		"phaseResults":  workflow.PhaseResults,
+	}
+
+	labels := map[string]string{
+		"project":      workflow.Project,
+		"rfe-workflow": workflow.ID,
+	}
+
+	return map[string]interface{}{
+		"apiVersion": "vteam.ambient-code/v1alpha1",
+		"kind":       "RFEWorkflow",
+		"metadata": map[string]interface{}{
+			"name":      workflow.ID,
+			"namespace": namespace,
+			"labels":    labels,
+		},
+		"spec":   spec,
+		"status": status,
+	}
+}
+
+func upsertProjectRFEWorkflowCR(workflow *RFEWorkflow) error {
+	if workflow.Project == "" {
+		// Only manage CRD for project-scoped workflows
+		return nil
+	}
+	gvr := getRFEWorkflowResource()
+	obj := &unstructured.Unstructured{Object: rfeWorkflowToCRObject(workflow)}
+	// Try create, if exists then update
+	_, err := dynamicClient.Resource(gvr).Namespace(namespace).Create(context.TODO(), obj, v1.CreateOptions{})
+	if err != nil {
+		if errors.IsAlreadyExists(err) {
+			_, uerr := dynamicClient.Resource(gvr).Namespace(namespace).Update(context.TODO(), obj, v1.UpdateOptions{})
+			if uerr != nil {
+				return fmt.Errorf("failed to update RFEWorkflow CR: %v", uerr)
+			}
+			return nil
+		}
+		return fmt.Errorf("failed to create RFEWorkflow CR: %v", err)
+	}
+	return nil
+}
+
+func loadProjectRFEWorkflowFromCR(project, id string) (*RFEWorkflow, error) {
+	gvr := getRFEWorkflowResource()
+	item, err := dynamicClient.Resource(gvr).Namespace(namespace).Get(context.TODO(), id, v1.GetOptions{})
+	if err != nil {
+		return nil, err
+	}
+	obj := item.Object
+	spec, _ := obj["spec"].(map[string]interface{})
+	status, _ := obj["status"].(map[string]interface{})
+
+	wf := &RFEWorkflow{
+		ID:               id,
+		Title:            fmt.Sprintf("%v", spec["title"]),
+		Description:      fmt.Sprintf("%v", spec["description"]),
+		Status:           fmt.Sprintf("%v", status["status"]),
+		CurrentPhase:     fmt.Sprintf("%v", status["currentPhase"]),
+		SelectedAgents:   []string{},
+		TargetRepoUrl:    fmt.Sprintf("%v", spec["targetRepoUrl"]),
+		TargetRepoBranch: fmt.Sprintf("%v", spec["targetRepoBranch"]),
+		Project:          fmt.Sprintf("%v", spec["project"]),
+		CreatedAt:        "",
+		UpdatedAt:        time.Now().UTC().Format(time.RFC3339),
+		AgentSessions:    []RFEAgentSession{},
+		Artifacts:        []RFEArtifact{},
+		PhaseResults:     map[string]PhaseResult{},
+	}
+	if sa, ok := spec["selectedAgents"].([]interface{}); ok {
+		for _, v := range sa {
+			wf.SelectedAgents = append(wf.SelectedAgents, fmt.Sprintf("%v", v))
+		}
+	}
+	if sess, ok := status["agentSessions"].([]interface{}); ok {
+		for _, v := range sess {
+			if m, ok := v.(map[string]interface{}); ok {
+				s := RFEAgentSession{
+					ID:           fmt.Sprintf("%v", m["id"]),
+					AgentPersona: fmt.Sprintf("%v", m["agentPersona"]),
+					Phase:        fmt.Sprintf("%v", m["phase"]),
+					Status:       fmt.Sprintf("%v", m["state"]),
+				}
+				if started, ok := m["startedAt"].(string); ok {
+					s.StartedAt = &started
+				}
+				if completed, ok := m["completedAt"].(string); ok {
+					s.CompletedAt = &completed
+				}
+				wf.AgentSessions = append(wf.AgentSessions, s)
+			}
+		}
+	}
+	if arts, ok := status["artifacts"].([]interface{}); ok {
+		for _, v := range arts {
+			if m, ok := v.(map[string]interface{}); ok {
+				a := RFEArtifact{
+					Path:       fmt.Sprintf("%v", m["path"]),
+					Name:       fmt.Sprintf("%v", m["name"]),
+					Type:       fmt.Sprintf("%v", m["type"]),
+					Phase:      fmt.Sprintf("%v", m["phase"]),
+					CreatedBy:  fmt.Sprintf("%v", m["createdBy"]),
+					ModifiedAt: fmt.Sprintf("%v", m["modifiedAt"]),
+				}
+				if size, ok := m["size"].(float64); ok {
+					a.Size = int64(size)
+				}
+				wf.Artifacts = append(wf.Artifacts, a)
+			}
+		}
+	}
+	return wf, nil
+}
+
 // getOpenShiftProjectResource returns the GroupVersionResource for OpenShift Project
 func getOpenShiftProjectResource() schema.GroupVersionResource {
 	return schema.GroupVersionResource{
@@ -627,17 +779,10 @@ func parseStatus(status map[string]interface{}) *AgenticSessionStatus {
 
 // RFE Workflow API Handlers
 
-// In-memory storage for RFE workflows (with file-based persistence)
-var rfeWorkflows = make(map[string]*RFEWorkflow)
+// Legacy in-memory workflow storage removed (project-scoped only)
 
 // File paths for persistent storage
-func getRFEWorkflowFilePath(id string) string {
-	return filepath.Join(stateBaseDir, "rfe-workflows", id+".json")
-}
-
-func getRFEWorkflowsDir() string {
-	return filepath.Join(stateBaseDir, "rfe-workflows")
-}
+// Legacy non-project file paths removed
 
 // Project-scoped file paths for persistent storage
 func getProjectRFEWorkflowsDir(project string) string {
@@ -649,25 +794,7 @@ func getProjectRFEWorkflowFilePath(project, id string) string {
 }
 
 // Save workflow to persistent storage
-func saveRFEWorkflow(workflow *RFEWorkflow) error {
-	workflowsDir := getRFEWorkflowsDir()
-	if err := os.MkdirAll(workflowsDir, 0755); err != nil {
-		return fmt.Errorf("failed to create workflows directory: %v", err)
-	}
-
-	filePath := getRFEWorkflowFilePath(workflow.ID)
-	data, err := json.MarshalIndent(workflow, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to marshal workflow: %v", err)
-	}
-
-	if err := ioutil.WriteFile(filePath, data, 0644); err != nil {
-		return fmt.Errorf("failed to write workflow file: %v", err)
-	}
-
-	log.Printf("💾 Saved RFE workflow %s to disk", workflow.ID)
-	return nil
-}
+// Legacy non-project save removed
 
 // Save project-scoped workflow to persistent storage
 func saveProjectRFEWorkflow(workflow *RFEWorkflow) error {
@@ -694,20 +821,7 @@ func saveProjectRFEWorkflow(workflow *RFEWorkflow) error {
 }
 
 // Load workflow from persistent storage
-func loadRFEWorkflow(id string) (*RFEWorkflow, error) {
-	filePath := getRFEWorkflowFilePath(id)
-	data, err := ioutil.ReadFile(filePath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read workflow file: %v", err)
-	}
-
-	var workflow RFEWorkflow
-	if err := json.Unmarshal(data, &workflow); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal workflow: %v", err)
-	}
-
-	return &workflow, nil
-}
+// Legacy non-project load removed
 
 // Load project-scoped workflow from persistent storage
 func loadProjectRFEWorkflow(project, id string) (*RFEWorkflow, error) {
@@ -725,46 +839,10 @@ func loadProjectRFEWorkflow(project, id string) (*RFEWorkflow, error) {
 }
 
 // Load all workflows from persistent storage
-func loadAllRFEWorkflows() error {
-	workflowsDir := getRFEWorkflowsDir()
-
-	// Create directory if it doesn't exist
-	if err := os.MkdirAll(workflowsDir, 0755); err != nil {
-		return fmt.Errorf("failed to create workflows directory: %v", err)
-	}
-
-	files, err := ioutil.ReadDir(workflowsDir)
-	if err != nil {
-		return fmt.Errorf("failed to read workflows directory: %v", err)
-	}
-
-	loadedCount := 0
-	for _, file := range files {
-		if !file.IsDir() && strings.HasSuffix(file.Name(), ".json") {
-			id := strings.TrimSuffix(file.Name(), ".json")
-			workflow, err := loadRFEWorkflow(id)
-			if err != nil {
-				log.Printf("⚠️ Failed to load workflow %s: %v", id, err)
-				continue
-			}
-			rfeWorkflows[id] = workflow
-			loadedCount++
-		}
-	}
-
-	log.Printf("📂 Loaded %d RFE workflows from persistent storage", loadedCount)
-	return nil
-}
+// Legacy non-project preload removed
 
 // Delete workflow from persistent storage
-func deleteRFEWorkflowFile(id string) error {
-	filePath := getRFEWorkflowFilePath(id)
-	if err := os.Remove(filePath); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("failed to delete workflow file: %v", err)
-	}
-	log.Printf("🗑️ Deleted RFE workflow %s from disk", id)
-	return nil
-}
+// Legacy non-project delete removed
 
 // Delete project-scoped workflow from persistent storage
 func deleteProjectRFEWorkflowFile(project, id string) error {
@@ -843,73 +921,37 @@ func syncAgentSessionStatuses(workflow *RFEWorkflow) error {
 		}
 	}
 
-	// Save the updated workflow back to disk so the status persists
-	err := saveRFEWorkflow(workflow)
-	if err != nil {
-		log.Printf("Failed to save workflow %s after syncing agent session statuses: %v", workflow.ID, err)
-	}
-
 	return nil
 }
 
 // RFE Workspace utility functions
-func getRFEWorkspaceDir(workflowID string) string {
-	return filepath.Join(pvcBaseDir, workflowID)
-}
+// Legacy non-project workspace dir removed
 
 // Project-scoped workspace helpers
 func getProjectRFEWorkspaceDir(project, workflowID string) string {
 	return filepath.Join(pvcBaseDir, project, workflowID)
 }
 
-func getRFEGitRepoDir(workflowID string) string {
-	return filepath.Join(getRFEWorkspaceDir(workflowID), "git-repo")
-}
+// Legacy non-project git repo dir removed
 
 func getProjectRFEGitRepoDir(project, workflowID string) string {
 	return filepath.Join(getProjectRFEWorkspaceDir(project, workflowID), "git-repo")
 }
 
-func getRFEAgentsDir(workflowID string) string {
-	return filepath.Join(getRFEWorkspaceDir(workflowID), "agents")
-}
+// Legacy non-project agents dir removed
 
 func getProjectRFEAgentsDir(project, workflowID string) string {
 	return filepath.Join(getProjectRFEWorkspaceDir(project, workflowID), "agents")
 }
 
-func getRFEUIEditsDir(workflowID string) string {
-	return filepath.Join(getRFEWorkspaceDir(workflowID), "ui-edits")
-}
+// Legacy non-project UI edits dir removed
 
 func getProjectRFEUIEditsDir(project, workflowID string) string {
 	return filepath.Join(getProjectRFEWorkspaceDir(project, workflowID), "ui-edits")
 }
 
 // Create workspace directory structure for RFE
-func createRFEWorkspace(workflowID string) error {
-	workspaceDir := getRFEWorkspaceDir(workflowID)
-
-	// Create all required directories
-	dirs := []string{
-		workspaceDir,
-		getRFEGitRepoDir(workflowID),
-		getRFEAgentsDir(workflowID),
-		filepath.Join(getRFEAgentsDir(workflowID), "specify"),
-		filepath.Join(getRFEAgentsDir(workflowID), "plan"),
-		filepath.Join(getRFEAgentsDir(workflowID), "tasks"),
-		getRFEUIEditsDir(workflowID),
-	}
-
-	for _, dir := range dirs {
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			return fmt.Errorf("failed to create directory %s: %v", dir, err)
-		}
-	}
-
-	log.Printf("📁 Created RFE workspace structure at %s", workspaceDir)
-	return nil
-}
+// Legacy non-project workspace creation removed
 
 // Create workspace directory structure for project-scoped RFE
 func createProjectRFEWorkspace(project, workflowID string) error {
@@ -934,17 +976,7 @@ func createProjectRFEWorkspace(project, workflowID string) error {
 }
 
 // Get the full path to an artifact file in the workspace
-func getRFEArtifactPath(workflowID, artifactPath string) string {
-	// Check if it's in git-repo or agents directory
-	if strings.HasPrefix(artifactPath, "git-repo/") {
-		return filepath.Join(getRFEWorkspaceDir(workflowID), artifactPath)
-	} else if strings.HasPrefix(artifactPath, "agents/") {
-		return filepath.Join(getRFEWorkspaceDir(workflowID), artifactPath)
-	} else {
-		// Default to git-repo for backward compatibility
-		return filepath.Join(getRFEGitRepoDir(workflowID), artifactPath)
-	}
-}
+// Legacy non-project artifact path removed
 
 // Get the full path to an artifact file in a project-scoped workspace
 func getProjectRFEArtifactPath(project, workflowID, artifactPath string) string {
@@ -962,106 +994,7 @@ func getProjectRFEArtifactPath(project, workflowID, artifactPath string) string 
 }
 
 // Push workflow artifacts to Git repository
-func pushWorkflowToGitRepo(workflow *RFEWorkflow) error {
-	workspaceDir := getRFEWorkspaceDir(workflow.ID)
-	gitRepoDir := getRFEGitRepoDir(workflow.ID)
-	agentsDir := getRFEAgentsDir(workflow.ID)
-
-	// Check if git repo directory exists, if not clone it
-	if _, err := os.Stat(gitRepoDir); os.IsNotExist(err) {
-		log.Printf("📥 Cloning repository %s to %s", workflow.TargetRepoUrl, gitRepoDir)
-
-		// Clone the repository
-		cloneCmd := exec.Command("git", "clone", "-b", workflow.TargetRepoBranch, workflow.TargetRepoUrl, gitRepoDir)
-		cloneCmd.Dir = workspaceDir
-		if output, err := cloneCmd.CombinedOutput(); err != nil {
-			return fmt.Errorf("failed to clone repository: %v, output: %s", err, string(output))
-		}
-	}
-
-	// Configure git user if provided
-	if workflow.GitUserName != nil && *workflow.GitUserName != "" {
-		configCmd := exec.Command("git", "config", "user.name", *workflow.GitUserName)
-		configCmd.Dir = gitRepoDir
-		if err := configCmd.Run(); err != nil {
-			log.Printf("⚠️ Failed to set git user.name: %v", err)
-		}
-	}
-
-	if workflow.GitUserEmail != nil && *workflow.GitUserEmail != "" {
-		configCmd := exec.Command("git", "config", "user.email", *workflow.GitUserEmail)
-		configCmd.Dir = gitRepoDir
-		if err := configCmd.Run(); err != nil {
-			log.Printf("⚠️ Failed to set git user.email: %v", err)
-		}
-	}
-
-	// Pull latest changes
-	pullCmd := exec.Command("git", "pull", "origin", workflow.TargetRepoBranch)
-	pullCmd.Dir = gitRepoDir
-	if output, err := pullCmd.CombinedOutput(); err != nil {
-		log.Printf("⚠️ Failed to pull latest changes: %v, output: %s", err, string(output))
-		// Continue anyway - might be the first push
-	}
-
-	// Create spec-kit compatible structure in git repo
-	specsDir := filepath.Join(gitRepoDir, "specs", workflow.ID)
-	if err := os.MkdirAll(specsDir, 0755); err != nil {
-		return fmt.Errorf("failed to create specs directory: %v", err)
-	}
-
-	// Convert agent outputs to spec-kit format
-	if err := convertAgentOutputsToSpecKit(agentsDir, specsDir, workflow); err != nil {
-		log.Printf("⚠️ Failed to convert agent outputs to spec-kit format: %v", err)
-		// Continue anyway - copy raw outputs as fallback
-		if _, err := os.Stat(agentsDir); err == nil {
-			copyCmd := exec.Command("cp", "-r", agentsDir, specsDir)
-			if output, err := copyCmd.CombinedOutput(); err != nil {
-				log.Printf("⚠️ Failed to copy agents directory: %v, output: %s", err, string(output))
-			}
-		}
-	}
-
-	// Add all changes
-	addCmd := exec.Command("git", "add", ".")
-	addCmd.Dir = gitRepoDir
-	if output, err := addCmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("failed to add changes: %v, output: %s", err, string(output))
-	}
-
-	// Check if there are changes to commit
-	statusCmd := exec.Command("git", "status", "--porcelain")
-	statusCmd.Dir = gitRepoDir
-	statusOutput, err := statusCmd.Output()
-	if err != nil {
-		return fmt.Errorf("failed to check git status: %v", err)
-	}
-
-	if len(strings.TrimSpace(string(statusOutput))) == 0 {
-		log.Printf("ℹ️ No changes to commit for workflow %s", workflow.ID)
-		return nil
-	}
-
-	// Commit changes with spec-kit compatible message
-	commitMessage := fmt.Sprintf("Add %s phase for RFE %s: %s\n\nGenerated spec-kit compatible artifacts:\n- spec.md (feature specification)\n- plan.md (implementation plan)\n- tasks.md (task breakdown)\n\nPhase: %s\nAgents: %d sessions completed\n\n🤖 Generated with vTeam RFE System",
-		workflow.CurrentPhase, workflow.ID, workflow.Title, workflow.CurrentPhase, len(workflow.AgentSessions))
-
-	commitCmd := exec.Command("git", "commit", "-m", commitMessage)
-	commitCmd.Dir = gitRepoDir
-	if output, err := commitCmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("failed to commit changes: %v, output: %s", err, string(output))
-	}
-
-	// Push changes
-	pushCmd := exec.Command("git", "push", "origin", workflow.TargetRepoBranch)
-	pushCmd.Dir = gitRepoDir
-	if output, err := pushCmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("failed to push changes: %v, output: %s", err, string(output))
-	}
-
-	log.Printf("🚀 Successfully pushed RFE %s artifacts to %s", workflow.ID, workflow.TargetRepoUrl)
-	return nil
-}
+// Legacy non-project git push removed
 
 // Project-scoped Git push
 func pushProjectWorkflowToGitRepo(workflow *RFEWorkflow) error {
@@ -1221,114 +1154,62 @@ func convertAgentOutputsToSpecKit(agentsDir, specsDir string, workflow *RFEWorkf
 	return nil
 }
 
-// Create AgenticSessions for all selected agents in a specific phase
-func createAgentSessionsForPhase(workflow *RFEWorkflow, phase string) error {
-	if len(workflow.SelectedAgents) == 0 {
-		return fmt.Errorf("no agents selected for workflow %s", workflow.ID)
+// Helper: build AgenticSession spec and labels for an RFE session (shared builder)
+func buildRFESessionSpecAndLabels(workflow *RFEWorkflow, phase, agentPersona string, projectOpt *string) (map[string]interface{}, map[string]interface{}) {
+	sharedWorkspace := fmt.Sprintf("/workspace/%s", workflow.ID)
+	if projectOpt != nil && *projectOpt != "" {
+		sharedWorkspace = fmt.Sprintf("/workspace/%s/%s", *projectOpt, workflow.ID)
 	}
 
-	// Convert agent personas to session names
-	var createdSessions []RFEAgentSession
-
-	for _, agentPersona := range workflow.SelectedAgents {
-		sessionName := fmt.Sprintf("%s-%s-%s", workflow.ID, phase, strings.ToLower(strings.ReplaceAll(agentPersona, "_", "-")))
-
-		// Create the AgenticSession resource for this agent
-		// Note: For RFE workflows, we do NOT set websiteURL - this allows the claude-code-runner to
-		// detect it as an agent-specific session and run _handle_agent_rfe_session() instead of browser automation
-		sessionSpec := map[string]interface{}{
-			"prompt":      fmt.Sprintf("/%s %s", phase, workflow.Description),
-			"displayName": fmt.Sprintf("%s - %s (%s)", workflow.Title, agentPersona, phase),
-			"llmSettings": map[string]interface{}{
-				"model":       "claude-3-5-sonnet-20241022",
-				"temperature": 0.7,
-				"maxTokens":   8192,
-			},
-			"timeout": 3600, // 1 hour timeout
-			"gitConfig": map[string]interface{}{
-				"repositories": []map[string]interface{}{
-					{
-						"url":       workflow.TargetRepoUrl,
-						"branch":    workflow.TargetRepoBranch,
-						"clonePath": "target-repo",
-					},
+	sessionSpec := map[string]interface{}{
+		"prompt":      fmt.Sprintf("/%s %s", phase, workflow.Description),
+		"displayName": fmt.Sprintf("%s - %s (%s)", workflow.Title, agentPersona, phase),
+		"llmSettings": map[string]interface{}{
+			"model":       "claude-3-5-sonnet-20241022",
+			"temperature": 0.7,
+			"maxTokens":   8192,
+		},
+		"timeout": 3600,
+		"gitConfig": map[string]interface{}{
+			"repositories": []map[string]interface{}{
+				{
+					"url":       workflow.TargetRepoUrl,
+					"branch":    workflow.TargetRepoBranch,
+					"clonePath": "target-repo",
 				},
 			},
-			// Add RFE-specific environment variables - these trigger _handle_agent_rfe_session() in claude-code-runner
-			"environmentVariables": map[string]interface{}{
-				"AGENT_PERSONA":    agentPersona,
-				"WORKFLOW_PHASE":   phase,
-				"PARENT_RFE":       workflow.ID,
-				"SHARED_WORKSPACE": fmt.Sprintf("/workspace/%s", workflow.ID),
-			},
+		},
+		"environmentVariables": map[string]interface{}{
+			"AGENT_PERSONA":    agentPersona,
+			"WORKFLOW_PHASE":   phase,
+			"PARENT_RFE":       workflow.ID,
+			"SHARED_WORKSPACE": sharedWorkspace,
+		},
+	}
+	if projectOpt != nil && *projectOpt != "" {
+		sessionSpec["project"] = *projectOpt
+	}
+	if workflow.GitUserName != nil && *workflow.GitUserName != "" {
+		gitConfig := sessionSpec["gitConfig"].(map[string]interface{})
+		gitConfig["user"] = map[string]interface{}{
+			"name":  *workflow.GitUserName,
+			"email": workflow.GitUserEmail,
 		}
-
-		// Add Git user configuration if provided
-		if workflow.GitUserName != nil && *workflow.GitUserName != "" {
-			gitConfig := sessionSpec["gitConfig"].(map[string]interface{})
-			gitConfig["user"] = map[string]interface{}{
-				"name":  *workflow.GitUserName,
-				"email": workflow.GitUserEmail, // Can be nil, will be omitted in JSON
-			}
-		}
-
-		session := map[string]interface{}{
-			"apiVersion": "vteam.ambient-code/v1",
-			"kind":       "AgenticSession",
-			"metadata": map[string]interface{}{
-				"name":      sessionName,
-				"namespace": namespace,
-				"labels": map[string]interface{}{
-					"rfe-workflow":  workflow.ID,
-					"rfe-phase":     phase,
-					"agent-persona": agentPersona,
-				},
-			},
-			"spec": sessionSpec,
-			"status": map[string]interface{}{
-				"phase": "Pending",
-			},
-		}
-
-		gvr := getAgenticSessionV1Alpha1Resource()
-		obj := &unstructured.Unstructured{Object: session}
-
-		created, err := dynamicClient.Resource(gvr).Namespace(namespace).Create(context.TODO(), obj, v1.CreateOptions{})
-		if err != nil {
-			log.Printf("❌ Failed to create AgenticSession %s: %v", sessionName, err)
-			return fmt.Errorf("failed to create agent session %s: %v", sessionName, err)
-		}
-
-		// Add to workflow's agent sessions
-		agentSession := RFEAgentSession{
-			ID:           sessionName,
-			AgentPersona: agentPersona,
-			Phase:        phase,
-			Status:       "pending",
-			StartedAt:    nil, // Will be set when session actually starts
-			CompletedAt:  nil,
-			Result:       nil,
-			Cost:         nil,
-		}
-		createdSessions = append(createdSessions, agentSession)
-
-		log.Printf("🤖 Created AgenticSession %s for agent %s in phase %s", sessionName, agentPersona, phase)
-		_ = created // Suppress unused variable warning
 	}
 
-	// Update workflow with created sessions
-	workflow.AgentSessions = append(workflow.AgentSessions, createdSessions...)
-	workflow.Status = "in_progress"
-	workflow.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
-
-	// Save updated workflow
-	if err := saveRFEWorkflow(workflow); err != nil {
-		log.Printf("⚠️ Failed to save workflow after creating agent sessions: %v", err)
+	labels := map[string]interface{}{
+		"rfe-workflow":  workflow.ID,
+		"rfe-phase":     phase,
+		"agent-persona": agentPersona,
 	}
-
-	log.Printf("✅ Created %d AgenticSessions for workflow %s phase %s", len(createdSessions), workflow.ID, phase)
-	return nil
+	if projectOpt != nil && *projectOpt != "" {
+		labels["project"] = *projectOpt
+	}
+	return sessionSpec, labels
 }
+
+// Create AgenticSessions for all selected agents in a specific phase
+// Legacy non-project session creation removed
 
 // Project-scoped: Create AgenticSessions for all selected agents
 func createAgentSessionsForPhaseProject(workflow *RFEWorkflow, phase string) error {
@@ -1338,51 +1219,14 @@ func createAgentSessionsForPhaseProject(workflow *RFEWorkflow, phase string) err
 	var createdSessions []RFEAgentSession
 	for _, agentPersona := range workflow.SelectedAgents {
 		sessionName := fmt.Sprintf("%s-%s-%s", workflow.ID, phase, strings.ToLower(strings.ReplaceAll(agentPersona, "_", "-")))
-		sessionSpec := map[string]interface{}{
-			"prompt":      fmt.Sprintf("/%s %s", phase, workflow.Description),
-			"displayName": fmt.Sprintf("%s - %s (%s)", workflow.Title, agentPersona, phase),
-			"llmSettings": map[string]interface{}{
-				"model":       "claude-3-5-sonnet-20241022",
-				"temperature": 0.7,
-				"maxTokens":   8192,
-			},
-			"timeout": 3600,
-			"gitConfig": map[string]interface{}{
-				"repositories": []map[string]interface{}{
-					{
-						"url":       workflow.TargetRepoUrl,
-						"branch":    workflow.TargetRepoBranch,
-						"clonePath": "target-repo",
-					},
-				},
-			},
-			"project": workflow.Project,
-			"environmentVariables": map[string]interface{}{
-				"AGENT_PERSONA":    agentPersona,
-				"WORKFLOW_PHASE":   phase,
-				"PARENT_RFE":       workflow.ID,
-				"SHARED_WORKSPACE": fmt.Sprintf("/workspace/%s/%s", workflow.Project, workflow.ID),
-			},
-		}
-		if workflow.GitUserName != nil && *workflow.GitUserName != "" {
-			gitConfig := sessionSpec["gitConfig"].(map[string]interface{})
-			gitConfig["user"] = map[string]interface{}{
-				"name":  *workflow.GitUserName,
-				"email": workflow.GitUserEmail,
-			}
-		}
+		sessionSpec, labels := buildRFESessionSpecAndLabels(workflow, phase, agentPersona, &workflow.Project)
 		session := map[string]interface{}{
 			"apiVersion": "vteam.ambient-code/v1",
 			"kind":       "AgenticSession",
 			"metadata": map[string]interface{}{
 				"name":      sessionName,
 				"namespace": namespace,
-				"labels": map[string]interface{}{
-					"project":       workflow.Project,
-					"rfe-workflow":  workflow.ID,
-					"rfe-phase":     phase,
-					"agent-persona": agentPersona,
-				},
+				"labels":    labels,
 			},
 			"spec":   sessionSpec,
 			"status": map[string]interface{}{"phase": "Pending"},
@@ -1408,67 +1252,7 @@ func createAgentSessionsForPhaseProject(workflow *RFEWorkflow, phase string) err
 }
 
 // Scan workspace and update workflow artifacts list
-func scanAndUpdateWorkflowArtifacts(workflow *RFEWorkflow) error {
-	workspaceDir := getRFEWorkspaceDir(workflow.ID)
-
-	var artifacts []RFEArtifact
-
-	// Scan agents directory for generated files
-	agentsDir := getRFEAgentsDir(workflow.ID)
-	if _, err := os.Stat(agentsDir); err == nil {
-		err := filepath.Walk(agentsDir, func(path string, info os.FileInfo, err error) error {
-			if err != nil {
-				return err
-			}
-
-			if !info.IsDir() && strings.HasSuffix(info.Name(), ".md") {
-				// Get relative path from workspace
-				relPath, err := filepath.Rel(workspaceDir, path)
-				if err != nil {
-					return err
-				}
-
-				// Determine which agent and phase this belongs to
-				pathParts := strings.Split(relPath, string(filepath.Separator))
-				var agent, phase string
-				if len(pathParts) >= 3 && pathParts[0] == "agents" {
-					phase = pathParts[1]      // e.g., "specify"
-					agentFile := pathParts[2] // e.g., "engineering-manager.md"
-					agent = strings.TrimSuffix(agentFile, ".md")
-				}
-
-				artifact := RFEArtifact{
-					Path:       relPath,
-					Name:       info.Name(),
-					Type:       "specification", // Default type for agent-generated files
-					Phase:      phase,
-					CreatedBy:  agent,
-					Size:       info.Size(),
-					ModifiedAt: info.ModTime().UTC().Format(time.RFC3339),
-				}
-
-				artifacts = append(artifacts, artifact)
-			}
-			return nil
-		})
-
-		if err != nil {
-			return fmt.Errorf("failed to scan agents directory: %v", err)
-		}
-	}
-
-	// Update workflow artifacts
-	workflow.Artifacts = artifacts
-	workflow.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
-
-	// Save updated workflow
-	if err := saveRFEWorkflow(workflow); err != nil {
-		return fmt.Errorf("failed to save workflow after artifact scan: %v", err)
-	}
-
-	log.Printf("📊 Scanned and found %d artifacts for workflow %s", len(artifacts), workflow.ID)
-	return nil
-}
+// Legacy non-project artifact scan removed
 
 // Project-scoped artifact scan
 func scanAndUpdateWorkflowArtifactsProject(workflow *RFEWorkflow) error {
@@ -1480,6 +1264,40 @@ func scanAndUpdateWorkflowArtifactsProject(workflow *RFEWorkflow) error {
 		err := filepath.Walk(agentsDir, func(path string, info os.FileInfo, err error) error {
 			if err != nil {
 				return err
+			}
+			// Scan per-session artifacts directory
+			sessionsDir := filepath.Join(workspaceDir, "sessions")
+			if _, err := os.Stat(sessionsDir); err == nil {
+				err := filepath.Walk(sessionsDir, func(path string, info os.FileInfo, err error) error {
+					if err != nil {
+						return err
+					}
+					if info.IsDir() {
+						return nil
+					}
+					relPath, err := filepath.Rel(workspaceDir, path)
+					if err != nil {
+						return err
+					}
+					parts := strings.Split(relPath, string(filepath.Separator))
+					if len(parts) >= 3 && parts[0] == "sessions" && parts[2] == "artifacts" {
+						sessionName := parts[1]
+						artifact := RFEArtifact{
+							Path:       relPath,
+							Name:       info.Name(),
+							Type:       "artifact",
+							Phase:      "",
+							CreatedBy:  sessionName,
+							Size:       info.Size(),
+							ModifiedAt: info.ModTime().UTC().Format(time.RFC3339),
+						}
+						artifacts = append(artifacts, artifact)
+					}
+					return nil
+				})
+				if err != nil {
+					return fmt.Errorf("failed to scan sessions artifacts: %v", err)
+				}
 			}
 			if !info.IsDir() && strings.HasSuffix(info.Name(), ".md") {
 				relPath, err := filepath.Rel(workspaceDir, path)
@@ -1518,785 +1336,4 @@ func scanAndUpdateWorkflowArtifactsProject(workflow *RFEWorkflow) error {
 	}
 	log.Printf("📊 Scanned and found %d artifacts for workflow %s (project=%s)", len(artifacts), workflow.ID, workflow.Project)
 	return nil
-}
-
-func listRFEWorkflows(c *gin.Context) {
-	var workflows []RFEWorkflow
-	for _, workflow := range rfeWorkflows {
-		// Sync agent session statuses before returning
-		err := syncAgentSessionStatuses(workflow)
-		if err != nil {
-			log.Printf("⚠️ Failed to sync agent session statuses for workflow %s: %v", workflow.ID, err)
-			// Don't fail the request, just log the warning
-		}
-		workflows = append(workflows, *workflow)
-	}
-
-	if workflows == nil {
-		workflows = []RFEWorkflow{}
-	}
-
-	c.JSON(http.StatusOK, gin.H{"workflows": workflows})
-}
-
-func createRFEWorkflow(c *gin.Context) {
-	var req CreateRFEWorkflowRequest
-
-	// Log the raw request body for debugging
-	bodyBytes, _ := c.GetRawData()
-	log.Printf("📥 Raw request body: %s", string(bodyBytes))
-
-	// Reset the body for binding
-	c.Request.Body = ioutil.NopCloser(strings.NewReader(string(bodyBytes)))
-
-	if err := c.ShouldBindJSON(&req); err != nil {
-		log.Printf("❌ Validation error creating RFE workflow: %v", err)
-		log.Printf("📝 Request payload validation failed for: %+v", req)
-		log.Printf("🔍 SelectedAgents received: %+v (length: %d)", req.SelectedAgents, len(req.SelectedAgents))
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "Validation failed: " + err.Error(),
-			"details": "Check required fields: title, description, targetRepoUrl, targetRepoBranch, selectedAgents",
-		})
-		return
-	}
-
-	log.Printf("✅ Successfully parsed RFE workflow request")
-	log.Printf("📝 SelectedAgents: %+v", req.SelectedAgents)
-
-	// Generate unique ID for the workflow
-	workflowID := fmt.Sprintf("rfe-%d", time.Now().Unix())
-
-	now := time.Now().UTC().Format(time.RFC3339)
-
-	workflow := &RFEWorkflow{
-		ID:               workflowID,
-		Title:            req.Title,
-		Description:      req.Description,
-		Status:           "draft",
-		CurrentPhase:     "specify",
-		SelectedAgents:   req.SelectedAgents,
-		TargetRepoUrl:    req.TargetRepoUrl,
-		TargetRepoBranch: req.TargetRepoBranch,
-		GitUserName:      req.GitUserName,
-		GitUserEmail:     req.GitUserEmail,
-		CreatedAt:        now,
-		UpdatedAt:        now,
-		AgentSessions:    []RFEAgentSession{},
-		Artifacts:        []RFEArtifact{},
-		PhaseResults:     make(map[string]PhaseResult),
-	}
-
-	// Store workflow in memory
-	rfeWorkflows[workflowID] = workflow
-
-	// Create workspace directory structure
-	if err := createRFEWorkspace(workflowID); err != nil {
-		log.Printf("⚠️ Failed to create workspace: %v", err)
-		// Continue anyway - workspace will be created when needed
-	}
-
-	// Save workflow to persistent storage
-	if err := saveRFEWorkflow(workflow); err != nil {
-		log.Printf("⚠️ Failed to save workflow to disk: %v", err)
-		// Continue anyway - the workflow is still in memory
-	}
-
-	// Create initial AgenticSessions for the specify phase
-	if err := createAgentSessionsForPhase(workflow, "specify"); err != nil {
-		log.Printf("⚠️ Failed to create agent sessions for specify phase: %v", err)
-		// Continue anyway - sessions can be created manually later
-	}
-
-	log.Printf("✅ Created RFE workflow %s with agents: %v", workflowID, req.SelectedAgents)
-	log.Printf("📊 Workflow details: Title='%s', Repo='%s', Branch='%s'", req.Title, req.TargetRepoUrl, req.TargetRepoBranch)
-
-	c.JSON(http.StatusCreated, workflow)
-}
-
-func getRFEWorkflow(c *gin.Context) {
-	id := c.Param("id")
-
-	// First try to get from memory
-	workflow, exists := rfeWorkflows[id]
-	if !exists {
-		// If not in memory, try to load from disk
-		loadedWorkflow, err := loadRFEWorkflow(id)
-		if err != nil {
-			log.Printf("❌ Failed to load workflow %s from disk: %v", id, err)
-			c.JSON(http.StatusNotFound, gin.H{"error": "Workflow not found"})
-			return
-		}
-
-		// Add back to memory cache for future requests
-		rfeWorkflows[id] = loadedWorkflow
-		workflow = loadedWorkflow
-		log.Printf("✅ Loaded workflow %s from disk and cached in memory", id)
-	}
-
-	// Sync agent session statuses from Kubernetes AgenticSession resources
-	err := syncAgentSessionStatuses(workflow)
-	if err != nil {
-		log.Printf("⚠️ Failed to sync agent session statuses for workflow %s: %v", id, err)
-		// Don't fail the request, just log the warning
-	}
-
-	// Scan for new artifacts before returning (if workspace is accessible)
-	if workspaceDir := getRFEWorkspaceDir(workflow.ID); workspaceDir != "" {
-		if _, err := os.Stat(filepath.Dir(workspaceDir)); err == nil {
-			err := scanAndUpdateWorkflowArtifacts(workflow)
-			if err != nil {
-				log.Printf("⚠️ Failed to scan artifacts for workflow %s: %v", id, err)
-				// Don't fail the request, just log the warning
-			}
-		} else {
-			log.Printf("ℹ️ Workspace directory not accessible for workflow %s: %v", id, err)
-		}
-	}
-
-	// Try to marshal to JSON first to catch any serialization issues
-	_, jsonErr := json.Marshal(workflow)
-	if jsonErr != nil {
-		log.Printf("❌ Failed to marshal workflow %s to JSON: %v", id, jsonErr)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Internal server error - failed to serialize workflow data",
-		})
-		return
-	}
-
-	c.JSON(http.StatusOK, workflow)
-}
-
-func deleteRFEWorkflow(c *gin.Context) {
-	id := c.Param("id")
-
-	_, exists := rfeWorkflows[id]
-	if !exists {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Workflow not found"})
-		return
-	}
-
-	// TODO: Clean up associated AgenticSessions and PVC data
-	delete(rfeWorkflows, id)
-
-	// Delete from persistent storage
-	if err := deleteRFEWorkflowFile(id); err != nil {
-		log.Printf("⚠️ Failed to delete workflow file: %v", err)
-		// Continue anyway - the workflow is deleted from memory
-	}
-
-	c.JSON(http.StatusOK, gin.H{"message": "Workflow deleted successfully"})
-}
-
-func pauseRFEWorkflow(c *gin.Context) {
-	id := c.Param("id")
-
-	workflow, exists := rfeWorkflows[id]
-	if !exists {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Workflow not found"})
-		return
-	}
-
-	// TODO: Pause running AgenticSessions
-	workflow.Status = "paused"
-	workflow.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
-
-	// Save updated workflow to persistent storage
-	if err := saveRFEWorkflow(workflow); err != nil {
-		log.Printf("⚠️ Failed to save workflow after pause: %v", err)
-	}
-
-	c.JSON(http.StatusOK, workflow)
-}
-
-func resumeRFEWorkflow(c *gin.Context) {
-	id := c.Param("id")
-
-	workflow, exists := rfeWorkflows[id]
-	if !exists {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Workflow not found"})
-		return
-	}
-
-	// TODO: Resume paused AgenticSessions
-	workflow.Status = "in_progress"
-	workflow.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
-
-	// Save updated workflow to persistent storage
-	if err := saveRFEWorkflow(workflow); err != nil {
-		log.Printf("⚠️ Failed to save workflow after resume: %v", err)
-	}
-
-	c.JSON(http.StatusOK, workflow)
-}
-
-func advanceRFEWorkflowPhase(c *gin.Context) {
-	id := c.Param("id")
-
-	var req AdvancePhaseRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	workflow, exists := rfeWorkflows[id]
-	if !exists {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Workflow not found"})
-		return
-	}
-
-	// Determine next phase
-	var nextPhase string
-	switch workflow.CurrentPhase {
-	case "specify":
-		nextPhase = "plan"
-	case "plan":
-		nextPhase = "tasks"
-	case "tasks":
-		nextPhase = "completed"
-	default:
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Cannot advance from current phase"})
-		return
-	}
-
-	// TODO: Validate current phase is complete (unless force=true)
-	// Create AgenticSessions for next phase
-	if nextPhase != "completed" {
-		if err := createAgentSessionsForPhase(workflow, nextPhase); err != nil {
-			log.Printf("⚠️ Failed to create agent sessions for phase %s: %v", nextPhase, err)
-			// Continue anyway - phase was advanced, sessions can be created manually
-		}
-	}
-
-	workflow.CurrentPhase = nextPhase
-	workflow.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
-
-	if nextPhase == "completed" {
-		workflow.Status = "completed"
-	}
-
-	// Save updated workflow to persistent storage
-	if err := saveRFEWorkflow(workflow); err != nil {
-		log.Printf("⚠️ Failed to save workflow after phase advance: %v", err)
-	}
-
-	log.Printf("Advanced workflow %s to phase: %s", id, nextPhase)
-
-	c.JSON(http.StatusOK, workflow)
-}
-
-func pushRFEWorkflowToGit(c *gin.Context) {
-	id := c.Param("id")
-
-	workflow, exists := rfeWorkflows[id]
-	if !exists {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Workflow not found"})
-		return
-	}
-
-	// Implement Git push functionality
-	err := pushWorkflowToGitRepo(workflow)
-	if err != nil {
-		log.Printf("❌ Failed to push workflow %s to Git: %v", id, err)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "Failed to push to Git repository",
-			"details": err.Error(),
-		})
-		return
-	}
-
-	// Update workflow status
-	workflow.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
-	if err := saveRFEWorkflow(workflow); err != nil {
-		log.Printf("⚠️ Failed to save workflow after Git push: %v", err)
-	}
-
-	log.Printf("✅ Successfully pushed workflow %s artifacts to Git: %s", id, workflow.TargetRepoUrl)
-
-	c.JSON(http.StatusOK, gin.H{
-		"message":    "Successfully pushed to Git repository",
-		"repository": workflow.TargetRepoUrl,
-		"branch":     workflow.TargetRepoBranch,
-	})
-}
-
-func scanRFEWorkflowArtifacts(c *gin.Context) {
-	id := c.Param("id")
-
-	workflow, exists := rfeWorkflows[id]
-	if !exists {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Workflow not found"})
-		return
-	}
-
-	err := scanAndUpdateWorkflowArtifacts(workflow)
-	if err != nil {
-		log.Printf("❌ Failed to scan artifacts for workflow %s: %v", id, err)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "Failed to scan workspace artifacts",
-			"details": err.Error(),
-		})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"message":       "Artifacts scanned successfully",
-		"artifactCount": len(workflow.Artifacts),
-	})
-}
-
-func getRFEWorkflowArtifact(c *gin.Context) {
-	id := c.Param("id")
-	artifactPath := c.Param("path")
-
-	_, exists := rfeWorkflows[id]
-	if !exists {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Workflow not found"})
-		return
-	}
-
-	// Read artifact content from workspace
-	fullPath := getRFEArtifactPath(id, artifactPath)
-
-	content, err := ioutil.ReadFile(fullPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			// If file doesn't exist, return empty content for new files
-			c.Header("Content-Type", "text/plain")
-			c.String(http.StatusOK, "")
-			return
-		}
-		log.Printf("❌ Failed to read artifact %s: %v", fullPath, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read artifact content"})
-		return
-	}
-
-	c.Header("Content-Type", "text/plain")
-	c.String(http.StatusOK, string(content))
-}
-
-func updateRFEWorkflowArtifact(c *gin.Context) {
-	id := c.Param("id")
-	artifactPath := c.Param("path")
-
-	workflow, exists := rfeWorkflows[id]
-	if !exists {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Workflow not found"})
-		return
-	}
-
-	// Read the content from request body
-	content, err := ioutil.ReadAll(c.Request.Body)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to read content"})
-		return
-	}
-
-	// Write artifact content to workspace
-	fullPath := getRFEArtifactPath(id, artifactPath)
-
-	// Ensure the directory exists
-	if err := os.MkdirAll(filepath.Dir(fullPath), 0755); err != nil {
-		log.Printf("❌ Failed to create directory for artifact %s: %v", fullPath, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create directory"})
-		return
-	}
-
-	// Write the content to file
-	if err := ioutil.WriteFile(fullPath, content, 0644); err != nil {
-		log.Printf("❌ Failed to write artifact %s: %v", fullPath, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to write artifact content"})
-		return
-	}
-
-	log.Printf("💾 Updated artifact %s for workflow %s (%d bytes)", artifactPath, id, len(content))
-
-	// Update artifact metadata if it exists
-	now := time.Now().UTC().Format(time.RFC3339)
-	for i, artifact := range workflow.Artifacts {
-		if artifact.Path == artifactPath {
-			workflow.Artifacts[i].Size = int64(len(content))
-			workflow.Artifacts[i].ModifiedAt = now
-			break
-		}
-	}
-
-	workflow.UpdatedAt = now
-
-	// Save updated workflow to persistent storage
-	if err := saveRFEWorkflow(workflow); err != nil {
-		log.Printf("⚠️ Failed to save workflow after artifact update: %v", err)
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"message": "Artifact updated successfully",
-		"path":    artifactPath,
-		"size":    len(content),
-	})
-}
-
-// ========================= Project-scoped RFE Handlers =========================
-
-func listProjectRFEWorkflows(c *gin.Context) {
-	project := c.Param("projectName")
-	dir := getProjectRFEWorkflowsDir(project)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to access workflows directory"})
-		return
-	}
-	files, err := ioutil.ReadDir(dir)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read workflows directory"})
-		return
-	}
-	var workflows []RFEWorkflow
-	for _, f := range files {
-		if f.IsDir() || !strings.HasSuffix(f.Name(), ".json") {
-			continue
-		}
-		id := strings.TrimSuffix(f.Name(), ".json")
-		wf, err := loadProjectRFEWorkflow(project, id)
-		if err != nil {
-			log.Printf("⚠️ Failed to load workflow %s (project=%s): %v", id, project, err)
-			continue
-		}
-		if err := syncAgentSessionStatuses(wf); err != nil {
-			log.Printf("⚠️ Failed to sync statuses for workflow %s (project=%s): %v", id, project, err)
-		} else {
-			_ = saveProjectRFEWorkflow(wf)
-		}
-		workflows = append(workflows, *wf)
-	}
-	if workflows == nil {
-		workflows = []RFEWorkflow{}
-	}
-	c.JSON(http.StatusOK, gin.H{"workflows": workflows})
-}
-
-func createProjectRFEWorkflow(c *gin.Context) {
-	project := c.Param("projectName")
-	var req CreateRFEWorkflowRequest
-	bodyBytes, _ := c.GetRawData()
-	log.Printf("📥 [project=%s] Raw request body: %s", project, string(bodyBytes))
-	c.Request.Body = ioutil.NopCloser(strings.NewReader(string(bodyBytes)))
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Validation failed: " + err.Error()})
-		return
-	}
-	now := time.Now().UTC().Format(time.RFC3339)
-	workflowID := fmt.Sprintf("rfe-%d", time.Now().Unix())
-	workflow := &RFEWorkflow{
-		ID:               workflowID,
-		Title:            req.Title,
-		Description:      req.Description,
-		Status:           "draft",
-		CurrentPhase:     "specify",
-		SelectedAgents:   req.SelectedAgents,
-		TargetRepoUrl:    req.TargetRepoUrl,
-		TargetRepoBranch: req.TargetRepoBranch,
-		Project:          project,
-		GitUserName:      req.GitUserName,
-		GitUserEmail:     req.GitUserEmail,
-		CreatedAt:        now,
-		UpdatedAt:        now,
-		AgentSessions:    []RFEAgentSession{},
-		Artifacts:        []RFEArtifact{},
-		PhaseResults:     make(map[string]PhaseResult),
-	}
-	if err := createProjectRFEWorkspace(project, workflowID); err != nil {
-		log.Printf("⚠️ Failed to create project workspace: %v", err)
-	}
-	if err := saveProjectRFEWorkflow(workflow); err != nil {
-		log.Printf("⚠️ Failed to save project workflow: %v", err)
-	}
-	if err := createAgentSessionsForPhaseProject(workflow, "specify"); err != nil {
-		log.Printf("⚠️ Failed to create project agent sessions for specify: %v", err)
-	}
-	c.JSON(http.StatusCreated, workflow)
-}
-
-func getProjectRFEWorkflow(c *gin.Context) {
-	project := c.Param("projectName")
-	id := c.Param("id")
-	wf, err := loadProjectRFEWorkflow(project, id)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Workflow not found"})
-		return
-	}
-	if err := syncAgentSessionStatuses(wf); err != nil {
-		log.Printf("⚠️ Failed to sync statuses for workflow %s (project=%s): %v", id, project, err)
-	}
-	if err := scanAndUpdateWorkflowArtifactsProject(wf); err != nil {
-		log.Printf("⚠️ Failed to scan artifacts for workflow %s (project=%s): %v", id, project, err)
-	}
-	c.JSON(http.StatusOK, wf)
-}
-
-func deleteProjectRFEWorkflow(c *gin.Context) {
-	project := c.Param("projectName")
-	id := c.Param("id")
-	if err := deleteProjectRFEWorkflowFile(project, id); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete workflow"})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"message": "Workflow deleted successfully"})
-}
-
-func pauseProjectRFEWorkflow(c *gin.Context) {
-	project := c.Param("projectName")
-	id := c.Param("id")
-	wf, err := loadProjectRFEWorkflow(project, id)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Workflow not found"})
-		return
-	}
-	wf.Status = "paused"
-	wf.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
-	_ = saveProjectRFEWorkflow(wf)
-	c.JSON(http.StatusOK, wf)
-}
-
-func resumeProjectRFEWorkflow(c *gin.Context) {
-	project := c.Param("projectName")
-	id := c.Param("id")
-	wf, err := loadProjectRFEWorkflow(project, id)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Workflow not found"})
-		return
-	}
-	wf.Status = "in_progress"
-	wf.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
-	_ = saveProjectRFEWorkflow(wf)
-	c.JSON(http.StatusOK, wf)
-}
-
-func advanceProjectRFEWorkflowPhase(c *gin.Context) {
-	project := c.Param("projectName")
-	id := c.Param("id")
-	var req AdvancePhaseRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	wf, err := loadProjectRFEWorkflow(project, id)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Workflow not found"})
-		return
-	}
-	var nextPhase string
-	switch wf.CurrentPhase {
-	case "specify":
-		nextPhase = "plan"
-	case "plan":
-		nextPhase = "tasks"
-	case "tasks":
-		nextPhase = "completed"
-	default:
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Cannot advance from current phase"})
-		return
-	}
-	if nextPhase != "completed" {
-		if err := createAgentSessionsForPhaseProject(wf, nextPhase); err != nil {
-			log.Printf("⚠️ Failed to create agent sessions for phase %s (project=%s): %v", nextPhase, project, err)
-		}
-	}
-	wf.CurrentPhase = nextPhase
-	if nextPhase == "completed" {
-		wf.Status = "completed"
-	}
-	wf.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
-	_ = saveProjectRFEWorkflow(wf)
-	c.JSON(http.StatusOK, wf)
-}
-
-func pushProjectRFEWorkflowToGit(c *gin.Context) {
-	project := c.Param("projectName")
-	id := c.Param("id")
-	wf, err := loadProjectRFEWorkflow(project, id)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Workflow not found"})
-		return
-	}
-	if err := pushProjectWorkflowToGitRepo(wf); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to push to Git", "details": err.Error()})
-		return
-	}
-	wf.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
-	_ = saveProjectRFEWorkflow(wf)
-	c.JSON(http.StatusOK, gin.H{"message": "Successfully pushed to Git repository", "repository": wf.TargetRepoUrl, "branch": wf.TargetRepoBranch})
-}
-
-func scanProjectRFEWorkflowArtifacts(c *gin.Context) {
-	project := c.Param("projectName")
-	id := c.Param("id")
-	wf, err := loadProjectRFEWorkflow(project, id)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Workflow not found"})
-		return
-	}
-	if err := scanAndUpdateWorkflowArtifactsProject(wf); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to scan workspace artifacts", "details": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"message": "Artifacts scanned successfully", "artifactCount": len(wf.Artifacts)})
-}
-
-func getProjectRFEWorkflowArtifact(c *gin.Context) {
-	project := c.Param("projectName")
-	id := c.Param("id")
-	artifactPath := c.Param("path")
-	fullPath := getProjectRFEArtifactPath(project, id, artifactPath)
-	content, err := ioutil.ReadFile(fullPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			c.Header("Content-Type", "text/plain")
-			c.String(http.StatusOK, "")
-			return
-		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read artifact content"})
-		return
-	}
-	c.Header("Content-Type", "text/plain")
-	c.String(http.StatusOK, string(content))
-}
-
-func updateProjectRFEWorkflowArtifact(c *gin.Context) {
-	project := c.Param("projectName")
-	id := c.Param("id")
-	artifactPath := c.Param("path")
-	wf, err := loadProjectRFEWorkflow(project, id)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Workflow not found"})
-		return
-	}
-	content, err := ioutil.ReadAll(c.Request.Body)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to read content"})
-		return
-	}
-	fullPath := getProjectRFEArtifactPath(project, id, artifactPath)
-	if err := os.MkdirAll(filepath.Dir(fullPath), 0755); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create directory"})
-		return
-	}
-	if err := ioutil.WriteFile(fullPath, content, 0644); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to write artifact content"})
-		return
-	}
-	now := time.Now().UTC().Format(time.RFC3339)
-	for i, a := range wf.Artifacts {
-		if a.Path == artifactPath {
-			wf.Artifacts[i].Size = int64(len(content))
-			wf.Artifacts[i].ModifiedAt = now
-			break
-		}
-	}
-	wf.UpdatedAt = now
-	_ = saveProjectRFEWorkflow(wf)
-	c.JSON(http.StatusOK, gin.H{"message": "Artifact updated successfully", "path": artifactPath, "size": len(content)})
-}
-
-// List sessions linked to a project-scoped RFE workflow by label selector
-func listProjectRFEWorkflowSessions(c *gin.Context) {
-	project := c.Param("projectName")
-	id := c.Param("id")
-	gvr := getAgenticSessionV1Alpha1Resource()
-	selector := fmt.Sprintf("rfe-workflow=%s,project=%s", id, project)
-	list, err := dynamicClient.Resource(gvr).Namespace(namespace).List(context.TODO(), v1.ListOptions{LabelSelector: selector})
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list sessions", "details": err.Error()})
-		return
-	}
-
-	// Build a thin DTO for UI
-	sessions := make([]map[string]interface{}, 0, len(list.Items))
-	for _, item := range list.Items {
-		meta, _ := item.Object["metadata"].(map[string]interface{})
-		status, _ := item.Object["status"].(map[string]interface{})
-		name, _ := meta["name"].(string)
-		phase, _ := status["phase"].(string)
-		sessions = append(sessions, map[string]interface{}{
-			"name":   name,
-			"phase":  phase,
-			"labels": meta["labels"],
-		})
-	}
-	c.JSON(http.StatusOK, gin.H{"sessions": sessions})
-}
-
-type rfeLinkSessionRequest struct {
-	ExistingName string `json:"existingName"`
-	Phase        string `json:"phase"`
-}
-
-// Add/link an existing session to an RFE by applying labels
-func addProjectRFEWorkflowSession(c *gin.Context) {
-	project := c.Param("projectName")
-	id := c.Param("id")
-	var req rfeLinkSessionRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request: " + err.Error()})
-		return
-	}
-	if req.ExistingName == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "existingName is required for linking in this version"})
-		return
-	}
-	gvr := getAgenticSessionV1Alpha1Resource()
-	obj, err := dynamicClient.Resource(gvr).Namespace(namespace).Get(context.TODO(), req.ExistingName, v1.GetOptions{})
-	if err != nil {
-		if errors.IsNotFound(err) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Session not found"})
-			return
-		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch session", "details": err.Error()})
-		return
-	}
-	meta, _ := obj.Object["metadata"].(map[string]interface{})
-	labels, _ := meta["labels"].(map[string]interface{})
-	if labels == nil {
-		labels = map[string]interface{}{}
-		meta["labels"] = labels
-	}
-	labels["project"] = project
-	labels["rfe-workflow"] = id
-	if req.Phase != "" {
-		labels["rfe-phase"] = req.Phase
-	}
-	// Update the resource
-	updated, err := dynamicClient.Resource(gvr).Namespace(namespace).Update(context.TODO(), obj, v1.UpdateOptions{})
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update session labels", "details": err.Error()})
-		return
-	}
-	_ = updated
-	c.JSON(http.StatusOK, gin.H{"message": "Session linked to RFE", "session": req.ExistingName})
-}
-
-// Remove/unlink a session from an RFE by clearing linkage labels (non-destructive)
-func removeProjectRFEWorkflowSession(c *gin.Context) {
-	project := c.Param("projectName")
-	_ = project // currently unused but kept for parity/logging if needed
-	id := c.Param("id")
-	sessionName := c.Param("sessionName")
-	gvr := getAgenticSessionV1Alpha1Resource()
-	obj, err := dynamicClient.Resource(gvr).Namespace(namespace).Get(context.TODO(), sessionName, v1.GetOptions{})
-	if err != nil {
-		if errors.IsNotFound(err) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Session not found"})
-			return
-		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch session", "details": err.Error()})
-		return
-	}
-	meta, _ := obj.Object["metadata"].(map[string]interface{})
-	labels, _ := meta["labels"].(map[string]interface{})
-	if labels != nil {
-		delete(labels, "rfe-workflow")
-		delete(labels, "rfe-phase")
-	}
-	if _, err := dynamicClient.Resource(gvr).Namespace(namespace).Update(context.TODO(), obj, v1.UpdateOptions{}); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update session labels", "details": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"message": "Session unlinked from RFE", "session": sessionName, "rfe": id})
 }

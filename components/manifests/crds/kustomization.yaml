@@ -3,5 +3,6 @@ kind: Kustomization
 resources:
 - agenticsessions-crd.yaml
 - projectsettings-crd.yaml
+- rfeworkflows-crd.yaml
 
 
