@@ -114,7 +114,6 @@ spec:
     targetPort: http
     protocol: TCP
     name: http
-  type: LoadBalancer
   - port: 8443
     targetPort: dashboard-ui
     protocol: TCP

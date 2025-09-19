@@ -11,5 +11,8 @@ resources:
 - ambient-project-edit-clusterrole.yaml
 - ambient-project-view-clusterrole.yaml
 - frontend-rbac.yaml
+- aggregate-agenticsessions-admin.yaml
+- aggregate-projectsettings-admin.yaml
+- aggregate-rfeworkflows-admin.yaml
 
 

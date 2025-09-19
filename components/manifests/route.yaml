@@ -10,7 +10,7 @@ spec:
     name: frontend-service
     weight: 100
   port:
-    targetPort: http
+    targetPort: dashboard-ui
   tls:
     termination: edge
     insecureEdgeTerminationPolicy: Redirect

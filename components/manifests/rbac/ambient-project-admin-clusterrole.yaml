@@ -5,10 +5,10 @@ metadata:
 rules:
 # AgenticSessions and ProjectSettings (full CRUD)
 - apiGroups: ["vteam.ambient-code"]
-  resources: ["agenticsessions", "projectsettings"]
+  resources: ["agenticsessions", "projectsettings", "rfeworkflows"]
   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 - apiGroups: ["vteam.ambient-code"]
-  resources: ["agenticsessions/status", "projectsettings/status"]
+  resources: ["agenticsessions/status", "projectsettings/status", "rfeworkflows/status"]
   verbs: ["get", "update", "patch"]
 # Secrets and ConfigMaps (full management)
 - apiGroups: [""]

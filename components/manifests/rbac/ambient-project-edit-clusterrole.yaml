@@ -10,6 +10,13 @@ rules:
 - apiGroups: ["vteam.ambient-code"]
   resources: ["agenticsessions/status"]
   verbs: ["get", "update", "patch"]
+# RFEWorkflows (full CRUD)
+- apiGroups: ["vteam.ambient-code"]
+  resources: ["rfeworkflows"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["vteam.ambient-code"]
+  resources: ["rfeworkflows/status"]
+  verbs: ["get", "update", "patch"]
 # ProjectSettings (read-only)
 - apiGroups: ["vteam.ambient-code"]
   resources: ["projectsettings"]

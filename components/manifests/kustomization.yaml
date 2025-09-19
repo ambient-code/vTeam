@@ -10,7 +10,6 @@ namespace: ambient-code
 
 # Resources to include in deployment
 resources:
-- pvc.yaml
 - namespace.yaml
 - crds
 - rbac

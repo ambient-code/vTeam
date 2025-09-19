@@ -7,6 +7,10 @@
 
 set -e
 
+# Always run from the script's directory (manifests root)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -223,7 +227,7 @@ oc get services -n ${NAMESPACE}
 echo ""
 echo -e "${BLUE}Routes:${NC}"
 oc get route -n ${NAMESPACE} || true
-ROUTE_HOST=$(oc get route frontend -n ${NAMESPACE} -o jsonpath='{.spec.host}' 2>/dev/null || true)
+ROUTE_HOST=$(oc get route frontend-route -n ${NAMESPACE} -o jsonpath='{.spec.host}' 2>/dev/null || true)
 echo ""
 
 echo -e "${YELLOW}Next steps:${NC}"
