@@ -52,14 +52,27 @@ export const ToolMessage = React.forwardRef<HTMLDivElement, ToolMessageProps>(
   ({ message, className, ...props }, ref) => {
     const [isExpanded, setIsExpanded] = useState(false);
 
-    // Determine message type and state
-    const isTextMessage = message.content && !message.tool_use_id;
-    const isToolCall =
-      message.tool_use_id && message.tool_use_name && !message.content;
-    const isToolResult = message.tool_use_id && message.content;
+    // Determine message type and state using new union
+    const assistantBlocks =
+      message.type === "assistant_message" ? message.content : undefined;
+    const toolUseBlock = assistantBlocks?.find?.(
+      (b: any) => b && typeof b === "object" && b.type === "tool_use_block"
+    ) as any | undefined;
+    const toolResultBlock = assistantBlocks?.find?.(
+      (b: any) => b && typeof b === "object" && b.type === "tool_result_block"
+    ) as any | undefined;
+    const textBlock = assistantBlocks?.find?.(
+      (b: any) => b && typeof b === "object" && b.type === "text_block"
+    ) as any | undefined;
+
+    const isToolCall = Boolean(toolUseBlock && !toolResultBlock);
+    const isToolResult = Boolean(toolResultBlock);
+    const isTextMessage =
+      message.type === "assistant_message" && Boolean(textBlock) && !isToolCall && !isToolResult;
 
     // For regular text messages, use the original Message component style
     if (isTextMessage) {
+      const text = textBlock?.text || "";
       return (
         <div ref={ref} className={cn("mb-4", className)} {...props}>
           <div className="flex items-start space-x-3">
@@ -83,7 +96,7 @@ export const ToolMessage = React.forwardRef<HTMLDivElement, ToolMessageProps>(
                 {/* Content */}
                 <div className="text-sm text-gray-800">
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                    {message.content || ""}
+                    {text}
                   </ReactMarkdown>
                 </div>
               </div>
@@ -94,9 +107,9 @@ export const ToolMessage = React.forwardRef<HTMLDivElement, ToolMessageProps>(
     }
 
     // For tool calls/results, show collapsible interface
-    const toolName = formatToolName(message.tool_use_name);
+    const toolName = formatToolName(toolUseBlock?.name);
     const isLoading = isToolCall; // Tool call without result is loading
-    const isError = message.tool_use_is_error === true;
+    const isError = toolResultBlock?.is_error === true;
     const isSuccess = isToolResult && !isError;
 
     return (
@@ -157,21 +170,21 @@ export const ToolMessage = React.forwardRef<HTMLDivElement, ToolMessageProps>(
               {isExpanded && (
                 <div className="px-3 pb-3 space-y-3 bg-gray-50">
                   {/* Tool Input */}
-                  {message.tool_use_input && (
+                  {toolUseBlock?.input && (
                     <div>
                       <h4 className="text-xs font-medium text-gray-700 mb-1">
                         Input
                       </h4>
                       <div className="bg-gray-800 rounded text-xs p-2 overflow-x-auto">
                         <pre className="text-gray-100">
-                          {formatToolInput(message.tool_use_input)}
+                          {formatToolInput(JSON.stringify(toolUseBlock.input))}
                         </pre>
                       </div>
                     </div>
                   )}
 
                   {/* Tool Result */}
-                  {message.content && isToolResult && (
+                  {isToolResult && (
                     <div>
                       <h4 className="text-xs font-medium text-gray-700 mb-1">
                         Result{" "}
@@ -188,7 +201,11 @@ export const ToolMessage = React.forwardRef<HTMLDivElement, ToolMessageProps>(
                         )}
                       >
                         <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                          {truncateContent(message.content)}
+                          {truncateContent(
+                            typeof toolResultBlock?.content === "string"
+                              ? toolResultBlock.content
+                              : JSON.stringify(toolResultBlock?.content ?? "")
+                          )}
                         </ReactMarkdown>
                       </div>
                     </div>

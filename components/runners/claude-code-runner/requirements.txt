@@ -1,4 +1,0 @@
-requests>=2.31.0
-anthropic>=0.40.0
-aiohttp>=3.8.0
-pyjwt>=2.8.0

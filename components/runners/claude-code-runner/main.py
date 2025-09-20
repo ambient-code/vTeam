@@ -4,7 +4,6 @@ import logging
 import os
 import sys
 import json
-import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Any, List
@@ -12,6 +11,7 @@ from typing import Dict, Any, List
 import requests
 
 from auth_handler import AuthHandler, BackendClient
+from git_integration import GitIntegration
 
 
 log_level = logging.DEBUG if os.getenv("DEBUG", "").lower() in ("true", "1", "yes") else logging.INFO
@@ -28,7 +28,6 @@ class SimpleClaudeRunner:
         self.api_key = os.getenv("ANTHROPIC_API_KEY", "")
 
         # Optional inputs
-        self.github_repo = os.getenv("GITHUB_REPO", "").strip()
         self.git_user_name = os.getenv("GIT_USER_NAME", "").strip()
         self.git_user_email = os.getenv("GIT_USER_EMAIL", "").strip()
         self.backend_api_url = os.getenv("BACKEND_API_URL", f"http://backend-service:8080/api").rstrip("/")
@@ -36,7 +35,9 @@ class SimpleClaudeRunner:
         self.message_store_path = os.getenv("MESSAGE_STORE_PATH", f"/sessions/{self.session_name}/messages.json")
         self.workspace_store_path = os.getenv("WORKSPACE_STORE_PATH", f"/sessions/{self.session_name}/workspace")
 
-        logger.info(f"GITHUB_REPO: {self.github_repo}")
+        # Git integration (multi-repo via GIT_REPOSITORIES)
+        self.git = GitIntegration()
+
         logger.info(f"GIT_USER_NAME: {self.git_user_name}")
         logger.info(f"GIT_USER_EMAIL: {self.git_user_email}")
         logger.info(f"BACKEND_API_URL: {self.backend_api_url}")
@@ -100,30 +101,6 @@ class SimpleClaudeRunner:
             logger.error(f"content_list error for {path}: {e}")
         return []
 
-    # ---------------- Git helpers ----------------
-    def _maybe_clone_repo(self) -> None:
-        if not self.github_repo:
-            logger.debug("No GitHub repository configured, skipping clone")
-            return
-        
-        logger.info(f"Starting repository clone: {self.github_repo}")
-        repo_dir = self.workdir / "repo"
-        repo_dir.parent.mkdir(parents=True, exist_ok=True)
-        
-        try:
-            if self.git_user_name:
-                logger.debug(f"Setting git user.name to: {self.git_user_name}")
-                subprocess.run(["git", "config", "--global", "user.name", self.git_user_name], check=False)
-            if self.git_user_email:
-                logger.debug(f"Setting git user.email to: {self.git_user_email}")
-                subprocess.run(["git", "config", "--global", "user.email", self.git_user_email], check=False)
-            
-            logger.info(f"Cloning repository {self.github_repo} to {repo_dir}")
-            subprocess.run(["git", "clone", "--depth", "1", self.github_repo, str(repo_dir)], check=True)
-            logger.info(f"Successfully cloned repository to {repo_dir}")
-        except subprocess.CalledProcessError as e:
-            logger.warning(f"Git clone failed: {e}")
-
     # ---------------- Workspace sync ----------------
     def _sync_workspace_from_pvc(self) -> None:
         if not self.workspace_store_path:
@@ -179,42 +156,86 @@ class SimpleClaudeRunner:
     # ---------------- Messaging ----------------
     def _append_message(self, text: str) -> None:
         if text and text.strip():
-            self.messages.append({"content": text.strip()})
+            # Emit as a simple SYSTEM status message for UI
+            self.messages.append({
+                "type": "system_message",
+                "subtype": "status",
+                "data": {"content": text.strip()},
+            })
 
     def _append_stream_text(self, text: str) -> None:
-        """Append streaming text to the last text message or create a new one.
-
-        This keeps UI updates smooth by coalescing small deltas.
-        """
+        """Append or extend a streaming assistant text block message for smoother UI updates."""
         if not text:
             return
-        if self.messages and isinstance(self.messages[-1], dict) and "content" in self.messages[-1] and not any(
-            k in self.messages[-1] for k in ("tool_use_id", "tool_use_name", "tool_use_input", "tool_use_is_error")
-        ):
-            # Extend the last text message
-            try:
-                self.messages[-1]["content"] = (self.messages[-1].get("content", "") or "") + text
-            except Exception:
-                # Fallback: append as a new message
-                self.messages.append({"content": text})
-        else:
-            self.messages.append({"content": text})
+        # Try to coalesce with the last assistant text message
+        if self.messages and isinstance(self.messages[-1], dict) and self.messages[-1].get("type") == "assistant_message":
+            last = self.messages[-1]
+            blocks = last.get("content")
+            if isinstance(blocks, list) and blocks and isinstance(blocks[-1], dict) and blocks[-1].get("type") == "text_block":
+                try:
+                    blocks[-1]["text"] = (blocks[-1].get("text", "") or "") + text
+                    return
+                except Exception:
+                    pass
+        # Fallback: append a new assistant text message
+        self.messages.append({
+            "type": "assistant_message",
+            "content": [
+                {"type": "text_block", "text": text}
+            ],
+        })
 
     def _append_tool_use(self, tool_id: str | None, tool_name: str | None, tool_input: Any) -> None:
         try:
+            block = {
+                "type": "tool_use_block",
+                "id": tool_id or "",
+                "name": tool_name or "",
+                "input": tool_input,
+            }
             payload = {
-                "tool_use_id": tool_id or "",
-                "tool_use_name": tool_name or "",
-                "tool_use_input": json.dumps(tool_input) if tool_input is not None else "",
+                "type": "assistant_message",
+                "content": [block],
             }
             self.messages.append(payload)
         except Exception:
             # Ensure we don't break the run due to serialization issues
             self.messages.append({
-                "tool_use_id": tool_id or "",
-                "tool_use_name": tool_name or "",
-                "tool_use_input": "<unserializable tool input>",
-                "tool_use_is_error": True,
+                "type": "assistant_message",
+                "content": [
+                    {
+                        "type": "tool_use_block",
+                        "id": tool_id or "",
+                        "name": tool_name or "",
+                        "input": "<unserializable tool input>",
+                    }
+                ],
+            })
+
+    def _append_tool_result(self, tool_use_id: str | None, content: Any, is_error: bool | None) -> None:
+        try:
+            block = {
+                "type": "tool_result_block",
+                "tool_use_id": tool_use_id or "",
+                "content": content,
+                "is_error": bool(is_error) if is_error is not None else None,
+            }
+            payload = {
+                "type": "assistant_message",
+                "content": [block],
+            }
+            self.messages.append(payload)
+        except Exception:
+            self.messages.append({
+                "type": "assistant_message",
+                "content": [
+                    {
+                        "type": "tool_result_block",
+                        "tool_use_id": tool_use_id or "",
+                        "content": "<unserializable tool result>",
+                        "is_error": True,
+                    }
+                ],
             })
 
     def _flush_messages(self) -> None:
@@ -248,73 +269,91 @@ class SimpleClaudeRunner:
 
     # ---------------- LLM call (streaming) ----------------
     def _run_llm_streaming(self, prompt: str) -> tuple[str, float]:
-        """Run the LLM with streaming, emitting structured messages for the UI."""
-        import anthropic
-        client = anthropic.Anthropic(api_key=self.api_key)
+        """Run the LLM with streaming via Claude Code SDK, emitting structured messages for the UI."""
         # Nudge the agent to write files to artifacts folder
         full_prompt = prompt + "\n\nIMPORTANT: Save any file outputs into the 'artifacts' folder of the working directory."
-
-        model = os.getenv("LLM_MODEL", "claude-3-7-sonnet-latest")
-        max_tokens = int(os.getenv("LLM_MAX_TOKENS", "4000"))
-        temperature = float(os.getenv("LLM_TEMPERATURE", "0.7"))
 
         # Accumulate final text for convenience
         final_text_parts: List[str] = []
 
-        try:
-            # Use streaming API to surface incremental progress
-            with client.messages.stream(
-                model=model,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                messages=[{"role": "user", "content": full_prompt}],
-            ) as stream:
-                for event in stream:
-                    print(f"[EVENT]: {event}")
-                    etype = getattr(event, "type", "")
-                    # Stream textual deltas
-                    if etype in ("content_block_delta", "message_delta", "text_delta"):
-                        # Attempt to grab text safely across SDK versions
-                        text = getattr(getattr(event, "delta", event), "text", None)
-                        if text:
-                            final_text_parts.append(text)
-                            logger.info(f"[TEXT]: {text}")
-                            self._append_stream_text(text)
-                            # Flush opportunistically on newlines for better UX
-                            if "\n" in text or len(text) > 32:
-                                self._flush_messages()
-                    # Tool use start
-                    elif etype in ("content_block_start", "tool_use"):
-                        block = getattr(event, "content_block", None) or getattr(event, "block", None) or getattr(event, "data", None)
-                        btype = getattr(block, "type", None) or getattr(event, "type", None)
-                        if btype == "tool_use":
-                            tool_id = getattr(block, "id", None) or getattr(event, "id", None)
-                            tool_name = getattr(block, "name", None) or getattr(event, "name", None)
-                            tool_input = getattr(block, "input", None) or getattr(event, "input", None)
+        async def run_with_client() -> None:
+            from claude_code_sdk import (
+                query,
+                ClaudeCodeOptions,
+                AssistantMessage,
+                ToolUseBlock,
+                ToolResultBlock,
+                TextBlock,
+            )
+
+            # Allow configuring tools via env; default to common ones
+            allowed_tools_env = os.getenv("CLAUDE_ALLOWED_TOOLS", "Read,Write,Bash").strip()
+            allowed_tools = [t.strip() for t in allowed_tools_env.split(",") if t.strip()]
+
+            options = ClaudeCodeOptions(
+                permission_mode=os.getenv("CLAUDE_PERMISSION_MODE", "acceptEdits"),
+                allowed_tools=allowed_tools if allowed_tools else None,
+                cwd=str(self.workdir),
+            )
+
+            async for message in query(prompt=full_prompt, options=options):
+                logger.info(f"Message: {message}")
+                if isinstance(message, AssistantMessage):
+                    # Emit assistant text blocks as streaming messages
+                    if not any(isinstance(b, (ToolUseBlock, ToolResultBlock)) for b in message.content):
+                        for block in message.content:
+                            if isinstance(block, TextBlock):
+                                self._append_stream_text(getattr(block, "text", "") or "")
+                    for block in message.content:
+                        if isinstance(block, ToolUseBlock):
+                            tool_id = getattr(block, "id", None)
+                            tool_name = getattr(block, "name", None)
+                            tool_input = getattr(block, "input", None)
                             self._append_tool_use(tool_id, tool_name, tool_input)
                             self._flush_messages()
-                # Ensure we process the final message for any remaining text
+                        elif isinstance(block, TextBlock):
+                            text = getattr(block, "text", None) or ""
+                            if text:
+                                final_text_parts.append(text)
+                                logger.info(f"[TEXT]: {text}")
+                                self._append_stream_text(text)
+                                if "\n" in text or len(text) > 32:
+                                    self._flush_messages()
+                        elif isinstance(block, ToolResultBlock):
+                            try:
+                                tool_use_id = getattr(block, "tool_use_id", None)
+                                content = getattr(block, "content", None)
+                                is_error = getattr(block, "is_error", None)
+                                self._append_tool_result(tool_use_id, content, is_error)
+                            except Exception:
+                                pass
+                            # Ensure UI sees completion of tool
+                            self._flush_messages()
+
+        try:
+            import asyncio
+            asyncio.run(run_with_client())
+        except RuntimeError:
+            # If we're already inside an event loop (unlikely here), run in a thread
+            import threading
+
+            thread_error: List[Exception] = []
+            done = threading.Event()
+
+            def runner() -> None:
                 try:
-                    final_msg = stream.get_final_message()
-                    if final_msg and getattr(final_msg, "content", None):
-                        for part in final_msg.content:
-                            if hasattr(part, "text") and part.text:
-                                final_text_parts.append(part.text)
-                except Exception:
-                    pass
-        except Exception as e:
-            logger.warning(f"Streaming failed or unsupported; falling back to non-streaming call: {e}")
-            # Fall back to non-streaming call to avoid hard failure
-            msg = client.messages.create(
-                model=model,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                messages=[{"role": "user", "content": full_prompt}],
-            )
-            if msg and getattr(msg, "content", None):
-                for part in msg.content:
-                    if hasattr(part, "text") and part.text:
-                        final_text_parts.append(part.text)
+                    import asyncio as _asyncio
+                    _asyncio.run(run_with_client())
+                except Exception as e:  # noqa: BLE001
+                    thread_error.append(e)
+                finally:
+                    done.set()
+
+            t = threading.Thread(target=runner, daemon=True)
+            t.start()
+            done.wait()
+            if thread_error:
+                logger.error(f"Claude Code SDK streaming failed: {thread_error[0]}")
 
         # Final flush to ensure UI gets all content
         self._flush_messages()
@@ -329,9 +368,17 @@ class SimpleClaudeRunner:
 
             self._update_status("Running", message="Initializing session")
 
-            # 1) Sync shared workspace from PVC (if configured), then init repo (optional)
+            # 1) Sync shared workspace from PVC (if configured)
             self._sync_workspace_from_pvc()
-            self._maybe_clone_repo()
+
+            # 1b) Setup Git and clone configured repositories into workdir (always)
+            try:
+                import asyncio
+                asyncio.run(self.git.setup_git_config())
+                asyncio.run(self.git.clone_repositories(self.workdir))
+            except RuntimeError:
+                # If an event loop is already running, skip async setup to avoid crash
+                pass
 
             # 2) Workspace now has prior state; proceed to run prompt
 

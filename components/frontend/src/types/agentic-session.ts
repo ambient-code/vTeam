@@ -37,13 +37,66 @@ export type AgenticSessionSpec = {
 	project?: string;
 };
 
-export type MessageObject = {
-	content?: string;
-	tool_use_id?: string;
-	tool_use_name?: string;
-	tool_use_input?: string;
-	tool_use_is_error?: boolean;
-};
+// -----------------------------
+// Content Block Types
+// -----------------------------
+export type ContentBlock =
+  | {
+      type: "text_block";
+      text: string;
+    }
+  | {
+      type: "thinking_block";
+      thinking: string;
+      signature: string;
+    }
+  | {
+      type: "tool_use_block";
+      id: string;
+      name: string;
+      input: Record<string, any>;
+    }
+  | {
+      type: "tool_result_block";
+      tool_use_id: string;
+      content?: string | Array<Record<string, any>> | null;
+      is_error?: boolean | null;
+    };
+
+// -----------------------------
+// Message Types
+// -----------------------------
+export type Message =
+  | {
+      type: "user_message";
+      content: string | ContentBlock[];
+    }
+  | {
+      type: "assistant_message";
+      content: ContentBlock[];
+      model: string;
+    }
+  | {
+      type: "system_message";
+      subtype: string;
+      data: Record<string, any>;
+    }
+  | {
+      type: "result_message";
+      subtype: string;
+      duration_ms: number;
+      duration_api_ms: number;
+      is_error: boolean;
+      num_turns: number;
+      session_id: string;
+      total_cost_usd?: number | null;
+      usage?: Record<string, any> | null;
+      result?: string | null;
+    };
+
+// Backwards-compatible message type consumed by frontend components.
+// Prefer using StreamMessage going forward.
+export type MessageObject = Message;
 
 export type AgenticSessionStatus = {
 	phase: AgenticSessionPhase;

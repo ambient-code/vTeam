@@ -17,7 +17,7 @@ import {
 
 // Custom components
 import { Message } from "@/components/ui/message";
-import { ToolMessage } from "@/components/ui/tool-message";
+import { StreamMessage } from "@/components/ui/stream-message";
 
 // Markdown rendering
 import ReactMarkdown from "react-markdown";
@@ -489,23 +489,9 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
             <CardContent>
               <div className="max-h-96 overflow-y-auto space-y-4 bg-gray-50 rounded-lg p-4">
                 {/* Display all existing messages */}
-                {session.status?.messages?.map((message, index) => {
-                  const isToolMessage = message.tool_use_id || message.tool_use_name;
-                  if (isToolMessage) {
-                    return (
-                      <ToolMessage key={`tool-${index}-${message.tool_use_id}`} message={message} />
-                    );
-                  } else {
-                    return (
-                      <Message
-                        key={`text-${index}`}
-                        role="bot"
-                        content={message.content || ""}
-                        name="Claude AI"
-                      />
-                    );
-                  }
-                })}
+                {session.status?.messages?.map((message, index) => (
+                  <StreamMessage key={`msg-${index}`} message={message as any} />
+                ))}
 
                 {/* Show loading message if still processing */}
                 {(session.status?.phase === "Running" ||

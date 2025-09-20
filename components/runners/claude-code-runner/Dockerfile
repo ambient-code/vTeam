@@ -9,11 +9,14 @@ RUN apt-get update && apt-get install -y \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first for better Docker layer caching
-COPY requirements.txt .
+# Install uv package manager
+RUN pip install --no-cache-dir uv
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# Copy pyproject for better Docker layer caching
+COPY pyproject.toml .
+
+# Install dependencies with uv
+RUN uv pip install --system -e .
 
 # Copy the application files with proper permissions
 COPY main.py /app/

@@ -278,11 +278,22 @@ type GitConfig struct {
 }
 
 type MessageObject struct {
-	Content        string `json:"content,omitempty"`
-	ToolUseID      string `json:"tool_use_id,omitempty"`
-	ToolUseName    string `json:"tool_use_name,omitempty"`
-	ToolUseInput   string `json:"tool_use_input,omitempty"`
-	ToolUseIsError *bool  `json:"tool_use_is_error,omitempty"`
+	// New structured streaming fields (pass-through from runner)
+	Type    string                 `json:"type,omitempty"`
+	Content interface{}            `json:"content,omitempty"`
+	Subtype string                 `json:"subtype,omitempty"`
+	Data    map[string]interface{} `json:"data,omitempty"`
+	// Assistant fields
+	Model string `json:"model,omitempty"`
+	// Result fields
+	DurationMs    int                    `json:"duration_ms,omitempty"`
+	DurationApiMs int                    `json:"duration_api_ms,omitempty"`
+	IsError       bool                   `json:"is_error,omitempty"`
+	NumTurns      int                    `json:"num_turns,omitempty"`
+	SessionID     string                 `json:"session_id,omitempty"`
+	TotalCostUSD  *float64               `json:"total_cost_usd,omitempty"`
+	Usage         map[string]interface{} `json:"usage,omitempty"`
+	Result        *string                `json:"result,omitempty"`
 }
 
 type AgenticSessionStatus struct {
@@ -750,25 +761,57 @@ func parseStatus(status map[string]interface{}) *AgenticSessionStatus {
 			if msgMap, ok := msg.(map[string]interface{}); ok {
 				messageObj := MessageObject{}
 
+				// New structured fields (optional)
+				if mt, ok := msgMap["type"].(string); ok {
+					messageObj.Type = mt
+				}
+				if cb, ok := msgMap["content"].([]interface{}); ok {
+					messageObj.Content = cb
+				}
+				if st, ok := msgMap["subtype"].(string); ok {
+					messageObj.Subtype = st
+				}
+				if data, ok := msgMap["data"].(map[string]interface{}); ok {
+					messageObj.Data = data
+				}
+
+				// Assistant fields
+				if model, ok := msgMap["model"].(string); ok {
+					messageObj.Model = model
+				}
+
+				// Result fields
+				if dms, ok := msgMap["duration_ms"].(float64); ok {
+					messageObj.DurationMs = int(dms)
+				}
+				if dams, ok := msgMap["duration_api_ms"].(float64); ok {
+					messageObj.DurationApiMs = int(dams)
+				}
+				if isErr, ok := msgMap["is_error"].(bool); ok {
+					messageObj.IsError = isErr
+				}
+				if nt, ok := msgMap["num_turns"].(float64); ok {
+					messageObj.NumTurns = int(nt)
+				}
+				if sid, ok := msgMap["session_id"].(string); ok {
+					messageObj.SessionID = sid
+				}
+				if tcu, ok := msgMap["total_cost_usd"].(float64); ok {
+					messageObj.TotalCostUSD = &tcu
+				}
+				if usage, ok := msgMap["usage"].(map[string]interface{}); ok {
+					messageObj.Usage = usage
+				}
+				if res, ok := msgMap["result"].(string); ok {
+					messageObj.Result = &res
+				}
+
+				// If content is a string (legacy runner), still store it (overwrites any array set above)
 				if content, ok := msgMap["content"].(string); ok {
 					messageObj.Content = content
 				}
 
-				if toolUseID, ok := msgMap["tool_use_id"].(string); ok {
-					messageObj.ToolUseID = toolUseID
-				}
-
-				if toolUseName, ok := msgMap["tool_use_name"].(string); ok {
-					messageObj.ToolUseName = toolUseName
-				}
-
-				if toolUseInput, ok := msgMap["tool_use_input"].(string); ok {
-					messageObj.ToolUseInput = toolUseInput
-				}
-
-				if toolUseIsError, ok := msgMap["tool_use_is_error"].(bool); ok {
-					messageObj.ToolUseIsError = &toolUseIsError
-				}
+				// legacy tool_* fields no longer supported
 
 				result.Messages[i] = messageObj
 			}

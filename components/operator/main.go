@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -269,6 +270,16 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 	tokenSecret, _, _ := unstructured.NestedString(gitConfig, "authentication", "tokenSecret")
 	repositories, _, _ := unstructured.NestedSlice(gitConfig, "repositories")
 
+	// Marshal repositories to JSON string for runner env var
+	reposJSON := "[]"
+	if len(repositories) > 0 {
+		if b, err := json.Marshal(repositories); err == nil {
+			reposJSON = string(b)
+		} else {
+			log.Printf("Failed to marshal git repositories: %v", err)
+		}
+	}
+
 	// Read runner secrets configuration from ProjectSettings in the session's namespace
 	runnerSecretsName := ""
 	{
@@ -389,7 +400,7 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 									{Name: "GIT_USER_EMAIL", Value: gitUserEmail},
 									{Name: "GIT_SSH_KEY_SECRET", Value: sshKeySecret},
 									{Name: "GIT_TOKEN_SECRET", Value: tokenSecret},
-									{Name: "GIT_REPOSITORIES", Value: fmt.Sprintf("%v", repositories)},
+									{Name: "GIT_REPOSITORIES", Value: reposJSON},
 								}
 								// If backend annotated the session with a runner token secret, inject bot token envs without refetching the CR
 								if meta, ok := currentObj.Object["metadata"].(map[string]interface{}); ok {
