@@ -30,7 +30,7 @@ spec:
                 properties:
                   model:
                     type: string
-                    default: "claude-3-5-sonnet-20241022"
+                    default: "claude-3-7-sonnet-latest"
                   temperature:
                     type: number
                     default: 0.7
@@ -82,11 +82,16 @@ spec:
                         clonePath:
                           type: string
                           description: "Relative path where to clone the repository"
-              environmentVariables:
+              paths:
                 type: object
-                description: "Additional environment variables for the agentic session container"
-                additionalProperties:
-                  type: string
+                description: "PVC storage paths used by the runner"
+                properties:
+                  workspace:
+                    type: string
+                    description: "Root workspace directory on PVC containing repos, .claude, specs, etc."
+                  messages:
+                    type: string
+                    description: "Path on PVC where conversation messages are stored (e.g., /sessions/{id}/messages.json)"
           status:
             type: object
             properties:

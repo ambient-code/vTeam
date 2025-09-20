@@ -34,7 +34,7 @@ class SimpleClaudeRunner:
         self.backend_api_url = os.getenv("BACKEND_API_URL", "http://backend-service:8080/api").rstrip("/")
         self.pvc_proxy_api_url = os.getenv("PVC_PROXY_API_URL", f"http://ambient-content.{self.session_namespace}.svc:8080").rstrip("/")
         self.message_store_path = os.getenv("MESSAGE_STORE_PATH", f"/sessions/{self.session_name}/messages.json")
-        self.artifact_store_path = os.getenv("ARTIFACT_STORE_PATH", f"/sessions/{self.session_name}/artifacts")
+        self.workspace_store_path = os.getenv("WORKSPACE_STORE_PATH", f"/sessions/{self.session_name}/workspace")
 
         # Derived
         self.workdir = Path("/tmp/workdir")
@@ -104,57 +104,45 @@ class SimpleClaudeRunner:
         except subprocess.CalledProcessError as e:
             logger.warning(f"Git clone failed: {e}")
 
-    # ---------------- Artifact sync ----------------
-    def _sync_artifacts_from_pvc(self) -> None:
-        # Copy ARTIFACT_STORE_PATH into local artifacts dir (best-effort)
-        items = self.content_list(self.artifact_store_path)
-        if not items:
+    # ---------------- Workspace sync ----------------
+    def _sync_workspace_from_pvc(self) -> None:
+        if not self.workspace_store_path:
             return
-        for it in items:
-            if it.get("isDir"):
-                # list children
-                sub_items = self.content_list(it.get("path", ""))
-                # write each file
-                for sub in sub_items:
-                    if sub.get("isDir"):
-                        continue
-                    rel = Path(sub["path"]).relative_to(self.artifact_store_path)
-                    target = self.artifacts_dir / rel
-                    target.parent.mkdir(parents=True, exist_ok=True)
-                    data = self.content_read(sub["path"]) or b""
+        def pull_dir(pvc_path: str, dst: Path) -> None:
+            dst.mkdir(parents=True, exist_ok=True)
+            items = self.content_list(pvc_path)
+            for it in items:
+                p = it.get("path", "")
+                name = Path(p).name
+                target = dst / name
+                if it.get("isDir"):
+                    pull_dir(p, target)
+            else:
                     try:
+                        data = self.content_read(p) or b""
+                        target.parent.mkdir(parents=True, exist_ok=True)
                         target.write_bytes(data)
                     except Exception as e:
-                        logger.warning(f"Failed to write local artifact {target}: {e}")
-            else:
-                rel = Path(it["path"]).relative_to(self.artifact_store_path)
-                target = self.artifacts_dir / rel
-                target.parent.mkdir(parents=True, exist_ok=True)
-                data = self.content_read(it["path"]) or b""
-                try:
-                    target.write_bytes(data)
-                except Exception as e:
-                    logger.warning(f"Failed to write local artifact {target}: {e}")
+                        logger.warning(f"Failed to pull file {p} -> {target}: {e}")
+        pull_dir(self.workspace_store_path, self.workdir)
 
-    def _push_artifacts_to_pvc(self) -> None:
-        if not self.artifacts_dir.exists():
+    def _push_workspace_to_pvc(self) -> None:
+        if not self.workspace_store_path:
             return
-        for p in self.artifacts_dir.rglob("*"):
-            if p.is_dir():
-                continue
-            rel = p.relative_to(self.artifacts_dir)
-            pvc_path = str(Path(self.artifact_store_path) / rel)
+        for path in self.workdir.rglob("*"):
+            if path.is_dir():
+                        continue
+            rel = path.relative_to(self.workdir)
+            pvc_path = str(Path(self.workspace_store_path) / rel)
             try:
-                content = p.read_text(encoding="utf-8", errors="ignore")
+                content = path.read_text(encoding="utf-8")
+                self.content_write(pvc_path, content, "utf8")
             except Exception:
-                # Fallback to base64 for binary files
-                import base64
-                b64 = base64.b64encode(p.read_bytes()).decode("ascii")
-                self.content_write(pvc_path, b64, encoding="base64")
-                continue
-            ok = self.content_write(pvc_path, content, encoding="utf8")
-            if not ok:
-                logger.warning(f"Failed to push artifact {p} -> {pvc_path}")
+                try:
+                    import base64
+                    self.content_write(pvc_path, base64.b64encode(path.read_bytes()).decode("ascii"), "base64")
+                except Exception as e:
+                    logger.warning(f"Failed to push file {path} -> {pvc_path}: {e}")
 
     # ---------------- Messaging ----------------
     def _append_message(self, text: str) -> None:
@@ -197,7 +185,7 @@ class SimpleClaudeRunner:
         # Nudge the agent to write files to artifacts folder
         full_prompt = prompt + "\n\nIMPORTANT: Save any file outputs into the 'artifacts' folder of the working directory."
         msg = client.messages.create(
-            model=os.getenv("LLM_MODEL", "claude-3-5-sonnet-20241022"),
+            model=os.getenv("LLM_MODEL", "claude-3-7-sonnet-latest"),
             max_tokens=int(os.getenv("LLM_MAX_TOKENS", "4000")),
             temperature=float(os.getenv("LLM_TEMPERATURE", "0.7")),
             messages=[{"role": "user", "content": full_prompt}],
@@ -221,11 +209,11 @@ class SimpleClaudeRunner:
 
             self._update_status("Running", message="Initializing session")
 
-            # 1) Init repo (optional)
+            # 1) Sync shared workspace from PVC (if configured), then init repo (optional)
+            self._sync_workspace_from_pvc()
             self._maybe_clone_repo()
 
-            # 2) Copy artifact store to working dir (PVC is read-only -> use proxy)
-            self._sync_artifacts_from_pvc()
+            # 2) Workspace now has prior state; proceed to run prompt
 
             # 3) Run prompt
             self._append_message("Starting model run")
@@ -241,8 +229,8 @@ class SimpleClaudeRunner:
             # 4) Write messages to PVC via proxy
             self._flush_messages()
 
-            # 5) Push artifacts to PVC via proxy
-            self._push_artifacts_to_pvc()
+            # 5) Push entire workspace back to PVC
+            self._push_workspace_to_pvc()
 
             # Final status
             self._update_status("Completed", message="Session completed", final_output=result_text, cost=cost, completed=True)

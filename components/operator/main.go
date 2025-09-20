@@ -369,9 +369,8 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 									{Name: "TIMEOUT", Value: fmt.Sprintf("%d", timeout)},
 									{Name: "BACKEND_API_URL", Value: getBackendAPIURL()},
 									{Name: "PVC_PROXY_API_URL", Value: fmt.Sprintf("http://ambient-content.%s.svc:8080", sessionNamespace)},
-									// Working directory inside container to copy artifacts/messages into
+									{Name: "WORKSPACE_STORE_PATH", Value: fmt.Sprintf("/sessions/%s/workspace", name)},
 									{Name: "MESSAGE_STORE_PATH", Value: fmt.Sprintf("/sessions/%s/messages.json", name)},
-									{Name: "ARTIFACT_STORE_PATH", Value: fmt.Sprintf("/sessions/%s/artifacts", name)},
 
 									// (Optional) proxy envs if your cluster requires them:
 									// { Name: "HTTPS_PROXY", Value: "http://proxy.corp:3128" },
@@ -425,6 +424,17 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 																}
 															}
 														}
+													}
+												}
+											}
+											// Apply paths overrides from spec.paths
+											if spec, ok := obj.Object["spec"].(map[string]interface{}); ok {
+												if paths, ok := spec["paths"].(map[string]interface{}); ok {
+													if v, ok := paths["workspace"].(string); ok && strings.TrimSpace(v) != "" {
+														base = append(base, corev1.EnvVar{Name: "WORKSPACE_STORE_PATH", Value: v})
+													}
+													if v, ok := paths["messages"].(string); ok && strings.TrimSpace(v) != "" {
+														base = append(base, corev1.EnvVar{Name: "MESSAGE_STORE_PATH", Value: v})
 													}
 												}
 											}

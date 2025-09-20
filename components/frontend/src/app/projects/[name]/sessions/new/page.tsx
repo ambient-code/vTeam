@@ -27,17 +27,16 @@ const formSchema = z.object({
   gitUserName: z.string().optional(),
   gitUserEmail: z.string().email().optional().or(z.literal("")),
   gitRepoUrl: z.string().url().optional().or(z.literal("")),
-  pvcProxyUrl: z.string().url().optional().or(z.literal("")),
-  messageStorePath: z.string().optional(),
-  artifactStorePath: z.string().optional(),
+  // storage paths are not user-configurable anymore
 });
 
 type FormValues = z.infer<typeof formSchema>;
-
 const models = [
-  { value: "claude-3-5-sonnet-20241022", label: "Claude 3.5 Sonnet" },
-  { value: "claude-3-haiku-20240307", label: "Claude 3 Haiku" },
-  { value: "claude-3-opus-20240229", label: "Claude 3 Opus" },
+  { value: "claude-opus-4-1", label: "Claude Opus 4.1" },
+  { value: "claude-opus-4-0", label: "Claude Opus 4" },
+  { value: "claude-sonnet-4-0", label: "Claude Sonnet 4" },
+  { value: "claude-3-7-sonnet-latest", label: "Claude Sonnet 3.7" },
+  { value: "claude-3-5-haiku-latest", label: "Claude Haiku 3.5" },
 ];
 
 export default function NewProjectSessionPage({ params }: { params: Promise<{ name: string }> }) {
@@ -54,16 +53,14 @@ export default function NewProjectSessionPage({ params }: { params: Promise<{ na
     resolver: zodResolver(formSchema),
     defaultValues: {
       prompt: "",
-      model: "claude-3-5-sonnet-20241022",
+      model: "claude-3-7-sonnet-latest",
       temperature: 0.7,
       maxTokens: 4000,
       timeout: 300,
       gitUserName: "",
       gitUserEmail: "",
       gitRepoUrl: "",
-      pvcProxyUrl: "",
-      messageStorePath: "",
-      artifactStorePath: "",
+      
     },
   });
 
@@ -104,14 +101,7 @@ export default function NewProjectSessionPage({ params }: { params: Promise<{ na
         }
       }
 
-      // Add environment variables for runner if provided
-      const envs: Record<string, string> = {};
-      if (values.pvcProxyUrl) envs["PVC_PROXY_API_URL"] = values.pvcProxyUrl;
-      if (values.messageStorePath) envs["MESSAGE_STORE_PATH"] = values.messageStorePath;
-      if (values.artifactStorePath) envs["ARTIFACT_STORE_PATH"] = values.artifactStorePath;
-      if (Object.keys(envs).length > 0) {
-        (request as any).environmentVariables = envs;
-      }
+      // No user-configurable storage paths; backend/operator provide defaults
 
       const apiUrl = getApiUrl();
       const response = await fetch(`${apiUrl}/projects/${encodeURIComponent(projectName)}/agentic-sessions`, {
@@ -301,54 +291,7 @@ export default function NewProjectSessionPage({ params }: { params: Promise<{ na
                 />
               </div>
 
-              {/* Storage Configuration Section */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-medium">Storage Configuration (Optional)</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="pvcProxyUrl"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>PVC Proxy API URL</FormLabel>
-                        <FormControl>
-                          <Input placeholder="http://ambient-content.<project>.svc:8080" {...field} />
-                        </FormControl>
-                        <FormDescription>Override per-namespace content service URL</FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="messageStorePath"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Message Store Path</FormLabel>
-                        <FormControl>
-                          <Input placeholder="/sessions/{id}/messages.json" {...field} />
-                        </FormControl>
-                        <FormDescription>Path on PVC for conversation messages</FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-                <FormField
-                  control={form.control}
-                  name="artifactStorePath"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Artifact Store Path</FormLabel>
-                      <FormControl>
-                        <Input placeholder="/sessions/{id}/artifacts" {...field} />
-                      </FormControl>
-                      <FormDescription>Directory on PVC where artifacts are stored</FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
+              {/* Storage paths are managed automatically by the backend/operator */}
 
               {error && (
                 <div className="bg-red-50 border border-red-200 rounded-md p-3">
