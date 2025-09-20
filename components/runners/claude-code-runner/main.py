@@ -36,6 +36,18 @@ class SimpleClaudeRunner:
         self.message_store_path = os.getenv("MESSAGE_STORE_PATH", f"/sessions/{self.session_name}/messages.json")
         self.workspace_store_path = os.getenv("WORKSPACE_STORE_PATH", f"/sessions/{self.session_name}/workspace")
 
+        logger.info(f"GITHUB_REPO: {self.github_repo}")
+        logger.info(f"GIT_USER_NAME: {self.git_user_name}")
+        logger.info(f"GIT_USER_EMAIL: {self.git_user_email}")
+        logger.info(f"BACKEND_API_URL: {self.backend_api_url}")
+        logger.info(f"PVC_PROXY_API_URL: {self.pvc_proxy_api_url}")
+        logger.info(f"MESSAGE_STORE_PATH: {self.message_store_path}")
+        logger.info(f"WORKSPACE_STORE_PATH: {self.workspace_store_path}")
+        logger.info(f"AGENTIC_SESSION_NAME: {self.session_name}")
+        logger.info(f"AGENTIC_SESSION_NAMESPACE: {self.session_namespace}")
+        logger.info(f"PROMPT: {self.prompt}")
+        logger.info(f"ANTHROPIC_API_KEY LENGTH: {len(self.api_key)}")
+        
         # Derived
         self.workdir = Path("/tmp/workdir")
         self.artifacts_dir = self.workdir / "artifacts"
@@ -91,40 +103,60 @@ class SimpleClaudeRunner:
     # ---------------- Git helpers ----------------
     def _maybe_clone_repo(self) -> None:
         if not self.github_repo:
+            logger.debug("No GitHub repository configured, skipping clone")
             return
+        
+        logger.info(f"Starting repository clone: {self.github_repo}")
         repo_dir = self.workdir / "repo"
         repo_dir.parent.mkdir(parents=True, exist_ok=True)
+        
         try:
             if self.git_user_name:
+                logger.debug(f"Setting git user.name to: {self.git_user_name}")
                 subprocess.run(["git", "config", "--global", "user.name", self.git_user_name], check=False)
             if self.git_user_email:
+                logger.debug(f"Setting git user.email to: {self.git_user_email}")
                 subprocess.run(["git", "config", "--global", "user.email", self.git_user_email], check=False)
+            
+            logger.info(f"Cloning repository {self.github_repo} to {repo_dir}")
             subprocess.run(["git", "clone", "--depth", "1", self.github_repo, str(repo_dir)], check=True)
-            logger.info(f"Cloned repository to {repo_dir}")
+            logger.info(f"Successfully cloned repository to {repo_dir}")
         except subprocess.CalledProcessError as e:
             logger.warning(f"Git clone failed: {e}")
 
     # ---------------- Workspace sync ----------------
     def _sync_workspace_from_pvc(self) -> None:
         if not self.workspace_store_path:
+            logger.debug("No workspace store path configured, skipping sync from PVC")
             return
+        
+        logger.info(f"Starting workspace sync from PVC: {self.workspace_store_path} -> {self.workdir}")
+        
         def pull_dir(pvc_path: str, dst: Path) -> None:
+            logger.debug(f"Pulling directory: {pvc_path} -> {dst}")
             dst.mkdir(parents=True, exist_ok=True)
             items = self.content_list(pvc_path)
+            logger.debug(f"Found {len(items)} items in {pvc_path}")
+            
             for it in items:
                 p = it.get("path", "")
                 name = Path(p).name
                 target = dst / name
                 if it.get("isDir"):
+                    logger.debug(f"Recursively pulling directory: {p}")
                     pull_dir(p, target)
                 else:
                     try:
+                        logger.debug(f"Pulling file: {p} -> {target}")
                         data = self.content_read(p) or b""
                         target.parent.mkdir(parents=True, exist_ok=True)
                         target.write_bytes(data)
+                        logger.debug(f"Successfully pulled file: {p} ({len(data)} bytes)")
                     except Exception as e:
                         logger.warning(f"Failed to pull file {p} -> {target}: {e}")
+        
         pull_dir(self.workspace_store_path, self.workdir)
+        logger.info("Completed workspace sync from PVC")
 
     def _push_workspace_to_pvc(self) -> None:
         if not self.workspace_store_path:
@@ -238,6 +270,7 @@ class SimpleClaudeRunner:
                 messages=[{"role": "user", "content": full_prompt}],
             ) as stream:
                 for event in stream:
+                    print(f"[EVENT]: {event}")
                     etype = getattr(event, "type", "")
                     # Stream textual deltas
                     if etype in ("content_block_delta", "message_delta", "text_delta"):
@@ -245,6 +278,7 @@ class SimpleClaudeRunner:
                         text = getattr(getattr(event, "delta", event), "text", None)
                         if text:
                             final_text_parts.append(text)
+                            logger.info(f"[TEXT]: {text}")
                             self._append_stream_text(text)
                             # Flush opportunistically on newlines for better UX
                             if "\n" in text or len(text) > 32:

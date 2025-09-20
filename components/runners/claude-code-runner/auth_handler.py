@@ -33,7 +33,6 @@ class AuthHandler:
         if self.auth_mode == "bot_token" and self.bot_token:
             # Use provided bot token (for webhook-triggered sessions)
             headers["Authorization"] = f"Bearer {self.bot_token}"
-            logger.info("Using bot token authentication")
 
         elif os.path.exists(self.service_account_token_path):
             # Use Kubernetes ServiceAccount token
