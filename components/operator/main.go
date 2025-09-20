@@ -261,8 +261,13 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 	maxTokens, _, _ := unstructured.NestedInt64(llmSettings, "maxTokens")
 	workspaceStorePath, workspaceStorePathFound, _ := unstructured.NestedString(spec, "paths", "workspace")
 	messageStorePath, messageStorePathFound, _ := unstructured.NestedString(spec, "paths", "messages")
-
-	// Git configuration is derived later directly from spec when building envs
+	// Extract git configuration
+	gitConfig, _, _ := unstructured.NestedMap(spec, "gitConfig")
+	gitUserName, _, _ := unstructured.NestedString(gitConfig, "user", "name")
+	gitUserEmail, _, _ := unstructured.NestedString(gitConfig, "user", "email")
+	sshKeySecret, _, _ := unstructured.NestedString(gitConfig, "authentication", "sshKeySecret")
+	tokenSecret, _, _ := unstructured.NestedString(gitConfig, "authentication", "tokenSecret")
+	repositories, _, _ := unstructured.NestedSlice(gitConfig, "repositories")
 
 	// Read runner secrets configuration from ProjectSettings in the session's namespace
 	runnerSecretsName := ""
@@ -327,10 +332,6 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 						},
 					},
 					RestartPolicy: corev1.RestartPolicyNever,
-
-					// ⚠️ Let OpenShift SCC choose UID/GID dynamically (restricted-v2 compatible)
-					// SecurityContext omitted to allow SCC assignment
-
 					Volumes: []corev1.Volume{
 						{
 							Name: "workspace",
@@ -383,108 +384,61 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 										}
 										return fmt.Sprintf("/sessions/%s/messages.json", name)
 									}()},
-
-									// (Optional) proxy envs if your cluster requires them:
-									// { Name: "HTTPS_PROXY", Value: "http://proxy.corp:3128" },
-									// { Name: "NO_PROXY",    Value: ".svc,.cluster.local,10.0.0.0/8" },
+									{Name: "GIT_USER_NAME", Value: gitUserName},
+									{Name: "GIT_USER_EMAIL", Value: gitUserEmail},
+									{Name: "GIT_SSH_KEY_SECRET", Value: sshKeySecret},
+									{Name: "GIT_TOKEN_SECRET", Value: tokenSecret},
+									{Name: "GIT_REPOSITORIES", Value: fmt.Sprintf("%v", repositories)},
 								}
-								// Always attempt to map ANTHROPIC_API_KEY from the runner secret in this namespace.
-								// Fallback to default name if ProjectSettings.spec.runnerSecretsName is not set.
-								secretName := runnerSecretsName
-								if secretName == "" {
-									secretName = "ambient-code-secrets"
+								// If backend annotated the session with a runner token secret, inject bot token envs without refetching the CR
+								if meta, ok := currentObj.Object["metadata"].(map[string]interface{}); ok {
+									if anns, ok := meta["annotations"].(map[string]interface{}); ok {
+										if v, ok := anns["ambient-code.io/runner-token-secret"].(string); ok && strings.TrimSpace(v) != "" {
+											secretName := strings.TrimSpace(v)
+											base = append(base, corev1.EnvVar{Name: "AUTH_MODE", Value: "bot_token"})
+											base = append(base, corev1.EnvVar{
+												Name: "BOT_TOKEN",
+												ValueFrom: &corev1.EnvVarSource{SecretKeyRef: &corev1.SecretKeySelector{
+													LocalObjectReference: corev1.LocalObjectReference{Name: secretName},
+													Key:                  "token",
+												}},
+											})
+										}
+									}
 								}
-								base = append(base, corev1.EnvVar{
-									Name: "ANTHROPIC_API_KEY",
-									ValueFrom: &corev1.EnvVarSource{
-										SecretKeyRef: &corev1.SecretKeySelector{
-											LocalObjectReference: corev1.LocalObjectReference{Name: secretName},
-											Key:                  "anthropic-api-key",
-										},
-									},
-								})
-								// If backend annotated the session with a runner token secret, inject bot token envs
-								gvr := getAgenticSessionResource()
-								if obj, err := dynamicClient.Resource(gvr).Namespace(sessionNamespace).Get(context.TODO(), name, v1.GetOptions{}); err == nil {
-									if meta, ok := obj.Object["metadata"].(map[string]interface{}); ok {
-										if anns, ok := meta["annotations"].(map[string]interface{}); ok {
-											if v, ok := anns["ambient-code.io/runner-token-secret"].(string); ok && strings.TrimSpace(v) != "" {
-												secretName := strings.TrimSpace(v)
-												base = append(base, corev1.EnvVar{Name: "AUTH_MODE", Value: "bot_token"})
-												base = append(base, corev1.EnvVar{
-													Name: "BOT_TOKEN",
-													ValueFrom: &corev1.EnvVarSource{SecretKeyRef: &corev1.SecretKeySelector{
-														LocalObjectReference: corev1.LocalObjectReference{Name: secretName},
-														Key:                  "token",
-													}},
-												})
-											}
-											// Derive GITHUB_REPO from spec.gitConfig.repositories[0].url if present
-											if spec, ok := obj.Object["spec"].(map[string]interface{}); ok {
-												if gc, ok := spec["gitConfig"].(map[string]interface{}); ok {
-													if repos, ok := gc["repositories"].([]interface{}); ok && len(repos) > 0 {
-														if r0, ok := repos[0].(map[string]interface{}); ok {
-															if url, ok := r0["url"].(string); ok && strings.TrimSpace(url) != "" {
-																base = append(base, corev1.EnvVar{Name: "GITHUB_REPO", Value: url})
-															}
-															if user, ok := gc["user"].(map[string]interface{}); ok {
-																if v, ok := user["name"].(string); ok {
-																	base = append(base, corev1.EnvVar{Name: "GIT_USER_NAME", Value: v})
-																}
-																if v, ok := user["email"].(string); ok {
-																	base = append(base, corev1.EnvVar{Name: "GIT_USER_EMAIL", Value: v})
-																}
-															}
-														}
+								// Add CR-provided envs last (override base when same key)
+								if spec, ok := obj.Object["spec"].(map[string]interface{}); ok {
+									if envMap, ok := spec["environmentVariables"].(map[string]interface{}); ok {
+										for k, v := range envMap {
+											if vs, ok := v.(string); ok {
+												// replace if exists
+												replaced := false
+												for i := range base {
+													if base[i].Name == k {
+														base[i].Value = vs
+														replaced = true
+														break
 													}
 												}
-											}
-											// Apply paths overrides from spec.paths
-											if spec, ok := obj.Object["spec"].(map[string]interface{}); ok {
-												if paths, ok := spec["paths"].(map[string]interface{}); ok {
-													if v, ok := paths["workspace"].(string); ok && strings.TrimSpace(v) != "" {
-														base = append(base, corev1.EnvVar{Name: "WORKSPACE_STORE_PATH", Value: v})
-													}
-													if v, ok := paths["messages"].(string); ok && strings.TrimSpace(v) != "" {
-														base = append(base, corev1.EnvVar{Name: "MESSAGE_STORE_PATH", Value: v})
-													}
-												}
-											}
-											// Apply environmentVariables from spec if provided (override defaults)
-											if spec, ok := obj.Object["spec"].(map[string]interface{}); ok {
-												if envMap, ok := spec["environmentVariables"].(map[string]interface{}); ok {
-													// helper to set/replace env var
-													setEnv := func(k, v string) {
-														// replace if exists
-														for i := range base {
-															if base[i].Name == k {
-																base[i].Value = v
-																return
-															}
-														}
-														base = append(base, corev1.EnvVar{Name: k, Value: v})
-													}
-													for k, v := range envMap {
-														if vs, ok := v.(string); ok {
-															setEnv(k, vs)
-														}
-													}
+												if !replaced {
+													base = append(base, corev1.EnvVar{Name: k, Value: vs})
 												}
 											}
 										}
 									}
 								}
+
 								return base
 							}(),
 
 							// If configured, import all keys from the runner Secret as environment variables
 							EnvFrom: func() []corev1.EnvFromSource {
-								if runnerSecretsName == "" {
-									return nil
+								if runnerSecretsName != "" {
+									return []corev1.EnvFromSource{
+										{SecretRef: &corev1.SecretEnvSource{LocalObjectReference: corev1.LocalObjectReference{Name: runnerSecretsName}}},
+									}
 								}
-								return []corev1.EnvFromSource{
-									{SecretRef: &corev1.SecretEnvSource{LocalObjectReference: corev1.LocalObjectReference{Name: runnerSecretsName}}},
-								}
+								return []corev1.EnvFromSource{}
 							}(),
 
 							Resources: corev1.ResourceRequirements{},
@@ -493,6 +447,23 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 				},
 			},
 		},
+	}
+
+	// If a runner secret is configured, mount it as a volume in addition to EnvFrom
+	if runnerSecretsName != "" {
+		job.Spec.Template.Spec.Volumes = append(job.Spec.Template.Spec.Volumes, corev1.Volume{
+			Name: "runner-secrets",
+			VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{SecretName: runnerSecretsName},
+			},
+		})
+		if len(job.Spec.Template.Spec.Containers) > 0 {
+			job.Spec.Template.Spec.Containers[0].VolumeMounts = append(job.Spec.Template.Spec.Containers[0].VolumeMounts, corev1.VolumeMount{
+				Name:      "runner-secrets",
+				MountPath: "/var/run/runner-secrets",
+				ReadOnly:  true,
+			})
+		}
 	}
 
 	// Update status to Creating before attempting job creation
