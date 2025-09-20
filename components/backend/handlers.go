@@ -62,10 +62,6 @@ func getK8sClientsForRequest(c *gin.Context) (*kubernetes.Clientset, dynamic.Int
 	// Debug: basic auth header state (do not log token)
 	hasAuthHeader := strings.TrimSpace(rawAuth) != ""
 	hasFwdToken := strings.TrimSpace(rawFwd) != ""
-	xfUser := c.GetHeader("X-Forwarded-User")
-	xfPref := c.GetHeader("X-Forwarded-Preferred-Username")
-	log.Printf("auth debug: path=%s method=%s tokenSource=%s tokenLen=%d hasAuthHeader=%t hasFwdToken=%t user=%q preferred=%q",
-		c.FullPath(), c.Request.Method, tokenSource, len(token), hasAuthHeader, hasFwdToken, xfUser, xfPref)
 
 	if token != "" && baseKubeConfig != nil {
 		cfg := *baseKubeConfig
@@ -84,7 +80,6 @@ func getK8sClientsForRequest(c *gin.Context) (*kubernetes.Clientset, dynamic.Int
 
 			// Best-effort update last-used for service account tokens
 			updateAccessKeyLastUsedAnnotation(c)
-			log.Printf("auth debug: built user-scoped clients ok (source=%s) for %s", tokenSource, c.FullPath())
 			return kc, dc
 		}
 		// Token provided but client build failed – treat as invalid token
@@ -466,7 +461,7 @@ func createSession(c *gin.Context) {
 
 	// Set defaults for LLM settings if not provided
 	llmSettings := LLMSettings{
-		Model:       "claude-3-5-sonnet-20241022",
+		Model:       "sonnet",
 		Temperature: 0.7,
 		MaxTokens:   4000,
 	}
@@ -532,6 +527,12 @@ func createSession(c *gin.Context) {
 		},
 	}
 
+	// Optional environment variables passthrough (always, independent of git config presence)
+	if len(req.EnvironmentVariables) > 0 {
+		spec := session["spec"].(map[string]interface{})
+		spec["environmentVariables"] = req.EnvironmentVariables
+	}
+
 	// Load Git configuration from ConfigMap and merge with user-provided config
 	if defaultGitConfig, err := loadGitConfigFromConfigMapForProject(c, reqK8s, project); err != nil {
 		log.Printf("Warning: failed to load Git config from ConfigMap in %s: %v", project, err)
@@ -546,11 +547,6 @@ func createSession(c *gin.Context) {
 				}
 			}
 
-			// Optional environment variables passthrough
-			if len(req.EnvironmentVariables) > 0 {
-				spec := session["spec"].(map[string]interface{})
-				spec["environmentVariables"] = req.EnvironmentVariables
-			}
 			if mergedGitConfig.Authentication != nil {
 				auth := map[string]interface{}{}
 				if mergedGitConfig.Authentication.SSHKeySecret != nil {
@@ -1477,21 +1473,10 @@ func updateSessionStatus(c *gin.Context) {
 	}
 	status := item.Object["status"].(map[string]interface{})
 
-	// Forward write to per-namespace content service using caller token
-	_ = proxyContentWrites(c, project, sessionName, statusUpdate)
-
-	// Sanitize status payload to only include fields defined in CRD
-	// Translate large fields into counts and drop unknowns
-	if msgs, ok := statusUpdate["messages"].([]interface{}); ok {
-		statusUpdate["messagesCount"] = len(msgs)
-		delete(statusUpdate, "messages")
-	}
-	// finalOutput is persisted to storage; ensure it is not stored in status
-	delete(statusUpdate, "finalOutput")
-
+	// Only accept limited set of fields: phase, completionTime, cost, finalOutput
+	// plus keep startTime if already set and allow message for transitional info
 	allowed := map[string]struct{}{
-		"phase": {}, "message": {}, "startTime": {}, "completionTime": {},
-		"jobName": {}, "cost": {}, "stateDir": {}, "artifactsCount": {}, "messagesCount": {},
+		"phase": {}, "completionTime": {}, "cost": {}, "finalOutput": {}, "message": {},
 	}
 	for k := range statusUpdate {
 		if _, ok := allowed[k]; !ok {

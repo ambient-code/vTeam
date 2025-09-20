@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -260,26 +259,15 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 	model, _, _ := unstructured.NestedString(llmSettings, "model")
 	temperature, _, _ := unstructured.NestedFloat64(llmSettings, "temperature")
 	maxTokens, _, _ := unstructured.NestedInt64(llmSettings, "maxTokens")
-
-	// Extract Git configuration
-	gitConfig, gitConfigExists, _ := unstructured.NestedMap(spec, "gitConfig")
-	var gitUserName, gitUserEmail string
-	var gitRepositoriesJSON string
-
-	if gitConfigExists {
-		// Get Git user configuration
-		gitUser, _, _ := unstructured.NestedMap(gitConfig, "user")
-		gitUserName, _, _ = unstructured.NestedString(gitUser, "name")
-		gitUserEmail, _, _ = unstructured.NestedString(gitUser, "email")
-
-		// Get Git repositories and serialize to JSON for environment variable
-		gitRepositories, _, _ := unstructured.NestedSlice(gitConfig, "repositories")
-		if len(gitRepositories) > 0 {
-			if reposBytes, err := json.Marshal(gitRepositories); err == nil {
-				gitRepositoriesJSON = string(reposBytes)
-			}
-		}
-	}
+	workspaceStorePath, workspaceStorePathFound, _ := unstructured.NestedString(spec, "paths", "workspace")
+	messageStorePath, messageStorePathFound, _ := unstructured.NestedString(spec, "paths", "messages")
+	// Extract git configuration
+	gitConfig, _, _ := unstructured.NestedMap(spec, "gitConfig")
+	gitUserName, _, _ := unstructured.NestedString(gitConfig, "user", "name")
+	gitUserEmail, _, _ := unstructured.NestedString(gitConfig, "user", "email")
+	sshKeySecret, _, _ := unstructured.NestedString(gitConfig, "authentication", "sshKeySecret")
+	tokenSecret, _, _ := unstructured.NestedString(gitConfig, "authentication", "tokenSecret")
+	repositories, _, _ := unstructured.NestedSlice(gitConfig, "repositories")
 
 	// Read runner secrets configuration from ProjectSettings in the session's namespace
 	runnerSecretsName := ""
@@ -344,21 +332,7 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 						},
 					},
 					RestartPolicy: corev1.RestartPolicyNever,
-
-					// ⚠️ Let OpenShift SCC choose UID/GID dynamically (restricted-v2 compatible)
-					// SecurityContext omitted to allow SCC assignment
-
-					// 🔧 Shared memory volume for browser
 					Volumes: []corev1.Volume{
-						{
-							Name: "dshm",
-							VolumeSource: corev1.VolumeSource{
-								EmptyDir: &corev1.EmptyDirVolumeSource{
-									Medium:    corev1.StorageMediumMemory,
-									SizeLimit: resource.NewQuantity(256*1024*1024, resource.BinarySI),
-								},
-							},
-						},
 						{
 							Name: "workspace",
 							VolumeSource: corev1.VolumeSource{
@@ -383,14 +357,13 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 								},
 							},
 
-							// 📦 Mount shared memory volume only
 							VolumeMounts: []corev1.VolumeMount{
-								{Name: "dshm", MountPath: "/dev/shm"},
-								{Name: "workspace", MountPath: "/workspace"},
+								{Name: "workspace", MountPath: "/workspace", ReadOnly: true},
 							},
 
 							Env: func() []corev1.EnvVar {
 								base := []corev1.EnvVar{
+									{Name: "DEBUG", Value: "true"},
 									{Name: "AGENTIC_SESSION_NAME", Value: name},
 									{Name: "AGENTIC_SESSION_NAMESPACE", Value: sessionNamespace},
 									{Name: "PROMPT", Value: prompt},
@@ -398,91 +371,100 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 									{Name: "LLM_TEMPERATURE", Value: fmt.Sprintf("%.2f", temperature)},
 									{Name: "LLM_MAX_TOKENS", Value: fmt.Sprintf("%d", maxTokens)},
 									{Name: "TIMEOUT", Value: fmt.Sprintf("%d", timeout)},
-									{Name: "BACKEND_API_URL", Value: getBackendAPIURL()},
-
-									// 🔑 Git configuration environment variables
+									{Name: "BACKEND_API_URL", Value: fmt.Sprintf("http://backend-service.%s.svc.cluster.local:8080/api", backendNamespace)},
+									{Name: "PVC_PROXY_API_URL", Value: fmt.Sprintf("http://ambient-content.%s.svc:8080", sessionNamespace)},
+									{Name: "WORKSPACE_STORE_PATH", Value: func() string {
+										if workspaceStorePathFound {
+											return workspaceStorePath
+										}
+										return fmt.Sprintf("/sessions/%s/workspace", name)
+									}()},
+									{Name: "MESSAGE_STORE_PATH", Value: func() string {
+										if messageStorePathFound {
+											return messageStorePath
+										}
+										return fmt.Sprintf("/sessions/%s/messages.json", name)
+									}()},
 									{Name: "GIT_USER_NAME", Value: gitUserName},
 									{Name: "GIT_USER_EMAIL", Value: gitUserEmail},
-									{Name: "GIT_REPOSITORIES", Value: gitRepositoriesJSON},
-
-									// ✅ Use /tmp for SCC-assigned random UID (OpenShift compatible)
-									{Name: "HOME", Value: "/tmp"},
-									{Name: "XDG_CONFIG_HOME", Value: "/tmp/.config"},
-									{Name: "XDG_CACHE_HOME", Value: "/tmp/.cache"},
-									{Name: "XDG_DATA_HOME", Value: "/tmp/.local/share"},
-
-									// 🧊 Playwright/Chromium optimized for containers with shared memory
-									{Name: "PW_CHROMIUM_ARGS", Value: "--no-sandbox --disable-gpu"},
-
-									// 📁 Playwright browser cache in writable location
-									{Name: "PLAYWRIGHT_BROWSERS_PATH", Value: "/tmp/.cache/ms-playwright"},
-
-									// (Optional) proxy envs if your cluster requires them:
-									// { Name: "HTTPS_PROXY", Value: "http://proxy.corp:3128" },
-									// { Name: "NO_PROXY",    Value: ".svc,.cluster.local,10.0.0.0/8" },
+									{Name: "GIT_SSH_KEY_SECRET", Value: sshKeySecret},
+									{Name: "GIT_TOKEN_SECRET", Value: tokenSecret},
+									{Name: "GIT_REPOSITORIES", Value: fmt.Sprintf("%v", repositories)},
 								}
-								// Always attempt to map ANTHROPIC_API_KEY from the runner secret in this namespace.
-								// Fallback to default name if ProjectSettings.spec.runnerSecretsName is not set.
-								secretName := runnerSecretsName
-								if secretName == "" {
-									secretName = "ambient-code-secrets"
+								// If backend annotated the session with a runner token secret, inject bot token envs without refetching the CR
+								if meta, ok := currentObj.Object["metadata"].(map[string]interface{}); ok {
+									if anns, ok := meta["annotations"].(map[string]interface{}); ok {
+										if v, ok := anns["ambient-code.io/runner-token-secret"].(string); ok && strings.TrimSpace(v) != "" {
+											secretName := strings.TrimSpace(v)
+											base = append(base, corev1.EnvVar{Name: "AUTH_MODE", Value: "bot_token"})
+											base = append(base, corev1.EnvVar{
+												Name: "BOT_TOKEN",
+												ValueFrom: &corev1.EnvVarSource{SecretKeyRef: &corev1.SecretKeySelector{
+													LocalObjectReference: corev1.LocalObjectReference{Name: secretName},
+													Key:                  "token",
+												}},
+											})
+										}
+									}
 								}
-								base = append(base, corev1.EnvVar{
-									Name: "ANTHROPIC_API_KEY",
-									ValueFrom: &corev1.EnvVarSource{
-										SecretKeyRef: &corev1.SecretKeySelector{
-											LocalObjectReference: corev1.LocalObjectReference{Name: secretName},
-											Key:                  "anthropic-api-key",
-										},
-									},
-								})
-								// If backend annotated the session with a runner token secret, inject bot token envs
-								gvr := getAgenticSessionResource()
-								if obj, err := dynamicClient.Resource(gvr).Namespace(sessionNamespace).Get(context.TODO(), name, v1.GetOptions{}); err == nil {
-									if meta, ok := obj.Object["metadata"].(map[string]interface{}); ok {
-										if anns, ok := meta["annotations"].(map[string]interface{}); ok {
-											if v, ok := anns["ambient-code.io/runner-token-secret"].(string); ok && strings.TrimSpace(v) != "" {
-												secretName := strings.TrimSpace(v)
-												base = append(base, corev1.EnvVar{Name: "AUTH_MODE", Value: "bot_token"})
-												base = append(base, corev1.EnvVar{
-													Name: "BOT_TOKEN",
-													ValueFrom: &corev1.EnvVarSource{SecretKeyRef: &corev1.SecretKeySelector{
-														LocalObjectReference: corev1.LocalObjectReference{Name: secretName},
-														Key:                  "token",
-													}},
-												})
+								// Add CR-provided envs last (override base when same key)
+								if spec, ok := obj.Object["spec"].(map[string]interface{}); ok {
+									if envMap, ok := spec["environmentVariables"].(map[string]interface{}); ok {
+										for k, v := range envMap {
+											if vs, ok := v.(string); ok {
+												// replace if exists
+												replaced := false
+												for i := range base {
+													if base[i].Name == k {
+														base[i].Value = vs
+														replaced = true
+														break
+													}
+												}
+												if !replaced {
+													base = append(base, corev1.EnvVar{Name: k, Value: vs})
+												}
 											}
 										}
 									}
 								}
+
 								return base
 							}(),
 
 							// If configured, import all keys from the runner Secret as environment variables
 							EnvFrom: func() []corev1.EnvFromSource {
-								if runnerSecretsName == "" {
-									return nil
+								if runnerSecretsName != "" {
+									return []corev1.EnvFromSource{
+										{SecretRef: &corev1.SecretEnvSource{LocalObjectReference: corev1.LocalObjectReference{Name: runnerSecretsName}}},
+									}
 								}
-								return []corev1.EnvFromSource{
-									{SecretRef: &corev1.SecretEnvSource{LocalObjectReference: corev1.LocalObjectReference{Name: runnerSecretsName}}},
-								}
+								return []corev1.EnvFromSource{}
 							}(),
 
-							Resources: corev1.ResourceRequirements{
-								Requests: corev1.ResourceList{
-									corev1.ResourceCPU:    resource.MustParse("1000m"),
-									corev1.ResourceMemory: resource.MustParse("2Gi"),
-								},
-								Limits: corev1.ResourceList{
-									corev1.ResourceCPU:    resource.MustParse("2000m"),
-									corev1.ResourceMemory: resource.MustParse("4Gi"),
-								},
-							},
+							Resources: corev1.ResourceRequirements{},
 						},
 					},
 				},
 			},
 		},
+	}
+
+	// If a runner secret is configured, mount it as a volume in addition to EnvFrom
+	if runnerSecretsName != "" {
+		job.Spec.Template.Spec.Volumes = append(job.Spec.Template.Spec.Volumes, corev1.Volume{
+			Name: "runner-secrets",
+			VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{SecretName: runnerSecretsName},
+			},
+		})
+		if len(job.Spec.Template.Spec.Containers) > 0 {
+			job.Spec.Template.Spec.Containers[0].VolumeMounts = append(job.Spec.Template.Spec.Containers[0].VolumeMounts, corev1.VolumeMount{
+				Name:      "runner-secrets",
+				MountPath: "/var/run/runner-secrets",
+				ReadOnly:  true,
+			})
+		}
 	}
 
 	// Update status to Creating before attempting job creation
@@ -1008,20 +990,6 @@ func updateProjectSettingsStatus(namespace, name string, statusUpdate map[string
 	}
 
 	return nil
-}
-
-// getBackendAPIURL returns the fully qualified backend API URL for cross-namespace communication
-func getBackendAPIURL() string {
-	// Check if a custom backend API URL is provided
-	if customURL := os.Getenv("BACKEND_API_URL"); customURL != "" {
-		// If it already contains a fully qualified domain, use it as-is
-		if strings.Contains(customURL, ".svc.cluster.local") || strings.Contains(customURL, "://") {
-			return customURL
-		}
-	}
-
-	// Construct fully qualified service name for cross-namespace communication
-	return fmt.Sprintf("http://backend-service.%s.svc.cluster.local:8080/api", backendNamespace)
 }
 
 var (

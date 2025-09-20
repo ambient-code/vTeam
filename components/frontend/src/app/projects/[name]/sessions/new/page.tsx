@@ -27,14 +27,16 @@ const formSchema = z.object({
   gitUserName: z.string().optional(),
   gitUserEmail: z.string().email().optional().or(z.literal("")),
   gitRepoUrl: z.string().url().optional().or(z.literal("")),
+  // storage paths are not user-configurable anymore
 });
 
 type FormValues = z.infer<typeof formSchema>;
-
 const models = [
-  { value: "claude-3-5-sonnet-20241022", label: "Claude 3.5 Sonnet" },
-  { value: "claude-3-haiku-20240307", label: "Claude 3 Haiku" },
-  { value: "claude-3-opus-20240229", label: "Claude 3 Opus" },
+  { value: "claude-opus-4-1", label: "Claude Opus 4.1" },
+  { value: "claude-opus-4-0", label: "Claude Opus 4" },
+  { value: "claude-sonnet-4-0", label: "Claude Sonnet 4" },
+  { value: "claude-3-7-sonnet-latest", label: "Claude Sonnet 3.7" },
+  { value: "claude-3-5-haiku-latest", label: "Claude Haiku 3.5" },
 ];
 
 export default function NewProjectSessionPage({ params }: { params: Promise<{ name: string }> }) {
@@ -51,13 +53,14 @@ export default function NewProjectSessionPage({ params }: { params: Promise<{ na
     resolver: zodResolver(formSchema),
     defaultValues: {
       prompt: "",
-      model: "claude-3-5-sonnet-20241022",
+      model: "claude-3-7-sonnet-latest",
       temperature: 0.7,
       maxTokens: 4000,
       timeout: 300,
       gitUserName: "",
       gitUserEmail: "",
       gitRepoUrl: "",
+      
     },
   });
 
@@ -97,6 +100,8 @@ export default function NewProjectSessionPage({ params }: { params: Promise<{ na
           ];
         }
       }
+
+      // No user-configurable storage paths; backend/operator provide defaults
 
       const apiUrl = getApiUrl();
       const response = await fetch(`${apiUrl}/projects/${encodeURIComponent(projectName)}/agentic-sessions`, {
@@ -285,6 +290,8 @@ export default function NewProjectSessionPage({ params }: { params: Promise<{ na
                   )}
                 />
               </div>
+
+              {/* Storage paths are managed automatically by the backend/operator */}
 
               {error && (
                 <div className="bg-red-50 border border-red-200 rounded-md p-3">

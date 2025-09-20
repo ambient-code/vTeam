@@ -1170,7 +1170,7 @@ func buildRFESessionSpecAndLabels(workflow *RFEWorkflow, phase, agentPersona str
 		"prompt":      fmt.Sprintf("/%s %s", phase, workflow.Description),
 		"displayName": fmt.Sprintf("%s - %s (%s)", workflow.Title, agentPersona, phase),
 		"llmSettings": map[string]interface{}{
-			"model":       "claude-3-5-sonnet-20241022",
+			"model":       "claude-3-7-sonnet-latest",
 			"temperature": 0.7,
 			"maxTokens":   8192,
 		},

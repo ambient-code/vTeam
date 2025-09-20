@@ -73,6 +73,7 @@ export type CreateAgenticSessionRequest = {
 	timeout?: number;
 	gitConfig?: GitConfig;
 	project?: string;
+  	environmentVariables?: Record<string, string>;
 	// New fields for agent sessions
 	agentPersona?: string;
 	workflowPhase?: string;

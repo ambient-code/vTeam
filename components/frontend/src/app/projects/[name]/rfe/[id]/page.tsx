@@ -97,9 +97,11 @@ export default function ProjectRFEDetailPage() {
     </div>
   );
 
+  const currentPhase: WorkflowPhase = workflow.currentPhase ?? "pre";
+  const artifacts = workflow.artifacts ?? [];
   const phases: WorkflowPhase[] = ["pre", "specify", "plan", "tasks"];
-  const idx = phases.indexOf(workflow.currentPhase);
-  const canAdvance = (workflow.currentPhase === "pre") || (phaseProgress(workflow, workflow.currentPhase) === 100 && idx < phases.length - 1);
+  const idx = phases.indexOf(currentPhase);
+  const canAdvance = (currentPhase === "pre") || (phaseProgress(workflow, currentPhase) === 100 && idx < phases.length - 1);
 
   return (
     <div className="container mx-auto py-8">
@@ -118,7 +120,7 @@ export default function ProjectRFEDetailPage() {
             <Link href={`/projects/${encodeURIComponent(project)}/rfe/${encodeURIComponent(id)}/edit`}>
               <Button variant="outline" size="sm"><Edit className="mr-2 h-4 w-4" />Edit Artifacts</Button>
             </Link>
-            {(workflow.artifacts || []).length > 0 && (
+            {artifacts.length > 0 && (
               <Button variant="outline" size="sm"><Upload className="mr-2 h-4 w-4" />Push to Git</Button>
             )}
           </div>
@@ -128,10 +130,10 @@ export default function ProjectRFEDetailPage() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Current Phase</CardTitle>
-              <Badge className="bg-blue-100 text-blue-800">{WORKFLOW_PHASE_LABELS[workflow.currentPhase]}</Badge>
+              <Badge className="bg-blue-100 text-blue-800">{WORKFLOW_PHASE_LABELS[currentPhase]}</Badge>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{phaseProgress(workflow, workflow.currentPhase).toFixed(0)}%</div>
+              <div className="text-2xl font-bold">{phaseProgress(workflow, currentPhase).toFixed(0)}%</div>
             </CardContent>
           </Card>
           <Card>
@@ -147,7 +149,7 @@ export default function ProjectRFEDetailPage() {
               <CardTitle className="text-sm font-medium">Artifacts</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{(workflow.artifacts || []).length}</div>
+              <div className="text-2xl font-bold">{artifacts.length}</div>
             </CardContent>
           </Card>
         </div>
@@ -173,7 +175,7 @@ export default function ProjectRFEDetailPage() {
                   plan: "specs/plan.md",
                   tasks: "specs/tasks.md",
                 };
-                const has = (p: string) => (workflow.artifacts || []).some(a => a.path.endsWith(p) || a.name === p.split('/').pop());
+                const has = (p: string) => artifacts.some(a => a.path.endsWith(p) || a.name === p.split('/').pop());
                 const specExists = has(expectedPaths.specify);
                 const planExists = has(expectedPaths.plan);
                 const tasksExists = has(expectedPaths.tasks);
@@ -301,7 +303,7 @@ export default function ProjectRFEDetailPage() {
           </CardContent>
         </Card>
 
-        {(workflow.artifacts || []).length > 0 && (
+        {artifacts.length > 0 && (
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
@@ -310,7 +312,7 @@ export default function ProjectRFEDetailPage() {
             </CardHeader>
             <CardContent>
               <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-                {workflow.artifacts.map(a => (
+                {artifacts.map(a => (
                   <div key={a.path} className="p-3 border rounded-lg">
                     <div className="flex items-center justify-between">
                       <p className="font-medium text-sm">{a.name}</p>
