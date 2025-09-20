@@ -104,6 +104,9 @@ spec:
               message:
                 type: string
                 description: "Status message or error details"
+              finalOutput:
+                type: string
+                description: "Final textual output for the session"
               startTime:
                 type: string
                 format: date-time

@@ -348,17 +348,7 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 					// ⚠️ Let OpenShift SCC choose UID/GID dynamically (restricted-v2 compatible)
 					// SecurityContext omitted to allow SCC assignment
 
-					// 🔧 Shared memory volume for browser
 					Volumes: []corev1.Volume{
-						{
-							Name: "dshm",
-							VolumeSource: corev1.VolumeSource{
-								EmptyDir: &corev1.EmptyDirVolumeSource{
-									Medium:    corev1.StorageMediumMemory,
-									SizeLimit: resource.NewQuantity(256*1024*1024, resource.BinarySI),
-								},
-							},
-						},
 						{
 							Name: "workspace",
 							VolumeSource: corev1.VolumeSource{
@@ -383,10 +373,8 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 								},
 							},
 
-							// 📦 Mount shared memory volume only
 							VolumeMounts: []corev1.VolumeMount{
-								{Name: "dshm", MountPath: "/dev/shm"},
-								{Name: "workspace", MountPath: "/workspace"},
+								{Name: "workspace", MountPath: "/workspace", ReadOnly: true},
 							},
 
 							Env: func() []corev1.EnvVar {
@@ -399,23 +387,10 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 									{Name: "LLM_MAX_TOKENS", Value: fmt.Sprintf("%d", maxTokens)},
 									{Name: "TIMEOUT", Value: fmt.Sprintf("%d", timeout)},
 									{Name: "BACKEND_API_URL", Value: getBackendAPIURL()},
-
-									// 🔑 Git configuration environment variables
-									{Name: "GIT_USER_NAME", Value: gitUserName},
-									{Name: "GIT_USER_EMAIL", Value: gitUserEmail},
-									{Name: "GIT_REPOSITORIES", Value: gitRepositoriesJSON},
-
-									// ✅ Use /tmp for SCC-assigned random UID (OpenShift compatible)
-									{Name: "HOME", Value: "/tmp"},
-									{Name: "XDG_CONFIG_HOME", Value: "/tmp/.config"},
-									{Name: "XDG_CACHE_HOME", Value: "/tmp/.cache"},
-									{Name: "XDG_DATA_HOME", Value: "/tmp/.local/share"},
-
-									// 🧊 Playwright/Chromium optimized for containers with shared memory
-									{Name: "PW_CHROMIUM_ARGS", Value: "--no-sandbox --disable-gpu"},
-
-									// 📁 Playwright browser cache in writable location
-									{Name: "PLAYWRIGHT_BROWSERS_PATH", Value: "/tmp/.cache/ms-playwright"},
+									{Name: "PVC_PROXY_API_URL", Value: fmt.Sprintf("http://ambient-content.%s.svc:8080", sessionNamespace)},
+									// Working directory inside container to copy artifacts/messages into
+									{Name: "MESSAGE_STORE_PATH", Value: fmt.Sprintf("/sessions/%s/messages.json", name)},
+									{Name: "ARTIFACT_STORE_PATH", Value: fmt.Sprintf("/sessions/%s/artifacts", name)},
 
 									// (Optional) proxy envs if your cluster requires them:
 									// { Name: "HTTPS_PROXY", Value: "http://proxy.corp:3128" },
@@ -452,6 +427,47 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 													}},
 												})
 											}
+											// Derive GITHUB_REPO from spec.gitConfig.repositories[0].url if present
+											if spec, ok := obj.Object["spec"].(map[string]interface{}); ok {
+												if gc, ok := spec["gitConfig"].(map[string]interface{}); ok {
+													if repos, ok := gc["repositories"].([]interface{}); ok && len(repos) > 0 {
+														if r0, ok := repos[0].(map[string]interface{}); ok {
+															if url, ok := r0["url"].(string); ok && strings.TrimSpace(url) != "" {
+																base = append(base, corev1.EnvVar{Name: "GITHUB_REPO", Value: url})
+															}
+															if user, ok := gc["user"].(map[string]interface{}); ok {
+																if v, ok := user["name"].(string); ok {
+																	base = append(base, corev1.EnvVar{Name: "GIT_USER_NAME", Value: v})
+																}
+																if v, ok := user["email"].(string); ok {
+																	base = append(base, corev1.EnvVar{Name: "GIT_USER_EMAIL", Value: v})
+																}
+															}
+														}
+													}
+												}
+											}
+											// Apply environmentVariables from spec if provided (override defaults)
+											if spec, ok := obj.Object["spec"].(map[string]interface{}); ok {
+												if envMap, ok := spec["environmentVariables"].(map[string]interface{}); ok {
+													// helper to set/replace env var
+													setEnv := func(k, v string) {
+														// replace if exists
+														for i := range base {
+															if base[i].Name == k {
+																base[i].Value = v
+																return
+															}
+														}
+														base = append(base, corev1.EnvVar{Name: k, Value: v})
+													}
+													for k, v := range envMap {
+														if vs, ok := v.(string); ok {
+															setEnv(k, vs)
+														}
+													}
+												}
+											}
 										}
 									}
 								}
@@ -468,16 +484,7 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 								}
 							}(),
 
-							Resources: corev1.ResourceRequirements{
-								Requests: corev1.ResourceList{
-									corev1.ResourceCPU:    resource.MustParse("1000m"),
-									corev1.ResourceMemory: resource.MustParse("2Gi"),
-								},
-								Limits: corev1.ResourceList{
-									corev1.ResourceCPU:    resource.MustParse("2000m"),
-									corev1.ResourceMemory: resource.MustParse("4Gi"),
-								},
-							},
+							Resources: corev1.ResourceRequirements{},
 						},
 					},
 				},

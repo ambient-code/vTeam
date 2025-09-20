@@ -155,16 +155,48 @@ class BackendClient:
         """
         import aiohttp
         import json
+        import os
 
         endpoint = self.get_api_endpoint(f"/agentic-sessions/{session_name}/status")
         headers = self.get_request_headers()
+        auth_headers = self.auth_handler.get_auth_headers()
+
+        # Intercept messages: write directly to PVC proxy and strip from status
+        messages = None
+        if isinstance(status_data, dict) and "messages" in status_data:
+            messages = status_data.get("messages")
+            try:
+                # Best-effort write to PVC proxy if configured
+                pvc_base = os.getenv("PVC_PROXY_API_URL", "").rstrip("/")
+                msg_path = os.getenv("MESSAGE_STORE_PATH", f"/sessions/{session_name}/messages.json")
+                if pvc_base and messages is not None:
+                    body = {"path": msg_path, "content": json.dumps(messages), "encoding": "utf8"}
+                    async with aiohttp.ClientSession() as sess2:
+                        async with sess2.post(
+                            f"{pvc_base}/content/write",
+                            headers={**auth_headers, "Content-Type": "application/json"},
+                            data=json.dumps(body),
+                        ) as resp2:
+                            _ = await resp2.text()
+            except Exception as e:
+                logger.warning(f"Failed to write messages to PVC proxy: {e}")
+            # Remove messages from status payload
+            try:
+                status_data = dict(status_data)
+                status_data.pop("messages", None)
+            except Exception:
+                pass
+
+        # Filter allowed fields only
+        allowed = {"phase", "completionTime", "cost", "finalOutput", "message"}
+        filtered = {k: v for k, v in status_data.items() if k in allowed}
 
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.put(
                     endpoint,
                     headers=headers,
-                    data=json.dumps(status_data)
+                    data=json.dumps(filtered)
                 ) as response:
                     if response.status == 200:
                         logger.info(f"Successfully updated session status")

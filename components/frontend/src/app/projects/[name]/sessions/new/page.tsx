@@ -27,6 +27,9 @@ const formSchema = z.object({
   gitUserName: z.string().optional(),
   gitUserEmail: z.string().email().optional().or(z.literal("")),
   gitRepoUrl: z.string().url().optional().or(z.literal("")),
+  pvcProxyUrl: z.string().url().optional().or(z.literal("")),
+  messageStorePath: z.string().optional(),
+  artifactStorePath: z.string().optional(),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -58,6 +61,9 @@ export default function NewProjectSessionPage({ params }: { params: Promise<{ na
       gitUserName: "",
       gitUserEmail: "",
       gitRepoUrl: "",
+      pvcProxyUrl: "",
+      messageStorePath: "",
+      artifactStorePath: "",
     },
   });
 
@@ -96,6 +102,15 @@ export default function NewProjectSessionPage({ params }: { params: Promise<{ na
             },
           ];
         }
+      }
+
+      // Add environment variables for runner if provided
+      const envs: Record<string, string> = {};
+      if (values.pvcProxyUrl) envs["PVC_PROXY_API_URL"] = values.pvcProxyUrl;
+      if (values.messageStorePath) envs["MESSAGE_STORE_PATH"] = values.messageStorePath;
+      if (values.artifactStorePath) envs["ARTIFACT_STORE_PATH"] = values.artifactStorePath;
+      if (Object.keys(envs).length > 0) {
+        (request as any).environmentVariables = envs;
       }
 
       const apiUrl = getApiUrl();
@@ -280,6 +295,55 @@ export default function NewProjectSessionPage({ params }: { params: Promise<{ na
                         />
                       </FormControl>
                       <FormDescription>Git repository to clone and work with</FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              {/* Storage Configuration Section */}
+              <div className="space-y-4">
+                <h3 className="text-lg font-medium">Storage Configuration (Optional)</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="pvcProxyUrl"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>PVC Proxy API URL</FormLabel>
+                        <FormControl>
+                          <Input placeholder="http://ambient-content.<project>.svc:8080" {...field} />
+                        </FormControl>
+                        <FormDescription>Override per-namespace content service URL</FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="messageStorePath"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Message Store Path</FormLabel>
+                        <FormControl>
+                          <Input placeholder="/sessions/{id}/messages.json" {...field} />
+                        </FormControl>
+                        <FormDescription>Path on PVC for conversation messages</FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+                <FormField
+                  control={form.control}
+                  name="artifactStorePath"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Artifact Store Path</FormLabel>
+                      <FormControl>
+                        <Input placeholder="/sessions/{id}/artifacts" {...field} />
+                      </FormControl>
+                      <FormDescription>Directory on PVC where artifacts are stored</FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
