@@ -21,8 +21,9 @@ RUN uv pip install --system -e .
 # Copy the application files with proper permissions
 COPY main.py /app/
 COPY auth_handler.py /app/
+COPY git_integration.py /app/
 COPY CLAUDE.md /app/
-RUN chmod 755 /app/main.py && chmod 644 /app/auth_handler.py && chmod 644 /app/CLAUDE.md
+RUN chmod 755 /app/main.py && chmod 644 /app/auth_handler.py && chmod 644 /app/git_integration.py && chmod 644 /app/CLAUDE.md
 
 # Set OpenShift-compatible environment variables
 ENV PYTHONUNBUFFERED=1
