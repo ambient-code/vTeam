@@ -259,6 +259,8 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 	model, _, _ := unstructured.NestedString(llmSettings, "model")
 	temperature, _, _ := unstructured.NestedFloat64(llmSettings, "temperature")
 	maxTokens, _, _ := unstructured.NestedInt64(llmSettings, "maxTokens")
+	workspaceStorePath, workspaceStorePathFound, _ := unstructured.NestedString(spec, "paths", "workspace")
+	messageStorePath, messageStorePathFound, _ := unstructured.NestedString(spec, "paths", "messages")
 
 	// Git configuration is derived later directly from spec when building envs
 
@@ -367,10 +369,20 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 									{Name: "LLM_TEMPERATURE", Value: fmt.Sprintf("%.2f", temperature)},
 									{Name: "LLM_MAX_TOKENS", Value: fmt.Sprintf("%d", maxTokens)},
 									{Name: "TIMEOUT", Value: fmt.Sprintf("%d", timeout)},
-									{Name: "BACKEND_API_URL", Value: getBackendAPIURL()},
+									{Name: "BACKEND_API_URL", Value: fmt.Sprintf("http://backend-service.%s.svc.cluster.local:8080/api", backendNamespace)},
 									{Name: "PVC_PROXY_API_URL", Value: fmt.Sprintf("http://ambient-content.%s.svc:8080", sessionNamespace)},
-									{Name: "WORKSPACE_STORE_PATH", Value: fmt.Sprintf("/sessions/%s/workspace", name)},
-									{Name: "MESSAGE_STORE_PATH", Value: fmt.Sprintf("/sessions/%s/messages.json", name)},
+									{Name: "WORKSPACE_STORE_PATH", Value: func() string {
+										if workspaceStorePathFound {
+											return workspaceStorePath
+										}
+										return fmt.Sprintf("/sessions/%s/workspace", name)
+									}()},
+									{Name: "MESSAGE_STORE_PATH", Value: func() string {
+										if messageStorePathFound {
+											return messageStorePath
+										}
+										return fmt.Sprintf("/sessions/%s/messages.json", name)
+									}()},
 
 									// (Optional) proxy envs if your cluster requires them:
 									// { Name: "HTTPS_PROXY", Value: "http://proxy.corp:3128" },
@@ -1006,20 +1018,6 @@ func updateProjectSettingsStatus(namespace, name string, statusUpdate map[string
 	}
 
 	return nil
-}
-
-// getBackendAPIURL returns the fully qualified backend API URL for cross-namespace communication
-func getBackendAPIURL() string {
-	// Check if a custom backend API URL is provided
-	if customURL := os.Getenv("BACKEND_API_URL"); customURL != "" {
-		// If it already contains a fully qualified domain, use it as-is
-		if strings.Contains(customURL, ".svc.cluster.local") || strings.Contains(customURL, "://") {
-			return customURL
-		}
-	}
-
-	// Construct fully qualified service name for cross-namespace communication
-	return fmt.Sprintf("http://backend-service.%s.svc.cluster.local:8080/api", backendNamespace)
 }
 
 var (

@@ -31,7 +31,7 @@ class SimpleClaudeRunner:
         self.github_repo = os.getenv("GITHUB_REPO", "").strip()
         self.git_user_name = os.getenv("GIT_USER_NAME", "").strip()
         self.git_user_email = os.getenv("GIT_USER_EMAIL", "").strip()
-        self.backend_api_url = os.getenv("BACKEND_API_URL", "http://backend-service:8080/api").rstrip("/")
+        self.backend_api_url = os.getenv("BACKEND_API_URL", f"http://backend-service:8080/api").rstrip("/")
         self.pvc_proxy_api_url = os.getenv("PVC_PROXY_API_URL", f"http://ambient-content.{self.session_namespace}.svc:8080").rstrip("/")
         self.message_store_path = os.getenv("MESSAGE_STORE_PATH", f"/sessions/{self.session_name}/messages.json")
         self.workspace_store_path = os.getenv("WORKSPACE_STORE_PATH", f"/sessions/{self.session_name}/workspace")
