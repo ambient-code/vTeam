@@ -149,6 +149,42 @@ class SimpleClaudeRunner:
         if text and text.strip():
             self.messages.append({"content": text.strip()})
 
+    def _append_stream_text(self, text: str) -> None:
+        """Append streaming text to the last text message or create a new one.
+
+        This keeps UI updates smooth by coalescing small deltas.
+        """
+        if not text:
+            return
+        if self.messages and isinstance(self.messages[-1], dict) and "content" in self.messages[-1] and not any(
+            k in self.messages[-1] for k in ("tool_use_id", "tool_use_name", "tool_use_input", "tool_use_is_error")
+        ):
+            # Extend the last text message
+            try:
+                self.messages[-1]["content"] = (self.messages[-1].get("content", "") or "") + text
+            except Exception:
+                # Fallback: append as a new message
+                self.messages.append({"content": text})
+        else:
+            self.messages.append({"content": text})
+
+    def _append_tool_use(self, tool_id: str | None, tool_name: str | None, tool_input: Any) -> None:
+        try:
+            payload = {
+                "tool_use_id": tool_id or "",
+                "tool_use_name": tool_name or "",
+                "tool_use_input": json.dumps(tool_input) if tool_input is not None else "",
+            }
+            self.messages.append(payload)
+        except Exception:
+            # Ensure we don't break the run due to serialization issues
+            self.messages.append({
+                "tool_use_id": tool_id or "",
+                "tool_use_name": tool_name or "",
+                "tool_use_input": "<unserializable tool input>",
+                "tool_use_is_error": True,
+            })
+
     def _flush_messages(self) -> None:
         try:
             payload = json.dumps(self.messages)
@@ -178,27 +214,77 @@ class SimpleClaudeRunner:
         except Exception as e:
             logger.warning(f"Failed to update status: {e}")
 
-    # ---------------- LLM call ----------------
-    def _run_llm(self, prompt: str) -> tuple[str, float]:
+    # ---------------- LLM call (streaming) ----------------
+    def _run_llm_streaming(self, prompt: str) -> tuple[str, float]:
+        """Run the LLM with streaming, emitting structured messages for the UI."""
         import anthropic
         client = anthropic.Anthropic(api_key=self.api_key)
         # Nudge the agent to write files to artifacts folder
         full_prompt = prompt + "\n\nIMPORTANT: Save any file outputs into the 'artifacts' folder of the working directory."
-        msg = client.messages.create(
-            model=os.getenv("LLM_MODEL", "claude-3-7-sonnet-latest"),
-            max_tokens=int(os.getenv("LLM_MAX_TOKENS", "4000")),
-            temperature=float(os.getenv("LLM_TEMPERATURE", "0.7")),
-            messages=[{"role": "user", "content": full_prompt}],
-        )
-        # Extract text
-        text = ""
-        if msg and getattr(msg, "content", None):
-            parts = msg.content
-            for part in parts:
-                if hasattr(part, "text"):
-                    text += part.text
-        # Cost unknown without pricing calc; set to 0.0
-        return text.strip(), 0.0
+
+        model = os.getenv("LLM_MODEL", "claude-3-7-sonnet-latest")
+        max_tokens = int(os.getenv("LLM_MAX_TOKENS", "4000"))
+        temperature = float(os.getenv("LLM_TEMPERATURE", "0.7"))
+
+        # Accumulate final text for convenience
+        final_text_parts: List[str] = []
+
+        try:
+            # Use streaming API to surface incremental progress
+            with client.messages.stream(
+                model=model,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                messages=[{"role": "user", "content": full_prompt}],
+            ) as stream:
+                for event in stream:
+                    etype = getattr(event, "type", "")
+                    # Stream textual deltas
+                    if etype in ("content_block_delta", "message_delta", "text_delta"):
+                        # Attempt to grab text safely across SDK versions
+                        text = getattr(getattr(event, "delta", event), "text", None)
+                        if text:
+                            final_text_parts.append(text)
+                            self._append_stream_text(text)
+                            # Flush opportunistically on newlines for better UX
+                            if "\n" in text or len(text) > 32:
+                                self._flush_messages()
+                    # Tool use start
+                    elif etype in ("content_block_start", "tool_use"):
+                        block = getattr(event, "content_block", None) or getattr(event, "block", None) or getattr(event, "data", None)
+                        btype = getattr(block, "type", None) or getattr(event, "type", None)
+                        if btype == "tool_use":
+                            tool_id = getattr(block, "id", None) or getattr(event, "id", None)
+                            tool_name = getattr(block, "name", None) or getattr(event, "name", None)
+                            tool_input = getattr(block, "input", None) or getattr(event, "input", None)
+                            self._append_tool_use(tool_id, tool_name, tool_input)
+                            self._flush_messages()
+                # Ensure we process the final message for any remaining text
+                try:
+                    final_msg = stream.get_final_message()
+                    if final_msg and getattr(final_msg, "content", None):
+                        for part in final_msg.content:
+                            if hasattr(part, "text") and part.text:
+                                final_text_parts.append(part.text)
+                except Exception:
+                    pass
+        except Exception as e:
+            logger.warning(f"Streaming failed or unsupported; falling back to non-streaming call: {e}")
+            # Fall back to non-streaming call to avoid hard failure
+            msg = client.messages.create(
+                model=model,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                messages=[{"role": "user", "content": full_prompt}],
+            )
+            if msg and getattr(msg, "content", None):
+                for part in msg.content:
+                    if hasattr(part, "text") and part.text:
+                        final_text_parts.append(part.text)
+
+        # Final flush to ensure UI gets all content
+        self._flush_messages()
+        return ("".join(final_text_parts)).strip(), 0.0
 
     # ---------------- Main flow ----------------
     def run(self) -> int:
@@ -217,8 +303,10 @@ class SimpleClaudeRunner:
 
             # 3) Run prompt
             self._append_message("Starting model run")
-            result_text, cost = self._run_llm(self.prompt)
+            self._flush_messages()
+            result_text, cost = self._run_llm_streaming(self.prompt)
             self._append_message("Model run completed")
+            self._flush_messages()
 
             # Save final-output.txt in artifacts for convenience
             try:

@@ -62,10 +62,6 @@ func getK8sClientsForRequest(c *gin.Context) (*kubernetes.Clientset, dynamic.Int
 	// Debug: basic auth header state (do not log token)
 	hasAuthHeader := strings.TrimSpace(rawAuth) != ""
 	hasFwdToken := strings.TrimSpace(rawFwd) != ""
-	xfUser := c.GetHeader("X-Forwarded-User")
-	xfPref := c.GetHeader("X-Forwarded-Preferred-Username")
-	log.Printf("auth debug: path=%s method=%s tokenSource=%s tokenLen=%d hasAuthHeader=%t hasFwdToken=%t user=%q preferred=%q",
-		c.FullPath(), c.Request.Method, tokenSource, len(token), hasAuthHeader, hasFwdToken, xfUser, xfPref)
 
 	if token != "" && baseKubeConfig != nil {
 		cfg := *baseKubeConfig
@@ -84,7 +80,6 @@ func getK8sClientsForRequest(c *gin.Context) (*kubernetes.Clientset, dynamic.Int
 
 			// Best-effort update last-used for service account tokens
 			updateAccessKeyLastUsedAnnotation(c)
-			log.Printf("auth debug: built user-scoped clients ok (source=%s) for %s", tokenSource, c.FullPath())
 			return kc, dc
 		}
 		// Token provided but client build failed – treat as invalid token
