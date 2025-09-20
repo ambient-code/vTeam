@@ -117,7 +117,7 @@ class SimpleClaudeRunner:
                 target = dst / name
                 if it.get("isDir"):
                     pull_dir(p, target)
-            else:
+                else:
                     try:
                         data = self.content_read(p) or b""
                         target.parent.mkdir(parents=True, exist_ok=True)

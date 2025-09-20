@@ -145,7 +145,13 @@ export default function ProjectSessionsListPage({ params }: { params: Promise<{ 
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {sessions.map((session: any) => (
+                  {[...sessions]
+                    .sort((a: any, b: any) => {
+                      const aTime = a?.metadata?.creationTimestamp ? new Date(a.metadata.creationTimestamp).getTime() : 0;
+                      const bTime = b?.metadata?.creationTimestamp ? new Date(b.metadata.creationTimestamp).getTime() : 0;
+                      return bTime - aTime;
+                    })
+                    .map((session: any) => (
                     <TableRow key={session.metadata?.uid || session.metadata?.name}>
                       <TableCell className="font-medium min-w-[180px]">
                         <Link href={`/projects/${projectName}/sessions/${session.metadata.name}`} className="text-blue-600 hover:underline hover:text-blue-800 transition-colors block">
