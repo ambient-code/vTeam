@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -261,25 +260,7 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 	temperature, _, _ := unstructured.NestedFloat64(llmSettings, "temperature")
 	maxTokens, _, _ := unstructured.NestedInt64(llmSettings, "maxTokens")
 
-	// Extract Git configuration
-	gitConfig, gitConfigExists, _ := unstructured.NestedMap(spec, "gitConfig")
-	var gitUserName, gitUserEmail string
-	var gitRepositoriesJSON string
-
-	if gitConfigExists {
-		// Get Git user configuration
-		gitUser, _, _ := unstructured.NestedMap(gitConfig, "user")
-		gitUserName, _, _ = unstructured.NestedString(gitUser, "name")
-		gitUserEmail, _, _ = unstructured.NestedString(gitUser, "email")
-
-		// Get Git repositories and serialize to JSON for environment variable
-		gitRepositories, _, _ := unstructured.NestedSlice(gitConfig, "repositories")
-		if len(gitRepositories) > 0 {
-			if reposBytes, err := json.Marshal(gitRepositories); err == nil {
-				gitRepositoriesJSON = string(reposBytes)
-			}
-		}
-	}
+	// Git configuration is derived later directly from spec when building envs
 
 	// Read runner secrets configuration from ProjectSettings in the session's namespace
 	runnerSecretsName := ""
