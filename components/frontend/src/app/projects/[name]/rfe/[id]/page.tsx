@@ -275,14 +275,16 @@ export default function ProjectRFEDetailPage() {
               <CardContent>
                 <div className="space-y-4">
                   {(() => {
-                    const expectedPaths: Record<string, string> = {
-                      specify: "specs/spec.md",
-                      plan: "specs/plan.md",
-                      tasks: "specs/tasks.md",
-                    };
                     const phaseList = ["specify","plan","tasks"] as WorkflowPhase[];
                     return phaseList.map(phase => {
-                      const expected = expectedPaths[phase as keyof typeof expectedPaths];
+                      const expected = (() => {
+                        // Derive expected path under specs/. If subfolder exists, prefer it.
+                        // We only know existence booleans here, so use conventional relative names.
+                        // The backend summary already handles subfolder detection for existence.
+                        if (phase === "specify") return "specs/spec.md";
+                        if (phase === "plan") return "specs/plan.md";
+                        return "specs/tasks.md";
+                      })();
                       const exists = phase === "specify" ? specExists : phase === "plan" ? planExists : tasksExists;
                       const sessionForPhase = rfeSessions.find(s => (s.labels as any)?.["rfe-phase"] === phase);
                       const running = (sessionForPhase?.phase || "").toLowerCase() === "running";

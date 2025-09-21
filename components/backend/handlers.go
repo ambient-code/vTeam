@@ -2847,10 +2847,6 @@ func createProjectRFEWorkflow(c *gin.Context) {
 
 	// Initialize workspace structure and optionally seed repositories
 	workspaceRoot := resolveWorkflowWorkspaceAbsPath(workflowID, "")
-	// Ensure base dirs
-	_ = writeProjectContentFile(c, project, filepath.Join(workspaceRoot, ".gitkeep"), []byte(""))
-	_ = writeProjectContentFile(c, project, filepath.Join(workspaceRoot, "specs/.gitkeep"), []byte(""))
-	_ = writeProjectContentFile(c, project, filepath.Join(workspaceRoot, "notes/.gitkeep"), []byte(""))
 
 	// Initialize Spec Kit template into workspace (version via SPEC_KIT_VERSION)
 	if err := initSpecKitInWorkspace(c, project, workspaceRoot); err != nil {
@@ -2992,18 +2988,48 @@ func getProjectRFEWorkflowSummary(c *gin.Context) {
 
 	// Determine workspace and expected files
 	workspaceRoot := resolveWorkflowWorkspaceAbsPath(id, "")
-	specsItems, _ := listProjectContent(c, project, filepath.Join(workspaceRoot, "specs"))
-	has := func(name string) bool {
-		for _, it := range specsItems {
-			if strings.EqualFold(it.Name, name) && !it.IsDir {
-				return true
+	specsPath := filepath.Join(workspaceRoot, "specs")
+	specsItems, _ := listProjectContent(c, project, specsPath)
+
+	hasSpec := false
+	hasPlan := false
+	hasTasks := false
+
+	// helper to scan a list for target filenames
+	scanFor := func(items []contentListItem) (bool, bool, bool) {
+		s, p, t := false, false, false
+		for _, it := range items {
+			if it.IsDir {
+				continue
+			}
+			switch strings.ToLower(it.Name) {
+			case "spec.md":
+				s = true
+			case "plan.md":
+				p = true
+			case "tasks.md":
+				t = true
 			}
 		}
-		return false
+		return s, p, t
 	}
-	hasSpec := has("spec.md")
-	hasPlan := has("plan.md")
-	hasTasks := has("tasks.md")
+
+	// First check directly under specs/
+	if len(specsItems) > 0 {
+		s, p, t := scanFor(specsItems)
+		hasSpec, hasPlan, hasTasks = s, p, t
+		// If not found, check first subfolder under specs/
+		if !(hasSpec || hasPlan || hasTasks) {
+			for _, it := range specsItems {
+				if it.IsDir {
+					subItems, _ := listProjectContent(c, project, filepath.Join(specsPath, it.Name))
+					s2, p2, t2 := scanFor(subItems)
+					hasSpec, hasPlan, hasTasks = s2, p2, t2
+					break
+				}
+			}
+		}
+	}
 
 	// Sessions: find linked sessions and compute running/failed flags
 	gvr := getAgenticSessionV1Alpha1Resource()
