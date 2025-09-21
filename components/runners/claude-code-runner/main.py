@@ -212,6 +212,8 @@ class SimpleClaudeRunner:
                 ResultMessage,
             )
 
+            nonlocal result_message
+
             # Allow configuring tools via env; default to common ones
             allowed_tools_env = os.getenv("CLAUDE_ALLOWED_TOOLS", "Read,Write,Bash").strip()
             allowed_tools = [t.strip() for t in allowed_tools_env.split(",") if t.strip()]
@@ -220,14 +222,13 @@ class SimpleClaudeRunner:
                 permission_mode=os.getenv("CLAUDE_PERMISSION_MODE", "acceptEdits"),
                 allowed_tools=allowed_tools if allowed_tools else None,
                 cwd=str(self.workdir),
-                include_partial_messages=True,
+                # include_partial_messages=True, # TODO add incremental messages
             )
 
 
             async for message in query(prompt=full_prompt, options=options):
                 logger.info(f"Message: {message}")  
                 if isinstance(message, StreamEvent):
-                    logger.info(f"StreamEvent: {message}")
                     # handle stream events
                     pass
                 else:
