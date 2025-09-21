@@ -292,6 +292,24 @@ func parseSpec(spec map[string]interface{}) AgenticSessionSpec {
 		result.Prompt = prompt
 	}
 
+	if interactive, ok := spec["interactive"].(bool); ok {
+		result.Interactive = interactive
+	}
+
+	if paths, ok := spec["paths"].(map[string]interface{}); ok {
+		p := &Paths{}
+		if ws, ok := paths["workspace"].(string); ok {
+			p.Workspace = ws
+		}
+		if ms, ok := paths["messages"].(string); ok {
+			p.Messages = ms
+		}
+		if ib, ok := paths["inbox"].(string); ok {
+			p.Inbox = ib
+		}
+		result.Paths = p
+	}
+
 	if displayName, ok := spec["displayName"].(string); ok {
 		result.DisplayName = displayName
 	}
@@ -528,6 +546,11 @@ func createSession(c *gin.Context) {
 	if len(req.EnvironmentVariables) > 0 {
 		spec := session["spec"].(map[string]interface{})
 		spec["environmentVariables"] = req.EnvironmentVariables
+	}
+
+	// Interactive flag
+	if req.Interactive != nil {
+		session["spec"].(map[string]interface{})["interactive"] = *req.Interactive
 	}
 
 	// Load Git configuration from ConfigMap and merge with user-provided config
@@ -812,6 +835,45 @@ func getSessionMessages(c *gin.Context) {
 		return
 	}
 	c.Data(http.StatusOK, "application/json", data)
+}
+
+// POST /api/projects/:projectName/agentic-sessions/:sessionName/messages
+// Appends a user message to the session inbox (JSONL) using the per-project content service
+func postSessionMessage(c *gin.Context) {
+	project := c.GetString("project")
+	sessionName := c.Param("sessionName")
+
+	var body struct {
+		Content string `json:"content" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil || strings.TrimSpace(body.Content) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "content is required"})
+		return
+	}
+
+	entry := map[string]interface{}{
+		"type":      "user_message",
+		"content":   body.Content,
+		"timestamp": time.Now().UTC().Format(time.RFC3339),
+	}
+
+	inboxPath := fmt.Sprintf("/sessions/%s/inbox.jsonl", sessionName)
+
+	// Read current inbox (best effort)
+	cur, _ := readProjectContentFile(c, project, inboxPath)
+	curStr := string(cur)
+	if curStr != "" && !strings.HasSuffix(curStr, "\n") {
+		curStr += "\n"
+	}
+	b, _ := json.Marshal(entry)
+	newContent := curStr + string(b) + "\n"
+
+	if err := writeProjectContentFile(c, project, inboxPath, []byte(newContent)); err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "failed to write inbox"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
 // resolveWorkspaceAbsPath normalizes a workspace-relative or absolute path to the

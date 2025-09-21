@@ -36,6 +36,7 @@ class SimpleClaudeRunner:
         self.pvc_proxy_api_url = os.getenv("PVC_PROXY_API_URL", f"http://ambient-content.{self.session_namespace}.svc:8080").rstrip("/")
         self.message_store_path = os.getenv("MESSAGE_STORE_PATH", f"/sessions/{self.session_name}/messages.json")
         self.workspace_store_path = os.getenv("WORKSPACE_STORE_PATH", f"/sessions/{self.session_name}/workspace")
+        self.inbox_store_path = os.getenv("INBOX_STORE_PATH", f"/sessions/{self.session_name}/inbox.jsonl")
 
         # Git integration (multi-repo via GIT_REPOSITORIES)
         self.git = GitIntegration()
@@ -46,6 +47,7 @@ class SimpleClaudeRunner:
         logger.info(f"PVC_PROXY_API_URL: {self.pvc_proxy_api_url}")
         logger.info(f"MESSAGE_STORE_PATH: {self.message_store_path}")
         logger.info(f"WORKSPACE_STORE_PATH: {self.workspace_store_path}")
+        logger.info(f"INBOX_STORE_PATH: {self.inbox_store_path}")
         logger.info(f"AGENTIC_SESSION_NAME: {self.session_name}")
         logger.info(f"AGENTIC_SESSION_NAMESPACE: {self.session_namespace}")
         logger.info(f"PROMPT: {self.prompt}")
@@ -261,6 +263,120 @@ class SimpleClaudeRunner:
         except Exception as e:
             logger.warning(f"Failed to flush messages: {e}")
 
+    # ---------------- Chat inbox helpers ----------------
+    async def _read_inbox_lines(self, last_offset: int) -> tuple[list[dict[str, Any]], int]:
+        try:
+            data = self.content_read(self.inbox_store_path) or b""
+            if not data:
+                return [], last_offset
+            text = data.decode("utf-8", errors="ignore")
+            lines = text.splitlines()
+            if last_offset >= len(lines):
+                return [], len(lines)
+            new_lines = lines[last_offset:]
+            msgs: list[dict[str, Any]] = []
+            for ln in new_lines:
+                try:
+                    obj = json.loads(ln)
+                    if isinstance(obj, dict):
+                        msgs.append(obj)
+                except Exception:
+                    continue
+            return msgs, len(lines)
+        except Exception as e:
+            logger.debug(f"read inbox error: {e}")
+            return [], last_offset
+
+    async def _chat_mode(self) -> None:
+        from claude_code_sdk import (
+            ClaudeSDKClient,
+            ClaudeCodeOptions,
+            AssistantMessage,
+            UserMessage,
+            SystemMessage,
+            ToolUseBlock,
+            ToolResultBlock,
+            TextBlock,
+            ThinkingBlock,
+            ResultMessage,
+        )
+
+        allowed_tools_env = os.getenv("CLAUDE_ALLOWED_TOOLS", "Read,Write,Bash").strip()
+        allowed_tools = [t.strip() for t in allowed_tools_env.split(",") if t.strip()]
+
+        options = ClaudeCodeOptions(
+            permission_mode=os.getenv("CLAUDE_PERMISSION_MODE", "acceptEdits"),
+            allowed_tools=allowed_tools if allowed_tools else None,
+            cwd=str(self.workdir),
+        )
+
+        # Restore cursor if present
+        cursor_path = f"{self.workspace_store_path}/.inbox_cursor"
+        last_offset = 0
+        try:
+            off_b = self.content_read(cursor_path)
+            if off_b:
+                last_offset = int((off_b.decode("utf-8").strip() or "0"))
+        except Exception:
+            pass
+
+        async with ClaudeSDKClient(options=options) as client:
+            self._update_status("Running", message="Chat mode ready")
+
+            while True:
+                inbox, new_offset = await self._read_inbox_lines(last_offset)
+                if inbox:
+                    for msg in inbox:
+                        text = str(msg.get("content", ""))
+                        # Mirror user message into outbox
+                        self.messages.append({
+                            "type": "user_message",
+                            "content": text,
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                        })
+                        self._flush_messages()
+
+                        # Send to Claude and stream results
+                        await client.query(text)
+                        async for message in client.receive_response():
+                            if isinstance(message, AssistantMessage):
+                                if isinstance(message.content, str):
+                                    self.messages.append({
+                                        "type": "assistant_message",
+                                        "content": message.content,
+                                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                                    })
+                                    self._flush_messages()
+                                else:
+                                    for block in message.content:
+                                        content_type = (
+                                            "text_block" if isinstance(block, TextBlock)
+                                            else "thinking_block" if isinstance(block, ThinkingBlock)
+                                            else "tool_use_block" if isinstance(block, ToolUseBlock)
+                                            else "tool_result_block" if isinstance(block, ToolResultBlock)
+                                            else "unknown_block"
+                                        )
+                                        self.messages.append({
+                                            "type": "assistant_message",
+                                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                                            "content": {
+                                                "type": content_type,
+                                                **asdict(block),
+                                            },
+                                        })
+                                        self._flush_messages()
+                            elif isinstance(message, ResultMessage):
+                                self._update_status("Running", result_msg=message)
+
+                    # Commit cursor
+                    last_offset = new_offset
+                    try:
+                        self.content_write(cursor_path, str(last_offset), "utf8")
+                    except Exception:
+                        pass
+
+                await __import__("asyncio").sleep(float(os.getenv("INBOX_POLL_INTERVAL_SEC", "0.5")))
+
     # ---------------- Status ----------------
     def _update_status(self, phase: str, message: str | None = None, completed: bool = False, result_msg: ResultMessage | None = None) -> None:
         payload: Dict[str, Any] = {"phase": phase}
@@ -449,7 +565,16 @@ class SimpleClaudeRunner:
                 pass
 
 
-            # 3) Run prompt
+            # Chat vs headless mode
+            chat_enabled = os.getenv("CHAT_MODE", "").lower() in ("true", "1", "yes")
+            if chat_enabled:
+                logger.info("Entering chat mode")
+                import asyncio as _asyncio
+                _asyncio.run(self._chat_mode())
+                # Chat mode is long-running; we won't push workspace or mark completed here
+                return 0
+
+            # 3) Headless one-shot
             self._update_status("Running", message="Claude is running")
             result_msg = self._run_llm_streaming(self.prompt)
             

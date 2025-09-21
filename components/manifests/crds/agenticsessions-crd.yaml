@@ -19,6 +19,9 @@ spec:
             required:
             - prompt
             properties:
+              interactive:
+                type: boolean
+                description: "When true, run session in interactive chat mode using inbox/outbox files"
               prompt:
                 type: string
                 description: "The initial prompt for the agentic session"
@@ -92,6 +95,9 @@ spec:
                   messages:
                     type: string
                     description: "Path on PVC where conversation messages are stored (e.g., /sessions/{id}/messages.json)"
+                  inbox:
+                    type: string
+                    description: "Path on PVC where user chat inputs are appended as JSONL (e.g., /sessions/{id}/inbox.jsonl)"
           status:
             type: object
             properties:

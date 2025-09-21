@@ -97,6 +97,7 @@ func main() {
 			projectGroup.PUT("/agentic-sessions/:sessionName/status", updateSessionStatus)
 			projectGroup.PUT("/agentic-sessions/:sessionName/displayname", updateSessionDisplayName)
 			projectGroup.GET("/agentic-sessions/:sessionName/messages", getSessionMessages)
+			projectGroup.POST("/agentic-sessions/:sessionName/messages", postSessionMessage)
 			// Session workspace APIs
 			projectGroup.GET("/agentic-sessions/:sessionName/workspace", getSessionWorkspace)
 			projectGroup.GET("/agentic-sessions/:sessionName/workspace/*path", getSessionWorkspaceFile)
@@ -233,6 +234,7 @@ type AgenticSession struct {
 
 type AgenticSessionSpec struct {
 	Prompt            string             `json:"prompt" binding:"required"`
+	Interactive       bool               `json:"interactive,omitempty"`
 	DisplayName       string             `json:"displayName"`
 	LLMSettings       LLMSettings        `json:"llmSettings"`
 	Timeout           int                `json:"timeout"`
@@ -241,6 +243,7 @@ type AgenticSessionSpec struct {
 	ResourceOverrides *ResourceOverrides `json:"resourceOverrides,omitempty"`
 	Project           string             `json:"project,omitempty"`
 	GitConfig         *GitConfig         `json:"gitConfig,omitempty"`
+	Paths             *Paths             `json:"paths,omitempty"`
 }
 
 type LLMSettings struct {
@@ -271,6 +274,12 @@ type GitConfig struct {
 	Repositories   []GitRepository    `json:"repositories,omitempty"`
 }
 
+type Paths struct {
+	Workspace string `json:"workspace,omitempty"`
+	Messages  string `json:"messages,omitempty"`
+	Inbox     string `json:"inbox,omitempty"`
+}
+
 type AgenticSessionStatus struct {
 	Phase          string  `json:"phase,omitempty"`
 	Message        string  `json:"message,omitempty"`
@@ -293,6 +302,7 @@ type CreateAgenticSessionRequest struct {
 	DisplayName          string             `json:"displayName,omitempty"`
 	LLMSettings          *LLMSettings       `json:"llmSettings,omitempty"`
 	Timeout              *int               `json:"timeout,omitempty"`
+	Interactive          *bool              `json:"interactive,omitempty"`
 	GitConfig            *GitConfig         `json:"gitConfig,omitempty"`
 	UserContext          *UserContext       `json:"userContext,omitempty"`
 	BotAccount           *BotAccountRef     `json:"botAccount,omitempty"`

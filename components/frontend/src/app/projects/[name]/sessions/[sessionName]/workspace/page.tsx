@@ -137,8 +137,8 @@ export default function SessionWorkspacePage() {
           <div className="overflow-auto">
             <Card className="m-4">
               <CardHeader>
-                <CardTitle>selectedPath.split('/').pop()</CardTitle>
-                <CardDescription>selectedPath</CardDescription>
+                <CardTitle>{selectedPath ? selectedPath.split("/").pop() : ""}</CardTitle>
+                <CardDescription>{selectedPath || ""}</CardDescription>
               </CardHeader>
               <CardContent className="p-4">
                 {!selectedPath && (

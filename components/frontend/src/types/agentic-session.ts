@@ -35,6 +35,7 @@ export type AgenticSessionSpec = {
 	displayName?: string;
 	gitConfig?: GitConfig;
 	project?: string;
+	interactive?: boolean;
 };
 
 // -----------------------------
@@ -147,6 +148,7 @@ export type CreateAgenticSessionRequest = {
 	gitConfig?: GitConfig;
 	project?: string;
   	environmentVariables?: Record<string, string>;
+	interactive?: boolean;
 	// New fields for agent sessions
 	agentPersona?: string;
 	workflowPhase?: string;
@@ -192,8 +194,8 @@ export type RFEWorkflow = {
 	description: string;
   currentPhase?: WorkflowPhase; // derived in UI
   status?: "active" | "completed" | "failed" | "paused"; // derived in UI
-	targetRepoUrl: string;
-	targetRepoBranch: string;
+  repositories?: GitRepository[]; // CRD-aligned optional array
+  workspacePath?: string; // CRD-aligned optional path
   agentSessions?: RFESession[];
   artifacts?: ArtifactFile[];
 	createdAt: string;
@@ -204,10 +206,8 @@ export type RFEWorkflow = {
 export type CreateRFEWorkflowRequest = {
 	title: string;
 	description: string;
-	targetRepoUrl: string;
-	targetRepoBranch: string;
-	gitUserName?: string;
-	gitUserEmail?: string;
+  repositories?: GitRepository[];
+  workspacePath?: string;
 };
 
 export type PhaseResult = {

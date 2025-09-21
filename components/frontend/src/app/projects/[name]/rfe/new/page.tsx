@@ -2,11 +2,11 @@
 
 import { useState, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { useForm } from "react-hook-form";
+import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import Link from "next/link";
-import { ArrowLeft, Loader2, GitBranch, Users } from "lucide-react";
+import { ArrowLeft, Loader2, GitBranch } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,13 +16,17 @@ import { Textarea } from "@/components/ui/textarea";
 import { CreateRFEWorkflowRequest } from "@/types/agentic-session";
 import { getApiUrl } from "@/lib/config";
 
+const repoSchema = z.object({
+  url: z.string().url("Please enter a valid repository URL"),
+  branch: z.string().min(1, "Branch is required"),
+  clonePath: z.string().optional(),
+});
+
 const formSchema = z.object({
   title: z.string().min(5, "Title must be at least 5 characters long"),
   description: z.string().min(20, "Description must be at least 20 characters long"),
-  targetRepoUrl: z.string().url("Please enter a valid repository URL"),
-  targetRepoBranch: z.string().min(1, "Branch is required"),
-  gitUserName: z.string().optional(),
-  gitUserEmail: z.union([z.literal(""), z.string().email("Please enter a valid email")]).optional(),
+  workspacePath: z.string().optional(),
+  repositories: z.array(repoSchema).optional(),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -40,11 +44,14 @@ export default function ProjectNewRFEWorkflowPage() {
     defaultValues: {
       title: "",
       description: "",
-      targetRepoUrl: "",
-      targetRepoBranch: "main",
-      gitUserName: "",
-      gitUserEmail: "",
+      workspacePath: "",
+      repositories: [{ url: "", branch: "main", clonePath: "" }],
     },
+  });
+
+  const { fields, append, remove } = useFieldArray({
+    control: form.control,
+    name: "repositories",
   });
 
   const handleAgentSelectionChange = useCallback((_agents: string[]) => {}, []);
@@ -57,10 +64,10 @@ export default function ProjectNewRFEWorkflowPage() {
       const request: CreateRFEWorkflowRequest = {
         title: values.title,
         description: values.description,
-        targetRepoUrl: values.targetRepoUrl,
-        targetRepoBranch: values.targetRepoBranch,
-        gitUserName: values.gitUserName || undefined,
-        gitUserEmail: values.gitUserEmail || undefined,
+        workspacePath: values.workspacePath || undefined,
+        repositories: (values.repositories || [])
+          .filter(r => r && r.url && r.url.trim() !== "")
+          .map(r => ({ url: r.url.trim(), branch: r.branch?.trim() || "main", clonePath: (r.clonePath || "").trim() || undefined })),
       };
 
       const url = `${getApiUrl()}/projects/${encodeURIComponent(project)}/rfe-workflows`;
@@ -122,57 +129,67 @@ export default function ProjectNewRFEWorkflowPage() {
 
             <Card>
               <CardHeader>
-                <CardTitle>Target Repository</CardTitle>
-                <CardDescription>Specify where the RFE artifacts and implementation will be stored</CardDescription>
+                <CardTitle>Workspace</CardTitle>
+                <CardDescription>Optional shared directory path for workflow artifacts</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
-                <FormField control={form.control} name="targetRepoUrl" render={({ field }) => (
+                <FormField control={form.control} name="workspacePath" render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Repository URL</FormLabel>
-                    <FormControl><Input placeholder="https://github.com/your-org/project.git" {...field} /></FormControl>
-                    <FormDescription>Git repository where specs and implementation will be stored</FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )} />
-                <FormField control={form.control} name="targetRepoBranch" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Branch</FormLabel>
-                    <FormControl><Input placeholder="main" {...field} /></FormControl>
-                    <FormDescription>Target branch for the RFE workflow</FormDescription>
+                    <FormLabel>Workspace Path</FormLabel>
+                    <FormControl><Input placeholder="e.g., /features/auth" {...field} /></FormControl>
+                    <FormDescription>Leave blank to use default path</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )} />
               </CardContent>
             </Card>
-
-            {/* Agent selection archived for now */}
 
             <Card>
               <CardHeader>
-                <CardTitle>Git Configuration (Optional)</CardTitle>
-                <CardDescription>Configure Git user information for commits made during the workflow</CardDescription>
+                <CardTitle className="flex items-center gap-2"><GitBranch className="h-5 w-5" />Repositories (optional)</CardTitle>
+                <CardDescription>Add one or more repos to clone into the workspace</CardDescription>
               </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <FormField control={form.control} name="gitUserName" render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Git User Name</FormLabel>
-                      <FormControl><Input placeholder="Your Name" {...field} /></FormControl>
-                      <FormDescription>Name to use for Git commits</FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )} />
-                  <FormField control={form.control} name="gitUserEmail" render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Git User Email</FormLabel>
-                      <FormControl><Input type="email" placeholder="your.email@example.com" {...field} /></FormControl>
-                      <FormDescription>Email to use for Git commits</FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )} />
+              <CardContent className="space-y-4">
+                {fields.map((field, index) => (
+                  <div key={field.id} className="grid grid-cols-1 md:grid-cols-6 gap-4 items-end">
+                    <div className="md:col-span-3">
+                      <FormField control={form.control} name={`repositories.${index}.url`} render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Repository URL</FormLabel>
+                          <FormControl><Input placeholder="https://github.com/org/repo.git" {...field} /></FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
+                    </div>
+                    <div className="md:col-span-1">
+                      <FormField control={form.control} name={`repositories.${index}.branch`} render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Branch</FormLabel>
+                          <FormControl><Input placeholder="main" {...field} /></FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
+                    </div>
+                    <div className="md:col-span-2">
+                      <FormField control={form.control} name={`repositories.${index}.clonePath`} render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Clone Path</FormLabel>
+                          <FormControl><Input placeholder="e.g., src/feature" {...field} /></FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
+                    </div>
+                    <div className="md:col-span-6 flex justify-end">
+                      <Button type="button" variant="outline" size="sm" onClick={() => remove(index)}>Remove</Button>
+                    </div>
+                  </div>
+                ))}
+                <div>
+                  <Button type="button" variant="secondary" size="sm" onClick={() => append({ url: "", branch: "main", clonePath: "" })}>Add repository</Button>
                 </div>
               </CardContent>
             </Card>
+            {/* Agent selection omitted in this simplified flow */}
 
             {error && (
               <Card className="border-red-200 bg-red-50"><CardContent className="pt-6"><p className="text-red-600 text-sm">{error}</p></CardContent></Card>

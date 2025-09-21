@@ -16,6 +16,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { getApiUrl } from "@/lib/config";
 import type { CreateAgenticSessionRequest } from "@/types/agentic-session";
+import { Checkbox } from "@/components/ui/checkbox";
 
 const formSchema = z.object({
   prompt: z.string().min(10, "Prompt must be at least 10 characters long"),
@@ -23,6 +24,7 @@ const formSchema = z.object({
   temperature: z.number().min(0).max(2),
   maxTokens: z.number().min(100).max(8000),
   timeout: z.number().min(60).max(1800),
+  interactive: z.boolean().default(false),
   // Git configuration fields
   gitUserName: z.string().optional(),
   gitUserEmail: z.string().email().optional().or(z.literal("")),
@@ -57,6 +59,7 @@ export default function NewProjectSessionPage({ params }: { params: Promise<{ na
       temperature: 0.7,
       maxTokens: 4000,
       timeout: 300,
+      interactive: false,
       gitUserName: "",
       gitUserEmail: "",
       gitRepoUrl: "",
@@ -78,6 +81,7 @@ export default function NewProjectSessionPage({ params }: { params: Promise<{ na
           maxTokens: values.maxTokens,
         },
         timeout: values.timeout,
+        interactive: values.interactive,
       };
 
       // Add Git configuration if provided
@@ -231,6 +235,25 @@ export default function NewProjectSessionPage({ params }: { params: Promise<{ na
                   )}
                 />
               </div>
+
+              <FormField
+                control={form.control}
+                name="interactive"
+                render={({ field }) => (
+                  <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-3">
+                    <FormControl>
+                      <Checkbox checked={field.value} onCheckedChange={(v) => field.onChange(Boolean(v))} />
+                    </FormControl>
+                    <div className="space-y-1 leading-none">
+                      <FormLabel>Interactive chat</FormLabel>
+                      <FormDescription>
+                        When enabled, the session runs in chat mode. You can send messages and receive streamed responses.
+                      </FormDescription>
+                    </div>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
               {/* Git Configuration Section */}
               <div className="space-y-4">
