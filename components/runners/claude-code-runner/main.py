@@ -235,14 +235,15 @@ class SimpleClaudeRunner:
                         # handle stream events
                         pass
                     else:
+                        message_type_map = {
+                            AssistantMessage: "assistant_message",
+                            UserMessage: "user_message",
+                            SystemMessage: "system_message",
+                            ResultMessage: "result_message",
+                        }
+                        message_type = message_type_map.get(type(message), "unknown_message")
                         if isinstance(message, AssistantMessage) or isinstance(message, UserMessage):
-                            message_type_map = {
-                                AssistantMessage: "assistant_message",
-                                UserMessage: "user_message",
-                                SystemMessage: "system_message",
-                                ResultMessage: "result_message",
-                            }
-                            message_type = message_type_map.get(type(message), "unknown_message")
+
                             if isinstance(message.content, str):
                                 payload = {
                                     "type": message_type,
