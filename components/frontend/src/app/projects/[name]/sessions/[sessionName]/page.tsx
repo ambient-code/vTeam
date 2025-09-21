@@ -237,17 +237,17 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
   };
   
 
-  const [agenticMessages, toolUseMessages] = useMemo(() => {
-    const toolUseBlocks: ToolUseBlock[] = [];
-    const toolResultBlocks: ToolResultBlock[] = [];
+  const allMessages = useMemo(() => {
+    const toolUseBlocks: { block: ToolUseBlock; timestamp: string }[] = [];
+    const toolResultBlocks: { block: ToolResultBlock; timestamp: string }[] = [];
     const agenticMessages: MessageObject[] = [];
     
     for (const message of messages) {
       if (message.type === "assistant_message" || message.type === "user_message") {
         if (typeof message.content === "object" && message.content.type === "tool_use_block") {
-          toolUseBlocks.push(message.content);
+          toolUseBlocks.push({ block: message.content, timestamp: message.timestamp });
         } else if (typeof message.content === "object" && message.content.type === "tool_result_block") {
-          toolResultBlocks.push(message.content);
+          toolResultBlocks.push({ block: message.content, timestamp: message.timestamp });
         } else {
           agenticMessages.push(message);
         }
@@ -258,18 +258,19 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
 
     // Merge tool use blocks with their corresponding result blocks
     const toolUseMessages: ToolUseMessages[] = [];
-    for (const toolUseBlock of toolUseBlocks) {
-      const resultBlock = toolResultBlocks.find(result => result.tool_use_id === toolUseBlock.id);
-      if (resultBlock) {
+    for (const toolUseItem of toolUseBlocks) {
+      const resultItem = toolResultBlocks.find(result => result.block.tool_use_id === toolUseItem.block.id);
+      if (resultItem) {
         toolUseMessages.push({
           type: "tool_use_messages",
-          toolUseBlock: toolUseBlock,
-          resultBlock: resultBlock,
+          timestamp: toolUseItem.timestamp,
+          toolUseBlock: toolUseItem.block,
+          resultBlock: resultItem.block,
         });
       }
     }
 
-    return [agenticMessages, toolUseMessages];
+    return [...agenticMessages, ...toolUseMessages];
   }, [messages]);
 
   if (loading) {
@@ -501,15 +502,17 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
               <CardTitle className="flex items-center justify-between">
                 <span>Agentic Progress</span>
                 <Badge variant="secondary">
-                  {toolUseMessages.length + agenticMessages.length} message
+                  {allMessages.length} message
                 </Badge>
               </CardTitle>
               <CardDescription>Live analysis from Claude AI</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="max-h-96 overflow-y-auto space-y-4 bg-gray-50 rounded-lg p-4">
-                {[...toolUseMessages, ...agenticMessages].map((message, index) => (
-                  <StreamMessage key={`msg-${index}`} message={message} />
+                {allMessages
+                  .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+                  .map((message, index) => (
+                    <StreamMessage key={`msg-${index}`} message={message} />
                 ))}
 
                 {/* Show loading message if still processing */}

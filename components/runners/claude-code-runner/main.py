@@ -160,6 +160,7 @@ class SimpleClaudeRunner:
         payload = {
             "type": "system_message",
             "data": message,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
         self.messages.append(payload)
         self._flush_messages()
@@ -248,6 +249,7 @@ class SimpleClaudeRunner:
                                 payload = {
                                     "type": message_type,
                                     "content": message.content,
+                                    "timestamp": datetime.now(timezone.utc).isoformat(),
                                 }
                                 self.messages.append(payload)
                                 self._flush_messages()
@@ -262,6 +264,7 @@ class SimpleClaudeRunner:
                                     content_type = content_type_map.get(type(block), "unknown_block")
                                     payload = {
                                         "type": message_type,
+                                        "timestamp": datetime.now(timezone.utc).isoformat(),
                                         "content": {
                                             "type": content_type,
                                             **asdict(block),
@@ -272,6 +275,7 @@ class SimpleClaudeRunner:
                         else:
                             payload = {
                                 "type": message_type,
+                                "timestamp": datetime.now(timezone.utc).isoformat(),
                                 **asdict(message),
                             }
                             self.messages.append(payload)

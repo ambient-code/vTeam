@@ -68,6 +68,7 @@ export type ToolUseMessages = {
 	type: "tool_use_messages";
 	toolUseBlock: ToolUseBlock;
 	resultBlock: ToolResultBlock;
+	timestamp: string;
 }
 	
 // -----------------------------
@@ -78,16 +79,19 @@ export type Message = UserMessage | AssistantMessage | SystemMessage | ResultMes
 export type UserMessage = {
 	type: "user_message";
 	content: ContentBlock | string;
+	timestamp: string;
 }
 export type AssistantMessage = {
 	type: "assistant_message";
 	content: ContentBlock;
 	model: string;
+	timestamp: string;
 }
 export type SystemMessage = {
 	type: "system_message";
 	subtype: string;
 	data: Record<string, any>;
+	timestamp: string;
 }
 export type ResultMessage = {
 	type: "result_message";
@@ -100,6 +104,7 @@ export type ResultMessage = {
 	total_cost_usd?: number | null;
 	usage?: Record<string, any> | null;
 	result?: string | null;
+	timestamp: string;
 }
 
 // Backwards-compatible message type consumed by frontend components.
