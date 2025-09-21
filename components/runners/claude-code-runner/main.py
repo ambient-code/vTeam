@@ -170,6 +170,7 @@ class SimpleClaudeRunner:
             ok = self.content_write(self.message_store_path, payload, encoding="utf8")
             if not ok:
                 logger.warning("Failed to write messages to PVC proxy")
+            logger.info(f"Flushed {len(self.messages)} messages to PVC proxy")
         except Exception as e:
             logger.warning(f"Failed to flush messages: {e}")
 
@@ -241,6 +242,7 @@ class SimpleClaudeRunner:
                     }
                     
                     message_type = message_type_map.get(type(message))
+                    logger.info(f"Message: {message_type}")
                     if message_type:
                         payload = {
                             "type": message_type,
