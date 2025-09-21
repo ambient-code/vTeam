@@ -32,7 +32,7 @@ const formSchema = z.object({
   // storage paths are not user-configurable anymore
 });
 
-type FormValues = z.infer<typeof formSchema>;
+type FormValues = z.input<typeof formSchema>;
 const models = [
   { value: "claude-opus-4-1", label: "Claude Opus 4.1" },
   { value: "claude-opus-4-0", label: "Claude Opus 4" },

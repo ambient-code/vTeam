@@ -62,43 +62,21 @@ export default function ProjectRFEListPage() {
     try {
       setSummariesLoading(true);
       const api = getApiUrl();
-      const resp = await fetch(`${api}/projects/${encodeURIComponent(project)}/agentic-sessions`);
-      const data = await resp.json().catch(() => ({}));
-      const sessions: any[] = Array.isArray(data.items) ? data.items : [];
-
-      const exists = async (wfId: string, path: string) => {
-        try {
-          const listPath = path.startsWith('specs/') ? 'specs' : path.split('/')[0];
-          const r = await fetch(`${api}/projects/${encodeURIComponent(project)}/rfe-workflows/${encodeURIComponent(wfId)}/artifacts/${encodeURIComponent(listPath)}`);
-          if (!r.ok) return false;
-          const txt = await r.text();
-          // content/list returns application/json via backend proxy; handle text -> json
-          const data = JSON.parse(txt);
-          const items: Array<{ path: string; name: string; isDir: boolean }> = Array.isArray(data.items) ? data.items : [];
-          const filename = path.split('/').pop();
-          return items.some(it => !it.isDir && (it.name === filename));
-        } catch { return false; }
-      };
-
       const summaries: Record<string, { phase: WorkflowPhase; status: string; progress: number; updatedAt?: string }> = {};
       await Promise.all(list.map(async (w) => {
-        const wfSessions = sessions.filter(s => (s?.metadata?.labels || {})["rfe-workflow"] === w.id);
-        const anyRunning = wfSessions.some(s => String(s?.status?.phase || '').toLowerCase() === 'running');
-        const anyFailed = wfSessions.some(s => ['failed','error'].includes(String(s?.status?.phase || '').toLowerCase()));
-
-        const spec = await exists(w.id, 'specs/spec.md');
-        const plan = await exists(w.id, 'specs/plan.md');
-        const tasks = await exists(w.id, 'specs/tasks.md');
-
-        const phase: WorkflowPhase = !spec ? 'specify' : !plan ? 'plan' : !tasks ? 'tasks' : 'completed';
-        let status = 'not started';
-        if (anyRunning) status = 'running';
-        else if (spec || plan || tasks) status = 'in progress';
-        if (spec && plan && tasks && !anyRunning) status = 'completed';
-        if (anyFailed && status !== 'running') status = 'attention';
-
-        const progress = ((spec ? 1 : 0) + (plan ? 1 : 0) + (tasks ? 1 : 0)) / 3 * 100;
-        summaries[w.id] = { phase, status, progress, updatedAt: w.updatedAt };
+        try {
+          const resp = await fetch(`${api}/projects/${encodeURIComponent(project)}/rfe-workflows/${encodeURIComponent(w.id)}/summary`);
+          if (!resp.ok) throw new Error('summary failed');
+          const data = await resp.json();
+          summaries[w.id] = {
+            phase: (data.phase || 'pre') as WorkflowPhase,
+            status: data.status || 'not started',
+            progress: typeof data.progress === 'number' ? data.progress : 0,
+            updatedAt: w.updatedAt,
+          };
+        } catch {
+          summaries[w.id] = { phase: 'pre', status: 'not started', progress: 0, updatedAt: w.updatedAt } as any;
+        }
       }));
       setSummaryById(summaries);
     } catch {}

@@ -2891,6 +2891,101 @@ func getProjectRFEWorkflow(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
+// GET /api/projects/:projectName/rfe-workflows/:id/summary
+// Computes derived phase/status and progress based on workspace files and linked sessions
+func getProjectRFEWorkflowSummary(c *gin.Context) {
+	project := c.Param("projectName")
+	id := c.Param("id")
+
+	// Determine workspace and expected files
+	workspaceRoot := resolveWorkflowWorkspaceAbsPath(id, "")
+	specsItems, _ := listProjectContent(c, project, filepath.Join(workspaceRoot, "specs"))
+	has := func(name string) bool {
+		for _, it := range specsItems {
+			if strings.EqualFold(it.Name, name) && !it.IsDir {
+				return true
+			}
+		}
+		return false
+	}
+	hasSpec := has("spec.md")
+	hasPlan := has("plan.md")
+	hasTasks := has("tasks.md")
+
+	// Sessions: find linked sessions and compute running/failed flags
+	gvr := getAgenticSessionV1Alpha1Resource()
+	_, reqDyn := getK8sClientsForRequest(c)
+	anyRunning := false
+	anyFailed := false
+	if reqDyn != nil {
+		selector := fmt.Sprintf("rfe-workflow=%s,project=%s", id, project)
+		if list, err := reqDyn.Resource(gvr).Namespace(project).List(context.TODO(), v1.ListOptions{LabelSelector: selector}); err == nil {
+			for _, item := range list.Items {
+				status, _ := item.Object["status"].(map[string]interface{})
+				phaseStr := strings.ToLower(fmt.Sprintf("%v", status["phase"]))
+				if phaseStr == "running" || phaseStr == "creating" || phaseStr == "pending" {
+					anyRunning = true
+				}
+				if phaseStr == "failed" || phaseStr == "error" {
+					anyFailed = true
+				}
+			}
+		}
+	}
+
+	// Derive phase and status
+	var phase string
+	switch {
+	case !hasSpec && !hasPlan && !hasTasks:
+		phase = "pre"
+	case !hasSpec:
+		phase = "specify"
+	case !hasPlan:
+		phase = "plan"
+	case !hasTasks:
+		phase = "tasks"
+	default:
+		phase = "completed"
+	}
+
+	status := "not started"
+	if anyRunning {
+		status = "running"
+	} else if hasSpec || hasPlan || hasTasks {
+		status = "in progress"
+	}
+	if hasSpec && hasPlan && hasTasks && !anyRunning {
+		status = "completed"
+	}
+	if anyFailed && status != "running" {
+		status = "attention"
+	}
+
+	progress := float64(0)
+	done := 0
+	if hasSpec {
+		done++
+	}
+	if hasPlan {
+		done++
+	}
+	if hasTasks {
+		done++
+	}
+	progress = float64(done) / 3.0 * 100.0
+
+	c.JSON(http.StatusOK, gin.H{
+		"phase":    phase,
+		"status":   status,
+		"progress": progress,
+		"files": gin.H{
+			"spec":  hasSpec,
+			"plan":  hasPlan,
+			"tasks": hasTasks,
+		},
+	})
+}
+
 func deleteProjectRFEWorkflow(c *gin.Context) {
 	id := c.Param("id")
 	// Delete CR

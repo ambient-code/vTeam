@@ -106,6 +106,7 @@ func main() {
 			projectGroup.GET("/rfe-workflows", listProjectRFEWorkflows)
 			projectGroup.POST("/rfe-workflows", createProjectRFEWorkflow)
 			projectGroup.GET("/rfe-workflows/:id", getProjectRFEWorkflow)
+			projectGroup.GET("/rfe-workflows/:id/summary", getProjectRFEWorkflowSummary)
 			projectGroup.DELETE("/rfe-workflows/:id", deleteProjectRFEWorkflow)
 			// Workflow workspace APIs
 			projectGroup.GET("/rfe-workflows/:id/workspace", getRFEWorkflowWorkspace)

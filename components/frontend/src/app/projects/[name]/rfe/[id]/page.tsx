@@ -6,14 +6,13 @@ import { useParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getApiUrl } from "@/lib/config";
 import { formatDistanceToNow } from "date-fns";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { RFEWorkflow, WorkflowPhase } from "@/types/agentic-session";
 import { WORKFLOW_PHASE_LABELS } from "@/lib/agents";
-import { ArrowLeft, Edit, Play, Loader2, GitBranch, RefreshCw, FolderTree } from "lucide-react";
+import { ArrowLeft, Edit, Play, Loader2, RefreshCw, FolderTree } from "lucide-react";
 import { FileTree, type FileTreeNode } from "@/components/file-tree";
 
 function phaseProgress(w: RFEWorkflow, phase: WorkflowPhase) {
