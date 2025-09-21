@@ -270,7 +270,7 @@ class SimpleClaudeRunner:
                                     self._flush_messages()
                         else:
                             payload = {
-                                "type": message.type,
+                                "type": message_type,
                                 **asdict(message),
                             }
                             self.messages.append(payload)
@@ -331,28 +331,28 @@ class SimpleClaudeRunner:
             self._update_status("Running", message="Initializing session")
 
             # 1) Sync shared workspace from PVC (if configured)
+            self._update_status("Running", message="Syncing workspace from PVC")
             self._sync_workspace_from_pvc()
 
             # 1b) Setup Git and clone configured repositories into workdir (always)
             try:
                 import asyncio
+                self._update_status("Running", message="Setting up Git")
                 asyncio.run(self.git.setup_git_config())
-                
+                self._update_status("Running", message="Cloning repositories")
                 asyncio.run(self.git.clone_repositories(self.workdir))
             except RuntimeError:
                 # If an event loop is already running, skip async setup to avoid crash
                 pass
 
-            # 2) Workspace now has prior state; proceed to run prompt
 
             # 3) Run prompt
-            self._append_message("Starting model run")
-            self._flush_messages()
+            self._update_status("Running", message="Starting model run")
             result_msg = self._run_llm_streaming(self.prompt)
-            self._append_message("Model run completed")
-            self._flush_messages()
+            
 
             # 4) Push entire workspace back to PVC
+            self._update_status("Running", message="Pushing workspace to PVC")
             self._push_workspace_to_pvc()
 
             if result_msg is not None:
