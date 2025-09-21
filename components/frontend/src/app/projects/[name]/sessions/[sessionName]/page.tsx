@@ -32,6 +32,8 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { FileTree, type FileTreeNode } from "@/components/file-tree";
 import {
   AgenticSession,
   AgenticSessionPhase,
@@ -122,6 +124,14 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [hasWorkspace, setHasWorkspace] = useState<boolean | null>(null);
+  const [activeTab, setActiveTab] = useState<string>("overview");
+
+  // Embedded workspace state
+  const [wsTree, setWsTree] = useState<FileTreeNode[]>([]);
+  const [wsSelectedPath, setWsSelectedPath] = useState<string | undefined>(undefined);
+  const [wsFileContent, setWsFileContent] = useState<string>("");
+  const [wsLoading, setWsLoading] = useState<boolean>(false);
 
 
   useEffect(() => {
@@ -153,6 +163,16 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
       if (msgResp.ok) {
         const msgData = await msgResp.json();
         if (Array.isArray(msgData)) setMessages(msgData);
+      }
+
+      // Probe workspace existence via API proxy
+      try {
+        const wsResp = await fetch(
+          `${apiUrl}/projects/${encodeURIComponent(projectName)}/agentic-sessions/${encodeURIComponent(sessionName)}/workspace`
+        );
+        setHasWorkspace(wsResp.ok);
+      } catch {
+        setHasWorkspace(false);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
@@ -270,6 +290,12 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
     return [...agenticMessages, ...toolUseMessages];
   }, [messages]);
 
+  const latestDisplayMessage = useMemo(() => {
+    if (allMessages.length === 0) return null;
+    const sorted = [...allMessages].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+    return sorted[sorted.length - 1];
+  }, [allMessages]);
+
   // Stats: derive latest result metrics and duration
   const latestResult = useMemo(() => {
     const results = messages.filter((m) => m.type === "result_message");
@@ -285,6 +311,71 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
       : Date.now();
     return start ? Math.max(0, end - start) : undefined;
   }, [session?.status?.startTime, session?.status?.completionTime]);
+
+  // Workspace helpers (loaded when Workspace tab opens)
+  type ListItem = { name: string; path: string; isDir: boolean; size: number; modifiedAt: string };
+  const listWsPath = useCallback(async (relPath?: string) => {
+    const url = new URL(`${getApiUrl()}/projects/${encodeURIComponent(projectName)}/agentic-sessions/${encodeURIComponent(sessionName)}/workspace`, window.location.origin);
+    if (relPath) url.searchParams.set("path", relPath);
+    const resp = await fetch(url.toString());
+    if (!resp.ok) throw new Error("Failed to list workspace");
+    const data = await resp.json();
+    const items: ListItem[] = Array.isArray(data.items) ? data.items : [];
+    return items;
+  }, [projectName, sessionName]);
+
+  const readWsFile = useCallback(async (rel: string) => {
+    const resp = await fetch(`${getApiUrl()}/projects/${encodeURIComponent(projectName)}/agentic-sessions/${encodeURIComponent(sessionName)}/workspace/${encodeURIComponent(rel)}`);
+    if (!resp.ok) throw new Error("Failed to fetch file");
+    const text = await resp.text();
+    return text;
+  }, [projectName, sessionName]);
+
+  const buildWsRoot = useCallback(async () => {
+    if (!hasWorkspace) return;
+    setWsLoading(true);
+    try {
+      const items = await listWsPath();
+      const children: FileTreeNode[] = items.map((it) => ({
+        name: it.name,
+        path: it.path.replace(/^\/+/, ""),
+        type: it.isDir ? "folder" : "file",
+        expanded: it.isDir,
+        sizeKb: it.isDir ? undefined : it.size / 1024,
+      }));
+      setWsTree(children);
+    } finally {
+      setWsLoading(false);
+    }
+  }, [hasWorkspace, listWsPath]);
+
+  const onWsToggle = useCallback(async (node: FileTreeNode) => {
+    if (node.type !== "folder") return;
+    // Lazy-load folder children when expanding
+    const items = await listWsPath(node.path);
+    const children: FileTreeNode[] = items.map((it) => ({
+      name: it.name,
+      path: `${node.path}/${it.name}`.replace(/^\/+/, ""),
+      type: it.isDir ? "folder" : "file",
+      expanded: false,
+      sizeKb: it.isDir ? undefined : it.size / 1024,
+    }));
+    node.children = children;
+    setWsTree((prev) => [...prev]);
+  }, [listWsPath]);
+
+  const onWsSelect = useCallback(async (node: FileTreeNode) => {
+    if (node.type !== "file") return;
+    setWsSelectedPath(node.path);
+    const text = await readWsFile(node.path);
+    setWsFileContent(text);
+  }, [readWsFile]);
+
+  useEffect(() => {
+    if (activeTab === "workspace" && wsTree.length === 0) {
+      buildWsRoot();
+    }
+  }, [activeTab, wsTree.length, buildWsRoot]);
 
   if (loading) {
     return (
@@ -318,7 +409,7 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
   }
 
   return (
-    <div className="container mx-auto p-6 max-w-4xl">
+    <div className="container mx-auto p-6 max-w-5xl">
       <div className="flex items-center justify-between mb-6">
         <Link href={`/projects/${encodeURIComponent(projectName)}/sessions`}>
           <Button variant="ghost" size="sm">
@@ -331,71 +422,6 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
             <RefreshCw className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`} />
             Refresh
           </Button>
-
-          {/* Action buttons based on session status */}
-          {session && (() => {
-            const phase = session.status?.phase || "Pending";
-
-            if (actionLoading) {
-              return (
-                <Button variant="outline" disabled>
-                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                  {actionLoading}
-                </Button>
-              );
-            }
-
-            const buttons = [] as React.ReactNode[];
-
-            // Workspace button
-            buttons.push(
-              <Link
-                key="workspace"
-                href={`/projects/${encodeURIComponent(projectName)}/sessions/${encodeURIComponent(sessionName)}/workspace`}
-              >
-                <Button variant="outline">
-                  Workspace
-                </Button>
-              </Link>
-            );
-
-            // Clone button for all sessions
-            buttons.push(
-              <CloneSessionDialog
-                key="clone"
-                session={session}
-                onSuccess={() => fetchSession()}
-                trigger={
-                  <Button variant="outline">
-                    <Copy className="w-4 h-4 mr-2" />
-                    Clone
-                  </Button>
-                }
-              />
-            );
-
-            // Stop button for Pending/Creating/Running sessions
-            if (phase === "Pending" || phase === "Creating" || phase === "Running") {
-              buttons.push(
-                <Button key="stop" variant="secondary" onClick={handleStop}>
-                  <Square className="w-4 h-4 mr-2" />
-                  Stop
-                </Button>
-              );
-            }
-
-            // Delete button for all sessions (except running/creating)
-            if (phase !== "Running" && phase !== "Creating") {
-              buttons.push(
-                <Button key="delete" variant="destructive" onClick={handleDelete}>
-                  <Trash2 className="w-4 h-4 mr-2" />
-                  Delete
-                </Button>
-              );
-            }
-
-            return buttons;
-          })()}
         </div>
       </div>
 
@@ -418,19 +444,151 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
           </Badge>
         </div>
 
-        {/* Compact stats bar */}
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
-          <Badge variant="outline" className="justify-start">Phase: {session.status?.phase || "Pending"}</Badge>
-          <Badge variant="outline" className="justify-start">Duration: {typeof durationMs === "number" ? `${durationMs} ms` : "-"}</Badge>
-          <Badge variant="outline" className="justify-start">API: {latestResult?.duration_api_ms ?? "-"} ms</Badge>
-          <Badge variant="outline" className="justify-start">Cost: {typeof session.status?.total_cost_usd === "number" ? `$${session.status.total_cost_usd.toFixed(4)}` : "-"}</Badge>
-          <Badge variant="outline" className="justify-start">Turns: {latestResult?.num_turns ?? session.status?.num_turns ?? "-"}</Badge>
-        </div>
+        {/* Top stats banner */}
+        <Card>
+          <CardContent className="p-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+              <Badge variant="outline" className="justify-start">Cost: {typeof session.status?.total_cost_usd === "number" ? `$${session.status.total_cost_usd.toFixed(4)}` : "-"}</Badge>
+              <Badge variant="outline" className="justify-start">Duration: {typeof durationMs === "number" ? `${durationMs} ms` : "-"}</Badge>
+              <Badge variant="outline" className="justify-start">Messages: {allMessages.length}</Badge>
+              <Badge variant="outline" className="justify-start">API: {latestResult?.duration_api_ms ?? "-"} ms</Badge>
+            </div>
+          </CardContent>
+        </Card>
 
-        {/* Main content grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-          {/* Messages (cardless) */}
-          <section className="lg:col-span-3">
+        {/* Tabbed content */}
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className={`grid ${hasWorkspace ? "grid-cols-4" : "grid-cols-3"} w-full`}>
+            <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="messages">Messages</TabsTrigger>
+            {hasWorkspace ? <TabsTrigger value="workspace">Workspace</TabsTrigger> : null}
+            <TabsTrigger value="results">Results</TabsTrigger>
+          </TabsList>
+
+          {/* Overview */}
+          <TabsContent value="overview" className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Latest Message */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Latest Message</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {latestDisplayMessage ? (
+                    <div className="space-y-4">
+                      <StreamMessage message={latestDisplayMessage} />
+                    </div>
+                  ) : (
+                    <div className="text-sm text-gray-500">No messages yet</div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* System Status & Actions */}
+              {session.status && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center">
+                      <Clock className="w-5 h-5 mr-2" />
+                      System Status
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm mb-4">
+                      {session.status.startTime && (
+                        <div>
+                          <p className="font-semibold">Started</p>
+                          <p className="text-muted-foreground">{format(new Date(session.status.startTime), "PPp")}</p>
+                        </div>
+                      )}
+                      {session.status.completionTime && (
+                        <div>
+                          <p className="font-semibold">Completed</p>
+                          <p className="text-muted-foreground">{format(new Date(session.status.completionTime), "PPp")}</p>
+                        </div>
+                      )}
+                      {session.status.jobName && (
+                        <div>
+                          <p className="font-semibold">K8s Job</p>
+                          <p className="text-muted-foreground font-mono text-xs">{session.status.jobName}</p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex flex-wrap gap-2">
+                      <CloneSessionDialog
+                        session={session}
+                        onSuccess={() => fetchSession()}
+                        trigger={
+                          <Button variant="outline">
+                            <Copy className="w-4 h-4 mr-2" />
+                            Clone
+                          </Button>
+                        }
+                      />
+                      {(session.status?.phase === "Pending" || session.status?.phase === "Creating" || session.status?.phase === "Running") && (
+                        <Button variant="secondary" onClick={handleStop} disabled={!!actionLoading}>
+                          <Square className="w-4 h-4 mr-2" />
+                          {actionLoading === "stopping" ? "Stopping..." : "Stop"}
+                        </Button>
+                      )}
+                      {session.status?.phase !== "Running" && session.status?.phase !== "Creating" && (
+                        <Button variant="destructive" onClick={handleDelete} disabled={!!actionLoading}>
+                          <Trash2 className="w-4 h-4 mr-2" />
+                          {actionLoading === "deleting" ? "Deleting..." : "Delete"}
+                        </Button>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+
+            {/* Prompt and Configuration */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center">
+                    <Brain className="w-5 h-5 mr-2" />
+                    Agentic Prompt
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="whitespace-pre-wrap text-sm">{session.spec.prompt}</p>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Configuration</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                    <div>
+                      <p className="font-semibold">Model</p>
+                      <p className="text-muted-foreground">{session.spec.llmSettings.model}</p>
+                    </div>
+                    <div>
+                      <p className="font-semibold">Temperature</p>
+                      <p className="text-muted-foreground">{session.spec.llmSettings.temperature}</p>
+                    </div>
+                    <div>
+                      <p className="font-semibold">Max Tokens</p>
+                      <p className="text-muted-foreground">{session.spec.llmSettings.maxTokens}</p>
+                    </div>
+                    <div>
+                      <p className="font-semibold">Timeout</p>
+                      <p className="text-muted-foreground">{session.spec.timeout}s</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
+          {/* Messages */}
+          <TabsContent value="messages">
             <div className="flex items-center justify-between mb-2">
               <h2 className="text-sm font-medium text-gray-700">Agentic Progress</h2>
               <div className="flex items-center gap-2 text-xs">
@@ -487,11 +645,54 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
                   </div>
                 )}
             </div>
-          </section>
+          </TabsContent>
+
+          {/* Workspace */}
+          {hasWorkspace ? (
+            <TabsContent value="workspace">
+              {wsLoading && (
+                <div className="flex items-center justify-center h-32 text-sm text-muted-foreground">
+                  <RefreshCw className="animate-spin h-4 w-4 mr-2" /> Loading workspace...
+                </div>
+              )}
+              {!wsLoading && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-0">
+                  <div className="border rounded-md overflow-hidden">
+                    <div className="p-3 border-b">
+                      <h3 className="font-medium text-sm">Files</h3>
+                      <p className="text-xs text-muted-foreground">{wsTree.length} items</p>
+                    </div>
+                    <div className="p-2">
+                      <FileTree nodes={wsTree} selectedPath={wsSelectedPath} onSelect={onWsSelect} onToggle={onWsToggle} />
+                    </div>
+                  </div>
+                  <div className="overflow-auto">
+                    <Card className="m-3">
+                      <CardContent className="p-4">
+                        {wsSelectedPath ? (
+                          <>
+                            <div className="flex items-center justify-between mb-2">
+                              <div className="text-sm">
+                                <span className="font-medium">{wsSelectedPath.split('/').pop()}</span>
+                                <Badge variant="outline" className="ml-2">{wsSelectedPath}</Badge>
+                              </div>
+                            </div>
+                            <pre className="bg-gray-900 text-gray-100 p-4 rounded overflow-auto text-sm">{wsFileContent}</pre>
+                          </>
+                        ) : (
+                          <div className="text-sm text-muted-foreground p-4">Select a file to preview</div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </div>
+                </div>
+              )}
+            </TabsContent>
+          ) : null}
 
           {/* Results */}
-          {session.status?.result && (
-            <section className="lg:col-span-2">
+          <TabsContent value="results">
+            {session.status?.result ? (
               <Card>
                 <CardHeader>
                   <CardTitle>Agentic Results</CardTitle>
@@ -505,86 +706,11 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
                   </div>
                 </CardContent>
               </Card>
-            </section>
-          )}
-        </div>
-
-        {/* Details accordion */}
-        <details className="rounded-lg border bg-white p-3">
-          <summary className="cursor-pointer text-sm font-medium">Details</summary>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-3">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center">
-                  <Brain className="w-5 h-5 mr-2" />
-                  Agentic Prompt
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="whitespace-pre-wrap text-sm">{session.spec.prompt}</p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Configuration</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                  <div>
-                    <p className="font-semibold">Model</p>
-                    <p className="text-muted-foreground">{session.spec.llmSettings.model}</p>
-                  </div>
-                  <div>
-                    <p className="font-semibold">Temperature</p>
-                    <p className="text-muted-foreground">{session.spec.llmSettings.temperature}</p>
-                  </div>
-                  <div>
-                    <p className="font-semibold">Max Tokens</p>
-                    <p className="text-muted-foreground">{session.spec.llmSettings.maxTokens}</p>
-                  </div>
-                  <div>
-                    <p className="font-semibold">Timeout</p>
-                    <p className="text-muted-foreground">{session.spec.timeout}s</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {session.status && (
-              <Card className="md:col-span-2">
-                <CardHeader>
-                  <CardTitle className="flex items-center">
-                    <Clock className="w-5 h-5 mr-2" />
-                    Execution Status
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                    {session.status.startTime && (
-                      <div>
-                        <p className="font-semibold">Started</p>
-                        <p className="text-muted-foreground">{format(new Date(session.status.startTime), "PPp")}</p>
-                      </div>
-                    )}
-                    {session.status.completionTime && (
-                      <div>
-                        <p className="font-semibold">Completed</p>
-                        <p className="text-muted-foreground">{format(new Date(session.status.completionTime), "PPp")}</p>
-                      </div>
-                    )}
-                    {session.status.jobName && (
-                      <div>
-                        <p className="font-semibold">K8s Job</p>
-                        <p className="text-muted-foreground font-mono text-xs">{session.status.jobName}</p>
-                      </div>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
+            ) : (
+              <div className="text-sm text-muted-foreground">No results yet</div>
             )}
-          </div>
-        </details>
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   );

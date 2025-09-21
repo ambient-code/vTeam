@@ -814,6 +814,22 @@ func getSessionMessages(c *gin.Context) {
 	c.Data(http.StatusOK, "application/json", data)
 }
 
+// resolveWorkspaceAbsPath normalizes a workspace-relative or absolute path to the
+// absolute workspace path for a given session.
+func resolveWorkspaceAbsPath(sessionName string, relOrAbs string) string {
+	base := fmt.Sprintf("/sessions/%s/workspace", sessionName)
+	trimmed := strings.TrimSpace(relOrAbs)
+	if trimmed == "" || trimmed == "/" {
+		return base
+	}
+	cleaned := "/" + strings.TrimLeft(trimmed, "/")
+	if cleaned == base || strings.HasPrefix(cleaned, base+"/") {
+		return cleaned
+	}
+	// Join under base for any other relative path
+	return filepath.Join(base, strings.TrimPrefix(cleaned, "/"))
+}
+
 // GET /api/projects/:projectName/agentic-sessions/:sessionName/workspace
 // Lists the contents of a session's workspace by delegating to the per-project content service
 func getSessionWorkspace(c *gin.Context) {
@@ -822,26 +838,30 @@ func getSessionWorkspace(c *gin.Context) {
 
 	// Optional subpath within the workspace to list
 	rel := strings.TrimSpace(c.Query("path"))
-
-	base := fmt.Sprintf("/sessions/%s/workspace", sessionName)
-	absPath := base
-	if rel != "" {
-		// Clean and ensure no traversal outside workspace
-		cleaned := filepath.Clean("/" + rel)
-		cleaned = strings.TrimPrefix(cleaned, "/")
-		if strings.Contains(cleaned, "..") {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid path"})
-			return
-		}
-		absPath = filepath.Join(base, cleaned)
-	}
+	absPath := resolveWorkspaceAbsPath(sessionName, rel)
 
 	items, err := listProjectContent(c, project, absPath)
-	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": "failed to list workspace"})
+	if err == nil {
+		// If content/list returns exactly this file (non-dir), serve file bytes
+		if len(items) == 1 && strings.TrimRight(items[0].Path, "/") == absPath && !items[0].IsDir {
+			b, ferr := readProjectContentFile(c, project, absPath)
+			if ferr != nil {
+				c.JSON(http.StatusBadGateway, gin.H{"error": "failed to read workspace file"})
+				return
+			}
+			c.Data(http.StatusOK, "application/octet-stream", b)
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"items": items})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"items": items})
+	// Fallback: try file read directly
+	b, ferr := readProjectContentFile(c, project, absPath)
+	if ferr != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "failed to access workspace"})
+		return
+	}
+	c.Data(http.StatusOK, "application/octet-stream", b)
 }
 
 // GET /api/projects/:projectName/agentic-sessions/:sessionName/workspace/*path
@@ -851,20 +871,29 @@ func getSessionWorkspaceFile(c *gin.Context) {
 	sessionName := c.Param("sessionName")
 	pathParam := c.Param("path")
 
-	// Normalize and validate relative path
-	cleaned := filepath.Clean("/" + strings.TrimSpace(pathParam))
-	rel := strings.TrimPrefix(cleaned, "/")
-	if rel == "" || strings.Contains(rel, "..") {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid path"})
+	absPath := resolveWorkspaceAbsPath(sessionName, pathParam)
+
+	// Try directory listing first to determine type
+	items, err := listProjectContent(c, project, absPath)
+	if err == nil {
+		if len(items) == 1 && strings.TrimRight(items[0].Path, "/") == absPath && !items[0].IsDir {
+			// It's a file
+			b, ferr := readProjectContentFile(c, project, absPath)
+			if ferr != nil {
+				c.JSON(http.StatusBadGateway, gin.H{"error": "failed to read workspace file"})
+				return
+			}
+			c.Data(http.StatusOK, "application/octet-stream", b)
+			return
+		}
+		// It's a directory
+		c.JSON(http.StatusOK, gin.H{"items": items})
 		return
 	}
-
-	base := fmt.Sprintf("/sessions/%s/workspace", sessionName)
-	absPath := filepath.Join(base, rel)
-
-	b, err := readProjectContentFile(c, project, absPath)
-	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": "failed to read workspace file"})
+	// Fallback to file read
+	b, ferr := readProjectContentFile(c, project, absPath)
+	if ferr != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "failed to access workspace"})
 		return
 	}
 	c.Data(http.StatusOK, "application/octet-stream", b)

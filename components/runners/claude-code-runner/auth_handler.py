@@ -203,3 +203,37 @@ class BackendClient:
         except Exception as e:
             logger.error(f"Error updating session status: {e}")
             return False
+
+    async def update_session_display_name(self, session_name: str, display_name: str) -> bool:
+        """
+        Update only the display name for a given session.
+
+        Args:
+            session_name: Name of the session to update
+            display_name: New display name
+
+        Returns:
+            True if successful, False otherwise
+        """
+        import aiohttp
+        import json
+
+        endpoint = self.get_api_endpoint(f"/agentic-sessions/{session_name}/displayname")
+        headers = self.get_request_headers()
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.put(
+                    endpoint,
+                    headers=headers,
+                    data=json.dumps({"displayName": display_name}),
+                ) as response:
+                    if response.status == 200:
+                        logger.info("Successfully updated session display name")
+                        return True
+                    else:
+                        logger.error(f"Failed to update display name: {response.status}")
+                        return False
+        except Exception as e:
+            logger.error(f"Error updating session display name: {e}")
+            return False

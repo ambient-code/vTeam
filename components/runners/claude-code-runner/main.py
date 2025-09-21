@@ -67,6 +67,92 @@ class SimpleClaudeRunner:
         self.auth = AuthHandler()
         self.backend = BackendClient(self.backend_api_url, self.auth)
 
+    # ---------------- Display name helpers ----------------
+    def _fallback_display_name(self, prompt: str) -> str:
+        try:
+            first_line = (prompt or "").strip().splitlines()[0].strip()
+            if not first_line:
+                return f"Session {self.session_name}"
+            title = first_line[:60]
+            if len(first_line) > 60:
+                title = title.rstrip() + "…"
+            return title
+        except Exception:
+            return f"Session {self.session_name}"
+
+    def _generate_display_name_from_prompt(self, prompt: str) -> str:
+        """Use a lightweight model to summarize the prompt into a short display name."""
+        try:
+            api_key = self.api_key
+            if not api_key:
+                return self._fallback_display_name(prompt)
+
+            model = os.getenv("CLAUDE_TITLE_MODEL", "claude-3-haiku-20240307")
+            url = "https://api.anthropic.com/v1/messages"
+            system_prompt = (
+                "You generate concise, human-friendly session titles. "
+                "Return a short title (max 8 words), no punctuation at the end, "
+                "no quotes, no markdown. Title-case important words."
+            )
+            user_prompt = (
+                "Summarize this prompt into a short session display name.\n\n" + prompt
+            )
+            body = {
+                "model": model,
+                "max_tokens": 64,
+                "system": system_prompt,
+                "messages": [
+                    {"role": "user", "content": user_prompt},
+                ],
+            }
+            headers = {
+                "x-api-key": api_key,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json",
+            }
+            resp = requests.post(url, headers=headers, data=json.dumps(body), timeout=15)
+            if resp.status_code == 200:
+                data = resp.json()
+                content = data.get("content") or []
+                text = ""
+                if isinstance(content, list) and content:
+                    block = content[0]
+                    if isinstance(block, dict):
+                        text = block.get("text", "")
+                title = (text or "").strip()
+                # Sanitize
+                if title.startswith("\"") and title.endswith("\""):
+                    title = title[1:-1]
+                title = title.replace("\n", " ").strip()
+                if not title:
+                    return self._fallback_display_name(prompt)
+                if len(title) > 60:
+                    title = title[:60].rstrip() + "…"
+                return title
+            else:
+                logger.warning(f"Title generation failed: HTTP {resp.status_code}")
+                return self._fallback_display_name(prompt)
+        except Exception as e:
+            logger.warning(f"Title generation error: {e}")
+            return self._fallback_display_name(prompt)
+
+    def _set_display_name_early(self) -> None:
+        """Generate and update the session display name as early as possible."""
+        try:
+            display_name = self._generate_display_name_from_prompt(self.prompt)
+            if not display_name:
+                return
+            try:
+                import asyncio as _asyncio
+                _asyncio.run(self.backend.update_session_display_name(self.session_name, display_name))
+            except RuntimeError:
+                # Already in an event loop; skip to avoid crash
+                pass
+            except Exception as e:
+                logger.warning(f"Failed to set display name: {e}")
+        except Exception as e:
+            logger.debug(f"Skipping display name set: {e}")
+
     # ---------------- PVC content helpers ----------------
     def _auth_headers(self) -> Dict[str, str]:
         return self.auth.get_auth_headers()
@@ -176,19 +262,19 @@ class SimpleClaudeRunner:
             logger.warning(f"Failed to flush messages: {e}")
 
     # ---------------- Status ----------------
-    def _update_status(self, phase: str, message: str | None = None, completed: bool = False, resultMsg: ResultMessage | None = None) -> None:
+    def _update_status(self, phase: str, message: str | None = None, completed: bool = False, result_msg: ResultMessage | None = None) -> None:
         payload: Dict[str, Any] = {"phase": phase}
         if message:
             payload["message"] = message
 
-        if resultMsg:
-            payload["result"] = resultMsg.result
-            payload["subtype"] = resultMsg.subtype
-            payload["is_error"] = resultMsg.is_error
-            payload["num_turns"] = resultMsg.num_turns
-            payload["session_id"] = resultMsg.session_id
-            payload["total_cost_usd"] = resultMsg.total_cost_usd
-            payload["usage"] = resultMsg.usage
+        if result_msg:
+            payload["result"] = result_msg.result
+            payload["subtype"] = result_msg.subtype
+            payload["is_error"] = result_msg.is_error
+            payload["num_turns"] = result_msg.num_turns
+            payload["session_id"] = result_msg.session_id
+            payload["total_cost_usd"] = result_msg.total_cost_usd
+            payload["usage"] = result_msg.usage
       
         if completed:
             payload["completionTime"] = datetime.now(timezone.utc).isoformat()
@@ -344,6 +430,9 @@ class SimpleClaudeRunner:
 
             self._update_status("Running", message="Initializing session")
 
+            # Update display name immediately based on the prompt
+            self._set_display_name_early()
+
             # 1) Sync shared workspace from PVC (if configured)
             self._update_status("Running", message="Syncing workspace from PVC")
             self._sync_workspace_from_pvc()
@@ -390,7 +479,7 @@ class SimpleClaudeRunner:
                 except Exception as e:
                     logger.warning(f"Failed to send result summary: {e}")
 
-            self._update_status("Completed", message="Session completed", completed=True, result=result_msg.result)
+            self._update_status("Completed", message="Session completed", completed=True, result_msg=result_msg.result)
             logger.info("Session completed successfully")
             return 0
 
