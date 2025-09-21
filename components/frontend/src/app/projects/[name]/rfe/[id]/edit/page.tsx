@@ -9,40 +9,14 @@ import {
   CardContent,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import {
-  ResizableHandle,
-  ResizablePanel,
-  ResizablePanelGroup,
-} from "@/components/ui/resizable";
-import {
-  RFEWorkflow,
-  ArtifactFile,
-} from "@/types/agentic-session";
-import {
-  ArrowLeft,
-  Save,
-  Upload,
-  FileText,
-  Folder,
-  FolderOpen,
-  Download,
-  RefreshCw,
-  Loader2,
-  AlertCircle,
-} from "lucide-react";
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
+import { RFEWorkflow, ArtifactFile } from "@/types/agentic-session";
+import { ArrowLeft, Save, Upload, FileText, Download, RefreshCw, Loader2, AlertCircle } from "lucide-react";
+import { FileTree, type FileTreeNode } from "@/components/file-tree";
 import { getApiUrl } from "@/lib/config";
 import { getAgentByPersona } from "@/lib/agents";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-
-interface FileTreeNode {
-  name: string;
-  path: string;
-  type: "file" | "folder";
-  children?: FileTreeNode[];
-  artifact?: ArtifactFile;
-  expanded?: boolean;
-}
 
 function buildFileTree(artifacts: ArtifactFile[]): FileTreeNode[] {
   const tree: FileTreeNode[] = [];
@@ -74,7 +48,7 @@ function buildFileTree(artifacts: ArtifactFile[]): FileTreeNode[] {
         name: artifact.name,
         path: artifact.path,
         type: "file",
-        artifact,
+        data: artifact,
       };
       phaseNode.children!.push(fileNode);
     }
@@ -337,14 +311,14 @@ export default function ArtifactEditPage() {
               </div>
 
               <div className="p-2 space-y-1 overflow-auto">
-                {fileTree.map(node => (
-                  <FileTreeItem
-                    key={node.path}
-                    node={node}
-                    selectedPath={selectedFile?.path}
-                    onSelect={selectFile}
-                  />
-                ))}
+                <FileTree
+                  nodes={fileTree}
+                  selectedPath={selectedFile?.path}
+                  onSelect={(node) => {
+                    const art = (node.data as ArtifactFile) || undefined;
+                    if (art) selectFile(art);
+                  }}
+                />
 
                 {(workflow.artifacts || []).length === 0 && (
                   <div className="text-center py-8 text-muted-foreground">
@@ -418,71 +392,6 @@ export default function ArtifactEditPage() {
           </ResizablePanel>
         </ResizablePanelGroup>
       </div>
-    </div>
-  );
-}
-
-interface FileTreeItemProps {
-  node: FileTreeNode;
-  selectedPath?: string;
-  onSelect: (artifact: ArtifactFile) => void;
-  depth?: number;
-}
-
-function FileTreeItem({ node, selectedPath, onSelect, depth = 0 }: FileTreeItemProps) {
-  const [expanded, setExpanded] = useState(node.expanded ?? true);
-
-  const isSelected = node.path === selectedPath;
-
-  return (
-    <div>
-      <div
-        className={`flex items-center gap-2 px-2 py-1 text-sm rounded cursor-pointer hover:bg-muted ${
-          isSelected ? "bg-muted" : ""
-        }`}
-        style={{ paddingLeft: `${(depth + 1) * 12}px` }}
-        onClick={() => {
-          if (node.type === "folder") {
-            setExpanded(!expanded);
-          } else if (node.artifact) {
-            onSelect(node.artifact);
-          }
-        }}
-      >
-        {node.type === "folder" ? (
-          expanded ? (
-            <FolderOpen className="h-4 w-4 text-blue-600" />
-          ) : (
-            <Folder className="h-4 w-4 text-blue-600" />
-          )
-        ) : (
-          <FileText className="h-4 w-4 text-gray-600" />
-        )}
-
-        <span className={`flex-1 ${isSelected ? "font-medium" : ""}`}>
-          {node.name}
-        </span>
-
-        {node.artifact && (
-          <span className="text-xs text-muted-foreground">
-            {(node.artifact.size / 1024).toFixed(1)}K
-          </span>
-        )}
-      </div>
-
-      {node.type === "folder" && expanded && node.children && (
-        <div>
-          {node.children.map(child => (
-            <FileTreeItem
-              key={child.path}
-              node={child}
-              selectedPath={selectedPath}
-              onSelect={onSelect}
-              depth={depth + 1}
-            />
-          ))}
-        </div>
-      )}
     </div>
   );
 }

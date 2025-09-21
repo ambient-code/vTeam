@@ -176,10 +176,19 @@ class SimpleClaudeRunner:
             logger.warning(f"Failed to flush messages: {e}")
 
     # ---------------- Status ----------------
-    def _update_status(self, phase: str, message: str | None = None, completed: bool = False) -> None:
+    def _update_status(self, phase: str, message: str | None = None, completed: bool = False, resultMsg: ResultMessage | None = None) -> None:
         payload: Dict[str, Any] = {"phase": phase}
         if message:
             payload["message"] = message
+
+        if resultMsg:
+            payload["result"] = resultMsg.result
+            payload["subtype"] = resultMsg.subtype
+            payload["is_error"] = resultMsg.is_error
+            payload["num_turns"] = resultMsg.num_turns
+            payload["session_id"] = resultMsg.session_id
+            payload["total_cost_usd"] = resultMsg.total_cost_usd
+            payload["usage"] = resultMsg.usage
       
         if completed:
             payload["completionTime"] = datetime.now(timezone.utc).isoformat()
@@ -352,7 +361,7 @@ class SimpleClaudeRunner:
 
 
             # 3) Run prompt
-            self._update_status("Running", message="Starting model run")
+            self._update_status("Running", message="Claude is running")
             result_msg = self._run_llm_streaming(self.prompt)
             
 
@@ -381,7 +390,7 @@ class SimpleClaudeRunner:
                 except Exception as e:
                     logger.warning(f"Failed to send result summary: {e}")
 
-            self._update_status("Completed", message="Session completed", completed=True)
+            self._update_status("Completed", message="Session completed", completed=True, result=result_msg.result)
             logger.info("Session completed successfully")
             return 0
 

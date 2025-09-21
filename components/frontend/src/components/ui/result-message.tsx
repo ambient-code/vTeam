@@ -1,7 +1,7 @@
-import React from "react";
+import React, { useState } from "react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle2, XCircle } from "lucide-react";
+import { CheckCircle2, XCircle, ChevronRight, ChevronDown } from "lucide-react";
 
 export type ResultMessageProps = {
   duration_ms: number;
@@ -28,6 +28,9 @@ export const ResultMessage: React.FC<ResultMessageProps> = (props) => {
     className,
   } = props;
 
+  const [usageExpanded, setUsageExpanded] = useState(false);
+  const [resultExpanded, setResultExpanded] = useState(false);
+
   return (
     <div className={cn("mb-4", className)}>
       <div className="bg-white rounded-lg border shadow-sm p-3">
@@ -51,19 +54,61 @@ export const ResultMessage: React.FC<ResultMessageProps> = (props) => {
 
         {usage && (
           <div className="mt-2">
-            <div className="text-[11px] text-gray-500 mb-1">Usage</div>
-            <pre className="bg-gray-50 border rounded p-2 whitespace-pre-wrap break-words text-xs text-gray-800">
-              {JSON.stringify(usage, null, 2)}
-            </pre>
+            <div className="flex items-center justify-between mb-1">
+              <div className="text-[11px] text-gray-500">Usage</div>
+              <button
+                className="text-xs text-blue-600 hover:underline inline-flex items-center gap-1"
+                onClick={() => setUsageExpanded((e) => !e)}
+                aria-expanded={usageExpanded}
+              >
+                {usageExpanded ? "Hide" : "Show"} details
+                {usageExpanded ? (
+                  <ChevronDown className="w-3 h-3 text-gray-500" />
+                ) : (
+                  <ChevronRight className="w-3 h-3 text-gray-500" />
+                )}
+              </button>
+            </div>
+
+            {!usageExpanded && (
+              <div className="text-xs text-gray-600">Usage details hidden</div>
+            )}
+
+            {usageExpanded && (
+              <pre className="bg-gray-50 border rounded p-2 whitespace-pre-wrap break-words text-xs text-gray-800">
+                {JSON.stringify(usage, null, 2)}
+              </pre>
+            )}
           </div>
         )}
 
         {result && (
           <div className="mt-2">
-            <div className="text-[11px] text-gray-500 mb-1">Result</div>
-            <pre className="bg-gray-50 border rounded p-2 whitespace-pre-wrap break-words text-xs text-gray-800">
-              {result}
-            </pre>
+            <div className="flex items-center justify-between mb-1">
+              <div className="text-[11px] text-gray-500">Result</div>
+              <button
+                className="text-xs text-blue-600 hover:underline inline-flex items-center gap-1"
+                onClick={() => setResultExpanded((e) => !e)}
+                aria-expanded={resultExpanded}
+              >
+                {resultExpanded ? "Hide" : "Show"} details
+                {resultExpanded ? (
+                  <ChevronDown className="w-3 h-3 text-gray-500" />
+                ) : (
+                  <ChevronRight className="w-3 h-3 text-gray-500" />
+                )}
+              </button>
+            </div>
+
+            {!resultExpanded && (
+              <div className="text-xs text-gray-600">Result details hidden</div>
+            )}
+
+            {resultExpanded && (
+              <pre className="bg-gray-50 border rounded p-2 whitespace-pre-wrap break-words text-xs text-gray-800">
+                {result}
+              </pre>
+            )}
           </div>
         )}
       </div>

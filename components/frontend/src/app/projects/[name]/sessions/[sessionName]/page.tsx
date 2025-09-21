@@ -6,9 +6,7 @@ import { formatDistanceToNow, format } from "date-fns";
 import {
   ArrowLeft,
   RefreshCw,
-  ExternalLink,
   Clock,
-  Globe,
   Brain,
   Square,
   Trash2,
@@ -42,7 +40,6 @@ import type { MessageObject, ToolUseBlock, ToolUseMessages, ToolResultBlock } fr
 import { CloneSessionDialog } from "@/components/clone-session-dialog";
 
 import { getApiUrl } from "@/lib/config";
-import { Project } from "@/types/project";
 
 const getPhaseColor = (phase: AgenticSessionPhase) => {
   switch (phase) {
@@ -273,6 +270,22 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
     return [...agenticMessages, ...toolUseMessages];
   }, [messages]);
 
+  // Stats: derive latest result metrics and duration
+  const latestResult = useMemo(() => {
+    const results = messages.filter((m) => m.type === "result_message");
+    return results.length > 0 ? (results[results.length - 1] as any) : null;
+  }, [messages]);
+
+  const durationMs = useMemo(() => {
+    const start = session?.status?.startTime
+      ? new Date(session.status.startTime).getTime()
+      : undefined;
+    const end = session?.status?.completionTime
+      ? new Date(session.status.completionTime).getTime()
+      : Date.now();
+    return start ? Math.max(0, end - start) : undefined;
+  }, [session?.status?.startTime, session?.status?.completionTime]);
+
   if (loading) {
     return (
       <div className="container mx-auto p-6">
@@ -334,6 +347,18 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
 
             const buttons = [] as React.ReactNode[];
 
+            // Workspace button
+            buttons.push(
+              <Link
+                key="workspace"
+                href={`/projects/${encodeURIComponent(projectName)}/sessions/${encodeURIComponent(sessionName)}/workspace`}
+              >
+                <Button variant="outline">
+                  Workspace
+                </Button>
+              </Link>
+            );
+
             // Clone button for all sessions
             buttons.push(
               <CloneSessionDialog
@@ -375,195 +400,191 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
       </div>
 
       <div className="space-y-6">
-        {/* Header */}
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="text-2xl">
-                  {session.spec.displayName || session.metadata.name}
-                </CardTitle>
-                {session.spec.displayName && (
-                  <div className="text-sm text-gray-500 mb-1">{session.metadata.name}</div>
-                )}
-                <CardDescription>
-                  Created {formatDistanceToNow(new Date(session.metadata.creationTimestamp), { addSuffix: true })}
-                </CardDescription>
-              </div>
-              <Badge className={getPhaseColor(session.status?.phase || "Pending")}>
-                {session.status?.phase || "Pending"}
-              </Badge>
+        {/* Title & phase */}
+        <div className="flex items-start justify-between">
+          <div>
+            <h1 className="text-2xl font-semibold">
+              {session.spec.displayName || session.metadata.name}
+            </h1>
+            {session.spec.displayName && (
+              <div className="text-sm text-gray-500">{session.metadata.name}</div>
+            )}
+            <div className="text-xs text-gray-500 mt-1">
+              Created {formatDistanceToNow(new Date(session.metadata.creationTimestamp), { addSuffix: true })}
             </div>
-          </CardHeader>
-        </Card>
-
-        {/* Session Details */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center">
-                <Brain className="w-5 h-5 mr-2" />
-                Agentic Prompt
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="whitespace-pre-wrap text-sm">{session.spec.prompt}</p>
-            </CardContent>
-          </Card>
-
+          </div>
+          <Badge className={getPhaseColor(session.status?.phase || "Pending")}>
+            {session.status?.phase || "Pending"}
+          </Badge>
         </div>
 
-        {/* Configuration */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Configuration</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-              <div>
-                <p className="font-semibold">Model</p>
-                <p className="text-muted-foreground">{session.spec.llmSettings.model}</p>
-              </div>
-              <div>
-                <p className="font-semibold">Temperature</p>
-                <p className="text-muted-foreground">{session.spec.llmSettings.temperature}</p>
-              </div>
-              <div>
-                <p className="font-semibold">Max Tokens</p>
-                <p className="text-muted-foreground">{session.spec.llmSettings.maxTokens}</p>
-              </div>
-              <div>
-                <p className="font-semibold">Timeout</p>
-                <p className="text-muted-foreground">{session.spec.timeout}s</p>
+        {/* Compact stats bar */}
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
+          <Badge variant="outline" className="justify-start">Phase: {session.status?.phase || "Pending"}</Badge>
+          <Badge variant="outline" className="justify-start">Duration: {typeof durationMs === "number" ? `${durationMs} ms` : "-"}</Badge>
+          <Badge variant="outline" className="justify-start">API: {latestResult?.duration_api_ms ?? "-"} ms</Badge>
+          <Badge variant="outline" className="justify-start">Cost: {typeof session.status?.total_cost_usd === "number" ? `$${session.status.total_cost_usd.toFixed(4)}` : "-"}</Badge>
+          <Badge variant="outline" className="justify-start">Turns: {latestResult?.num_turns ?? session.status?.num_turns ?? "-"}</Badge>
+        </div>
+
+        {/* Main content grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+          {/* Messages (cardless) */}
+          <section className="lg:col-span-3">
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-sm font-medium text-gray-700">Agentic Progress</h2>
+              <div className="flex items-center gap-2 text-xs">
+                <span className="text-gray-500">{allMessages.length} message</span>
+                <button
+                  className="text-blue-600 hover:underline"
+                  onClick={() => {
+                    const scroller = document.getElementById("messages-scroll");
+                    if (scroller) scroller.scrollTop = scroller.scrollHeight;
+                  }}
+                >
+                  Jump to latest
+                </button>
               </div>
             </div>
-          </CardContent>
-        </Card>
+            <div id="messages-scroll" className="bg-gray-50 rounded-lg p-4 space-y-4 overflow-y-auto h-[70vh]">
+              {allMessages
+                .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+                .map((message, index) => (
+                  <StreamMessage key={`msg-${index}`} message={message} />
+              ))}
 
-        {/* Status Information */}
-        {session.status && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center">
-                <Clock className="w-5 h-5 mr-2" />
-                Execution Status
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {session.status.message && (
-                  <div>
-                    <p className="font-semibold text-sm">Status Message</p>
-                    <p className="text-sm text-muted-foreground">{session.status.message}</p>
+              {(session.status?.phase === "Running" ||
+                session.status?.phase === "Pending" ||
+                session.status?.phase === "Creating") && (
+                <Message
+                  role="bot"
+                  content={session.status.message || (() => {
+                    const messages = [
+                      "Pretending to be productive...",
+                      "Downloading more RAM...",
+                      "Consulting the magic 8-ball...",
+                      "Teaching bugs to behave...",
+                      "Brewing digital coffee...",
+                      "Rolling for initiative...",
+                      "Surfing the data waves...",
+                      "Juggling bits and bytes...",
+                      "Tipping my fedora...",
+                    ];
+                    return messages[Math.floor(Math.random() * messages.length)];
+                  })()}
+                  name="Claude AI"
+                  isLoading={true}
+                />
+              )}
+
+              {(messages.length === 0) &&
+                session.status?.phase !== "Running" &&
+                session.status?.phase !== "Pending" &&
+                session.status?.phase !== "Creating" && (
+                  <div className="text-center py-8 text-gray-500">
+                    <Brain className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                    <p>No messages yet</p>
                   </div>
                 )}
+            </div>
+          </section>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                  {session.status.startTime && (
-                    <div>
-                      <p className="font-semibold">Started</p>
-                      <p className="text-muted-foreground">{format(new Date(session.status.startTime), "PPp")}</p>
-                    </div>
-                  )}
+          {/* Results */}
+          {session.status?.result && (
+            <section className="lg:col-span-2">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Agentic Results</CardTitle>
+                  <CardDescription>Claude&apos;s analysis</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="bg-white rounded-lg border p-6 prose prose-sm max-w-none prose-headings:text-gray-900 prose-p:text-gray-700 prose-strong:text-gray-900 prose-code:bg-gray-100 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-pre:bg-gray-900 prose-pre:text-gray-100">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]} components={outputComponents}>
+                      {session.status.result}
+                    </ReactMarkdown>
+                  </div>
+                </CardContent>
+              </Card>
+            </section>
+          )}
+        </div>
 
-                  {session.status.completionTime && (
-                    <div>
-                      <p className="font-semibold">Completed</p>
-                      <p className="text-muted-foreground">{format(new Date(session.status.completionTime), "PPp")}</p>
-                    </div>
-                  )}
+        {/* Details accordion */}
+        <details className="rounded-lg border bg-white p-3">
+          <summary className="cursor-pointer text-sm font-medium">Details</summary>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-3">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <Brain className="w-5 h-5 mr-2" />
+                  Agentic Prompt
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="whitespace-pre-wrap text-sm">{session.spec.prompt}</p>
+              </CardContent>
+            </Card>
 
-                  {session.status.jobName && (
-                    <div>
-                      <p className="font-semibold">Kubernetes Job</p>
-                      <p className="text-muted-foreground font-mono text-xs">{session.status.jobName}</p>
-                    </div>
-                  )}
-
-                  {session.status.cost && (
-                    <div>
-                      <p className="font-semibold">Cost</p>
-                      <p className="text-muted-foreground">${session.status.cost.toFixed(4)}</p>
-                    </div>
-                  )}
+            <Card>
+              <CardHeader>
+                <CardTitle>Configuration</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                  <div>
+                    <p className="font-semibold">Model</p>
+                    <p className="text-muted-foreground">{session.spec.llmSettings.model}</p>
+                  </div>
+                  <div>
+                    <p className="font-semibold">Temperature</p>
+                    <p className="text-muted-foreground">{session.spec.llmSettings.temperature}</p>
+                  </div>
+                  <div>
+                    <p className="font-semibold">Max Tokens</p>
+                    <p className="text-muted-foreground">{session.spec.llmSettings.maxTokens}</p>
+                  </div>
+                  <div>
+                    <p className="font-semibold">Timeout</p>
+                    <p className="text-muted-foreground">{session.spec.timeout}s</p>
+                  </div>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
+              </CardContent>
+            </Card>
 
-        {/* Real-time Messages Progress*/}
-        {(messages.length > 0 ||
-          session.status?.phase === "Running" ||
-          session.status?.phase === "Pending" ||
-          session.status?.phase === "Creating") && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between">
-                <span>Agentic Progress</span>
-                <Badge variant="secondary">
-                  {allMessages.length} message
-                </Badge>
-              </CardTitle>
-              <CardDescription>Live analysis from Claude AI</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="max-h-96 overflow-y-auto space-y-4 bg-gray-50 rounded-lg p-4">
-                {allMessages
-                  .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
-                  .map((message, index) => (
-                    <StreamMessage key={`msg-${index}`} message={message} />
-                ))}
-
-                {/* Show loading message if still processing */}
-                {(session.status?.phase === "Running" ||
-                  session.status?.phase === "Pending" ||
-                  session.status?.phase === "Creating") && (
-                  <Message
-                    role="bot"
-                    content={
-                      session.status?.phase === "Pending"
-                        ? "Agentic session is queued and waiting to start..."
-                        : session.status?.phase === "Creating"
-                        ? "Creating agentic environment..."
-                        : "Analyzing the website and generating insights..."
-                    }
-                    name="Claude AI"
-                    isLoading={true}
-                  />
-                )}
-
-                {/* Show empty state if no messages yet */}
-                {(messages.length === 0) &&
-                  session.status?.phase !== "Running" &&
-                  session.status?.phase !== "Pending" &&
-                  session.status?.phase !== "Creating" && (
-                    <div className="text-center py-8 text-gray-500">
-                      <Brain className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                      <p>No messages yet</p>
-                    </div>
-                  )}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Agentic Results */}
-        {session.status?.result && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Agentic Results</CardTitle>
-              <CardDescription>Claude&apos;s analysis of the target website</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="bg-white rounded-lg border p-6 prose prose-sm max-w-none prose-headings:text-gray-900 prose-p:text-gray-700 prose-strong:text-gray-900 prose-code:bg-gray-100 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-pre:bg-gray-900 prose-pre:text-gray-100">
-                <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]} components={outputComponents}>
-                  {session.status.result}
-                </ReactMarkdown>
-              </div>
-            </CardContent>
-          </Card>
-        )}
+            {session.status && (
+              <Card className="md:col-span-2">
+                <CardHeader>
+                  <CardTitle className="flex items-center">
+                    <Clock className="w-5 h-5 mr-2" />
+                    Execution Status
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                    {session.status.startTime && (
+                      <div>
+                        <p className="font-semibold">Started</p>
+                        <p className="text-muted-foreground">{format(new Date(session.status.startTime), "PPp")}</p>
+                      </div>
+                    )}
+                    {session.status.completionTime && (
+                      <div>
+                        <p className="font-semibold">Completed</p>
+                        <p className="text-muted-foreground">{format(new Date(session.status.completionTime), "PPp")}</p>
+                      </div>
+                    )}
+                    {session.status.jobName && (
+                      <div>
+                        <p className="font-semibold">K8s Job</p>
+                        <p className="text-muted-foreground font-mono text-xs">{session.status.jobName}</p>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        </details>
       </div>
     </div>
   );

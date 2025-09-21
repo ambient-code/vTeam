@@ -117,15 +117,10 @@ export type AgenticSessionStatus = {
 	startTime?: string;
 	completionTime?: string;
 	jobName?: string;
-	cost?: number;
   	// Storage & counts (align with CRD)
   	stateDir?: string;
-  	artifactsCount?: number;
-  	messagesCount?: number;
 	// Runner result summary fields
 	subtype?: string;
-	duration_ms?: number;
-	duration_api_ms?: number;
 	is_error?: boolean;
 	num_turns?: number;
 	session_id?: string;

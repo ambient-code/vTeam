@@ -814,6 +814,62 @@ func getSessionMessages(c *gin.Context) {
 	c.Data(http.StatusOK, "application/json", data)
 }
 
+// GET /api/projects/:projectName/agentic-sessions/:sessionName/workspace
+// Lists the contents of a session's workspace by delegating to the per-project content service
+func getSessionWorkspace(c *gin.Context) {
+	project := c.GetString("project")
+	sessionName := c.Param("sessionName")
+
+	// Optional subpath within the workspace to list
+	rel := strings.TrimSpace(c.Query("path"))
+
+	base := fmt.Sprintf("/sessions/%s/workspace", sessionName)
+	absPath := base
+	if rel != "" {
+		// Clean and ensure no traversal outside workspace
+		cleaned := filepath.Clean("/" + rel)
+		cleaned = strings.TrimPrefix(cleaned, "/")
+		if strings.Contains(cleaned, "..") {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid path"})
+			return
+		}
+		absPath = filepath.Join(base, cleaned)
+	}
+
+	items, err := listProjectContent(c, project, absPath)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "failed to list workspace"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"items": items})
+}
+
+// GET /api/projects/:projectName/agentic-sessions/:sessionName/workspace/*path
+// Reads a file from a session's workspace by delegating to the per-project content service
+func getSessionWorkspaceFile(c *gin.Context) {
+	project := c.GetString("project")
+	sessionName := c.Param("sessionName")
+	pathParam := c.Param("path")
+
+	// Normalize and validate relative path
+	cleaned := filepath.Clean("/" + strings.TrimSpace(pathParam))
+	rel := strings.TrimPrefix(cleaned, "/")
+	if rel == "" || strings.Contains(rel, "..") {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid path"})
+		return
+	}
+
+	base := fmt.Sprintf("/sessions/%s/workspace", sessionName)
+	absPath := filepath.Join(base, rel)
+
+	b, err := readProjectContentFile(c, project, absPath)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "failed to read workspace file"})
+		return
+	}
+	c.Data(http.StatusOK, "application/octet-stream", b)
+}
+
 // --- Git helpers (project-scoped) ---
 
 func stringPtr(s string) *string { return &s }
