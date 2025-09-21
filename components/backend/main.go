@@ -101,6 +101,7 @@ func main() {
 			projectGroup.POST("/agentic-sessions/:sessionName/stop", stopSession)
 			projectGroup.PUT("/agentic-sessions/:sessionName/status", updateSessionStatus)
 			projectGroup.PUT("/agentic-sessions/:sessionName/displayname", updateSessionDisplayName)
+			projectGroup.GET("/agentic-sessions/:sessionName/messages", getSessionMessages)
 
 			// RFE workflow endpoints (project-scoped)
 			projectGroup.GET("/rfe-workflows", listProjectRFEWorkflows)

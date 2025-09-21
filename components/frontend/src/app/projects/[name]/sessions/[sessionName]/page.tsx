@@ -121,6 +121,7 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
   const [sessionName, setSessionName] = useState<string>("");
 
   const [session, setSession] = useState<AgenticSession | null>(null);
+  const [messages, setMessages] = useState<MessageObject[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -151,6 +152,14 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
       }
       const data = await response.json();
       setSession(data);
+      // Fetch messages from proxy endpoint to ensure latest content
+      const msgResp = await fetch(
+        `${apiUrl}/projects/${encodeURIComponent(projectName)}/sessions/${encodeURIComponent(sessionName)}/messages`
+      );
+      if (msgResp.ok) {
+        const msgData = await msgResp.json();
+        if (Array.isArray(msgData)) setMessages(msgData);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
     } finally {
@@ -522,7 +531,7 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
         )}
 
         {/* Real-time Messages Progress*/}
-        {((session.status?.messages && session.status.messages.length > 0) ||
+        {(messages.length > 0 ||
           session.status?.phase === "Running" ||
           session.status?.phase === "Pending" ||
           session.status?.phase === "Creating") && (
@@ -531,8 +540,8 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
               <CardTitle className="flex items-center justify-between">
                 <span>Agentic Progress</span>
                 <Badge variant="secondary">
-                  {mergeToolUseAndResults(session.status?.messages).length} message
-                  {mergeToolUseAndResults(session.status?.messages).length !== 1 ? "s" : ""}
+                  {mergeToolUseAndResults(messages).length} message
+                  {mergeToolUseAndResults(messages).length !== 1 ? "s" : ""}
                 </Badge>
               </CardTitle>
               <CardDescription>Live analysis from Claude AI</CardDescription>
@@ -540,7 +549,7 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
             <CardContent>
               <div className="max-h-96 overflow-y-auto space-y-4 bg-gray-50 rounded-lg p-4">
                 {/* Display all existing messages (normalized/merged) */}
-                {mergeToolUseAndResults(session.status?.messages).map((message, index) => (
+                {mergeToolUseAndResults(messages).map((message, index) => (
                   <StreamMessage key={`msg-${index}`} message={message as any} />
                 ))}
 
@@ -563,7 +572,7 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
                 )}
 
                 {/* Show empty state if no messages yet */}
-                {(!session.status?.messages || session.status.messages.length === 0) &&
+                {(messages.length === 0) &&
                   session.status?.phase !== "Running" &&
                   session.status?.phase !== "Pending" &&
                   session.status?.phase !== "Creating" && (

@@ -806,6 +806,22 @@ func getSession(c *gin.Context) {
 	c.JSON(http.StatusOK, session)
 }
 
+// GET /api/projects/:projectName/agentic-sessions/:sessionName/messages
+// Returns the messages.json content for a session by fetching from the per-project content service
+// and falling back to local state directory if the content service is unavailable.
+func getSessionMessages(c *gin.Context) {
+	project := c.GetString("project")
+	sessionName := c.Param("sessionName")
+
+	// First try via per-namespace content service using caller's token
+	data, err := readProjectContentFile(c, project, fmt.Sprintf("/sessions/%s/messages.json", sessionName))
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "failed to fetch messages"})
+		return
+	}
+	c.Data(http.StatusOK, "application/json", data)
+}
+
 // --- Git helpers (project-scoped) ---
 
 func stringPtr(s string) *string { return &s }
