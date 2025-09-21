@@ -38,6 +38,7 @@ import {
   AgenticSession,
   AgenticSessionPhase,
 } from "@/types/agentic-session";
+import type { MessageObject, ContentBlock } from "@/types/agentic-session";
 import { CloneSessionDialog } from "@/components/clone-session-dialog";
 
 import { getApiUrl } from "@/lib/config";
@@ -249,6 +250,56 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
       setError(err instanceof Error ? err.message : "Failed to delete session");
       setActionLoading(null);
     }
+  };
+
+  const mergeToolUseAndResults = (messages: MessageObject[] | undefined): MessageObject[] => {
+    if (!Array.isArray(messages)) return [];
+
+    const result: MessageObject[] = [];
+    const idToAssistantIdx = new Map<string, number>();
+    const defaultAssistantModel = (messages.find((m: any) => m?.type === "assistant_message" && (m as any).model) as any)?.model ?? "";
+
+    for (const msg of messages) {
+      if (msg.type === "assistant_message") {
+        const blocks = (msg.content as ContentBlock[]) || [];
+
+        const hasToolUse = blocks.some((b) => b.type === "tool_use_block");
+        const hasToolResultOnly = !hasToolUse && blocks.some((b) => b.type === "tool_result_block");
+
+        if (hasToolResultOnly) {
+          for (const b of blocks) {
+            if (b.type === "tool_result_block") {
+              const idx = idToAssistantIdx.get(b.tool_use_id);
+              if (typeof idx === "number" && result[idx] && result[idx].type === "assistant_message") {
+                const target = result[idx] as Extract<MessageObject, { type: "assistant_message" }>;
+                (target.content as ContentBlock[]).push(b);
+              } else {
+                result.push({ type: "assistant_message", model: defaultAssistantModel, content: [b] } as any);
+              }
+            }
+          }
+          continue;
+        }
+
+        const assistantMsg: MessageObject = { ...msg, content: blocks } as any;
+        const idx = result.push(assistantMsg) - 1;
+        blocks.forEach((b) => {
+          if (b.type === "tool_use_block") idToAssistantIdx.set(b.id, idx);
+        });
+        continue;
+      }
+
+      if (msg.type === "user_message") {
+        result.push(msg);
+        continue;
+      }
+
+      if (msg.type === "system_message" || msg.type === "result_message") {
+        result.push(msg);
+      }
+    }
+
+    return result;
   };
 
   if (loading) {
@@ -480,16 +531,16 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
               <CardTitle className="flex items-center justify-between">
                 <span>Agentic Progress</span>
                 <Badge variant="secondary">
-                  {session.status?.messages?.length || 0} message
-                  {(session.status?.messages?.length || 0) !== 1 ? "s" : ""}
+                  {mergeToolUseAndResults(session.status?.messages).length} message
+                  {mergeToolUseAndResults(session.status?.messages).length !== 1 ? "s" : ""}
                 </Badge>
               </CardTitle>
               <CardDescription>Live analysis from Claude AI</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="max-h-96 overflow-y-auto space-y-4 bg-gray-50 rounded-lg p-4">
-                {/* Display all existing messages */}
-                {session.status?.messages?.map((message, index) => (
+                {/* Display all existing messages (normalized/merged) */}
+                {mergeToolUseAndResults(session.status?.messages).map((message, index) => (
                   <StreamMessage key={`msg-${index}`} message={message as any} />
                 ))}
 
@@ -527,7 +578,7 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
         )}
 
         {/* Agentic Results */}
-        {session.status?.finalOutput && (
+        {session.status?.message && (
           <Card>
             <CardHeader>
               <CardTitle>Agentic Results</CardTitle>

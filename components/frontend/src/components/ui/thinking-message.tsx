@@ -11,7 +11,9 @@ export type ThinkingMessageProps = {
 
 export const ThinkingMessage: React.FC<ThinkingMessageProps> = ({ blocks, className }) => {
   const [expanded, setExpanded] = useState(false);
-  const thinkingBlocks = blocks.filter((b) => b.type === "thinking_block") as Array<Extract<ContentBlock, { type: "thinking_block" }>>;
+  const thinkingBlocks = blocks.filter((b) => b.type === "thinking_block") as Array<
+    Extract<ContentBlock, { type: "thinking_block" }>
+  >;
 
   if (thinkingBlocks.length === 0) return null;
 

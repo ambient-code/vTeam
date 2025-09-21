@@ -54,7 +54,7 @@ export const ToolMessage = React.forwardRef<HTMLDivElement, ToolMessageProps>(
 
     // Determine message type and state using new union
     const assistantBlocks =
-      message.type === "assistant_message" ? message.content : undefined;
+      message.type === "assistant_message" ? (message.content as any[]) : undefined;
     const toolUseBlock = assistantBlocks?.find?.(
       (b: any) => b && typeof b === "object" && b.type === "tool_use_block"
     ) as any | undefined;

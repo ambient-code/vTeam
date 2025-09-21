@@ -23,7 +23,7 @@ export const SystemMessage: React.FC<SystemMessageProps> = ({ subtype, data, cla
           <div className="bg-white rounded-lg border shadow-sm p-3">
             <div className="flex items-center justify-between mb-2">
               <Badge variant="secondary" className="text-xs">System</Badge>
-              <span className="text-[10px] text-gray-500">{subtype}</span>
+              <span className="text-[10px] text-gray-500">{subtype || (data?.subtype as string) || "system"}</span>
             </div>
 
             <pre className="bg-gray-50 border rounded p-2 whitespace-pre-wrap break-words text-xs text-gray-800">

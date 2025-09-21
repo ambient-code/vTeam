@@ -159,7 +159,7 @@ class SimpleClaudeRunner:
     def _append_message(self, message: str) -> None:
         payload = {
             "type": "system_message",
-            "content": message,
+            "data": message,
         }
         self.messages.append(payload)
         self._flush_messages()
