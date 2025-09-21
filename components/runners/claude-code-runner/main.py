@@ -175,14 +175,11 @@ class SimpleClaudeRunner:
             logger.warning(f"Failed to flush messages: {e}")
 
     # ---------------- Status ----------------
-    def _update_status(self, phase: str, message: str | None = None, final_output: str | None = None, cost: float | None = None, completed: bool = False) -> None:
+    def _update_status(self, phase: str, message: str | None = None, completed: bool = False) -> None:
         payload: Dict[str, Any] = {"phase": phase}
         if message:
             payload["message"] = message
-        if final_output is not None:
-            payload["finalOutput"] = final_output
-        if cost is not None:
-            payload["cost"] = cost
+      
         if completed:
             payload["completionTime"] = datetime.now(timezone.utc).isoformat()
         try:
@@ -230,55 +227,67 @@ class SimpleClaudeRunner:
                 # include_partial_messages=True, # TODO add incremental messages
             )
 
-
-            async for message in query(prompt=full_prompt, options=options):
-                logger.info(f"Message: {message}")  
-                if isinstance(message, StreamEvent):
-                    # handle stream events
-                    pass
-                else:
-                    if isinstance(message, AssistantMessage) or isinstance(message, UserMessage):
-                        message_type_map = {
-                            AssistantMessage: "assistant_message",
-                            UserMessage: "user_message",
-                            SystemMessage: "system_message",
-                            ResultMessage: "result_message",
-                        }
-                        message_type = message_type_map.get(type(message))
-                        if isinstance(message.content, str):
-                            payload = {
-                                "type": message_type,
-                                "content": message.content,
+            stream = query(prompt=full_prompt, options=options)
+            try:
+                async for message in stream:
+                    logger.info(f"Message: {message}")
+                    if isinstance(message, StreamEvent):
+                        # handle stream events
+                        pass
+                    else:
+                        if isinstance(message, AssistantMessage) or isinstance(message, UserMessage):
+                            message_type_map = {
+                                AssistantMessage: "assistant_message",
+                                UserMessage: "user_message",
+                                SystemMessage: "system_message",
+                                ResultMessage: "result_message",
                             }
-                            self.messages.append(payload)
-                            self._flush_messages()
-                        else:
-                            for block in message.content:
-                                content_type_map = {
-                                    TextBlock: "text_block",
-                                    ThinkingBlock: "thinking_block",
-                                    ToolUseBlock: "tool_use_block",
-                                    ToolResultBlock: "tool_result_block",
-                                }
-                                content_type = content_type_map.get(type(block))
+                            message_type = message_type_map.get(type(message))
+                            if isinstance(message.content, str):
                                 payload = {
                                     "type": message_type,
-                                    "content": {
-                                        "type": content_type,
-                                        **asdict(block),
-                                    },
+                                    "content": message.content,
                                 }
                                 self.messages.append(payload)
                                 self._flush_messages()
-                    else:
-                        payload = {
-                            "type": message.type,
-                            **asdict(message),
-                        }
-                        self.messages.append(payload)
-                        self._flush_messages()
-                        if isinstance(message, ResultMessage):
-                            result_message = message
+                            else:
+                                for block in message.content:
+                                    content_type_map = {
+                                        TextBlock: "text_block",
+                                        ThinkingBlock: "thinking_block",
+                                        ToolUseBlock: "tool_use_block",
+                                        ToolResultBlock: "tool_result_block",
+                                    }
+                                    content_type = content_type_map.get(type(block))
+                                    payload = {
+                                        "type": message_type,
+                                        "content": {
+                                            "type": content_type,
+                                            **asdict(block),
+                                        },
+                                    }
+                                    self.messages.append(payload)
+                                    self._flush_messages()
+                        else:
+                            payload = {
+                                "type": message.type,
+                                **asdict(message),
+                            }
+                            self.messages.append(payload)
+                            self._flush_messages()
+                            if isinstance(message, ResultMessage):
+                                result_message = message
+            except GeneratorExit:
+                logger.debug("Stream generator closed (GeneratorExit)")
+            except Exception as e:  # noqa: BLE001
+                logger.error(f"Claude Code SDK streaming error: {e}")
+            finally:
+                aclose = getattr(stream, "aclose", None)
+                if callable(aclose):
+                    try:
+                        await aclose()
+                    except Exception as e:  # noqa: BLE001
+                        logger.debug(f"Stream aclose raised: {e}")
                         
                     
 
@@ -343,42 +352,16 @@ class SimpleClaudeRunner:
             self._append_message("Model run completed")
             self._flush_messages()
 
-            # Save final-output.txt in artifacts for convenience
-            try:
-                final_text = ""
-                if result_msg and isinstance(result_msg.result, str):
-                    final_text = result_msg.result
-                (self.artifacts_dir / "final-output.txt").write_text(final_text, encoding="utf-8")
-            except Exception as e:
-                logger.warning(f"Failed to write local final-output.txt: {e}")
-
-            # 4) Write messages to PVC via proxy
-            self._flush_messages()
-
-            # 5) Push entire workspace back to PVC
+            # 4) Push entire workspace back to PVC
             self._push_workspace_to_pvc()
 
-            # Final status (augment CRD with result summary fields)
-            final_output = ""
-            final_cost = None
             if result_msg is not None:
-                if isinstance(result_msg.result, str):
-                    final_output = result_msg.result
-                if result_msg.total_cost_usd is not None:
-                    try:
-                        final_cost = float(result_msg.total_cost_usd)
-                    except Exception:
-                        final_cost = None
-                # Also send a status update with summary fields
+
                 try:
                     summary_payload = {
                         "message": "Session completed",
                         "phase": "Completed",
-                        "finalOutput": final_output,
-                        "cost": final_cost,
                         "subtype": getattr(result_msg, "subtype", None),
-                        "duration_ms": getattr(result_msg, "duration_ms", None),
-                        "duration_api_ms": getattr(result_msg, "duration_api_ms", None),
                         "is_error": getattr(result_msg, "is_error", None),
                         "num_turns": getattr(result_msg, "num_turns", None),
                         "session_id": getattr(result_msg, "session_id", None),
@@ -393,7 +376,7 @@ class SimpleClaudeRunner:
                 except Exception as e:
                     logger.warning(f"Failed to send result summary: {e}")
 
-            self._update_status("Completed", message="Session completed", final_output=final_output, cost=final_cost, completed=True)
+            self._update_status("Completed", message="Session completed", completed=True)
             logger.info("Session completed successfully")
             return 0
 

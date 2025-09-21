@@ -112,7 +112,6 @@ export type AgenticSessionStatus = {
 	startTime?: string;
 	completionTime?: string;
 	jobName?: string;
-	finalOutput?: string;
 	cost?: number;
   	// Storage & counts (align with CRD)
   	stateDir?: string;

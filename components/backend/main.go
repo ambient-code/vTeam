@@ -298,27 +298,20 @@ type MessageObject struct {
 }
 
 type AgenticSessionStatus struct {
-	Phase          string          `json:"phase,omitempty"`
-	Message        string          `json:"message,omitempty"`
-	StartTime      *string         `json:"startTime,omitempty"`
-	CompletionTime *string         `json:"completionTime,omitempty"`
-	JobName        string          `json:"jobName,omitempty"`
-	FinalOutput    string          `json:"finalOutput,omitempty"`
-	Cost           *float64        `json:"cost,omitempty"`
-	Messages       []MessageObject `json:"messages,omitempty"`
-	StateDir       string          `json:"stateDir,omitempty"`
-	ArtifactsCount int             `json:"artifactsCount,omitempty"`
-	MessagesCount  int             `json:"messagesCount,omitempty"`
+	Phase          string  `json:"phase,omitempty"`
+	Message        string  `json:"message,omitempty"`
+	StartTime      *string `json:"startTime,omitempty"`
+	CompletionTime *string `json:"completionTime,omitempty"`
+	JobName        string  `json:"jobName,omitempty"`
+	StateDir       string  `json:"stateDir,omitempty"`
 	// Result summary fields from runner
-	Subtype       string                 `json:"subtype,omitempty"`
-	DurationMs    int                    `json:"duration_ms,omitempty"`
-	DurationApiMs int                    `json:"duration_api_ms,omitempty"`
-	IsError       bool                   `json:"is_error,omitempty"`
-	NumTurns      int                    `json:"num_turns,omitempty"`
-	SessionID     string                 `json:"session_id,omitempty"`
-	TotalCostUSD  *float64               `json:"total_cost_usd,omitempty"`
-	Usage         map[string]interface{} `json:"usage,omitempty"`
-	Result        *string                `json:"result,omitempty"`
+	Subtype      string                 `json:"subtype,omitempty"`
+	IsError      bool                   `json:"is_error,omitempty"`
+	NumTurns     int                    `json:"num_turns,omitempty"`
+	SessionID    string                 `json:"session_id,omitempty"`
+	TotalCostUSD *float64               `json:"total_cost_usd,omitempty"`
+	Usage        map[string]interface{} `json:"usage,omitempty"`
+	Result       *string                `json:"result,omitempty"`
 }
 
 type CreateAgenticSessionRequest struct {
@@ -758,87 +751,11 @@ func parseStatus(status map[string]interface{}) *AgenticSessionStatus {
 		result.JobName = jobName
 	}
 
-	if finalOutput, ok := status["finalOutput"].(string); ok {
-		result.FinalOutput = finalOutput
-	}
-
-	if cost, ok := status["cost"].(float64); ok {
-		result.Cost = &cost
-	}
-
-	if messages, ok := status["messages"].([]interface{}); ok {
-		result.Messages = make([]MessageObject, len(messages))
-		for i, msg := range messages {
-			if msgMap, ok := msg.(map[string]interface{}); ok {
-				messageObj := MessageObject{}
-
-				// New structured fields (optional)
-				if mt, ok := msgMap["type"].(string); ok {
-					messageObj.Type = mt
-				}
-				if cb, ok := msgMap["content"].([]interface{}); ok {
-					messageObj.Content = cb
-				}
-				if st, ok := msgMap["subtype"].(string); ok {
-					messageObj.Subtype = st
-				}
-				if data, ok := msgMap["data"].(map[string]interface{}); ok {
-					messageObj.Data = data
-				}
-
-				// Assistant fields
-				if model, ok := msgMap["model"].(string); ok {
-					messageObj.Model = model
-				}
-
-				// Result fields
-				if dms, ok := msgMap["duration_ms"].(float64); ok {
-					messageObj.DurationMs = int(dms)
-				}
-				if dams, ok := msgMap["duration_api_ms"].(float64); ok {
-					messageObj.DurationApiMs = int(dams)
-				}
-				if isErr, ok := msgMap["is_error"].(bool); ok {
-					messageObj.IsError = isErr
-				}
-				if nt, ok := msgMap["num_turns"].(float64); ok {
-					messageObj.NumTurns = int(nt)
-				}
-				if sid, ok := msgMap["session_id"].(string); ok {
-					messageObj.SessionID = sid
-				}
-				if tcu, ok := msgMap["total_cost_usd"].(float64); ok {
-					messageObj.TotalCostUSD = &tcu
-				}
-				if usage, ok := msgMap["usage"].(map[string]interface{}); ok {
-					messageObj.Usage = usage
-				}
-				if res, ok := msgMap["result"].(string); ok {
-					messageObj.Result = &res
-				}
-
-				// If content is a string (legacy runner), still store it (overwrites any array set above)
-				if content, ok := msgMap["content"].(string); ok {
-					messageObj.Content = content
-				}
-
-				// legacy tool_* fields no longer supported
-
-				result.Messages[i] = messageObj
-			}
-		}
-	}
-
 	// New: result summary fields (top-level in status)
 	if st, ok := status["subtype"].(string); ok {
 		result.Subtype = st
 	}
-	if dms, ok := status["duration_ms"].(float64); ok {
-		result.DurationMs = int(dms)
-	}
-	if dams, ok := status["duration_api_ms"].(float64); ok {
-		result.DurationApiMs = int(dams)
-	}
+
 	if ie, ok := status["is_error"].(bool); ok {
 		result.IsError = ie
 	}
@@ -860,12 +777,6 @@ func parseStatus(status map[string]interface{}) *AgenticSessionStatus {
 
 	if stateDir, ok := status["stateDir"].(string); ok {
 		result.StateDir = stateDir
-	}
-	if ac, ok := status["artifactsCount"].(float64); ok {
-		result.ArtifactsCount = int(ac)
-	}
-	if mc, ok := status["messagesCount"].(float64); ok {
-		result.MessagesCount = int(mc)
 	}
 
 	return result

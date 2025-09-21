@@ -187,15 +187,12 @@ class BackendClient:
                 pass
 
         # Filter allowed fields only
-        allowed = {"phase", "completionTime", "cost", "finalOutput", "message"}
-        filtered = {k: v for k, v in status_data.items() if k in allowed}
-
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.put(
                     endpoint,
                     headers=headers,
-                    data=json.dumps(filtered)
+                    data=json.dumps(status_data)
                 ) as response:
                     if response.status == 200:
                         logger.info(f"Successfully updated session status")

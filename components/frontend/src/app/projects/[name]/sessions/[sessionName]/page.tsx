@@ -546,7 +546,7 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
         )}
 
         {/* Agentic Results */}
-        {session.status?.message && (
+        {session.status?.result && (
           <Card>
             <CardHeader>
               <CardTitle>Agentic Results</CardTitle>
@@ -555,7 +555,7 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
             <CardContent>
               <div className="bg-white rounded-lg border p-6 prose prose-sm max-w-none prose-headings:text-gray-900 prose-p:text-gray-700 prose-strong:text-gray-900 prose-code:bg-gray-100 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-pre:bg-gray-900 prose-pre:text-gray-100">
                 <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]} components={outputComponents}>
-                  {session.status.finalOutput}
+                  {session.status.result}
                 </ReactMarkdown>
               </div>
             </CardContent>

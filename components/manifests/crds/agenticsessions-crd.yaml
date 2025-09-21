@@ -109,9 +109,6 @@ spec:
               message:
                 type: string
                 description: "Status message or error details"
-              finalOutput:
-                type: string
-                description: "Final textual output for the session"
               startTime:
                 type: string
                 format: date-time
@@ -121,28 +118,13 @@ spec:
               jobName:
                 type: string
                 description: "Name of the Kubernetes job created for this session"
-              cost:
-                type: number
-                description: "Total cost of the agentic session in USD"
               stateDir:
                 type: string
                 description: "Directory path where session state files are stored"
-              artifactsCount:
-                type: integer
-                description: "Number of artifacts (screenshots, files) generated"
-              messagesCount:
-                type: integer
-                description: "Number of messages in the conversation"
               # Result summary fields from the runner's ResultMessage
               subtype:
                 type: string
                 description: "Result subtype (e.g., success, error, interrupted)"
-              duration_ms:
-                type: integer
-                description: "Total duration of the run in milliseconds"
-              duration_api_ms:
-                type: integer
-                description: "Total API time in milliseconds"
               is_error:
                 type: boolean
                 description: "Whether the run ended with an error"

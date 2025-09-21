@@ -438,9 +438,6 @@ func listSessions(c *gin.Context) {
 
 		if status, ok := item.Object["status"].(map[string]interface{}); ok {
 			session.Status = parseStatus(status)
-			if session.Status != nil {
-				enrichStatusFromContentService(c, project, item.GetName(), session.Status)
-			}
 		}
 
 		sessions = append(sessions, session)
@@ -798,11 +795,6 @@ func getSession(c *gin.Context) {
 		session.Status = parseStatus(status)
 	}
 
-	// Augment from PVC via content service when possible
-	if session.Status != nil {
-		enrichStatusFromContentService(c, project, sessionName, session.Status)
-	}
-
 	c.JSON(http.StatusOK, session)
 }
 
@@ -922,77 +914,6 @@ func mergeGitConfigs(userConfig, defaultConfig *GitConfig) *GitConfig {
 		}
 	}
 	return merged
-}
-
-// Read session data from persistent files and populate status
-func readDataFromFiles(sessionName string, status *AgenticSessionStatus) {
-	sessionDir := filepath.Join(stateBaseDir, sessionName)
-	status.StateDir = sessionDir
-	finalOutputFile := filepath.Join(sessionDir, "final-output.txt")
-	if finalOutputBytes, err := ioutil.ReadFile(finalOutputFile); err == nil {
-		status.FinalOutput = string(finalOutputBytes)
-	}
-
-	messagesFile := filepath.Join(sessionDir, "messages.json")
-	if messagesBytes, err := ioutil.ReadFile(messagesFile); err == nil {
-		var messages []MessageObject
-		if err := json.Unmarshal(messagesBytes, &messages); err == nil {
-			status.Messages = messages
-			status.MessagesCount = len(messages)
-		} else {
-			log.Printf("Warning: failed to unmarshal messages for %s: %v", sessionName, err)
-		}
-	}
-
-	// Count artifacts under sessionDir/artifacts if present
-	status.ArtifactsCount = countArtifacts(filepath.Join(sessionDir, "artifacts"))
-}
-
-// Enrich status by fetching PVC-backed files via the per-namespace content service
-func enrichStatusFromContentService(c *gin.Context, project string, sessionName string, status *AgenticSessionStatus) {
-	base := os.Getenv("CONTENT_SERVICE_BASE")
-	if base == "" {
-		base = "http://ambient-content.%s.svc:8080"
-	}
-	endpoint := fmt.Sprintf(base, project)
-
-	httpGet := func(path string) (string, error) {
-		u := fmt.Sprintf("%s/content/file?path=%s", endpoint, url.QueryEscape(path))
-		req, _ := http.NewRequestWithContext(c.Request.Context(), http.MethodGet, u, nil)
-		if auth := c.GetHeader("Authorization"); strings.TrimSpace(auth) != "" {
-			req.Header.Set("Authorization", auth)
-		}
-		resp, err := http.DefaultClient.Do(req)
-		if err != nil {
-			return "", err
-		}
-		defer resp.Body.Close()
-		if resp.StatusCode != http.StatusOK {
-			return "", fmt.Errorf("status %d", resp.StatusCode)
-		}
-		b, _ := ioutil.ReadAll(resp.Body)
-		return string(b), nil
-	}
-
-	fetchedAny := false
-
-	if s, err := httpGet(fmt.Sprintf("/sessions/%s/messages.json", sessionName)); err == nil {
-		var messages []MessageObject
-		if jerr := json.Unmarshal([]byte(s), &messages); jerr == nil {
-			status.Messages = messages
-			status.MessagesCount = len(messages)
-			fetchedAny = true
-		}
-	}
-	if s, err := httpGet(fmt.Sprintf("/sessions/%s/final-output.txt", sessionName)); err == nil {
-		status.FinalOutput = s
-		fetchedAny = true
-	}
-
-	// Fallback to legacy on-pod files if content service unavailable
-	if !fetchedAny {
-		readDataFromFiles(sessionName, status)
-	}
 }
 
 // countArtifacts recursively counts files under the provided directory (returns 0 if missing)
@@ -1491,7 +1412,7 @@ func updateSessionStatus(c *gin.Context) {
 
 	// Accept standard fields and result summary fields from runner
 	allowed := map[string]struct{}{
-		"phase": {}, "completionTime": {}, "cost": {}, "finalOutput": {}, "message": {},
+		"phase": {}, "completionTime": {}, "cost": {}, "message": {},
 		"subtype": {}, "duration_ms": {}, "duration_api_ms": {}, "is_error": {},
 		"num_turns": {}, "session_id": {}, "total_cost_usd": {}, "usage": {}, "result": {},
 	}
@@ -1539,10 +1460,6 @@ func proxyContentWrites(c *gin.Context, project, sessionName string, statusUpdat
 	// Serialize writes we care about
 	writes := []writeReq{}
 
-	if v, ok := statusUpdate["finalOutput"].(string); ok && v != "" {
-		writes = append(writes, writeReq{Path: fmt.Sprintf("/sessions/%s/final-output.txt", sessionName), Content: v, Encoding: "utf8"})
-		delete(statusUpdate, "finalOutput")
-	}
 	if msgs, ok := statusUpdate["messages"].([]interface{}); ok && len(msgs) > 0 {
 		if b, err := json.Marshal(msgs); err == nil {
 			writes = append(writes, writeReq{Path: fmt.Sprintf("/sessions/%s/messages.json", sessionName), Content: string(b), Encoding: "utf8"})
