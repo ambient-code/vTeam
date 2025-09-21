@@ -602,21 +602,22 @@ class SimpleClaudeRunner:
             self._push_workspace_to_pvc()
 
             if result_msg is not None:
-
                 try:
-                    summary_payload = {
-                        "message": "Session completed",
-                        "phase": "Completed",
-                        "subtype": getattr(result_msg, "subtype", None),
-                        "is_error": getattr(result_msg, "is_error", None),
-                        "num_turns": getattr(result_msg, "num_turns", None),
-                        "session_id": getattr(result_msg, "session_id", None),
-                        "total_cost_usd": getattr(result_msg, "total_cost_usd", None),
-                        "usage": getattr(result_msg, "usage", None),
-                        "result": getattr(result_msg, "result", None),
-                    }
                     import asyncio as _asyncio
-                    _asyncio.run(self.backend.update_session_status(self.session_name, summary_payload))
+                    async def _send():
+                        summary_payload = {
+                            "message": "Session completed",
+                            "phase": "Completed",
+                            "subtype": getattr(result_msg, "subtype", None),
+                            "is_error": getattr(result_msg, "is_error", None),
+                            "num_turns": getattr(result_msg, "num_turns", None),
+                            "session_id": getattr(result_msg, "session_id", None),
+                            "total_cost_usd": getattr(result_msg, "total_cost_usd", None),
+                            "usage": getattr(result_msg, "usage", None),
+                            "result": getattr(result_msg, "result", None),
+                        }
+                        await self.backend.update_session_status(self.session_name, summary_payload)
+                    _asyncio.run(_send())
                 except RuntimeError:
                     pass
                 except Exception as e:

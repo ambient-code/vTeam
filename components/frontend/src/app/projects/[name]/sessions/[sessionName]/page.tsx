@@ -139,6 +139,7 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
   const [wsLoading, setWsLoading] = useState<boolean>(false);
   const [usageExpanded, setUsageExpanded] = useState(false);
 
+  const [chatInput, setChatInput] = useState("")
 
   useEffect(() => {
     params.then(({ name, sessionName }) => {
@@ -186,6 +187,21 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
       setLoading(false);
     }
   }, [projectName, sessionName]);
+
+  const sendChat = useCallback(async () => {
+    if (!chatInput.trim() || !projectName || !sessionName) return
+    try {
+      const apiUrl = getApiUrl()
+      await fetch(`${apiUrl}/projects/${encodeURIComponent(projectName)}/agentic-sessions/${encodeURIComponent(sessionName)}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: chatInput.trim() })
+      })
+      setChatInput("")
+      await fetchSession()
+      setActiveTab('messages')
+    } catch {}
+  }, [chatInput, projectName, sessionName, fetchSession])
 
   useEffect(() => {
     if (projectName && sessionName) {
@@ -605,6 +621,22 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
                 .map((message, index) => (
                   <StreamMessage key={`msg-${index}`} message={message} onGoToResults={() => setActiveTab("results")} />
               ))}
+
+              {/* Chat composer (shown when interactive or running) */}
+              <div className="border rounded-md p-3 space-y-2">
+                <textarea
+                  className="w-full border rounded p-2 text-sm"
+                  placeholder="Type a message to the agent..."
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  rows={3}
+                />
+                <div className="flex justify-end">
+                  <Button size="sm" onClick={sendChat} disabled={!chatInput.trim()}>
+                    Send
+                  </Button>
+                </div>
+              </div>
 
               {(session.status?.phase === "Running" ||
                 session.status?.phase === "Pending" ||
