@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
-import { MessageObject } from "@/types/agentic-session";
+import { ToolResultBlock, ToolUseBlock } from "@/types/agentic-session";
 import {
   ChevronDown,
   ChevronRight,
@@ -9,13 +9,13 @@ import {
   Check,
   X,
   Cog,
-  Bot,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 export type ToolMessageProps = {
-  message: MessageObject;
+  toolUseBlock?: ToolUseBlock;
+  resultBlock?: ToolResultBlock;
   className?: string;
 };
 
@@ -49,62 +49,12 @@ const truncateContent = (content: string, maxLength = 2000) => {
 };
 
 export const ToolMessage = React.forwardRef<HTMLDivElement, ToolMessageProps>(
-  ({ message, className, ...props }, ref) => {
+  ({ toolUseBlock, resultBlock, className, ...props }, ref) => {
     const [isExpanded, setIsExpanded] = useState(false);
 
-    // Determine message type and state using new union
-    const assistantBlocks =
-      message.type === "assistant_message" ? (message.content as any[]) : undefined;
-    const toolUseBlock = assistantBlocks?.find?.(
-      (b: any) => b && typeof b === "object" && b.type === "tool_use_block"
-    ) as any | undefined;
-    const toolResultBlock = assistantBlocks?.find?.(
-      (b: any) => b && typeof b === "object" && b.type === "tool_result_block"
-    ) as any | undefined;
-    const textBlock = assistantBlocks?.find?.(
-      (b: any) => b && typeof b === "object" && b.type === "text_block"
-    ) as any | undefined;
-
+    const toolResultBlock = resultBlock;
     const isToolCall = Boolean(toolUseBlock && !toolResultBlock);
     const isToolResult = Boolean(toolResultBlock);
-    const isTextMessage =
-      message.type === "assistant_message" && Boolean(textBlock) && !isToolCall && !isToolResult;
-
-    // For regular text messages, use the original Message component style
-    if (isTextMessage) {
-      const text = textBlock?.text || "";
-      return (
-        <div ref={ref} className={cn("mb-4", className)} {...props}>
-          <div className="flex items-start space-x-3">
-            {/* Avatar */}
-            <div className="flex-shrink-0">
-              <div className="w-8 h-8 rounded-full flex items-center justify-center bg-blue-600">
-                <Bot className="w-4 h-4 text-white" />
-              </div>
-            </div>
-
-            {/* Message Content */}
-            <div className="flex-1 min-w-0">
-              <div className="bg-white rounded-lg border shadow-sm p-3">
-                {/* Header */}
-                <div className="flex items-center justify-between mb-2">
-                  <Badge variant="outline" className="text-xs">
-                    Claude AI
-                  </Badge>
-                </div>
-
-                {/* Content */}
-                <div className="text-sm text-gray-800">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                    {text}
-                  </ReactMarkdown>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      );
-    }
 
     // For tool calls/results, show collapsible interface
     const toolName = formatToolName(toolUseBlock?.name);

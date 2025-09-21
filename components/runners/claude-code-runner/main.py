@@ -210,6 +210,10 @@ class SimpleClaudeRunner:
                 AssistantMessage,
                 UserMessage,
                 SystemMessage,
+                ToolUseBlock,
+                ToolResultBlock,
+                TextBlock,
+                ThinkingBlock,
                 ResultMessage,
             )
 
@@ -233,26 +237,50 @@ class SimpleClaudeRunner:
                     # handle stream events
                     pass
                 else:
-                    # Map message types to string identifiers
-                    message_type_map = {
-                        AssistantMessage: "assistant_message",
-                        UserMessage: "user_message", 
-                        SystemMessage: "system_message",
-                        ResultMessage: "result_message"
-                    }
-                    
-                    message_type = message_type_map.get(type(message))
-                    logger.info(f"Message: {message_type}")
-                    if message_type:
+                    if isinstance(message, AssistantMessage) or isinstance(message, UserMessage):
+                        message_type_map = {
+                            AssistantMessage: "assistant_message",
+                            UserMessage: "user_message",
+                            SystemMessage: "system_message",
+                            ResultMessage: "result_message",
+                        }
+                        message_type = message_type_map.get(type(message))
+                        if isinstance(message.content, str):
+                            payload = {
+                                "type": message_type,
+                                "content": message.content,
+                            }
+                            self.messages.append(payload)
+                            self._flush_messages()
+                        else:
+                            for block in message.content:
+                                content_type_map = {
+                                    TextBlock: "text_block",
+                                    ThinkingBlock: "thinking_block",
+                                    ToolUseBlock: "tool_use_block",
+                                    ToolResultBlock: "tool_result_block",
+                                }
+                                content_type = content_type_map.get(type(block))
+                                payload = {
+                                    "type": message_type,
+                                    "content": {
+                                        "type": content_type,
+                                        **asdict(block),
+                                    },
+                                }
+                                self.messages.append(payload)
+                                self._flush_messages()
+                    else:
                         payload = {
-                            "type": message_type,
+                            "type": message.type,
                             **asdict(message),
                         }
                         self.messages.append(payload)
                         self._flush_messages()
+                        if isinstance(message, ResultMessage):
+                            result_message = message
                         
-                    if isinstance(message, ResultMessage):
-                        result_message = message
+                    
 
 
         try:

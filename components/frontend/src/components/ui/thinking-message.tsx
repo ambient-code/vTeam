@@ -2,20 +2,15 @@ import React, { useState } from "react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Brain } from "lucide-react";
-import type { ContentBlock } from "@/types/agentic-session";
+import type { ThinkingBlock } from "@/types/agentic-session";
 
 export type ThinkingMessageProps = {
-  blocks: ContentBlock[];
+  block: ThinkingBlock;
   className?: string;
 };
 
-export const ThinkingMessage: React.FC<ThinkingMessageProps> = ({ blocks, className }) => {
+export const ThinkingMessage: React.FC<ThinkingMessageProps> = ({ block, className }) => {
   const [expanded, setExpanded] = useState(false);
-  const thinkingBlocks = blocks.filter((b) => b.type === "thinking_block") as Array<
-    Extract<ContentBlock, { type: "thinking_block" }>
-  >;
-
-  if (thinkingBlocks.length === 0) return null;
 
   return (
     <div className={cn("mb-4", className)}>
@@ -46,16 +41,15 @@ export const ThinkingMessage: React.FC<ThinkingMessageProps> = ({ blocks, classN
 
             {expanded && (
               <div className="space-y-3">
-                {thinkingBlocks.map((tb, idx) => (
-                  <div key={idx} className="text-xs">
+                  <div className="text-xs">
                     <div className="mb-1 text-gray-600">
-                      <span className="font-semibold">Signature:</span> {tb.signature}
+                      <span className="font-semibold">Signature:</span> {block.signature}
                     </div>
                     <pre className="bg-gray-50 border rounded p-2 whitespace-pre-wrap break-words text-gray-800">
-                      {tb.thinking}
+                      {block.thinking}
                     </pre>
                   </div>
-                ))}
+                
               </div>
             )}
           </div>

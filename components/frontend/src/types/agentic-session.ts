@@ -40,59 +40,67 @@ export type AgenticSessionSpec = {
 // -----------------------------
 // Content Block Types
 // -----------------------------
-export type ContentBlock =
-  | {
-      type: "text_block";
-      text: string;
-    }
-  | {
-      type: "thinking_block";
-      thinking: string;
-      signature: string;
-    }
-  | {
-      type: "tool_use_block";
-      id: string;
-      name: string;
-      input: Record<string, any>;
-    }
-  | {
-      type: "tool_result_block";
-      tool_use_id: string;
-      content?: string | Array<Record<string, any>> | null;
-      is_error?: boolean | null;
-    };
+export type TextBlock = {
+	type: "text_block";
+	text: string;
+}
+export type ThinkingBlock = {
+	type: "thinking_block";
+	thinking: string;
+	signature: string;
+}
+export type ToolUseBlock = {
+	type: "tool_use_block";
+	id: string;
+	name: string;
+	input: Record<string, any>;
+}
+export type ToolResultBlock = {
+	type: "tool_result_block";
+	tool_use_id: string;
+	content?: string | Array<Record<string, any>> | null;
+	is_error?: boolean | null;
+};
 
+export type ContentBlock = TextBlock | ThinkingBlock | ToolUseBlock | ToolResultBlock;
+
+export type ToolUseMessages = {
+	type: "tool_use_messages";
+	toolUseBlock: ToolUseBlock;
+	resultBlock: ToolResultBlock;
+}
+	
 // -----------------------------
 // Message Types
 // -----------------------------
-export type Message =
-  | {
-      type: "user_message";
-      content: string | ContentBlock[];
-    }
-  | {
-      type: "assistant_message";
-      content: ContentBlock[];
-      model: string;
-    }
-  | {
-      type: "system_message";
-      subtype: string;
-      data: Record<string, any>;
-    }
-  | {
-      type: "result_message";
-      subtype: string;
-      duration_ms: number;
-      duration_api_ms: number;
-      is_error: boolean;
-      num_turns: number;
-      session_id: string;
-      total_cost_usd?: number | null;
-      usage?: Record<string, any> | null;
-      result?: string | null;
-    };
+export type Message = UserMessage | AssistantMessage | SystemMessage | ResultMessage | ToolUseMessages;
+
+export type UserMessage = {
+	type: "user_message";
+	content: ContentBlock | string;
+}
+export type AssistantMessage = {
+	type: "assistant_message";
+	content: ContentBlock;
+	model: string;
+}
+export type SystemMessage = {
+	type: "system_message";
+	subtype: string;
+	data: Record<string, any>;
+}
+export type ResultMessage = {
+	type: "result_message";
+	subtype: string;
+	duration_ms: number;
+	duration_api_ms: number;
+	is_error: boolean;
+	num_turns: number;
+	session_id: string;
+	total_cost_usd?: number | null;
+	usage?: Record<string, any> | null;
+	result?: string | null;
+}
 
 // Backwards-compatible message type consumed by frontend components.
 // Prefer using StreamMessage going forward.

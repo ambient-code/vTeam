@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { formatDistanceToNow, format } from "date-fns";
 import {
@@ -38,7 +38,7 @@ import {
   AgenticSession,
   AgenticSessionPhase,
 } from "@/types/agentic-session";
-import type { MessageObject, ContentBlock } from "@/types/agentic-session";
+import type { MessageObject, ToolUseBlock, ToolUseMessages, ToolResultBlock } from "@/types/agentic-session";
 import { CloneSessionDialog } from "@/components/clone-session-dialog";
 
 import { getApiUrl } from "@/lib/config";
@@ -126,9 +126,6 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
-  // Project editing state
-  const [project, setProject] = useState<Project | null>(null);
-  const [projectForm, setProjectForm] = useState({ displayName: "", description: "" });
 
   useEffect(() => {
     params.then(({ name, sessionName }) => {
@@ -183,29 +180,7 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
     }
   }, [projectName, sessionName, session?.status?.phase, fetchSession]);
 
-  // Fetch project to populate edit form
-  useEffect(() => {
-    const fetchProject = async () => {
-      if (!projectName) return;
-      try {
-        const apiUrl = getApiUrl();
-        const response = await fetch(`${apiUrl}/projects/${encodeURIComponent(projectName)}`);
-        if (!response.ok) return; // soft-fail
-        const data: Project = await response.json();
-        setProject(data);
-        setProjectForm({
-          displayName: data.displayName || "",
-          description: data.description || "",
-        });
-      } catch {
-        // ignore; non-blocking for session view
-      }
-    };
-    if (projectName) {
-      void fetchProject();
-    }
-  }, [projectName]);
-
+ 
   const handleRefresh = () => {
     setLoading(true);
     fetchSession();
@@ -260,56 +235,42 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
       setActionLoading(null);
     }
   };
+  
 
-  const mergeToolUseAndResults = (messages: MessageObject[] | undefined): MessageObject[] => {
-    if (!Array.isArray(messages)) return [];
-
-    const result: MessageObject[] = [];
-    const idToAssistantIdx = new Map<string, number>();
-    const defaultAssistantModel = (messages.find((m: any) => m?.type === "assistant_message" && (m as any).model) as any)?.model ?? "";
-
-    for (const msg of messages) {
-      if (msg.type === "assistant_message") {
-        const blocks = (msg.content as ContentBlock[]) || [];
-
-        const hasToolUse = blocks.some((b) => b.type === "tool_use_block");
-        const hasToolResultOnly = !hasToolUse && blocks.some((b) => b.type === "tool_result_block");
-
-        if (hasToolResultOnly) {
-          for (const b of blocks) {
-            if (b.type === "tool_result_block") {
-              const idx = idToAssistantIdx.get(b.tool_use_id);
-              if (typeof idx === "number" && result[idx] && result[idx].type === "assistant_message") {
-                const target = result[idx] as Extract<MessageObject, { type: "assistant_message" }>;
-                (target.content as ContentBlock[]).push(b);
-              } else {
-                result.push({ type: "assistant_message", model: defaultAssistantModel, content: [b] } as any);
-              }
-            }
-          }
-          continue;
+  const [agenticMessages, toolUseMessages] = useMemo(() => {
+    const toolUseBlocks: ToolUseBlock[] = [];
+    const toolResultBlocks: ToolResultBlock[] = [];
+    const agenticMessages: MessageObject[] = [];
+    
+    for (const message of messages) {
+      if (message.type === "assistant_message" || message.type === "user_message") {
+        if (typeof message.content === "object" && message.content.type === "tool_use_block") {
+          toolUseBlocks.push(message.content);
+        } else if (typeof message.content === "object" && message.content.type === "tool_result_block") {
+          toolResultBlocks.push(message.content);
+        } else {
+          agenticMessages.push(message);
         }
-
-        const assistantMsg: MessageObject = { ...msg, content: blocks } as any;
-        const idx = result.push(assistantMsg) - 1;
-        blocks.forEach((b) => {
-          if (b.type === "tool_use_block") idToAssistantIdx.set(b.id, idx);
-        });
-        continue;
-      }
-
-      if (msg.type === "user_message") {
-        result.push(msg);
-        continue;
-      }
-
-      if (msg.type === "system_message" || msg.type === "result_message") {
-        result.push(msg);
+      } else {
+        agenticMessages.push(message);
       }
     }
 
-    return result;
-  };
+    // Merge tool use blocks with their corresponding result blocks
+    const toolUseMessages: ToolUseMessages[] = [];
+    for (const toolUseBlock of toolUseBlocks) {
+      const resultBlock = toolResultBlocks.find(result => result.tool_use_id === toolUseBlock.id);
+      if (resultBlock) {
+        toolUseMessages.push({
+          type: "tool_use_messages",
+          toolUseBlock: toolUseBlock,
+          resultBlock: resultBlock,
+        });
+      }
+    }
+
+    return [agenticMessages, toolUseMessages];
+  }, [messages]);
 
   if (loading) {
     return (
@@ -540,17 +501,15 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
               <CardTitle className="flex items-center justify-between">
                 <span>Agentic Progress</span>
                 <Badge variant="secondary">
-                  {mergeToolUseAndResults(messages).length} message
-                  {mergeToolUseAndResults(messages).length !== 1 ? "s" : ""}
+                  {toolUseMessages.length + agenticMessages.length} message
                 </Badge>
               </CardTitle>
               <CardDescription>Live analysis from Claude AI</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="max-h-96 overflow-y-auto space-y-4 bg-gray-50 rounded-lg p-4">
-                {/* Display all existing messages (normalized/merged) */}
-                {mergeToolUseAndResults(messages).map((message, index) => (
-                  <StreamMessage key={`msg-${index}`} message={message as any} />
+                {[...toolUseMessages, ...agenticMessages].map((message, index) => (
+                  <StreamMessage key={`msg-${index}`} message={message} />
                 ))}
 
                 {/* Show loading message if still processing */}
