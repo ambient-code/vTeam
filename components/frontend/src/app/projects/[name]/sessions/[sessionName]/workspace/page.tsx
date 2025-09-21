@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { RefreshCw, ArrowLeft, Download } from "lucide-react";
 import { FileTree, type FileTreeNode } from "@/components/file-tree";
@@ -136,20 +136,12 @@ export default function SessionWorkspacePage() {
           </div>
           <div className="overflow-auto">
             <Card className="m-4">
+              <CardHeader>
+                <CardTitle>selectedPath.split('/').pop()</CardTitle>
+                <CardDescription>selectedPath</CardDescription>
+              </CardHeader>
               <CardContent className="p-4">
-                {selectedPath ? (
-                  <>
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="text-sm">
-                        <span className="font-medium">{selectedPath.split('/').pop()}</span>
-                        <Badge variant="outline" className="ml-2">{selectedPath}</Badge>
-                      </div>
-                    </div>
-                    <pre className="bg-gray-900 text-gray-100 p-4 rounded overflow-auto text-sm">
-{fileContent}
-                    </pre>
-                  </>
-                ) : (
+                {!selectedPath && (
                   <div className="text-sm text-muted-foreground p-4">Select a file to preview</div>
                 )}
               </CardContent>

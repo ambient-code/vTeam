@@ -7,9 +7,10 @@ export type SystemMessageProps = {
   subtype: string;
   data: Record<string, any>;
   className?: string;
+  borderless?: boolean;
 };
 
-export const SystemMessage: React.FC<SystemMessageProps> = ({ subtype, data, className }) => {
+export const SystemMessage: React.FC<SystemMessageProps> = ({ subtype, data, className, borderless }) => {
   const [expanded, setExpanded] = useState(false);
 
   const pretty = React.useMemo(() => JSON.stringify(data ?? {}, null, 2), [data]);
@@ -24,7 +25,7 @@ export const SystemMessage: React.FC<SystemMessageProps> = ({ subtype, data, cla
         </div>
 
         <div className="flex-1 min-w-0">
-          <div className="bg-white rounded-lg border shadow-sm">
+          <div className={cn(borderless ? "p-0" : "bg-white rounded-lg border shadow-sm")}>
             <div className="flex items-center justify-between p-3">
               <div className="flex items-center gap-2">
                 <Badge variant="secondary" className="text-xs">System</Badge>

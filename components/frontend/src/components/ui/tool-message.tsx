@@ -17,6 +17,7 @@ export type ToolMessageProps = {
   toolUseBlock?: ToolUseBlock;
   resultBlock?: ToolResultBlock;
   className?: string;
+  borderless?: boolean;
 };
 
 const formatToolName = (toolName?: string) => {
@@ -49,7 +50,7 @@ const truncateContent = (content: string, maxLength = 2000) => {
 };
 
 export const ToolMessage = React.forwardRef<HTMLDivElement, ToolMessageProps>(
-  ({ toolUseBlock, resultBlock, className, ...props }, ref) => {
+  ({ toolUseBlock, resultBlock, className, borderless, ...props }, ref) => {
     const [isExpanded, setIsExpanded] = useState(false);
 
     const toolResultBlock = resultBlock;
@@ -74,7 +75,7 @@ export const ToolMessage = React.forwardRef<HTMLDivElement, ToolMessageProps>(
 
           {/* Tool Message Content */}
           <div className="flex-1 min-w-0">
-            <div className="bg-white rounded-lg border shadow-sm">
+            <div className={cn(borderless ? "p-0" : "bg-white rounded-lg border shadow-sm")}>
               {/* Collapsible Header */}
               <div
                 className="flex items-center justify-between p-3 cursor-pointer hover:bg-gray-50 transition-colors"

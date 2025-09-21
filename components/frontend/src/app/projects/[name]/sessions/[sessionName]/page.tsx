@@ -11,12 +11,15 @@ import {
   Square,
   Trash2,
   Copy,
+  ChevronRight,
+  ChevronDown,
+  CheckCircle2,
+  XCircle,
 } from "lucide-react";
 
 // Custom components
 import { Message } from "@/components/ui/message";
 import { StreamMessage } from "@/components/ui/stream-message";
-import { ResultMessage } from "@/components/ui/result-message";
 
 // Markdown rendering
 import ReactMarkdown from "react-markdown";
@@ -39,10 +42,11 @@ import {
   AgenticSession,
   AgenticSessionPhase,
 } from "@/types/agentic-session";
-import type { MessageObject, ToolUseBlock, ToolUseMessages, ToolResultBlock } from "@/types/agentic-session";
+import type { MessageObject, ToolUseBlock, ToolUseMessages, ToolResultBlock, ResultMessage } from "@/types/agentic-session";
 import { CloneSessionDialog } from "@/components/clone-session-dialog";
 
 import { getApiUrl } from "@/lib/config";
+import { cn } from "@/lib/utils";
 
 const getPhaseColor = (phase: AgenticSessionPhase) => {
   switch (phase) {
@@ -133,6 +137,7 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
   const [wsSelectedPath, setWsSelectedPath] = useState<string | undefined>(undefined);
   const [wsFileContent, setWsFileContent] = useState<string>("");
   const [wsLoading, setWsLoading] = useState<boolean>(false);
+  const [usageExpanded, setUsageExpanded] = useState(false);
 
 
   useEffect(() => {
@@ -298,7 +303,7 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
   }, [allMessages]);
 
   // Stats: derive latest result metrics and duration
-  const latestResult = useMemo(() => {
+  const latestResult: ResultMessage | null = useMemo(() => {
     const results = messages.filter((m) => m.type === "result_message");
     return results.length > 0 ? (results[results.length - 1] as any) : null;
   }, [messages]);
@@ -411,19 +416,13 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
 
   return (
     <div className="container mx-auto p-6 max-w-5xl">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-start mb-6">
         <Link href={`/projects/${encodeURIComponent(projectName)}/sessions`}>
           <Button variant="ghost" size="sm">
             <ArrowLeft className="w-4 h-4 mr-2" />
             Back to Sessions
           </Button>
         </Link>
-        <div className="flex items-center gap-4">
-          <Button variant="outline" onClick={handleRefresh} disabled={loading}>
-            <RefreshCw className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`} />
-            Refresh
-          </Button>
-        </div>
       </div>
 
       <div className="space-y-6">
@@ -469,20 +468,20 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
 
         {/* Top compact stat cards */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <Card>
-            <CardContent className="p-4">
+          <Card className="py-4">
+            <CardContent>
               <div className="text-xs text-muted-foreground">Cost</div>
               <div className="text-lg font-semibold">{typeof session.status?.total_cost_usd === "number" ? `$${session.status.total_cost_usd.toFixed(4)}` : "-"}</div>
             </CardContent>
           </Card>
-          <Card>
-            <CardContent className="p-4">
+          <Card className="py-4">
+            <CardContent >
               <div className="text-xs text-muted-foreground">Duration</div>
               <div className="text-lg font-semibold">{typeof durationMs === "number" ? `${durationMs} ms` : "-"}</div>
             </CardContent>
           </Card>
-          <Card>
-            <CardContent className="p-4">
+          <Card className="py-4">
+            <CardContent >
               <div className="text-xs text-muted-foreground">Messages</div>
               <div className="text-lg font-semibold">{allMessages.length}</div>
             </CardContent>
@@ -501,6 +500,18 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
           {/* Overview */}
           <TabsContent value="overview" className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Prompt */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center">
+                    <Brain className="w-5 h-5 mr-2" />
+                    InitialPrompt
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="whitespace-pre-wrap text-sm">{session.spec.prompt}</p>
+                </CardContent>
+              </Card>
               {/* Latest Message */}
               <Card>
                 <CardHeader>
@@ -519,7 +530,8 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
                   )}
                 </CardContent>
               </Card>
-
+            </div>
+            <div className="grid grid-cols-1 gap-6">
               {/* System Status + Configuration (merged) */}
               {session.status && (
                 <Card>
@@ -591,36 +603,10 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
                 </Card>
               )}
             </div>
-
-            {/* Prompt */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center">
-                    <Brain className="w-5 h-5 mr-2" />
-                    Agentic Prompt
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="whitespace-pre-wrap text-sm">{session.spec.prompt}</p>
-                </CardContent>
-              </Card>
-            </div>
           </TabsContent>
 
           {/* Messages */}
           <TabsContent value="messages">
-            <div className="flex items-center justify-end mb-2">
-              <div className="flex items-center gap-2 text-xs">
-                <span className="text-gray-500">{allMessages.length} message</span>
-                <button
-                  className="text-blue-600 hover:underline"
-                  onClick={() => window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" })}
-                >
-                  Jump to latest
-                </button>
-              </div>
-            </div>
             <div className="space-y-4">
               {allMessages
                 .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
@@ -712,24 +698,57 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
             {latestResult ? (
               <Card>
                 <CardHeader>
-                  <CardTitle>Agentic Results</CardTitle>
-                  <CardDescription>Claude&apos;s analysis</CardDescription>
+                  <CardTitle>Agent Results</CardTitle>
+                  <CardDescription>
+                    <Badge variant={latestResult.is_error ? "destructive" : "secondary"} className="text-xs">
+                      {latestResult.is_error ? (
+                        <span className="inline-flex items-center"><XCircle className="w-3 h-3 mr-1" /> Error</span>
+                      ) : (
+                        <span className="inline-flex items-center"><CheckCircle2 className="w-3 h-3 mr-1" /> Success</span>
+                      )}
+                    </Badge>
+                  </CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="mb-4">
-                    <ResultMessage
-                      duration_ms={latestResult.duration_ms}
-                      duration_api_ms={latestResult.duration_api_ms}
-                      is_error={latestResult.is_error}
-                      num_turns={latestResult.num_turns}
-                      session_id={latestResult.session_id}
-                      total_cost_usd={latestResult.total_cost_usd}
-                      usage={latestResult.usage as any}
-                      result={latestResult.result ?? session.status?.result}
-                      borderless
-                      defaultUsageExpanded
-                      defaultResultExpanded
-                    />
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs text-gray-700">
+                        <div><span className="font-medium">Duration:</span> {latestResult.duration_ms} ms</div>
+                        <div><span className="font-medium">API:</span> {latestResult.duration_api_ms} ms</div>
+                        <div><span className="font-medium">Turns:</span> {latestResult.num_turns}</div>
+                        {typeof latestResult.total_cost_usd === "number" && <div><span className="font-medium">Cost:</span> ${latestResult.total_cost_usd.toFixed(4)}</div>}
+                      </div>
+
+                      {latestResult.usage && (
+                        <div className="mt-2">
+                          <div className="flex items-center justify-between mb-1">
+                            <div className="text-[11px] text-gray-500">Usage</div>
+                            <button
+                              className="text-xs text-blue-600 hover:underline inline-flex items-center gap-1"
+                              onClick={() => setUsageExpanded((e) => !e)}
+                              aria-expanded={usageExpanded}
+                            >
+                              {usageExpanded ? "Hide" : "Show"} details
+                              {usageExpanded ? (
+                                <ChevronDown className="w-3 h-3 text-gray-500" />
+                              ) : (
+                                <ChevronRight className="w-3 h-3 text-gray-500" />
+                              )}
+                            </button>
+                          </div>
+
+                          {!usageExpanded && (
+                            <div className="text-xs text-gray-600">Usage details hidden</div>
+                          )}
+
+                          {usageExpanded && (
+                            <pre className="bg-gray-50 border rounded p-2 whitespace-pre-wrap break-words text-xs text-gray-800">
+                              {JSON.stringify(latestResult.usage, null, 2)}
+                            </pre>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   {session.status?.result && (
