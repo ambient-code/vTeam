@@ -338,11 +338,29 @@ class SimpleClaudeRunner:
         async with ClaudeSDKClient(options=options) as client:
             self._update_status("Running", message="Chat mode ready")
 
+            async def _push_workspace_async() -> None:
+                try:
+                    loop = __import__("asyncio").get_running_loop()
+                    await loop.run_in_executor(None, self._push_workspace_to_pvc)
+                except Exception as e:  # noqa: BLE001
+                    logger.debug(f"async push workspace failed: {e}")
+
             while True:
                 inbox, new_offset = await self._read_inbox_lines(last_offset)
                 if inbox:
                     for msg in inbox:
                         text = str(msg.get("content", ""))
+                        norm = text.strip().lower()
+                        if norm in ("/end", "/stop", "/quit", "/exit", "/finish"):
+                            # Graceful end of interactive session
+                            try:
+                                self._append_message("User requested session end")
+                            except Exception:
+                                pass
+                            await _push_workspace_async()
+                            self._update_status("Completed", message="Session ended by user", completed=True)
+                            await _push_workspace_async()
+                            return
                         # Mirror user message into outbox
                         self.messages.append({
                             "type": "user_message",
@@ -350,6 +368,9 @@ class SimpleClaudeRunner:
                             "timestamp": datetime.now(timezone.utc).isoformat(),
                         })
                         self._flush_messages()
+
+                        # Ensure any recent local changes are visible in UI before next run
+                        await _push_workspace_async()
 
                         # Send to Claude and stream results
                         await client.query(text)
@@ -380,8 +401,12 @@ class SimpleClaudeRunner:
                                             },
                                         })
                                         self._flush_messages()
+                                        # Push workspace after tool results to surface new files immediately
+                                        await _push_workspace_async()
                             elif isinstance(message, ResultMessage):
                                 self._update_status("Running", result_msg=message)
+                                # Push workspace after turn completion
+                                await _push_workspace_async()
 
                     # Commit cursor
                     last_offset = new_offset
@@ -411,7 +436,12 @@ class SimpleClaudeRunner:
             payload["completionTime"] = datetime.now(timezone.utc).isoformat()
         try:
             import asyncio
-            asyncio.run(self.backend.update_session_status(self.session_name, payload))
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                loop.run_until_complete(self.backend.update_session_status(self.session_name, payload))
+            finally:
+                loop.close()
         except RuntimeError:
             # already in event loop
             pass
@@ -587,6 +617,7 @@ class SimpleClaudeRunner:
             chat_enabled = os.getenv("INTERACTIVE", "").lower() in ("true", "1", "yes")
             if chat_enabled:
                 logger.info("Entering chat mode")
+                self._update_status("Interactive", message="Claude is running in interactive mode")
                 import asyncio as _asyncio
                 _asyncio.run(self._chat_mode())
                 # Chat mode is long-running; we won't push workspace or mark completed here

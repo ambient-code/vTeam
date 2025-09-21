@@ -615,7 +615,7 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
 
           {/* Messages */}
           <TabsContent value="messages">
-            <div className="space-y-4">
+            <div className="space-y-4 pb-28 relative">
               {allMessages
                 .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
                 .map((message, index) => (
@@ -623,18 +623,35 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
               ))}
 
               {/* Chat composer (shown when interactive or running) */}
-              <div className="border rounded-md p-3 space-y-2">
-                <textarea
-                  className="w-full border rounded p-2 text-sm"
-                  placeholder="Type a message to the agent..."
-                  value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
-                  rows={3}
-                />
-                <div className="flex justify-end">
-                  <Button size="sm" onClick={sendChat} disabled={!chatInput.trim()}>
-                    Send
-                  </Button>
+              <div className="fixed bottom-0 left-0 right-0 border-t bg-white/90 backdrop-blur supports-[backdrop-filter]:bg-white/60">
+                <div className="container mx-auto max-w-5xl p-3">
+                  <div className="border rounded-md p-3 space-y-2 bg-white">
+                    <textarea
+                      className="w-full border rounded p-2 text-sm"
+                      placeholder="Type a message to the agent... (use /end to finish)"
+                      value={chatInput}
+                      onChange={(e) => setChatInput(e.target.value)}
+                      rows={3}
+                    />
+                    <div className="flex items-center justify-between">
+                      <div className="text-xs text-muted-foreground">Type <span className="font-mono">/end</span> to end the session</div>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={async () => {
+                            setChatInput("/end")
+                            await sendChat()
+                          }}
+                        >
+                          End session
+                        </Button>
+                        <Button size="sm" onClick={sendChat} disabled={!chatInput.trim()}>
+                          Send
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
 
