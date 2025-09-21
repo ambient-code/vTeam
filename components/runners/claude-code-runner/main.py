@@ -242,7 +242,7 @@ class SimpleClaudeRunner:
                                 SystemMessage: "system_message",
                                 ResultMessage: "result_message",
                             }
-                            message_type = message_type_map.get(type(message))
+                            message_type = message_type_map.get(type(message), "unknown_message")
                             if isinstance(message.content, str):
                                 payload = {
                                     "type": message_type,
@@ -258,7 +258,7 @@ class SimpleClaudeRunner:
                                         ToolUseBlock: "tool_use_block",
                                         ToolResultBlock: "tool_result_block",
                                     }
-                                    content_type = content_type_map.get(type(block))
+                                    content_type = content_type_map.get(type(block), "unknown_block")
                                     payload = {
                                         "type": message_type,
                                         "content": {
