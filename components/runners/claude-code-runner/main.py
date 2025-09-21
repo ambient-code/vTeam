@@ -307,11 +307,11 @@ class SimpleClaudeRunner:
             ClaudeSDKClient,
             ClaudeCodeOptions,
             AssistantMessage,
-            UserMessage,
-            SystemMessage,
             ToolUseBlock,
             ToolResultBlock,
             TextBlock,
+            UserMessage,
+            SystemMessage,
             ThinkingBlock,
             ResultMessage,
         )
@@ -336,8 +336,6 @@ class SimpleClaudeRunner:
             pass
 
         async with ClaudeSDKClient(options=options) as client:
-            self._update_status("Running", message="Chat mode ready")
-
             async def _push_workspace_async() -> None:
                 try:
                     loop = __import__("asyncio").get_running_loop()
@@ -376,37 +374,50 @@ class SimpleClaudeRunner:
                         await client.query(text)
                         async for message in client.receive_response():
                             if isinstance(message, AssistantMessage):
-                                if isinstance(message.content, str):
-                                    self.messages.append({
-                                        "type": "assistant_message",
-                                        "content": message.content,
+                                message_type_map = {
+                            AssistantMessage: "assistant_message",
+                            UserMessage: "user_message",
+                            SystemMessage: "system_message",
+                            ResultMessage: "result_message",
+                        }
+                        message_type = message_type_map.get(type(message), "unknown_message")
+                        if isinstance(message, AssistantMessage) or isinstance(message, UserMessage):
+                            if isinstance(message.content, str):
+                                payload = {
+                                    "type": message_type,
+                                    "content": message.content,
+                                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                                }
+                                self.messages.append(payload)
+                                self._flush_messages()
+                            else:
+                                for block in message.content:
+                                    content_type_map = {
+                                        TextBlock: "text_block",
+                                        ThinkingBlock: "thinking_block",
+                                        ToolUseBlock: "tool_use_block",
+                                        ToolResultBlock: "tool_result_block",
+                                    }
+                                    content_type = content_type_map.get(type(block), "unknown_block")
+                                    payload = {
+                                        "type": message_type,
                                         "timestamp": datetime.now(timezone.utc).isoformat(),
-                                    })
+                                        "content": {
+                                            "type": content_type,
+                                            **asdict(block),
+                                        },
+                                    }
+                                    self.messages.append(payload)
                                     self._flush_messages()
-                                else:
-                                    for block in message.content:
-                                        content_type = (
-                                            "text_block" if isinstance(block, TextBlock)
-                                            else "thinking_block" if isinstance(block, ThinkingBlock)
-                                            else "tool_use_block" if isinstance(block, ToolUseBlock)
-                                            else "tool_result_block" if isinstance(block, ToolResultBlock)
-                                            else "unknown_block"
-                                        )
-                                        self.messages.append({
-                                            "type": "assistant_message",
-                                            "timestamp": datetime.now(timezone.utc).isoformat(),
-                                            "content": {
-                                                "type": content_type,
-                                                **asdict(block),
-                                            },
-                                        })
-                                        self._flush_messages()
-                                        # Push workspace after tool results to surface new files immediately
-                                        await _push_workspace_async()
-                            elif isinstance(message, ResultMessage):
-                                self._update_status("Running", result_msg=message)
-                                # Push workspace after turn completion
-                                await _push_workspace_async()
+                        else:
+                            payload = {
+                                "type": message_type,
+                                "timestamp": datetime.now(timezone.utc).isoformat(),
+                                **asdict(message),
+                            }
+                            self.messages.append(payload)
+                        self._flush_messages()
+                        await _push_workspace_async()
 
                     # Commit cursor
                     last_offset = new_offset
@@ -617,7 +628,7 @@ class SimpleClaudeRunner:
             chat_enabled = os.getenv("INTERACTIVE", "").lower() in ("true", "1", "yes")
             if chat_enabled:
                 logger.info("Entering chat mode")
-                self._update_status("Interactive", message="Claude is running in interactive mode")
+                self._update_status("Waiting for user input", message="Claude is running in interactive mode")
                 import asyncio as _asyncio
                 _asyncio.run(self._chat_mode())
                 # Chat mode is long-running; we won't push workspace or mark completed here

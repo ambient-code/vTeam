@@ -1,10 +1,13 @@
 package main
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -2841,7 +2844,97 @@ func createProjectRFEWorkflow(c *gin.Context) {
 	if err := upsertProjectRFEWorkflowCR(reqDyn, workflow); err != nil {
 		log.Printf("⚠️ Failed to upsert RFEWorkflow CR: %v", err)
 	}
+
+	// Initialize workspace structure and optionally seed repositories
+	workspaceRoot := resolveWorkflowWorkspaceAbsPath(workflowID, "")
+	// Ensure base dirs
+	_ = writeProjectContentFile(c, project, filepath.Join(workspaceRoot, ".gitkeep"), []byte(""))
+	_ = writeProjectContentFile(c, project, filepath.Join(workspaceRoot, "specs/.gitkeep"), []byte(""))
+	_ = writeProjectContentFile(c, project, filepath.Join(workspaceRoot, "notes/.gitkeep"), []byte(""))
+
+	// Initialize Spec Kit template into workspace (version via SPEC_KIT_VERSION)
+	if err := initSpecKitInWorkspace(c, project, workspaceRoot); err != nil {
+		log.Printf("spec-kit init failed for %s/%s: %v", project, workflowID, err)
+	}
+
+	// Placeholder for repositories: create directories; actual cloning can be handled by runner/jobs later (or future go-git)
+	for _, r := range workflow.Repositories {
+		dir := ""
+		if r.ClonePath != nil && strings.TrimSpace(*r.ClonePath) != "" {
+			dir = *r.ClonePath
+		} else {
+			// derive from repo url
+			name := filepath.Base(strings.TrimSuffix(strings.TrimSuffix(r.URL, ".git"), "/"))
+			dir = filepath.Join("repos", name)
+		}
+		full := filepath.Join(workspaceRoot, dir, ".gitkeep")
+		_ = writeProjectContentFile(c, project, full, []byte(""))
+	}
+
 	c.JSON(http.StatusCreated, workflow)
+}
+
+// initSpecKitInWorkspace downloads a Spec Kit template zip and writes its contents into the workflow workspace
+// SPEC_KIT_VERSION env var controls version tag (e.g., v0.0.50). Template assumed: spec-kit-template-claude-sh-<ver>.zip
+func initSpecKitInWorkspace(c *gin.Context, project, workspaceRoot string) error {
+	version := strings.TrimSpace(os.Getenv("SPEC_KIT_VERSION"))
+	if version == "" {
+		version = "v0.0.50"
+	}
+	tmplName := strings.TrimSpace(os.Getenv("SPEC_KIT_TEMPLATE_NAME"))
+	if tmplName == "" {
+		tmplName = "spec-kit-template-claude-sh"
+	}
+	url := fmt.Sprintf("https://github.com/github/spec-kit/releases/download/%s/%s-%s.zip", version, tmplName, version)
+
+	req, err := http.NewRequestWithContext(c.Request.Context(), http.MethodGet, url, nil)
+	if err != nil {
+		return err
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("download spec-kit template failed: %s", resp.Status)
+	}
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		return err
+	}
+	// Extract files
+	for _, f := range zr.File {
+		if f.FileInfo().IsDir() {
+			continue
+		}
+		rc, err := f.Open()
+		if err != nil {
+			continue
+		}
+		b, err := io.ReadAll(rc)
+		rc.Close()
+		if err != nil {
+			continue
+		}
+		// Normalize path: strip any leading directory components to place at workspace root
+		rel := f.Name
+		rel = strings.TrimLeft(rel, "./")
+		// Ensure we do not write outside workspace
+		rel = strings.ReplaceAll(rel, "\\", "/")
+		for strings.Contains(rel, "../") {
+			rel = strings.ReplaceAll(rel, "../", "")
+		}
+		target := filepath.Join(workspaceRoot, rel)
+		if err := writeProjectContentFile(c, project, target, b); err != nil {
+			log.Printf("write spec-kit file failed: %s: %v", target, err)
+		}
+	}
+	return nil
 }
 
 func getProjectRFEWorkflow(c *gin.Context) {
