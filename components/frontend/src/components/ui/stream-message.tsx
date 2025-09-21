@@ -5,13 +5,15 @@ import { ToolMessage } from "@/components/ui/tool-message";
 import { ThinkingMessage } from "@/components/ui/thinking-message";
 import { SystemMessage } from "@/components/ui/system-message";
 import { ResultMessage } from "@/components/ui/result-message";
+import { Button } from "@/components/ui/button";
 
 export type StreamMessageProps = {
   message: MessageObject | ToolUseMessages;
+  onGoToResults?: () => void;
 };
 
 
-export const StreamMessage: React.FC<StreamMessageProps> = ({ message }) => {
+export const StreamMessage: React.FC<StreamMessageProps> = ({ message, onGoToResults }) => {
   const isToolUsePair = (m: MessageObject | ToolUseMessages): m is ToolUseMessages =>
     m != null && typeof m === "object" && "toolUseBlock" in m && "resultBlock" in m;
 
@@ -42,16 +44,20 @@ export const StreamMessage: React.FC<StreamMessageProps> = ({ message }) => {
       return <SystemMessage subtype={m.subtype} data={m.data} />;
     }
     case "result_message": {
+      // Show a minimal message with an action to open full results tab
       return (
-        <ResultMessage
-          duration_ms={m.duration_ms}
-          duration_api_ms={m.duration_api_ms}
-          is_error={m.is_error}
-          num_turns={m.num_turns}
-          session_id={m.session_id}
-          total_cost_usd={m.total_cost_usd}
-          usage={m.usage as any}
-          result={m.result ?? undefined}
+        <Message
+          role="bot"
+          content={m.is_error ? "Agent completed with errors." : "Agent completed successfully."}
+          name="Claude AI"
+          actions={
+            <div className="flex items-center justify-between">
+              <div className="text-xs text-gray-500">
+                Duration: {m.duration_ms} ms • API: {m.duration_api_ms} ms • Turns: {m.num_turns}
+              </div>
+              <Button size="sm" className="ml-3" onClick={onGoToResults}>Go to Results</Button>
+            </div>
+          }
         />
       );
     }

@@ -13,6 +13,9 @@ export type ResultMessageProps = {
   usage?: Record<string, any> | null;
   result?: string | null;
   className?: string;
+  borderless?: boolean;
+  defaultUsageExpanded?: boolean;
+  defaultResultExpanded?: boolean;
 };
 
 export const ResultMessage: React.FC<ResultMessageProps> = (props) => {
@@ -26,14 +29,17 @@ export const ResultMessage: React.FC<ResultMessageProps> = (props) => {
     usage,
     result,
     className,
+    borderless,
+    defaultUsageExpanded,
+    defaultResultExpanded,
   } = props;
 
-  const [usageExpanded, setUsageExpanded] = useState(false);
-  const [resultExpanded, setResultExpanded] = useState(false);
+  const [usageExpanded, setUsageExpanded] = useState(!!defaultUsageExpanded);
+  const [resultExpanded, setResultExpanded] = useState(!!defaultResultExpanded);
 
   return (
     <div className={cn("mb-4", className)}>
-      <div className="bg-white rounded-lg border shadow-sm p-3">
+      <div className={cn(borderless ? "p-0" : "bg-white rounded-lg border shadow-sm p-3")}> 
         <div className="flex items-center justify-between mb-2">
           <Badge variant={is_error ? "destructive" : "secondary"} className="text-xs">
             {is_error ? (

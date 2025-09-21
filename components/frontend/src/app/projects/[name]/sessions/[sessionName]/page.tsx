@@ -16,6 +16,7 @@ import {
 // Custom components
 import { Message } from "@/components/ui/message";
 import { StreamMessage } from "@/components/ui/stream-message";
+import { ResultMessage } from "@/components/ui/result-message";
 
 // Markdown rendering
 import ReactMarkdown from "react-markdown";
@@ -429,8 +430,11 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
         {/* Title & phase */}
         <div className="flex items-start justify-between">
           <div>
-            <h1 className="text-2xl font-semibold">
-              {session.spec.displayName || session.metadata.name}
+            <h1 className="text-2xl font-semibold flex items-center gap-2">
+              <span>{session.spec.displayName || session.metadata.name}</span>
+              <Badge className={getPhaseColor(session.status?.phase || "Pending")}>
+                {session.status?.phase || "Pending"}
+              </Badge>
             </h1>
             {session.spec.displayName && (
               <div className="text-sm text-gray-500">{session.metadata.name}</div>
@@ -439,22 +443,51 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
               Created {formatDistanceToNow(new Date(session.metadata.creationTimestamp), { addSuffix: true })}
             </div>
           </div>
-          <Badge className={getPhaseColor(session.status?.phase || "Pending")}>
-            {session.status?.phase || "Pending"}
-          </Badge>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={handleRefresh} disabled={loading}>
+              <RefreshCw className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`} />
+              Refresh
+            </Button>
+            <CloneSessionDialog
+              session={session}
+              onSuccess={() => fetchSession()}
+              trigger={
+                <Button variant="outline">
+                  <Copy className="w-4 h-4 mr-2" />
+                  Clone
+                </Button>
+              }
+            />
+            {session.status?.phase !== "Running" && session.status?.phase !== "Creating" && (
+              <Button variant="destructive" onClick={handleDelete} disabled={!!actionLoading}>
+                <Trash2 className="w-4 h-4 mr-2" />
+                {actionLoading === "deleting" ? "Deleting..." : "Delete"}
+              </Button>
+            )}
+          </div>
         </div>
 
-        {/* Top stats banner */}
-        <Card>
-          <CardContent className="p-3">
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-              <Badge variant="outline" className="justify-start">Cost: {typeof session.status?.total_cost_usd === "number" ? `$${session.status.total_cost_usd.toFixed(4)}` : "-"}</Badge>
-              <Badge variant="outline" className="justify-start">Duration: {typeof durationMs === "number" ? `${durationMs} ms` : "-"}</Badge>
-              <Badge variant="outline" className="justify-start">Messages: {allMessages.length}</Badge>
-              <Badge variant="outline" className="justify-start">API: {latestResult?.duration_api_ms ?? "-"} ms</Badge>
-            </div>
-          </CardContent>
-        </Card>
+        {/* Top compact stat cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <Card>
+            <CardContent className="p-4">
+              <div className="text-xs text-muted-foreground">Cost</div>
+              <div className="text-lg font-semibold">{typeof session.status?.total_cost_usd === "number" ? `$${session.status.total_cost_usd.toFixed(4)}` : "-"}</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <div className="text-xs text-muted-foreground">Duration</div>
+              <div className="text-lg font-semibold">{typeof durationMs === "number" ? `${durationMs} ms` : "-"}</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <div className="text-xs text-muted-foreground">Messages</div>
+              <div className="text-lg font-semibold">{allMessages.length}</div>
+            </CardContent>
+          </Card>
+        </div>
 
         {/* Tabbed content */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
@@ -471,12 +504,15 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
               {/* Latest Message */}
               <Card>
                 <CardHeader>
-                  <CardTitle>Latest Message</CardTitle>
+                  <div className="flex items-center justify-between">
+                    <CardTitle>Latest Message</CardTitle>
+                    <button className="text-xs text-blue-600 hover:underline" onClick={() => setActiveTab("messages")}>Go to messages</button>
+                  </div>
                 </CardHeader>
                 <CardContent>
                   {latestDisplayMessage ? (
                     <div className="space-y-4">
-                      <StreamMessage message={latestDisplayMessage} />
+                      <StreamMessage message={latestDisplayMessage} onGoToResults={() => setActiveTab("results")} />
                     </div>
                   ) : (
                     <div className="text-sm text-gray-500">No messages yet</div>
@@ -484,60 +520,71 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
                 </CardContent>
               </Card>
 
-              {/* System Status & Actions */}
+              {/* System Status + Configuration (merged) */}
               {session.status && (
                 <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center">
                       <Clock className="w-5 h-5 mr-2" />
-                      System Status
+                      System Status & Configuration
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm mb-4">
-                      {session.status.startTime && (
-                        <div>
-                          <p className="font-semibold">Started</p>
-                          <p className="text-muted-foreground">{format(new Date(session.status.startTime), "PPp")}</p>
+                    <div className="space-y-4 text-sm">
+                      <div>
+                        <div className="text-xs font-semibold text-muted-foreground mb-2">Runtime</div>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          {session.status.startTime && (
+                            <div>
+                              <p className="font-semibold">Started</p>
+                              <p className="text-muted-foreground">{format(new Date(session.status.startTime), "PPp")}</p>
+                            </div>
+                          )}
+                          {session.status.completionTime && (
+                            <div>
+                              <p className="font-semibold">Completed</p>
+                              <p className="text-muted-foreground">{format(new Date(session.status.completionTime), "PPp")}</p>
+                            </div>
+                          )}
+                          {session.status.jobName && (
+                            <div>
+                              <p className="font-semibold">K8s Job</p>
+                              <p className="text-muted-foreground font-mono text-xs">{session.status.jobName}</p>
+                            </div>
+                          )}
                         </div>
-                      )}
-                      {session.status.completionTime && (
-                        <div>
-                          <p className="font-semibold">Completed</p>
-                          <p className="text-muted-foreground">{format(new Date(session.status.completionTime), "PPp")}</p>
-                        </div>
-                      )}
-                      {session.status.jobName && (
-                        <div>
-                          <p className="font-semibold">K8s Job</p>
-                          <p className="text-muted-foreground font-mono text-xs">{session.status.jobName}</p>
-                        </div>
-                      )}
-                    </div>
+                      </div>
 
-                    {/* Actions */}
-                    <div className="flex flex-wrap gap-2">
-                      <CloneSessionDialog
-                        session={session}
-                        onSuccess={() => fetchSession()}
-                        trigger={
-                          <Button variant="outline">
-                            <Copy className="w-4 h-4 mr-2" />
-                            Clone
-                          </Button>
-                        }
-                      />
+                      <div>
+                        <div className="text-xs font-semibold text-muted-foreground mb-2">LLM Config</div>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                          <div>
+                            <p className="font-semibold">Model</p>
+                            <p className="text-muted-foreground">{session.spec.llmSettings.model}</p>
+                          </div>
+                          <div>
+                            <p className="font-semibold">Temperature</p>
+                            <p className="text-muted-foreground">{session.spec.llmSettings.temperature}</p>
+                          </div>
+                          <div>
+                            <p className="font-semibold">Max Tokens</p>
+                            <p className="text-muted-foreground">{session.spec.llmSettings.maxTokens}</p>
+                          </div>
+                          <div>
+                            <p className="font-semibold">Timeout</p>
+                            <p className="text-muted-foreground">{session.spec.timeout}s</p>
+                          </div>
+                        </div>
+                      </div>
+
                       {(session.status?.phase === "Pending" || session.status?.phase === "Creating" || session.status?.phase === "Running") && (
-                        <Button variant="secondary" onClick={handleStop} disabled={!!actionLoading}>
-                          <Square className="w-4 h-4 mr-2" />
-                          {actionLoading === "stopping" ? "Stopping..." : "Stop"}
-                        </Button>
-                      )}
-                      {session.status?.phase !== "Running" && session.status?.phase !== "Creating" && (
-                        <Button variant="destructive" onClick={handleDelete} disabled={!!actionLoading}>
-                          <Trash2 className="w-4 h-4 mr-2" />
-                          {actionLoading === "deleting" ? "Deleting..." : "Delete"}
-                        </Button>
+                        <div>
+                          <div className="text-xs font-semibold text-muted-foreground mb-2">Controls</div>
+                          <Button variant="secondary" onClick={handleStop} disabled={!!actionLoading}>
+                            <Square className="w-4 h-4 mr-2" />
+                            {actionLoading === "stopping" ? "Stopping..." : "Stop"}
+                          </Button>
+                        </div>
                       )}
                     </div>
                   </CardContent>
@@ -545,7 +592,7 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
               )}
             </div>
 
-            {/* Prompt and Configuration */}
+            {/* Prompt */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <Card>
                 <CardHeader>
@@ -558,57 +605,27 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
                   <p className="whitespace-pre-wrap text-sm">{session.spec.prompt}</p>
                 </CardContent>
               </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>Configuration</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                    <div>
-                      <p className="font-semibold">Model</p>
-                      <p className="text-muted-foreground">{session.spec.llmSettings.model}</p>
-                    </div>
-                    <div>
-                      <p className="font-semibold">Temperature</p>
-                      <p className="text-muted-foreground">{session.spec.llmSettings.temperature}</p>
-                    </div>
-                    <div>
-                      <p className="font-semibold">Max Tokens</p>
-                      <p className="text-muted-foreground">{session.spec.llmSettings.maxTokens}</p>
-                    </div>
-                    <div>
-                      <p className="font-semibold">Timeout</p>
-                      <p className="text-muted-foreground">{session.spec.timeout}s</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
             </div>
           </TabsContent>
 
           {/* Messages */}
           <TabsContent value="messages">
-            <div className="flex items-center justify-between mb-2">
-              <h2 className="text-sm font-medium text-gray-700">Agentic Progress</h2>
+            <div className="flex items-center justify-end mb-2">
               <div className="flex items-center gap-2 text-xs">
                 <span className="text-gray-500">{allMessages.length} message</span>
                 <button
                   className="text-blue-600 hover:underline"
-                  onClick={() => {
-                    const scroller = document.getElementById("messages-scroll");
-                    if (scroller) scroller.scrollTop = scroller.scrollHeight;
-                  }}
+                  onClick={() => window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" })}
                 >
                   Jump to latest
                 </button>
               </div>
             </div>
-            <div id="messages-scroll" className="bg-gray-50 rounded-lg p-4 space-y-4 overflow-y-auto h-[70vh]">
+            <div className="space-y-4">
               {allMessages
                 .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
                 .map((message, index) => (
-                  <StreamMessage key={`msg-${index}`} message={message} />
+                  <StreamMessage key={`msg-${index}`} message={message} onGoToResults={() => setActiveTab("results")} />
               ))}
 
               {(session.status?.phase === "Running" ||
@@ -692,18 +709,36 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
 
           {/* Results */}
           <TabsContent value="results">
-            {session.status?.result ? (
+            {latestResult ? (
               <Card>
                 <CardHeader>
                   <CardTitle>Agentic Results</CardTitle>
                   <CardDescription>Claude&apos;s analysis</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="bg-white rounded-lg border p-6 prose prose-sm max-w-none prose-headings:text-gray-900 prose-p:text-gray-700 prose-strong:text-gray-900 prose-code:bg-gray-100 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-pre:bg-gray-900 prose-pre:text-gray-100">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]} components={outputComponents}>
-                      {session.status.result}
-                    </ReactMarkdown>
+                  <div className="mb-4">
+                    <ResultMessage
+                      duration_ms={latestResult.duration_ms}
+                      duration_api_ms={latestResult.duration_api_ms}
+                      is_error={latestResult.is_error}
+                      num_turns={latestResult.num_turns}
+                      session_id={latestResult.session_id}
+                      total_cost_usd={latestResult.total_cost_usd}
+                      usage={latestResult.usage as any}
+                      result={latestResult.result ?? session.status?.result}
+                      borderless
+                      defaultUsageExpanded
+                      defaultResultExpanded
+                    />
                   </div>
+
+                  {session.status?.result && (
+                    <div className="bg-white rounded-lg prose prose-sm max-w-none prose-headings:text-gray-900 prose-p:text-gray-700 prose-strong:text-gray-900 prose-code:bg-gray-100 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-pre:bg-gray-900 prose-pre:text-gray-100">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]} components={outputComponents}>
+                        {session.status.result}
+                      </ReactMarkdown>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             ) : (

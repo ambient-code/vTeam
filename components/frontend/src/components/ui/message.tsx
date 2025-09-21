@@ -15,6 +15,8 @@ export type MessageProps = {
   name?: string;
   className?: string;
   components?: Components;
+  borderless?: boolean;
+  actions?: React.ReactNode;
 };
 
 const defaultComponents: Components = {
@@ -79,7 +81,7 @@ const LoadingDots = () => (
 
 export const Message = React.forwardRef<HTMLDivElement, MessageProps>(
   (
-    { role, content, isLoading, name, className, components, ...props },
+    { role, content, isLoading, name, className, components, borderless, actions, ...props },
     ref
   ) => {
     const isBot = role === "bot";
@@ -107,9 +109,9 @@ export const Message = React.forwardRef<HTMLDivElement, MessageProps>(
 
           {/* Message Content */}
           <div className="flex-1 min-w-0">
-            <div className="bg-white rounded-lg border shadow-sm p-3">
+            <div className={cn(borderless ? "p-0" : "bg-white rounded-lg border shadow-sm p-3")}> 
               {/* Header */}
-              <div className="flex items-center mb-2">
+              <div className={cn("flex items-center", borderless ? "mb-1" : "mb-2")}> 
                 <Badge
                   variant="outline"
                   className={cn("text-xs", isLoading && "animate-pulse")}
@@ -134,6 +136,10 @@ export const Message = React.forwardRef<HTMLDivElement, MessageProps>(
                   </ReactMarkdown>
                 )}
               </div>
+
+              {actions ? (
+                <div className={cn(borderless ? "mt-1" : "mt-3 pt-2 border-t")}>{actions}</div>
+              ) : null}
             </div>
           </div>
         </div>
