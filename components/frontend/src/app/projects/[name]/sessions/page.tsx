@@ -10,10 +10,11 @@ import { getApiUrl } from "@/lib/config";
 import { MoreVertical, Plus, RefreshCw, Square, RefreshCcw, Trash2 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { ProjectSubpageHeader } from "@/components/project-subpage-header";
+import { AgenticSession } from "@/types/agentic-session";
 
 export default function ProjectSessionsListPage({ params }: { params: Promise<{ name: string }> }) {
   const [projectName, setProjectName] = useState<string>("");
-  const [sessions, setSessions] = useState<any[]>([]);
+  const [sessions, setSessions] = useState<AgenticSession[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [actionLoading, setActionLoading] = useState<Record<string, string>>({});
 
@@ -146,12 +147,12 @@ export default function ProjectSessionsListPage({ params }: { params: Promise<{ 
                 </TableHeader>
                 <TableBody>
                   {[...sessions]
-                    .sort((a: any, b: any) => {
+                    .sort((a, b) => {
                       const aTime = a?.metadata?.creationTimestamp ? new Date(a.metadata.creationTimestamp).getTime() : 0;
                       const bTime = b?.metadata?.creationTimestamp ? new Date(b.metadata.creationTimestamp).getTime() : 0;
                       return bTime - aTime;
                     })
-                    .map((session: any) => (
+                    .map((session) => (
                     <TableRow key={session.metadata?.uid || session.metadata?.name}>
                       <TableCell className="font-medium min-w-[180px]">
                         <Link href={`/projects/${projectName}/sessions/${session.metadata.name}`} className="text-blue-600 hover:underline hover:text-blue-800 transition-colors block">
@@ -173,8 +174,8 @@ export default function ProjectSessionsListPage({ params }: { params: Promise<{ 
                         {session.metadata?.creationTimestamp && formatDistanceToNow(new Date(session.metadata.creationTimestamp), { addSuffix: true })}
                       </TableCell>
                       <TableCell className="hidden xl:table-cell">
-                        {session.status?.cost ? (
-                          <span className="text-sm font-mono">${session.status.cost.toFixed(4)}</span>
+                        {session.status?.total_cost_usd ? (
+                          <span className="text-sm font-mono">${session.status.total_cost_usd.toFixed(4)}</span>
                         ) : (
                           <span className="text-sm text-gray-400">—</span>
                         )}

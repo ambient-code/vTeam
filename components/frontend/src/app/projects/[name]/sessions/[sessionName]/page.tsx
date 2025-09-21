@@ -204,11 +204,6 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
   }, [projectName, sessionName, session?.status?.phase, fetchSession]);
 
  
-  const handleRefresh = () => {
-    setLoading(true);
-    fetchSession();
-  };
-
   const handleStop = async () => {
     if (!session || !projectName) return;
     setActionLoading("stopping");
@@ -427,7 +422,7 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
 
       <div className="space-y-6">
         {/* Title & phase */}
-        <div className="flex items-start justify-between">
+        <div className="flex items-start justify-between ">
           <div>
             <h1 className="text-2xl font-semibold flex items-center gap-2">
               <span>{session.spec.displayName || session.metadata.name}</span>
@@ -443,10 +438,6 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={handleRefresh} disabled={loading}>
-              <RefreshCw className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`} />
-              Refresh
-            </Button>
             <CloneSessionDialog
               session={session}
               onSuccess={() => fetchSession()}
@@ -457,11 +448,22 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
                 </Button>
               }
             />
+
             {session.status?.phase !== "Running" && session.status?.phase !== "Creating" && (
               <Button variant="destructive" onClick={handleDelete} disabled={!!actionLoading}>
                 <Trash2 className="w-4 h-4 mr-2" />
                 {actionLoading === "deleting" ? "Deleting..." : "Delete"}
               </Button>
+            )}
+
+            {session.status?.phase === "Pending" || session.status?.phase === "Creating" || session.status?.phase === "Running" && (
+              <div>
+                <div className="text-xs font-semibold text-muted-foreground mb-2">Controls</div>
+                <Button variant="secondary" onClick={handleStop} disabled={!!actionLoading}>
+                  <Square className="w-4 h-4 mr-2" />
+                  {actionLoading === "stopping" ? "Stopping..." : "Stop"}
+                </Button>
+              </div>
             )}
           </div>
         </div>
@@ -588,16 +590,6 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
                           </div>
                         </div>
                       </div>
-
-                      {(session.status?.phase === "Pending" || session.status?.phase === "Creating" || session.status?.phase === "Running") && (
-                        <div>
-                          <div className="text-xs font-semibold text-muted-foreground mb-2">Controls</div>
-                          <Button variant="secondary" onClick={handleStop} disabled={!!actionLoading}>
-                            <Square className="w-4 h-4 mr-2" />
-                            {actionLoading === "stopping" ? "Stopping..." : "Stop"}
-                          </Button>
-                        </div>
-                      )}
                     </div>
                   </CardContent>
                 </Card>
@@ -711,8 +703,8 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
                 </CardHeader>
                 <CardContent>
                   <div className="mb-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs text-gray-700">
+                    <div className="flex flex-col justify-between mb-2">
+                      <div className="flex justify-between w-full gap-2 text-xs text-gray-700">
                         <div><span className="font-medium">Duration:</span> {latestResult.duration_ms} ms</div>
                         <div><span className="font-medium">API:</span> {latestResult.duration_api_ms} ms</div>
                         <div><span className="font-medium">Turns:</span> {latestResult.num_turns}</div>
@@ -721,7 +713,7 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
 
                       {latestResult.usage && (
                         <div className="mt-2">
-                          <div className="flex items-center justify-between mb-1">
+                          <div className="flex flex-col justify-between mb-1">
                             <div className="text-[11px] text-gray-500">Usage</div>
                             <button
                               className="text-xs text-blue-600 hover:underline inline-flex items-center gap-1"
@@ -738,7 +730,7 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
                           </div>
 
                           {!usageExpanded && (
-                            <div className="text-xs text-gray-600">Usage details hidden</div>
+                            <div className="text-xs text-gray-600 italic">Usage details hidden</div>
                           )}
 
                           {usageExpanded && (

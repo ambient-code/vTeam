@@ -119,7 +119,13 @@ export default function NewProjectSessionPage({ params }: { params: Promise<{ na
         throw new Error(errorData.message || "Failed to create agentic session");
       }
 
-      router.push(`/projects/${encodeURIComponent(projectName)}/sessions`);
+      try {
+        const responseData = await response.json();
+        const sessionName = responseData.name; 
+        router.push(`/projects/${encodeURIComponent(projectName)}/sessions/${sessionName}`);
+      } catch (err) {
+        router.push(`/projects/${encodeURIComponent(projectName)}/sessions`);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
     } finally {

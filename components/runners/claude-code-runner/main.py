@@ -604,7 +604,7 @@ class SimpleClaudeRunner:
                 except Exception as e:
                     logger.warning(f"Failed to send result summary: {e}")
 
-            self._update_status("Completed", message="Session completed", completed=True, result_msg=result_msg.result)
+            self._update_status("Completed", message="Session completed", completed=True, result_msg=result_msg)
             logger.info("Session completed successfully")
             return 0
 
