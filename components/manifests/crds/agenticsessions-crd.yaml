@@ -133,6 +133,35 @@ spec:
               messagesCount:
                 type: integer
                 description: "Number of messages in the conversation"
+              # Result summary fields from the runner's ResultMessage
+              subtype:
+                type: string
+                description: "Result subtype (e.g., success, error, interrupted)"
+              duration_ms:
+                type: integer
+                description: "Total duration of the run in milliseconds"
+              duration_api_ms:
+                type: integer
+                description: "Total API time in milliseconds"
+              is_error:
+                type: boolean
+                description: "Whether the run ended with an error"
+              num_turns:
+                type: integer
+                description: "Number of conversation turns in the run"
+              session_id:
+                type: string
+                description: "Runner session identifier"
+              total_cost_usd:
+                type: number
+                description: "Total cost of the run in USD as reported by the runner"
+              usage:
+                type: object
+                description: "Token and request usage breakdown"
+                x-kubernetes-preserve-unknown-fields: true
+              result:
+                type: string
+                description: "Final result text as reported by the runner"
     additionalPrinterColumns:
     - name: Phase
       type: string

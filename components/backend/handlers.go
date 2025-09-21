@@ -1473,10 +1473,11 @@ func updateSessionStatus(c *gin.Context) {
 	}
 	status := item.Object["status"].(map[string]interface{})
 
-	// Only accept limited set of fields: phase, completionTime, cost, finalOutput
-	// plus keep startTime if already set and allow message for transitional info
+	// Accept standard fields and result summary fields from runner
 	allowed := map[string]struct{}{
 		"phase": {}, "completionTime": {}, "cost": {}, "finalOutput": {}, "message": {},
+		"subtype": {}, "duration_ms": {}, "duration_api_ms": {}, "is_error": {},
+		"num_turns": {}, "session_id": {}, "total_cost_usd": {}, "usage": {}, "result": {},
 	}
 	for k := range statusUpdate {
 		if _, ok := allowed[k]; !ok {

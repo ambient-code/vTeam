@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+from dataclasses import asdict
 import logging
 import os
 import sys
@@ -8,6 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Any, List
 
+from claude_code_sdk.types import StreamEvent, ResultMessage
 import requests
 
 from auth_handler import AuthHandler, BackendClient
@@ -154,89 +156,13 @@ class SimpleClaudeRunner:
                     logger.warning(f"Failed to push file {path} -> {pvc_path}: {e}")
 
     # ---------------- Messaging ----------------
-    def _append_message(self, text: str) -> None:
-        if text and text.strip():
-            # Emit as a simple SYSTEM status message for UI
-            self.messages.append({
-                "type": "system_message",
-                "subtype": "status",
-                "data": {"content": text.strip()},
-            })
-
-    def _append_stream_text(self, text: str) -> None:
-        """Append or extend a streaming assistant text block message for smoother UI updates."""
-        if not text:
-            return
-        # Try to coalesce with the last assistant text message
-        if self.messages and isinstance(self.messages[-1], dict) and self.messages[-1].get("type") == "assistant_message":
-            last = self.messages[-1]
-            blocks = last.get("content")
-            if isinstance(blocks, list) and blocks and isinstance(blocks[-1], dict) and blocks[-1].get("type") == "text_block":
-                try:
-                    blocks[-1]["text"] = (blocks[-1].get("text", "") or "") + text
-                    return
-                except Exception:
-                    pass
-        # Fallback: append a new assistant text message
-        self.messages.append({
-            "type": "assistant_message",
-            "content": [
-                {"type": "text_block", "text": text}
-            ],
-        })
-
-    def _append_tool_use(self, tool_id: str | None, tool_name: str | None, tool_input: Any) -> None:
-        try:
-            block = {
-                "type": "tool_use_block",
-                "id": tool_id or "",
-                "name": tool_name or "",
-                "input": tool_input,
-            }
-            payload = {
-                "type": "assistant_message",
-                "content": [block],
-            }
-            self.messages.append(payload)
-        except Exception:
-            # Ensure we don't break the run due to serialization issues
-            self.messages.append({
-                "type": "assistant_message",
-                "content": [
-                    {
-                        "type": "tool_use_block",
-                        "id": tool_id or "",
-                        "name": tool_name or "",
-                        "input": "<unserializable tool input>",
-                    }
-                ],
-            })
-
-    def _append_tool_result(self, tool_use_id: str | None, content: Any, is_error: bool | None) -> None:
-        try:
-            block = {
-                "type": "tool_result_block",
-                "tool_use_id": tool_use_id or "",
-                "content": content,
-                "is_error": bool(is_error) if is_error is not None else None,
-            }
-            payload = {
-                "type": "assistant_message",
-                "content": [block],
-            }
-            self.messages.append(payload)
-        except Exception:
-            self.messages.append({
-                "type": "assistant_message",
-                "content": [
-                    {
-                        "type": "tool_result_block",
-                        "tool_use_id": tool_use_id or "",
-                        "content": "<unserializable tool result>",
-                        "is_error": True,
-                    }
-                ],
-            })
+    def _append_message(self, message: str) -> None:
+        payload = {
+            "type": "system_message",
+            "content": message,
+        }
+        self.messages.append(payload)
+        self._flush_messages()
 
     def _flush_messages(self) -> None:
         try:
@@ -268,22 +194,22 @@ class SimpleClaudeRunner:
             logger.warning(f"Failed to update status: {e}")
 
     # ---------------- LLM call (streaming) ----------------
-    def _run_llm_streaming(self, prompt: str) -> tuple[str, float]:
+    def _run_llm_streaming(self, prompt: str) -> ResultMessage | None:
         """Run the LLM with streaming via Claude Code SDK, emitting structured messages for the UI."""
         # Nudge the agent to write files to artifacts folder
         full_prompt = prompt + "\n\nIMPORTANT: Save any file outputs into the 'artifacts' folder of the working directory."
 
-        # Accumulate final text for convenience
-        final_text_parts: List[str] = []
+        result_message: ResultMessage | None = None
+
 
         async def run_with_client() -> None:
             from claude_code_sdk import (
                 query,
                 ClaudeCodeOptions,
                 AssistantMessage,
-                ToolUseBlock,
-                ToolResultBlock,
-                TextBlock,
+                UserMessage,
+                SystemMessage,
+                ResultMessage,
             )
 
             # Allow configuring tools via env; default to common ones
@@ -294,41 +220,37 @@ class SimpleClaudeRunner:
                 permission_mode=os.getenv("CLAUDE_PERMISSION_MODE", "acceptEdits"),
                 allowed_tools=allowed_tools if allowed_tools else None,
                 cwd=str(self.workdir),
+                include_partial_messages=True,
             )
 
+
             async for message in query(prompt=full_prompt, options=options):
-                logger.info(f"Message: {message}")
-                if isinstance(message, AssistantMessage):
-                    # Emit assistant text blocks as streaming messages
-                    if not any(isinstance(b, (ToolUseBlock, ToolResultBlock)) for b in message.content):
-                        for block in message.content:
-                            if isinstance(block, TextBlock):
-                                self._append_stream_text(getattr(block, "text", "") or "")
-                    for block in message.content:
-                        if isinstance(block, ToolUseBlock):
-                            tool_id = getattr(block, "id", None)
-                            tool_name = getattr(block, "name", None)
-                            tool_input = getattr(block, "input", None)
-                            self._append_tool_use(tool_id, tool_name, tool_input)
-                            self._flush_messages()
-                        elif isinstance(block, TextBlock):
-                            text = getattr(block, "text", None) or ""
-                            if text:
-                                final_text_parts.append(text)
-                                logger.info(f"[TEXT]: {text}")
-                                self._append_stream_text(text)
-                                if "\n" in text or len(text) > 32:
-                                    self._flush_messages()
-                        elif isinstance(block, ToolResultBlock):
-                            try:
-                                tool_use_id = getattr(block, "tool_use_id", None)
-                                content = getattr(block, "content", None)
-                                is_error = getattr(block, "is_error", None)
-                                self._append_tool_result(tool_use_id, content, is_error)
-                            except Exception:
-                                pass
-                            # Ensure UI sees completion of tool
-                            self._flush_messages()
+                logger.info(f"Message: {message}")  
+                if isinstance(message, StreamEvent):
+                    logger.info(f"StreamEvent: {message}")
+                    # handle stream events
+                    pass
+                else:
+                    # Map message types to string identifiers
+                    message_type_map = {
+                        AssistantMessage: "assistant_message",
+                        UserMessage: "user_message", 
+                        SystemMessage: "system_message",
+                        ResultMessage: "result_message"
+                    }
+                    
+                    message_type = message_type_map.get(type(message))
+                    if message_type:
+                        payload = {
+                            "type": message_type,
+                            **asdict(message),
+                        }
+                        self.messages.append(payload)
+                        self._flush_messages()
+                        
+                    if isinstance(message, ResultMessage):
+                        result_message = message
+
 
         try:
             import asyncio
@@ -357,7 +279,7 @@ class SimpleClaudeRunner:
 
         # Final flush to ensure UI gets all content
         self._flush_messages()
-        return ("".join(final_text_parts)).strip(), 0.0
+        return result_message
 
     # ---------------- Main flow ----------------
     def run(self) -> int:
@@ -375,6 +297,7 @@ class SimpleClaudeRunner:
             try:
                 import asyncio
                 asyncio.run(self.git.setup_git_config())
+                
                 asyncio.run(self.git.clone_repositories(self.workdir))
             except RuntimeError:
                 # If an event loop is already running, skip async setup to avoid crash
@@ -385,13 +308,16 @@ class SimpleClaudeRunner:
             # 3) Run prompt
             self._append_message("Starting model run")
             self._flush_messages()
-            result_text, cost = self._run_llm_streaming(self.prompt)
+            result_msg = self._run_llm_streaming(self.prompt)
             self._append_message("Model run completed")
             self._flush_messages()
 
             # Save final-output.txt in artifacts for convenience
             try:
-                (self.artifacts_dir / "final-output.txt").write_text(result_text or "", encoding="utf-8")
+                final_text = ""
+                if result_msg and isinstance(result_msg.result, str):
+                    final_text = result_msg.result
+                (self.artifacts_dir / "final-output.txt").write_text(final_text, encoding="utf-8")
             except Exception as e:
                 logger.warning(f"Failed to write local final-output.txt: {e}")
 
@@ -401,8 +327,42 @@ class SimpleClaudeRunner:
             # 5) Push entire workspace back to PVC
             self._push_workspace_to_pvc()
 
-            # Final status
-            self._update_status("Completed", message="Session completed", final_output=result_text, cost=cost, completed=True)
+            # Final status (augment CRD with result summary fields)
+            final_output = ""
+            final_cost = None
+            if result_msg is not None:
+                if isinstance(result_msg.result, str):
+                    final_output = result_msg.result
+                if result_msg.total_cost_usd is not None:
+                    try:
+                        final_cost = float(result_msg.total_cost_usd)
+                    except Exception:
+                        final_cost = None
+                # Also send a status update with summary fields
+                try:
+                    summary_payload = {
+                        "message": "Session completed",
+                        "phase": "Completed",
+                        "finalOutput": final_output,
+                        "cost": final_cost,
+                        "subtype": getattr(result_msg, "subtype", None),
+                        "duration_ms": getattr(result_msg, "duration_ms", None),
+                        "duration_api_ms": getattr(result_msg, "duration_api_ms", None),
+                        "is_error": getattr(result_msg, "is_error", None),
+                        "num_turns": getattr(result_msg, "num_turns", None),
+                        "session_id": getattr(result_msg, "session_id", None),
+                        "total_cost_usd": getattr(result_msg, "total_cost_usd", None),
+                        "usage": getattr(result_msg, "usage", None),
+                        "result": getattr(result_msg, "result", None),
+                    }
+                    import asyncio as _asyncio
+                    _asyncio.run(self.backend.update_session_status(self.session_name, summary_payload))
+                except RuntimeError:
+                    pass
+                except Exception as e:
+                    logger.warning(f"Failed to send result summary: {e}")
+
+            self._update_status("Completed", message="Session completed", final_output=final_output, cost=final_cost, completed=True)
             logger.info("Session completed successfully")
             return 0
 

@@ -107,6 +107,16 @@ export type AgenticSessionStatus = {
 	finalOutput?: string;
 	cost?: number;
 	messages?: MessageObject[];
+	// Runner result summary fields
+	subtype?: string;
+	duration_ms?: number;
+	duration_api_ms?: number;
+	is_error?: boolean;
+	num_turns?: number;
+	session_id?: string;
+	total_cost_usd?: number | null;
+	usage?: Record<string, any> | null;
+	result?: string | null;
 };
 
 export type AgenticSession = {

@@ -308,6 +308,16 @@ type AgenticSessionStatus struct {
 	StateDir       string          `json:"stateDir,omitempty"`
 	ArtifactsCount int             `json:"artifactsCount,omitempty"`
 	MessagesCount  int             `json:"messagesCount,omitempty"`
+	// Result summary fields from runner
+	Subtype       string                 `json:"subtype,omitempty"`
+	DurationMs    int                    `json:"duration_ms,omitempty"`
+	DurationApiMs int                    `json:"duration_api_ms,omitempty"`
+	IsError       bool                   `json:"is_error,omitempty"`
+	NumTurns      int                    `json:"num_turns,omitempty"`
+	SessionID     string                 `json:"session_id,omitempty"`
+	TotalCostUSD  *float64               `json:"total_cost_usd,omitempty"`
+	Usage         map[string]interface{} `json:"usage,omitempty"`
+	Result        *string                `json:"result,omitempty"`
 }
 
 type CreateAgenticSessionRequest struct {
@@ -816,6 +826,35 @@ func parseStatus(status map[string]interface{}) *AgenticSessionStatus {
 				result.Messages[i] = messageObj
 			}
 		}
+	}
+
+	// New: result summary fields (top-level in status)
+	if st, ok := status["subtype"].(string); ok {
+		result.Subtype = st
+	}
+	if dms, ok := status["duration_ms"].(float64); ok {
+		result.DurationMs = int(dms)
+	}
+	if dams, ok := status["duration_api_ms"].(float64); ok {
+		result.DurationApiMs = int(dams)
+	}
+	if ie, ok := status["is_error"].(bool); ok {
+		result.IsError = ie
+	}
+	if nt, ok := status["num_turns"].(float64); ok {
+		result.NumTurns = int(nt)
+	}
+	if sid, ok := status["session_id"].(string); ok {
+		result.SessionID = sid
+	}
+	if tcu, ok := status["total_cost_usd"].(float64); ok {
+		result.TotalCostUSD = &tcu
+	}
+	if usage, ok := status["usage"].(map[string]interface{}); ok {
+		result.Usage = usage
+	}
+	if res, ok := status["result"].(string); ok {
+		result.Result = &res
 	}
 
 	if stateDir, ok := status["stateDir"].(string); ok {
