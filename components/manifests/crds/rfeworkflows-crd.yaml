@@ -28,17 +28,29 @@ spec:
             type: object
           spec:
             type: object
-            required: [title, description, targetRepoUrl, targetRepoBranch]
+            required: [title, description]
             properties:
-              project:
-                type: string
               title:
                 type: string
               description:
                 type: string
-              targetRepoUrl:
-                type: string
-              targetRepoBranch:
+              repositories:
+                  type: array
+                  description: "List of Git repositories to clone"
+                  items:
+                    type: object
+                    properties:
+                      url:
+                        type: string
+                        description: "Git repository URL"
+                      branch:
+                        type: string
+                        default: "main"
+                        description: "Branch to checkout"
+                      clonePath:
+                        type: string
+                        description: "Relative path where to clone the repository"
+              workspacePath:
                 type: string
           status:
             type: object
