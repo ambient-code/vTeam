@@ -11,6 +11,7 @@ from typing import Dict, Any, List
 
 from claude_code_sdk.types import StreamEvent, ResultMessage
 import requests
+from anthropic import Anthropic
 
 from auth_handler import AuthHandler, BackendClient
 from git_integration import GitIntegration
@@ -40,18 +41,6 @@ class SimpleClaudeRunner:
 
         # Git integration (multi-repo via GIT_REPOSITORIES)
         self.git = GitIntegration()
-
-        logger.info(f"GIT_USER_NAME: {self.git_user_name}")
-        logger.info(f"GIT_USER_EMAIL: {self.git_user_email}")
-        logger.info(f"BACKEND_API_URL: {self.backend_api_url}")
-        logger.info(f"PVC_PROXY_API_URL: {self.pvc_proxy_api_url}")
-        logger.info(f"MESSAGE_STORE_PATH: {self.message_store_path}")
-        logger.info(f"WORKSPACE_STORE_PATH: {self.workspace_store_path}")
-        logger.info(f"INBOX_STORE_PATH: {self.inbox_store_path}")
-        logger.info(f"AGENTIC_SESSION_NAME: {self.session_name}")
-        logger.info(f"AGENTIC_SESSION_NAMESPACE: {self.session_namespace}")
-        logger.info(f"PROMPT: {self.prompt}")
-        logger.info(f"ANTHROPIC_API_KEY LENGTH: {len(self.api_key)}")
         
         # Derived
         self.workdir = Path("/tmp/workdir")
@@ -90,7 +79,7 @@ class SimpleClaudeRunner:
                 return self._fallback_display_name(prompt)
 
             model = os.getenv("CLAUDE_TITLE_MODEL", "claude-3-haiku-20240307")
-            url = "https://api.anthropic.com/v1/messages"
+            client = Anthropic(api_key=api_key)
             system_prompt = (
                 "You generate concise, human-friendly session titles. "
                 "Return a short title (max 8 words), no punctuation at the end, "
@@ -99,41 +88,34 @@ class SimpleClaudeRunner:
             user_prompt = (
                 "Summarize this prompt into a short session display name.\n\n" + prompt
             )
-            body = {
-                "model": model,
-                "max_tokens": 64,
-                "system": system_prompt,
-                "messages": [
-                    {"role": "user", "content": user_prompt},
-                ],
-            }
-            headers = {
-                "x-api-key": api_key,
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json",
-            }
-            resp = requests.post(url, headers=headers, data=json.dumps(body), timeout=15)
-            if resp.status_code == 200:
-                data = resp.json()
-                content = data.get("content") or []
+            msg = client.messages.create(
+                model=model,
+                max_tokens=64,
+                system=system_prompt,
+                messages=[{"role": "user", "content": user_prompt}],
+            )
+            # Extract first text block
+            text = ""
+            try:
+                for block in getattr(msg, "content", []) or []:
+                    kind = getattr(block, "type", None)
+                    if kind == "text":
+                        text = getattr(block, "text", "")
+                        if text:
+                            break
+            except Exception:
                 text = ""
-                if isinstance(content, list) and content:
-                    block = content[0]
-                    if isinstance(block, dict):
-                        text = block.get("text", "")
-                title = (text or "").strip()
-                # Sanitize
-                if title.startswith("\"") and title.endswith("\""):
-                    title = title[1:-1]
-                title = title.replace("\n", " ").strip()
-                if not title:
-                    return self._fallback_display_name(prompt)
-                if len(title) > 60:
-                    title = title[:60].rstrip() + "…"
-                return title
-            else:
-                logger.warning(f"Title generation failed: HTTP {resp.status_code}")
+
+            title = (text or "").strip()
+            # Sanitize
+            if title.startswith("\"") and title.endswith("\""):
+                title = title[1:-1]
+            title = title.replace("\n", " ").strip()
+            if not title:
                 return self._fallback_display_name(prompt)
+            if len(title) > 60:
+                title = title[:60].rstrip() + "…"
+            return title
         except Exception as e:
             logger.warning(f"Title generation error: {e}")
             return self._fallback_display_name(prompt)
@@ -154,6 +136,39 @@ class SimpleClaudeRunner:
                 logger.warning(f"Failed to set display name: {e}")
         except Exception as e:
             logger.debug(f"Skipping display name set: {e}")
+
+    def _inject_selected_agents(self) -> None:
+        """Fetch selected agent persona markdown from backend and write to .claude/agents.
+
+        Personas can be provided via AGENT_PERSONAS (comma-separated) or AGENT_PERSONA (single).
+        """
+        try:
+            personas_env = os.getenv("AGENT_PERSONAS") or os.getenv("AGENT_PERSONA", "")
+            personas = [p.strip() for p in personas_env.split(",") if p.strip()]
+            if not personas:
+                return
+            base = f"{self.backend_api_url}/projects/{self.session_namespace}/agents"
+            out_dir = self.workdir / ".claude" / "agents"
+            out_dir.mkdir(parents=True, exist_ok=True)
+            for p in personas:
+                try:
+                    url = f"{base}/{p}/markdown"
+                    resp = requests.get(url, headers=self._auth_headers(), timeout=20)
+                    if resp.status_code != 200:
+                        logger.warning(f"Agent markdown fetch failed for {p}: HTTP {resp.status_code}")
+                        continue
+                    content = resp.text or ""
+                    # Write to working dir for runner/Claude
+                    local_path = out_dir / f"{p}.md"
+                    local_path.write_text(content, encoding="utf-8")
+                    # Mirror to PVC so UI can show immediately
+                    pvc_path = f"{self.workspace_store_path}/.claude/agents/{p}.md"
+                    self.content_write(pvc_path, content, "utf8")
+                    logger.info(f"Injected agent persona: {p}")
+                except Exception as e:  # noqa: BLE001
+                    logger.warning(f"Failed injecting agent {p}: {e}")
+        except Exception as e:  # noqa: BLE001
+            logger.debug(f"Skipping agent injection: {e}")
 
     # ---------------- PVC content helpers ----------------
     def _auth_headers(self) -> Dict[str, str]:
@@ -553,6 +568,9 @@ class SimpleClaudeRunner:
             self._update_status("Running", message="Syncing workspace from PVC")
             self._sync_workspace_from_pvc()
 
+            # Inject selected agents into .claude/agents as markdown
+            self._inject_selected_agents()
+
             # 1b) Setup Git and clone configured repositories into workdir (always)
             try:
                 import asyncio
@@ -566,7 +584,7 @@ class SimpleClaudeRunner:
 
 
             # Chat vs headless mode
-            chat_enabled = os.getenv("CHAT_MODE", "").lower() in ("true", "1", "yes")
+            chat_enabled = os.getenv("INTERACTIVE", "").lower() in ("true", "1", "yes")
             if chat_enabled:
                 logger.info("Entering chat mode")
                 import asyncio as _asyncio

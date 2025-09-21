@@ -255,6 +255,7 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 	spec, _, _ := unstructured.NestedMap(currentObj.Object, "spec")
 	prompt, _, _ := unstructured.NestedString(spec, "prompt")
 	timeout, _, _ := unstructured.NestedInt64(spec, "timeout")
+	interactive, _, _ := unstructured.NestedBool(spec, "interactive")
 
 	llmSettings, _, _ := unstructured.NestedMap(spec, "llmSettings")
 	model, _, _ := unstructured.NestedString(llmSettings, "model")
@@ -375,6 +376,7 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 							Env: func() []corev1.EnvVar {
 								base := []corev1.EnvVar{
 									{Name: "DEBUG", Value: "true"},
+									{Name: "INTERACTIVE", Value: fmt.Sprintf("%t", interactive)},
 									{Name: "AGENTIC_SESSION_NAME", Value: name},
 									{Name: "AGENTIC_SESSION_NAMESPACE", Value: sessionNamespace},
 									{Name: "PROMPT", Value: prompt},

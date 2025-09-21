@@ -29,6 +29,8 @@ spec:
               fieldPath: metadata.namespace
         - name: PORT
           value: "8080"
+          - name: AGENTS_DIR
+            value: "/app/agents"
         
         resources:
           requests:

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { ArrowLeft, Loader2, Info } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -15,7 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { getApiUrl } from "@/lib/config";
-import type { CreateAgenticSessionRequest } from "@/types/agentic-session";
+import type { CreateAgenticSessionRequest, AgentPersona as AgentSummary } from "@/types/agentic-session";
 import { Checkbox } from "@/components/ui/checkbox";
 
 const formSchema = z.object({
@@ -30,6 +30,7 @@ const formSchema = z.object({
   gitUserEmail: z.string().email().optional().or(z.literal("")),
   gitRepoUrl: z.string().url().optional().or(z.literal("")),
   // storage paths are not user-configurable anymore
+  agentPersona: z.string().optional(),
 });
 
 type FormValues = z.input<typeof formSchema>;
@@ -46,6 +47,7 @@ export default function NewProjectSessionPage({ params }: { params: Promise<{ na
   const [projectName, setProjectName] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [agents, setAgents] = useState<AgentSummary[]>([]);
 
   useEffect(() => {
     params.then(({ name }) => setProjectName(name));
@@ -63,9 +65,27 @@ export default function NewProjectSessionPage({ params }: { params: Promise<{ na
       gitUserName: "",
       gitUserEmail: "",
       gitRepoUrl: "",
+      agentPersona: "",
       
     },
   });
+
+  useEffect(() => {
+    const loadAgents = async () => {
+      if (!projectName) return;
+      try {
+        const apiUrl = getApiUrl();
+        const res = await fetch(`${apiUrl}/projects/${encodeURIComponent(projectName)}/agents`);
+        if (res.ok) {
+          const data = await res.json();
+          setAgents(Array.isArray(data) ? data : []);
+        }
+      } catch {
+        // ignore
+      }
+    };
+    loadAgents();
+  }, [projectName]);
 
   const onSubmit = async (values: FormValues) => {
     if (!projectName) return;
@@ -106,6 +126,12 @@ export default function NewProjectSessionPage({ params }: { params: Promise<{ na
       }
 
       // No user-configurable storage paths; backend/operator provide defaults
+      if (values.agentPersona) {
+        request.environmentVariables = {
+          ...(request.environmentVariables || {}),
+          AGENT_PERSONA: values.agentPersona,
+        };
+      }
 
       const apiUrl = getApiUrl();
       const response = await fetch(`${apiUrl}/projects/${encodeURIComponent(projectName)}/agentic-sessions`, {
@@ -209,6 +235,56 @@ export default function NewProjectSessionPage({ params }: { params: Promise<{ na
                   )}
                 />
               </div>
+
+              <FormField
+                control={form.control}
+                name="agentPersona"
+                render={({ field }) => {
+                  const selected = agents.find((a) => a.persona === field.value);
+                  return (
+                    <FormItem>
+                      <FormLabel className="flex items-center gap-2">
+                        Agent Persona
+                        {selected && (
+                          <span className="relative group inline-block">
+                            <Info className="w-4 h-4 text-muted-foreground" />
+                            <div className="absolute z-10 hidden group-hover:block bg-popover text-popover-foreground border rounded-md p-3 shadow-md w-72 left-1/2 -translate-x-1/2 mt-2">
+                              <div className="text-sm font-medium mb-1">{selected.name}</div>
+                              <div className="text-xs text-muted-foreground mb-2">{selected.role}</div>
+                              <ul className="list-disc pl-5 space-y-1 text-sm">
+                                {selected.expertise?.map((e, i) => (
+                                  <li key={i}>{e}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          </span>
+                        )}
+                      </FormLabel>
+                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select an agent (optional)" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {agents.map((a) => (
+                            <SelectItem key={a.persona} value={a.persona}>
+                              <div className="flex flex-col">
+                                <span>{a.name}</span>
+                                <span className="text-xs text-muted-foreground">{a.role}</span>
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormDescription>
+                        Optionally inject a persona’s knowledge into the session at start.
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  );
+                }}
+              />
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <FormField

@@ -116,6 +116,10 @@ func main() {
 			projectGroup.POST("/rfe-workflows/:id/sessions", addProjectRFEWorkflowSession)
 			projectGroup.DELETE("/rfe-workflows/:id/sessions/:sessionName", removeProjectRFEWorkflowSession)
 
+			// Agents
+			projectGroup.GET("/agents", listAgents)
+			projectGroup.GET("/agents/:persona/markdown", getAgentMarkdown)
+
 			// Permissions (users & groups)
 			projectGroup.GET("/permissions", listProjectPermissions)
 			projectGroup.POST("/permissions", addProjectPermission)

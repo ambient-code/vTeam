@@ -27,6 +27,12 @@ WORKDIR /app
 # Copy the binary from builder stage
 COPY --from=builder /app/main .
 
+# Copy agents into image
+COPY agents /app/agents
+
+# Default agents directory
+ENV AGENTS_DIR=/app/agents
+
 # Set executable permissions and make accessible to any user
 RUN chmod +x ./main && chmod 755 /app
 
