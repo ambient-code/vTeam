@@ -1,6 +1,6 @@
 # vTeam Local Development
 
-> **🎉 STATUS: FULLY WORKING** - Project creation, authentication, hot-reloading all functional!
+> **🎉 STATUS: FULLY WORKING** - Project creation, authentication
 
 ## Quick Start
 
