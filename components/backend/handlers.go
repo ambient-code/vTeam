@@ -2871,7 +2871,7 @@ func createProjectRFEWorkflow(c *gin.Context) {
 }
 
 // initSpecKitInWorkspace downloads a Spec Kit template zip and writes its contents into the workflow workspace
-// SPEC_KIT_VERSION env var controls version tag (e.g., v0.0.50). Template assumed: spec-kit-template-claude-sh-<ver>.zip
+// SPEC_KIT_VERSION env var controls version tag (e.g., v0.0.51). Template assumed: spec-kit-template-claude-sh-<ver>.zip
 func initSpecKitInWorkspace(c *gin.Context, project, workspaceRoot string) error {
 	version := strings.TrimSpace(os.Getenv("SPEC_KIT_VERSION"))
 	if version == "" {
@@ -2919,7 +2919,10 @@ func initSpecKitInWorkspace(c *gin.Context, project, workspaceRoot string) error
 		}
 		// Normalize path: strip any leading directory components to place at workspace root
 		rel := f.Name
-		rel = strings.TrimLeft(rel, "./")
+		// Remove leading "./" prefix but preserve filenames that start with "."
+		if strings.HasPrefix(rel, "./") {
+			rel = rel[2:]
+		}
 		// Ensure we do not write outside workspace
 		rel = strings.ReplaceAll(rel, "\\", "/")
 		for strings.Contains(rel, "../") {

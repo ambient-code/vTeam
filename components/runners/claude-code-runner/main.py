@@ -36,7 +36,7 @@ class SimpleClaudeRunner:
         self.backend_api_url = os.getenv("BACKEND_API_URL", f"http://backend-service:8080/api").rstrip("/")
         self.pvc_proxy_api_url = os.getenv("PVC_PROXY_API_URL", f"http://ambient-content.{self.session_namespace}.svc:8080").rstrip("/")
         self.message_store_path = os.getenv("MESSAGE_STORE_PATH", f"/sessions/{self.session_name}/messages.json")
-        self.workspace_store_path = os.getenv("WORKSPACE_STORE_PATH", f"/sessions/{self.session_name}/workspace")
+        self.workspace_store_path = self._determine_workspace_path()
         self.inbox_store_path = os.getenv("INBOX_STORE_PATH", f"/sessions/{self.session_name}/inbox.jsonl")
 
         # Git integration (multi-repo via GIT_REPOSITORIES)
@@ -57,6 +57,48 @@ class SimpleClaudeRunner:
 
         self.auth = AuthHandler()
         self.backend = BackendClient(self.backend_api_url, self.auth)
+
+    def _determine_workspace_path(self) -> str:
+        """Determine the workspace path based on session linkage to RFE workflows.
+
+        If the session is linked to an RFE workflow (has rfe-workflow label),
+        use the RFE workflow workspace path. Otherwise, use the session workspace path.
+        """
+        try:
+            import asyncio
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+            try:
+                # Get session metadata to check for RFE workflow linkage
+                import requests
+                url = f"{self.backend_api_url}/projects/{self.session_namespace}/agentic-sessions/{self.session_name}"
+                headers = self.auth.get_auth_headers()
+
+                resp = requests.get(url, headers=headers, timeout=10)
+                if resp.status_code == 200:
+                    session_data = resp.json()
+                    metadata = session_data.get("metadata", {})
+                    labels = metadata.get("labels", {})
+
+                    # Check if session is linked to an RFE workflow
+                    rfe_workflow_id = labels.get("rfe-workflow")
+                    if rfe_workflow_id:
+                        logger.info(f"Session {self.session_name} is linked to RFE workflow {rfe_workflow_id}")
+                        return f"/rfe-workflows/{rfe_workflow_id}/workspace"
+                    else:
+                        logger.debug(f"Session {self.session_name} is not linked to any RFE workflow")
+                        return f"/sessions/{self.session_name}/workspace"
+                else:
+                    logger.warning(f"Failed to get session metadata (HTTP {resp.status_code}), using default workspace path")
+                    return f"/sessions/{self.session_name}/workspace"
+
+            finally:
+                loop.close()
+
+        except Exception as e:
+            logger.warning(f"Failed to determine workspace path: {e}, using default")
+            return f"/sessions/{self.session_name}/workspace"
 
     # ---------------- Display name helpers ----------------
     def _fallback_display_name(self, prompt: str) -> str:
