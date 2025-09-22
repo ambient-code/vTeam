@@ -2,7 +2,6 @@
 
 This guide explains how to use the development mode for hot-reloading with OpenShift Local (CRC).
 
-**🎉 STATUS: FULLY WORKING - Project creation, authentication, and hot-reloading all functional!**
 
 ## Prerequisites
 
