@@ -41,13 +41,109 @@ success() { printf "\033[0;32m%s\033[0m\n" "$*"; }
 need_cmd() {
   if ! command -v "$1" >/dev/null 2>&1; then
     err "Missing required command: $1"
+    case "$1" in
+      crc)
+        err "Install CRC:"
+        err "  macOS: brew install crc"
+        err "  Linux: https://crc.dev/crc/getting_started/getting_started/installing/"
+        ;;
+      jq)
+        err "Install jq:"
+        err "  macOS: brew install jq"
+        err "  Linux: sudo apt install jq  # or yum install jq"
+        ;;
+    esac
     exit 1
+  fi
+}
+
+check_system_resources() {
+  log "Checking system resources..."
+  
+  # Check OS compatibility
+  local os_name="$(uname -s)"
+  case "$os_name" in
+    Darwin|Linux)
+      log "OS detected: $os_name ✓"
+      ;;
+    *)
+      err "Unsupported OS: $os_name"
+      err "CRC requires macOS or Linux. For Windows, use WSL2."
+      exit 1
+      ;;
+  esac
+  
+  # Check available memory (basic check)
+  if [[ -f /proc/meminfo ]]; then
+    local available_mem_kb
+    available_mem_kb=$(grep MemAvailable /proc/meminfo | awk '{print $2}')
+    local required_mem_kb=$((CRC_MEMORY * 1024))
+    if [[ "$available_mem_kb" -lt "$required_mem_kb" ]]; then
+      warn "Available memory (${available_mem_kb}KB) may be insufficient for CRC (${required_mem_kb}KB)"
+      warn "Consider reducing: CRC_MEMORY=6144 make dev-start"
+    fi
+  fi
+  
+  # Check disk space in home directory
+  local available_space_gb
+  if command -v df >/dev/null 2>&1; then
+    available_space_gb=$(df -h "$HOME" | awk 'NR==2 {print $4}' | sed 's/G//')
+    if [[ "$available_space_gb" -lt "$CRC_DISK" ]] 2>/dev/null; then
+      warn "Available disk space (~${available_space_gb}GB) may be insufficient for CRC (${CRC_DISK}GB)"
+      warn "Consider reducing: CRC_DISK=30 make dev-start"
+    fi
+  fi
+  
+  # Check virtualization (basic check for Linux)
+  if [[ -f /proc/cpuinfo ]] && ! grep -q -E '(vmx|svm)' /proc/cpuinfo; then
+    warn "Virtualization may not be enabled. CRC requires VT-x/AMD-V."
+    warn "Enable virtualization in BIOS/UEFI settings."
+  fi
+  
+  # Check if ports might be in use (basic check)
+  if command -v lsof >/dev/null 2>&1; then
+    for port in 6443 443 80; do
+      if lsof -iTCP:$port -sTCP:LISTEN >/dev/null 2>&1; then
+        warn "Port $port appears to be in use - may conflict with CRC"
+      fi
+    done
   fi
 }
 
 #########################
 # CRC Setup (from original)
 #########################
+check_crc_setup() {
+  # Check if CRC has been set up
+  if ! crc version >/dev/null 2>&1; then
+    err "CRC not properly installed or not in PATH"
+    exit 1
+  fi
+  
+  # Check if pull secret is configured
+  local pull_secret_path="$HOME/.crc/pull-secret.json"
+  if [[ ! -f "$pull_secret_path" ]]; then
+    err "Pull secret not found. You need to:"
+    err "1. Get your pull secret from https://console.redhat.com/openshift/create/local"
+    err "2. Save it to $pull_secret_path"
+    exit 1
+  fi
+  
+  # Configure CRC if not already done
+  if ! crc config get enable-cluster-monitoring >/dev/null 2>&1; then
+    log "Running initial CRC setup..."
+    crc setup
+  fi
+  
+  # Apply resource configuration
+  log "Configuring CRC resources (${CRC_CPUS} CPUs, ${CRC_MEMORY}MB RAM, ${CRC_DISK}GB disk)..."
+  crc config set cpus "$CRC_CPUS" >/dev/null
+  crc config set memory "$CRC_MEMORY" >/dev/null
+  crc config set disk-size "$CRC_DISK" >/dev/null
+  crc config set pull-secret-file "$pull_secret_path" >/dev/null
+  crc config set enable-cluster-monitoring false >/dev/null
+}
+
 ensure_crc_cluster() {
   local crc_status
   crc_status=$(crc status -o json 2>/dev/null | jq -r '.crcStatus // "Stopped"' 2>/dev/null || echo "Stopped")
@@ -171,10 +267,17 @@ EOF
 log "Checking prerequisites..."
 need_cmd crc
 need_cmd jq
-need_cmd oc
+
+# Optional tools with warnings  
+if ! command -v git >/dev/null 2>&1; then
+  warn "Git not found - needed if you haven't cloned the repo yet"
+fi
+
+check_system_resources
 
 log "Starting CRC-based local development environment..."
 
+check_crc_setup
 ensure_crc_cluster
 configure_oc_context
 ensure_project

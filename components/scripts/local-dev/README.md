@@ -10,9 +10,9 @@
 brew install crc
 
 # Get Red Hat pull secret (free account):
-# 1. Visit: https://console.redhat.com/openshift/create/local
+# 1. Visit: https://console.redhat.com/openshift/create/local  
 # 2. Download to ~/.crc/pull-secret.json
-# 3. Run: crc setup
+# That's it! The script handles crc setup and configuration automatically.
 ```
 
 ### 2. Start Development Environment
@@ -57,9 +57,13 @@ oc get pods -n vteam-dev # Check pod status
 
 ## System Requirements
 
-- **CPU**: 4 cores, **RAM**: 11GB, **Disk**: 50GB
-- **OS**: macOS 10.15+ or Linux with KVM
+- **CPU**: 4 cores, **RAM**: 11GB, **Disk**: 50GB (auto-validated)
+- **OS**: macOS 10.15+ or Linux with KVM (auto-detected)
+- **Internet**: Download access for images (~2GB first time)
+- **Network**: No VPN conflicts with CRC networking
 - **Reduce if needed**: `CRC_CPUS=2 CRC_MEMORY=6144 make dev-start`
+
+*Note: The script automatically validates resources and provides helpful guidance.*
 
 ## Common Issues & Fixes
 
@@ -80,8 +84,13 @@ CRC_MEMORY=6144 make dev-start
 
 **Complete reset:**
 ```bash
-crc stop && crc delete && crc setup && make dev-start
+crc stop && crc delete && make dev-start
 ```
+
+**Corporate environment issues:**
+- **VPN**: Disable during setup if networking fails
+- **Proxy**: May need `HTTP_PROXY`/`HTTPS_PROXY` environment variables
+- **Firewall**: Ensure CRC downloads aren't blocked
 
 ---
 
