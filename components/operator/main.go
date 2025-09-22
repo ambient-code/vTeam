@@ -756,6 +756,11 @@ func watchNamespaces() {
 					log.Printf("Error creating default ProjectSettings for namespace %s: %v", namespace.Name, err)
 				}
 
+				// Copy essential secrets from parent namespace to child namespace
+				if err := copySecretsToNamespace(namespace.Name); err != nil {
+					log.Printf("Failed to copy secrets to namespace %s: %v", namespace.Name, err)
+				}
+
 				// Ensure shared workspace PVC and content service exist
 				if err := ensureProjectWorkspacePVC(namespace.Name); err != nil {
 					log.Printf("Failed to ensure workspace PVC in %s: %v", namespace.Name, err)
@@ -831,7 +836,17 @@ func createDefaultProjectSettings(namespaceName string) error {
 		return fmt.Errorf("error checking existing ProjectSettings: %v", err)
 	}
 
-	// Create default ProjectSettings (minimal: only groupAccess)
+	// Get default runner secrets name from environment or use default
+	defaultRunnerSecretsName := os.Getenv("SECRETS_TO_COPY")
+	if defaultRunnerSecretsName == "" {
+		defaultRunnerSecretsName = "ambient-code-secrets"
+	}
+	// Use first secret name if multiple are configured
+	if strings.Contains(defaultRunnerSecretsName, ",") {
+		defaultRunnerSecretsName = strings.TrimSpace(strings.Split(defaultRunnerSecretsName, ",")[0])
+	}
+
+	// Create default ProjectSettings with runnerSecretsName set
 	defaultSettings := &unstructured.Unstructured{
 		Object: map[string]interface{}{
 			"apiVersion": "vteam.ambient-code/v1alpha1",
@@ -842,7 +857,8 @@ func createDefaultProjectSettings(namespaceName string) error {
 				"namespace": namespaceName,
 			},
 			"spec": map[string]interface{}{
-				"groupAccess": []interface{}{},
+				"groupAccess":        []interface{}{},
+				"runnerSecretsName": defaultRunnerSecretsName,
 			},
 		},
 	}
@@ -1000,6 +1016,87 @@ func updateProjectSettingsStatus(namespace, name string, statusUpdate map[string
 			return nil
 		}
 		return fmt.Errorf("failed to update ProjectSettings status: %v", err)
+	}
+
+	return nil
+}
+
+// copySecretsToNamespace copies essential secrets from the operator namespace to the target namespace
+func copySecretsToNamespace(targetNamespace string) error {
+	// Skip copying to the operator's own namespace
+	if targetNamespace == namespace {
+		return nil
+	}
+
+	// Get source namespace from environment or use operator namespace
+	sourceNamespace := os.Getenv("SECRETS_SOURCE_NAMESPACE")
+	if sourceNamespace == "" {
+		sourceNamespace = namespace
+	}
+
+	// Define secrets to copy (configurable via environment)
+	secretsToCopy := []string{"ambient-code-secrets"}
+	if envSecrets := os.Getenv("SECRETS_TO_COPY"); envSecrets != "" {
+		secretsToCopy = strings.Split(envSecrets, ",")
+	}
+
+	log.Printf("Copying secrets from namespace %s to %s: %v", sourceNamespace, targetNamespace, secretsToCopy)
+
+	for _, secretName := range secretsToCopy {
+		secretName = strings.TrimSpace(secretName)
+		if secretName == "" {
+			continue
+		}
+
+		// Get source secret
+		sourceSecret, err := k8sClient.CoreV1().Secrets(sourceNamespace).Get(context.TODO(), secretName, v1.GetOptions{})
+		if err != nil {
+			if errors.IsNotFound(err) {
+				log.Printf("Source secret %s not found in namespace %s, skipping", secretName, sourceNamespace)
+				continue
+			}
+			return fmt.Errorf("failed to get source secret %s from namespace %s: %v", secretName, sourceNamespace, err)
+		}
+
+		// Check if target secret already exists
+		_, err = k8sClient.CoreV1().Secrets(targetNamespace).Get(context.TODO(), secretName, v1.GetOptions{})
+		if err == nil {
+			log.Printf("Secret %s already exists in namespace %s, skipping", secretName, targetNamespace)
+			continue
+		}
+		if !errors.IsNotFound(err) {
+			return fmt.Errorf("error checking if secret %s exists in namespace %s: %v", secretName, targetNamespace, err)
+		}
+
+		// Create target secret (copy data but reset metadata)
+		targetSecret := &corev1.Secret{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      secretName,
+				Namespace: targetNamespace,
+				Labels: map[string]string{
+					"ambient-code.io/managed":      "true",
+					"ambient-code.io/copied-from":  sourceNamespace,
+					"ambient-code.io/secret-type": "runner-secrets",
+				},
+				Annotations: map[string]string{
+					"ambient-code.io/copied-at": time.Now().Format(time.RFC3339),
+				},
+			},
+			Type: sourceSecret.Type,
+			Data: sourceSecret.Data,
+		}
+
+		// Create the secret in target namespace
+		_, err = k8sClient.CoreV1().Secrets(targetNamespace).Create(context.TODO(), targetSecret, v1.CreateOptions{})
+		if err != nil {
+			if errors.IsAlreadyExists(err) {
+				log.Printf("Secret %s already exists in namespace %s", secretName, targetNamespace)
+				continue
+			}
+			return fmt.Errorf("failed to create secret %s in namespace %s: %v", secretName, targetNamespace, err)
+		}
+
+		log.Printf("Successfully copied secret %s from %s to %s", secretName, sourceNamespace, targetNamespace)
 	}
 
 	return nil

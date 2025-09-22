@@ -5,7 +5,6 @@ metadata:
   name: vteam-ambient-runner
 
 # Namespace for all resources (can be overridden with kustomize edit set namespace)
-#namespace: sallyom-vteam
 namespace: ambient-code
 
 # Resources to include in deployment

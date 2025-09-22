@@ -48,5 +48,9 @@ rules:
 - apiGroups: ["rbac.authorization.k8s.io"]
   resources: ["rolebindings"]
   verbs: ["get", "create"]
+# Secrets (copy runner secrets to child namespaces)
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get", "create"]
 
 

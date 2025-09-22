@@ -34,6 +34,12 @@ spec:
           value: "quay.io/ambient_code/vteam_claude_runner:latest"
         - name: IMAGE_PULL_POLICY
           value: "Always"
+        - name: SECRETS_TO_COPY
+          value: "ambient-code-secrets"
+        - name: SECRETS_SOURCE_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
         resources:
           requests:
             cpu: 50m

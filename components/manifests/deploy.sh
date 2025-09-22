@@ -118,7 +118,9 @@ EOF
 }
 
 # Configuration
-NAMESPACE="${NAMESPACE:-ambient-code}"
+# Read current namespace from kustomization.yaml or use environment variable
+CURRENT_KUSTOMIZE_NAMESPACE=$(grep "^namespace:" kustomization.yaml | awk '{print $2}' 2>/dev/null || echo "ambient-code")
+NAMESPACE="${NAMESPACE:-$CURRENT_KUSTOMIZE_NAMESPACE}"
 # Allow overriding images via CONTAINER_REGISTRY/IMAGE_TAG or explicit DEFAULT_*_IMAGE
 CONTAINER_REGISTRY="${CONTAINER_REGISTRY:-quay.io/ambient_code}"
 IMAGE_TAG="${IMAGE_TAG:-latest}"
@@ -148,16 +150,19 @@ if [ "${1:-}" = "uninstall" ]; then
         exit 1
     fi
 
+    # Get current namespace from kustomization for uninstall
+    UNINSTALL_CURRENT_NAMESPACE=$(grep "^namespace:" kustomization.yaml | awk '{print $2}' 2>/dev/null || echo "ambient-code")
+
     # Delete using kustomize
-    if [ "$NAMESPACE" != "ambient-code" ]; then
+    if [ "$NAMESPACE" != "$UNINSTALL_CURRENT_NAMESPACE" ]; then
         kustomize edit set namespace "$NAMESPACE"
     fi
 
     kustomize build . | oc delete -f - --ignore-not-found=true
 
     # Restore kustomization if we modified it
-    if [ "$NAMESPACE" != "ambient-code" ]; then
-        kustomize edit set namespace ambient-code
+    if [ "$NAMESPACE" != "$UNINSTALL_CURRENT_NAMESPACE" ]; then
+        kustomize edit set namespace "$UNINSTALL_CURRENT_NAMESPACE"
     fi
 
     echo -e "${GREEN}✅ vTeam uninstalled from namespace ${NAMESPACE}${NC}"
@@ -303,6 +308,31 @@ EOF
 echo -e "${GREEN}✅ Generated ${OAUTH_ENV_FILE}${NC}"
 echo ""
 
+# Create ambient-code-secrets from .env if it exists and secret doesn't exist
+echo -e "${YELLOW}Checking ambient-code-secrets...${NC}"
+if ! oc get secret ambient-code-secrets -n ${NAMESPACE} >/dev/null 2>&1; then
+    echo -e "${BLUE}Creating ambient-code-secrets from .env...${NC}"
+
+    # Build secret creation command with ANTHROPIC_API_KEY from .env
+    SECRET_ARGS=""
+    if [[ -n "$ANTHROPIC_API_KEY" ]]; then
+        SECRET_ARGS="--from-literal=ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY"
+        echo -e "${GREEN}  Added ANTHROPIC_API_KEY${NC}"
+    fi
+
+    # Create the secret if we have the API key
+    if [[ -n "$SECRET_ARGS" ]]; then
+        oc create secret generic ambient-code-secrets -n ${NAMESPACE} $SECRET_ARGS
+        echo -e "${GREEN}✅ Created ambient-code-secrets${NC}"
+    else
+        echo -e "${YELLOW}⚠️ No ANTHROPIC_API_KEY found in .env to add to ambient-code-secrets${NC}"
+        echo -e "${YELLOW}   Please set ANTHROPIC_API_KEY in your .env file${NC}"
+    fi
+else
+    echo -e "${GREEN}✅ ambient-code-secrets already exists${NC}"
+fi
+echo ""
+
 # Update git-configmap with environment variables if they exist
 echo -e "${YELLOW}Updating Git configuration...${NC}"
 if [[ -n "$GIT_USER_NAME" ]] || [[ -n "$GIT_USER_EMAIL" ]]; then
@@ -333,8 +363,8 @@ echo ""
 # Deploy using kustomize
 echo -e "${YELLOW}Deploying to OpenShift using Kustomize...${NC}"
 
-# Set namespace if different from default
-if [ "$NAMESPACE" != "ambient-code" ]; then
+# Set namespace if different from current kustomization
+if [ "$NAMESPACE" != "$CURRENT_KUSTOMIZE_NAMESPACE" ]; then
     echo -e "${BLUE}Setting custom namespace: ${NAMESPACE}${NC}"
     kustomize edit set namespace "$NAMESPACE"
 fi
@@ -452,8 +482,8 @@ echo ""
 
 # Restore kustomization if we modified it
 echo -e "${BLUE}Restoring kustomization defaults...${NC}"
-if [ "$NAMESPACE" != "ambient-code" ]; then
-    kustomize edit set namespace ambient-code
+if [ "$NAMESPACE" != "$CURRENT_KUSTOMIZE_NAMESPACE" ]; then
+    kustomize edit set namespace "$CURRENT_KUSTOMIZE_NAMESPACE"
 fi
 # Restore default images
 kustomize edit set image quay.io/ambient_code/vteam_backend:latest=quay.io/ambient_code/vteam_backend:latest
