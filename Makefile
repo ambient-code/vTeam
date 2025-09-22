@@ -1,4 +1,4 @@
-.PHONY: help setup-env build-all build-frontend build-backend build-operator build-runner deploy clean dev-frontend dev-backend lint test registry-login push-all
+.PHONY: help setup-env build-all build-frontend build-backend build-operator build-runner deploy clean dev-frontend dev-backend lint test registry-login push-all dev-start dev-stop dev-test
 
 # Default target
 help: ## Show this help message
@@ -82,3 +82,13 @@ push-all: ## Push all images to registry
 	$(CONTAINER_ENGINE) push $(REGISTRY)/$(BACKEND_IMAGE)
 	$(CONTAINER_ENGINE) push $(REGISTRY)/$(OPERATOR_IMAGE)
 	$(CONTAINER_ENGINE) push $(REGISTRY)/$(RUNNER_IMAGE)
+
+# Local dev helpers
+dev-start: ## Start local dev (Kind + CRDs + backend + frontend)
+	@bash components/scripts/local-dev/start.sh
+
+dev-stop: ## Stop local dev processes
+	@bash components/scripts/local-dev/stop.sh
+
+dev-test: ## Run local dev smoke tests
+	@bash components/scripts/local-dev/test.sh
