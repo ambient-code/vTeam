@@ -33,10 +33,19 @@ go run .
 ```
 
 ### Frontend (local) quick start
-1) From this directory, install and run:
+
+**Recommended: Use integrated CRC development environment:**
 ```bash
+# From repository root - single command setup
+make dev-start
+# Access: https://vteam-frontend-vteam-dev.apps-crc.testing
+```
+
+**Alternative: Standalone frontend development:**
+```bash
+# From this directory, install and run:
 npm ci
-export BACKEND_URL=http://localhost:8080/api
+export BACKEND_URL=http://localhost:8080/api  # Adjust for your backend
 npm run dev
 # Open http://localhost:3000
 ```

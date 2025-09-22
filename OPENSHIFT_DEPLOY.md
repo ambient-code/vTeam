@@ -38,7 +38,7 @@
    ```bash
    oc get route frontend-route
    # or
-   kubectl port-forward svc/frontend-service 3000:3000
+   oc get route frontend-route -o jsonpath='https://{.spec.host}'
    ```
 
 ## What Gets Deployed

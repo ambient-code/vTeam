@@ -1,0 +1,72 @@
+# Development Dockerfile with Air for hot-reloading
+FROM golang:1.24-alpine
+
+WORKDIR /app
+
+# Install git, build dependencies, and air
+RUN apk add --no-cache git build-base && \
+    go install github.com/air-verse/air@latest
+
+# Copy go mod files
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Create .air.toml for configuration
+RUN cat > .air.toml << 'EOF'
+root = "."
+testdata_dir = "testdata"
+tmp_dir = "tmp"
+
+[build]
+  args_bin = []
+  bin = "./tmp/main"
+  cmd = "go build -o ./tmp/main ."
+  delay = 1000
+  exclude_dir = ["assets", "tmp", "vendor", "testdata"]
+  exclude_file = []
+  exclude_regex = ["_test.go"]
+  exclude_unchanged = false
+  follow_symlink = false
+  full_bin = ""
+  include_dir = []
+  include_ext = ["go", "tpl", "tmpl", "html", "yaml"]
+  include_file = []
+  kill_delay = "0s"
+  log = "build-errors.log"
+  poll = false
+  poll_interval = 0
+  rerun = false
+  rerun_delay = 500
+  send_interrupt = false
+  stop_on_error = false
+
+[color]
+  app = ""
+  build = "yellow"
+  main = "magenta"
+  runner = "green"
+  watcher = "cyan"
+
+[log]
+  main_only = false
+  time = false
+
+[misc]
+  clean_on_exit = true
+
+[screen]
+  clear_on_rebuild = false
+  keep_scroll = true
+EOF
+
+# Set environment variables  
+ENV AGENTS_DIR=/app/agents
+ENV CGO_ENABLED=0
+ENV GOOS=linux
+
+# Expose port
+EXPOSE 8080
+
+# Run air for hot-reloading
+# Note: Source code will be mounted as volume at runtime
+CMD ["air", "-c", ".air.toml"]

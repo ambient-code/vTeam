@@ -79,12 +79,12 @@ The system implements a 7-step refinement process with specialized AI agents:
 Before deploying the Ambient Agentic Runner, ensure you have:
 
 ### Required Tools
-- **Kubernetes cluster** (local with minikube/kind or cloud-based like EKS/GKE/AKS)
-- **kubectl** v1.28+ configured to access your cluster  
+- **OpenShift Local (CRC)** for local development or OpenShift cluster for production
+- **oc** (OpenShift CLI) or **kubectl** v1.28+ configured to access your cluster  
 - **Docker or Podman** for building container images
-- **Container registry access** (Docker Hub, Quay.io, ECR, etc.)
+- **Container registry access** (Docker Hub, Quay.io, ECR, etc.) for production
 - **Go 1.24+** for building backend services (if building from source)
-- **Node.js 18+** and **npm/pnpm** for the frontend (if building from source)
+- **Node.js 20+** and **npm** for the frontend (if building from source)
 
 ### Required Accounts & API Keys
 - **Anthropic API Key** - Get one from [Anthropic Console](https://console.anthropic.com/)
@@ -323,26 +323,48 @@ curl http://localhost:8080/health
 
 ## Development
 
-### Local Development
+### Local Development with OpenShift Local (CRC)
+
+**Single Command Setup:**
 ```bash
-# Frontend development
-cd components/frontend
-npm install
-npm run dev
-
-# Backend development
-cd components/backend
-export KUBECONFIG=~/.kube/config
-go run main.go
-
-# Testing with Kind
-kind create cluster --name ambient-agentic
-# Load images built locally (names must match Makefile tags)
-kind load docker-image vteam_backend:latest --name ambient-agentic
-kind load docker-image vteam_frontend:latest --name ambient-agentic
-kind load docker-image vteam_operator:latest --name ambient-agentic
-kind load docker-image vteam_claude_runner:latest --name ambient-agentic
+# Start complete local development environment
+make dev-start
 ```
+
+**What this provides:**
+- ✅ Full OpenShift cluster with CRC
+- ✅ Real OpenShift authentication and RBAC  
+- ✅ Production-like environment
+- ✅ Automatic image builds and deployments
+- ✅ Working frontend-backend integration
+
+**Prerequisites:**
+```bash
+# Install CRC (macOS)
+brew install crc
+
+# Get Red Hat pull secret (free):
+# 1. Visit: https://console.redhat.com/openshift/create/local
+# 2. Download pull secret to ~/.crc/pull-secret.json
+# 3. Run: crc setup
+
+# Then start development
+make dev-start
+```
+
+**Hot Reloading (optional):**
+```bash
+# Terminal 1: Start with development images
+DEV_MODE=true make dev-start
+
+# Terminal 2: Enable file sync for hot-reloading
+make dev-sync
+```
+
+**Access URLs:**
+- Frontend: `https://vteam-frontend-vteam-dev.apps-crc.testing`
+- Backend: `https://vteam-backend-vteam-dev.apps-crc.testing/health`
+- Console: `https://console-openshift-console.apps-crc.testing`
 
 ### Building from Source
 ```bash

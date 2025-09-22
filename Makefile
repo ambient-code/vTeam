@@ -83,12 +83,44 @@ push-all: ## Push all images to registry
 	$(CONTAINER_ENGINE) push $(REGISTRY)/$(OPERATOR_IMAGE)
 	$(CONTAINER_ENGINE) push $(REGISTRY)/$(RUNNER_IMAGE)
 
-# Local dev helpers
-dev-start: ## Start local dev (Kind + CRDs + backend + frontend)
-	@bash components/scripts/local-dev/start.sh
+# Local dev helpers (OpenShift Local/CRC-based)
+dev-start: ## Start local dev (CRC + OpenShift + backend + frontend)
+	@bash components/scripts/local-dev/crc-start.sh
 
 dev-stop: ## Stop local dev processes
-	@bash components/scripts/local-dev/stop.sh
+	@bash components/scripts/local-dev/crc-stop.sh
 
 dev-test: ## Run local dev smoke tests
-	@bash components/scripts/local-dev/test.sh
+	@bash components/scripts/local-dev/crc-test.sh
+
+# Additional CRC options
+dev-stop-cluster: ## Stop local dev and shutdown CRC cluster
+	@bash components/scripts/local-dev/crc-stop.sh --stop-cluster
+
+dev-clean: ## Stop local dev and delete OpenShift project  
+	@bash components/scripts/local-dev/crc-stop.sh --delete-project
+
+# Development mode with hot-reloading
+dev-start-hot: ## Start local dev with hot-reloading enabled
+	@DEV_MODE=true bash components/scripts/local-dev/crc-start.sh
+
+dev-sync: ## Start file sync for hot-reloading (run in separate terminal)
+	@bash components/scripts/local-dev/crc-dev-sync.sh both
+
+dev-sync-backend: ## Sync only backend files
+	@bash components/scripts/local-dev/crc-dev-sync.sh backend
+
+dev-sync-frontend: ## Sync only frontend files
+	@bash components/scripts/local-dev/crc-dev-sync.sh frontend
+
+dev-logs: ## Show logs for both backend and frontend
+	@echo "Backend logs:"
+	@oc logs -f deployment/vteam-backend -n vteam-dev --tail=20 &
+	@echo -e "\n\nFrontend logs:"
+	@oc logs -f deployment/vteam-frontend -n vteam-dev --tail=20
+
+dev-logs-backend: ## Show backend logs with Air output
+	@oc logs -f deployment/vteam-backend -n vteam-dev
+
+dev-logs-frontend: ## Show frontend logs with Next.js output
+	@oc logs -f deployment/vteam-frontend -n vteam-dev

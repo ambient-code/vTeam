@@ -1,0 +1,26 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: frontend-dev-user
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: frontend-dev-user-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: backend-api-local
+subjects:
+- kind: ServiceAccount
+  name: frontend-dev-user
+  namespace: vteam-dev
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: frontend-auth-token
+  annotations:
+    kubernetes.io/service-account.name: frontend-dev-user
+type: kubernetes.io/service-account-token

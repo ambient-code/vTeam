@@ -1,0 +1,18 @@
+# Development Dockerfile for Next.js with hot-reloading
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Install dependencies for building native modules
+RUN apk add --no-cache libc6-compat python3 make g++
+
+# Set NODE_ENV to development
+ENV NODE_ENV=development
+ENV NEXT_TELEMETRY_DISABLED=1
+
+# Expose port
+EXPOSE 3000
+
+# Install dependencies when container starts (source mounted as volume)
+# Run Next.js in development mode
+CMD ["sh", "-c", "npm ci && npm run dev"]

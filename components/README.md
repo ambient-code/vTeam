@@ -83,38 +83,41 @@ components/
 
 ## ⚡ Quick Start
 
-### Prerequisites
-- Kubernetes cluster (local or cloud)
-- kubectl configured
-- Docker for building images
-- Anthropic API key
-
-### Deploy
+### Local Development (Recommended)
 ```bash
-# Clone the repository
-git clone <repository-url>
-cd components
-
-# Build all images
-docker build --platform=linux/amd64 -t backend:latest ./backend/
-docker build --platform=linux/amd64 -t frontend:latest ./frontend/
-docker build --platform=linux/amd64 -t operator:latest ./operator/
-docker build --platform=linux/amd64 -t claude-code-runner:latest ./runners/claude-code-runner/
-
-# Configure your Anthropic API key
-echo -n "your-api-key" | base64  # Use this in secrets.yaml
-
-# Deploy to Kubernetes (namespace: ambient-code)
-cd manifests
-./deploy.sh
+# Single command to start everything
+make dev-start
 ```
 
-### Access
-```bash
-# Port forward to access the UI (ambient-code namespace)
-kubectl port-forward svc/frontend-service 3000:3000 -n ambient-code
+**Prerequisites:**
+- OpenShift Local (CRC): `brew install crc`
+- Red Hat pull secret: Get free from [console.redhat.com](https://console.redhat.com/openshift/create/local)
 
-# Open http://localhost:3000 in your browser
+**What you get:**
+- ✅ Complete OpenShift development environment
+- ✅ Frontend: `https://vteam-frontend-vteam-dev.apps-crc.testing`
+- ✅ Backend API working with authentication
+- ✅ OpenShift console access
+- ✅ Ready for project creation and agentic sessions
+
+### Production Deployment
+```bash
+# Build and push images to your registry
+export REGISTRY="your-registry.com"
+make build-all push-all REGISTRY=$REGISTRY
+
+# Deploy to OpenShift/Kubernetes
+cd components/manifests
+CONTAINER_REGISTRY=$REGISTRY ./deploy.sh
+```
+
+### Hot Reloading Development
+```bash
+# Terminal 1: Start with development mode
+DEV_MODE=true make dev-start
+
+# Terminal 2: Enable file sync for hot-reloading
+make dev-sync
 ```
 
 ## 🔧 Configuration

@@ -60,6 +60,11 @@ export function buildForwardHeaders(request: Request, extra?: Record<string, str
   if (!headers['X-Forwarded-Email'] && process.env.OC_EMAIL) {
     headers['X-Forwarded-Email'] = process.env.OC_EMAIL;
   }
+  
+  // Add token fallback for local development
+  if (!headers['X-Forwarded-Access-Token'] && process.env.OC_TOKEN) {
+    headers['X-Forwarded-Access-Token'] = process.env.OC_TOKEN;
+  }
 
   // Optional dev-only automatic discovery via oc CLI
   // Enable by setting ENABLE_OC_WHOAMI=1 in your dev env

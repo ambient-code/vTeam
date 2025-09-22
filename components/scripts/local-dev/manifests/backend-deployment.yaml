@@ -1,0 +1,83 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vteam-backend
+  labels:
+    app: vteam-backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vteam-backend
+  template:
+    metadata:
+      labels:
+        app: vteam-backend
+    spec:
+      serviceAccountName: backend-api
+      containers:
+      - name: backend
+        image: image-registry.openshift-image-registry.svc:5000/vteam-dev/vteam-backend:latest
+        ports:
+        - containerPort: 8080
+          name: http
+        env:
+        - name: NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: PORT
+          value: "8080"
+        - name: AGENTS_DIR
+          value: "/app/agents"
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vteam-backend
+  labels:
+    app: vteam-backend
+spec:
+  selector:
+    app: vteam-backend
+  ports:
+  - port: 8080
+    targetPort: http
+    protocol: TCP
+    name: http
+  type: ClusterIP
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: vteam-backend
+  labels:
+    app: vteam-backend
+spec:
+  to:
+    kind: Service
+    name: vteam-backend
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect

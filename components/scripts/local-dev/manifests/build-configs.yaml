@@ -1,0 +1,50 @@
+---
+apiVersion: image.openshift.io/v1
+kind: ImageStream
+metadata:
+  name: vteam-backend
+  labels:
+    app: vteam-backend
+---
+apiVersion: image.openshift.io/v1
+kind: ImageStream
+metadata:
+  name: vteam-frontend
+  labels:
+    app: vteam-frontend
+---
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: vteam-backend
+  labels:
+    app: vteam-backend
+spec:
+  source:
+    type: Binary
+  strategy:
+    type: Docker
+    dockerStrategy:
+      dockerfilePath: Dockerfile
+  output:
+    to:
+      kind: ImageStreamTag
+      name: vteam-backend:latest
+---
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: vteam-frontend
+  labels:
+    app: vteam-frontend
+spec:
+  source:
+    type: Binary
+  strategy:
+    type: Docker
+    dockerStrategy:
+      dockerfilePath: Dockerfile
+  output:
+    to:
+      kind: ImageStreamTag
+      name: vteam-frontend:latest
