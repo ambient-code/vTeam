@@ -121,13 +121,42 @@ EOF
 # Read current namespace from kustomization.yaml or use environment variable
 CURRENT_KUSTOMIZE_NAMESPACE=$(grep "^namespace:" kustomization.yaml | awk '{print $2}' 2>/dev/null || echo "ambient-code")
 NAMESPACE="${NAMESPACE:-$CURRENT_KUSTOMIZE_NAMESPACE}"
+
+# Read existing images from kustomization.yaml, fallback to defaults
+get_current_image() {
+    local image_name="$1"
+    local fallback="$2"
+    # Extract newName:newTag from kustomization.yaml for the given image
+    awk -v img="$image_name" '
+    /^- name: / && $3 == img { found=1; next }
+    found && /^  newName: / { name=$2; next }
+    found && /^  newTag: / { tag=$2; print name":"tag; found=0; next }
+    found && /^- name: / { found=0 }
+    ' kustomization.yaml 2>/dev/null || echo "$fallback"
+}
+
 # Allow overriding images via CONTAINER_REGISTRY/IMAGE_TAG or explicit DEFAULT_*_IMAGE
-CONTAINER_REGISTRY="${CONTAINER_REGISTRY:-quay.io/ambient_code}"
-IMAGE_TAG="${IMAGE_TAG:-latest}"
-DEFAULT_BACKEND_IMAGE="${DEFAULT_BACKEND_IMAGE:-${CONTAINER_REGISTRY}/vteam_backend:${IMAGE_TAG}}"
-DEFAULT_FRONTEND_IMAGE="${DEFAULT_FRONTEND_IMAGE:-${CONTAINER_REGISTRY}/vteam_frontend:${IMAGE_TAG}}"
-DEFAULT_OPERATOR_IMAGE="${DEFAULT_OPERATOR_IMAGE:-${CONTAINER_REGISTRY}/vteam_operator:${IMAGE_TAG}}"
-DEFAULT_RUNNER_IMAGE="${DEFAULT_RUNNER_IMAGE:-${CONTAINER_REGISTRY}/vteam_claude_runner:${IMAGE_TAG}}"
+# If environment variables are not set, use existing kustomization.yaml values
+CONTAINER_REGISTRY_DEFAULT="quay.io/ambient_code"
+IMAGE_TAG_DEFAULT="latest"
+
+if [[ -n "${CONTAINER_REGISTRY:-}" ]] || [[ -n "${IMAGE_TAG:-}" ]] || [[ -n "${DEFAULT_BACKEND_IMAGE:-}" ]]; then
+    # Environment variables provided - use them
+    CONTAINER_REGISTRY="${CONTAINER_REGISTRY:-$CONTAINER_REGISTRY_DEFAULT}"
+    IMAGE_TAG="${IMAGE_TAG:-$IMAGE_TAG_DEFAULT}"
+    DEFAULT_BACKEND_IMAGE="${DEFAULT_BACKEND_IMAGE:-${CONTAINER_REGISTRY}/vteam_backend:${IMAGE_TAG}}"
+    DEFAULT_FRONTEND_IMAGE="${DEFAULT_FRONTEND_IMAGE:-${CONTAINER_REGISTRY}/vteam_frontend:${IMAGE_TAG}}"
+    DEFAULT_OPERATOR_IMAGE="${DEFAULT_OPERATOR_IMAGE:-${CONTAINER_REGISTRY}/vteam_operator:${IMAGE_TAG}}"
+    DEFAULT_RUNNER_IMAGE="${DEFAULT_RUNNER_IMAGE:-${CONTAINER_REGISTRY}/vteam_claude_runner:${IMAGE_TAG}}"
+    IMAGES_FROM_ENV=true
+else
+    # No environment variables - use existing kustomization.yaml values
+    DEFAULT_BACKEND_IMAGE=$(get_current_image "quay.io/ambient_code/vteam_backend:latest" "${CONTAINER_REGISTRY_DEFAULT}/vteam_backend:${IMAGE_TAG_DEFAULT}")
+    DEFAULT_FRONTEND_IMAGE=$(get_current_image "quay.io/ambient_code/vteam_frontend:latest" "${CONTAINER_REGISTRY_DEFAULT}/vteam_frontend:${IMAGE_TAG_DEFAULT}")
+    DEFAULT_OPERATOR_IMAGE=$(get_current_image "quay.io/ambient_code/vteam_operator:latest" "${CONTAINER_REGISTRY_DEFAULT}/vteam_operator:${IMAGE_TAG_DEFAULT}")
+    DEFAULT_RUNNER_IMAGE=$(get_current_image "quay.io/ambient_code/vteam_claude_runner:latest" "${CONTAINER_REGISTRY_DEFAULT}/vteam_claude_runner:${IMAGE_TAG_DEFAULT}")
+    IMAGES_FROM_ENV=false
+fi
 
 # Handle uninstall command early
 if [ "${1:-}" = "uninstall" ]; then
@@ -308,28 +337,44 @@ EOF
 echo -e "${GREEN}✅ Generated ${OAUTH_ENV_FILE}${NC}"
 echo ""
 
-# Create ambient-code-secrets from .env if it exists and secret doesn't exist
-echo -e "${YELLOW}Checking ambient-code-secrets...${NC}"
-if ! oc get secret ambient-code-secrets -n ${NAMESPACE} >/dev/null 2>&1; then
-    echo -e "${BLUE}Creating ambient-code-secrets from .env...${NC}"
+# Create ambient-runner-secrets from .env if it exists and secret doesn't exist
+# This creates the operator source secret in the same namespace as the operator
+echo -e "${YELLOW}Checking ambient-runner-secrets in operator namespace ${NAMESPACE}...${NC}"
+if ! oc get secret ambient-runner-secrets -n ${NAMESPACE} >/dev/null 2>&1; then
+    echo -e "${BLUE}Creating ambient-runner-secrets source secret in operator namespace...${NC}"
 
-    # Build secret creation command with ANTHROPIC_API_KEY from .env
+    # Build secret creation command with API keys and Git tokens from .env
     SECRET_ARGS=""
     if [[ -n "$ANTHROPIC_API_KEY" ]]; then
         SECRET_ARGS="--from-literal=ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY"
         echo -e "${GREEN}  Added ANTHROPIC_API_KEY${NC}"
     fi
 
+    # Add Git authentication tokens if provided
+    if [[ -n "$GITHUB_TOKEN" ]]; then
+        SECRET_ARGS="$SECRET_ARGS --from-literal=GITHUB_TOKEN=$GITHUB_TOKEN"
+        echo -e "${GREEN}  Added GITHUB_TOKEN${NC}"
+    fi
+    if [[ -n "$GIT_TOKEN" ]]; then
+        SECRET_ARGS="$SECRET_ARGS --from-literal=GIT_TOKEN=$GIT_TOKEN"
+        echo -e "${GREEN}  Added GIT_TOKEN${NC}"
+    fi
+    if [[ -n "$GIT_SSH_KEY" ]]; then
+        SECRET_ARGS="$SECRET_ARGS --from-literal=GIT_SSH_KEY=$GIT_SSH_KEY"
+        echo -e "${GREEN}  Added GIT_SSH_KEY${NC}"
+    fi
+
     # Create the secret if we have the API key
     if [[ -n "$SECRET_ARGS" ]]; then
-        oc create secret generic ambient-code-secrets -n ${NAMESPACE} $SECRET_ARGS
-        echo -e "${GREEN}✅ Created ambient-code-secrets${NC}"
+        oc create secret generic ambient-runner-secrets -n ${NAMESPACE} $SECRET_ARGS
+        echo -e "${GREEN}✅ Created ambient-runner-secrets${NC}"
     else
-        echo -e "${YELLOW}⚠️ No ANTHROPIC_API_KEY found in .env to add to ambient-code-secrets${NC}"
+        echo -e "${YELLOW}⚠️ No ANTHROPIC_API_KEY found in .env to add to ambient-runner-secrets${NC}"
         echo -e "${YELLOW}   Please set ANTHROPIC_API_KEY in your .env file${NC}"
+        echo -e "${YELLOW}   Optional: Add GITHUB_TOKEN, GIT_TOKEN, or GIT_SSH_KEY for Git operations${NC}"
     fi
 else
-    echo -e "${GREEN}✅ ambient-code-secrets already exists${NC}"
+    echo -e "${GREEN}✅ ambient-runner-secrets already exists${NC}"
 fi
 echo ""
 
@@ -369,12 +414,16 @@ if [ "$NAMESPACE" != "$CURRENT_KUSTOMIZE_NAMESPACE" ]; then
     kustomize edit set namespace "$NAMESPACE"
 fi
 
-# Set custom images if different from defaults
-echo -e "${BLUE}Setting custom images...${NC}"
-kustomize edit set image quay.io/ambient_code/vteam_backend:latest=${DEFAULT_BACKEND_IMAGE}
-kustomize edit set image quay.io/ambient_code/vteam_frontend:latest=${DEFAULT_FRONTEND_IMAGE}
-kustomize edit set image quay.io/ambient_code/vteam_operator:latest=${DEFAULT_OPERATOR_IMAGE}
-kustomize edit set image quay.io/ambient_code/vteam_claude_runner:latest=${DEFAULT_RUNNER_IMAGE}
+# Set custom images only if environment variables were provided
+if [[ "$IMAGES_FROM_ENV" == "true" ]]; then
+    echo -e "${BLUE}Setting custom images from environment...${NC}"
+    kustomize edit set image quay.io/ambient_code/vteam_backend:latest=${DEFAULT_BACKEND_IMAGE}
+    kustomize edit set image quay.io/ambient_code/vteam_frontend:latest=${DEFAULT_FRONTEND_IMAGE}
+    kustomize edit set image quay.io/ambient_code/vteam_operator:latest=${DEFAULT_OPERATOR_IMAGE}
+    kustomize edit set image quay.io/ambient_code/vteam_claude_runner:latest=${DEFAULT_RUNNER_IMAGE}
+else
+    echo -e "${BLUE}Using existing images from kustomization.yaml...${NC}"
+fi
 
 # Build and apply manifests
 echo -e "${BLUE}Building and applying manifests...${NC}"
@@ -485,10 +534,26 @@ echo -e "${BLUE}Restoring kustomization defaults...${NC}"
 if [ "$NAMESPACE" != "$CURRENT_KUSTOMIZE_NAMESPACE" ]; then
     kustomize edit set namespace "$CURRENT_KUSTOMIZE_NAMESPACE"
 fi
-# Restore default images
-kustomize edit set image quay.io/ambient_code/vteam_backend:latest=quay.io/ambient_code/vteam_backend:latest
-kustomize edit set image quay.io/ambient_code/vteam_frontend:latest=quay.io/ambient_code/vteam_frontend:latest
-kustomize edit set image quay.io/ambient_code/vteam_operator:latest=quay.io/ambient_code/vteam_operator:latest
-kustomize edit set image quay.io/ambient_code/vteam_claude_runner:latest=quay.io/ambient_code/vteam_claude_runner:latest
+# Only restore images if we modified them (when environment variables were used)
+if [[ "$IMAGES_FROM_ENV" == "true" ]]; then
+    echo -e "${BLUE}Restoring original images...${NC}"
+    # Read original images that were in kustomization.yaml before environment override
+    ORIGINAL_BACKEND=$(get_current_image "quay.io/ambient_code/vteam_backend:latest" "quay.io/ambient_code/vteam_backend:latest")
+    ORIGINAL_FRONTEND=$(get_current_image "quay.io/ambient_code/vteam_frontend:latest" "quay.io/ambient_code/vteam_frontend:latest")
+    ORIGINAL_OPERATOR=$(get_current_image "quay.io/ambient_code/vteam_operator:latest" "quay.io/ambient_code/vteam_operator:latest")
+    ORIGINAL_RUNNER=$(get_current_image "quay.io/ambient_code/vteam_claude_runner:latest" "quay.io/ambient_code/vteam_claude_runner:latest")
+
+    # Split name:tag and restore
+    IFS=':' read -r name tag <<< "$ORIGINAL_BACKEND"
+    kustomize edit set image quay.io/ambient_code/vteam_backend:latest="$name:$tag"
+    IFS=':' read -r name tag <<< "$ORIGINAL_FRONTEND"
+    kustomize edit set image quay.io/ambient_code/vteam_frontend:latest="$name:$tag"
+    IFS=':' read -r name tag <<< "$ORIGINAL_OPERATOR"
+    kustomize edit set image quay.io/ambient_code/vteam_operator:latest="$name:$tag"
+    IFS=':' read -r name tag <<< "$ORIGINAL_RUNNER"
+    kustomize edit set image quay.io/ambient_code/vteam_claude_runner:latest="$name:$tag"
+else
+    echo -e "${BLUE}No image restoration needed (used existing kustomization.yaml)${NC}"
+fi
 
 echo -e "${GREEN}🎯 Ready to create RFE workflows with multi-agent collaboration!${NC}"

@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"research-operator/resources"
+
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -34,6 +36,10 @@ var (
 	imagePullPolicy        corev1.PullPolicy
 	contentServiceImage    string
 	backendNamespace       string
+
+	// Resource controllers
+	secretController     *resources.SecretsReconciler
+	configMapController  *resources.ConfigMapsReconciler
 )
 
 func main() {
@@ -72,6 +78,10 @@ func main() {
 		imagePullPolicyStr = "Always"
 	}
 	imagePullPolicy = corev1.PullPolicy(imagePullPolicyStr)
+
+	// Initialize resource controllers
+	secretController = resources.NewSecretsReconciler(k8sClient, namespace)
+	configMapController = resources.NewConfigMapsReconciler(k8sClient, namespace)
 
 	log.Printf("Agentic Session Operator starting in namespace: %s", namespace)
 	log.Printf("Using ambient-code runner image: %s", ambientCodeRunnerImage)
@@ -335,7 +345,7 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 								{
 									Weight: 100,
 									PodAffinityTerm: corev1.PodAffinityTerm{
-										LabelSelector: &v1.LabelSelector{MatchLabels: map[string]string{"app": "ambient-content"}},
+										LabelSelector: &v1.LabelSelector{MatchLabels: map[string]string{resources.AppLabelKey: resources.ContentServiceName}},
 										Namespaces:    []string{sessionNamespace},
 										TopologyKey:   "kubernetes.io/hostname",
 									},
@@ -349,7 +359,7 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 							Name: "workspace",
 							VolumeSource: corev1.VolumeSource{
 								PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-									ClaimName: "ambient-workspace",
+									ClaimName: resources.WorkspacePVCName,
 								},
 							},
 						},
@@ -385,7 +395,7 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 									{Name: "LLM_MAX_TOKENS", Value: fmt.Sprintf("%d", maxTokens)},
 									{Name: "TIMEOUT", Value: fmt.Sprintf("%d", timeout)},
 									{Name: "BACKEND_API_URL", Value: fmt.Sprintf("http://backend-service.%s.svc.cluster.local:8080/api", backendNamespace)},
-									{Name: "PVC_PROXY_API_URL", Value: fmt.Sprintf("http://ambient-content.%s.svc:8080", sessionNamespace)},
+									{Name: "PVC_PROXY_API_URL", Value: fmt.Sprintf("http://%s.%s.svc:8080", resources.ContentServiceName, sessionNamespace)},
 									{Name: "WORKSPACE_STORE_PATH", Value: func() string {
 										if workspaceStorePathFound {
 											return workspaceStorePath
@@ -524,7 +534,7 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 // ensureProjectWorkspacePVC creates a per-namespace PVC for runner workspace if missing
 func ensureProjectWorkspacePVC(namespace string) error {
 	// Check if PVC exists
-	if _, err := k8sClient.CoreV1().PersistentVolumeClaims(namespace).Get(context.TODO(), "ambient-workspace", v1.GetOptions{}); err == nil {
+	if _, err := k8sClient.CoreV1().PersistentVolumeClaims(namespace).Get(context.TODO(), resources.WorkspacePVCName, v1.GetOptions{}); err == nil {
 		return nil
 	} else if !errors.IsNotFound(err) {
 		return err
@@ -532,9 +542,9 @@ func ensureProjectWorkspacePVC(namespace string) error {
 
 	pvc := &corev1.PersistentVolumeClaim{
 		ObjectMeta: v1.ObjectMeta{
-			Name:      "ambient-workspace",
+			Name:      resources.WorkspacePVCName,
 			Namespace: namespace,
-			Labels:    map[string]string{"app": "ambient-workspace"},
+			Labels:    map[string]string{resources.AppLabelKey: "ambient-workspace"},
 		},
 		Spec: corev1.PersistentVolumeClaimSpec{
 			AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
@@ -557,7 +567,7 @@ func ensureProjectWorkspacePVC(namespace string) error {
 // ensureContentService deploys a per-namespace content service that mounts the project PVC RW
 func ensureContentService(namespace string) error {
 	// Check Service
-	if _, err := k8sClient.CoreV1().Services(namespace).Get(context.TODO(), "ambient-content", v1.GetOptions{}); err == nil {
+	if _, err := k8sClient.CoreV1().Services(namespace).Get(context.TODO(), resources.ContentServiceName, v1.GetOptions{}); err == nil {
 		return nil
 	} else if !errors.IsNotFound(err) {
 		return err
@@ -567,15 +577,15 @@ func ensureContentService(namespace string) error {
 	replicas := int32(1)
 	deploy := &appsv1.Deployment{
 		ObjectMeta: v1.ObjectMeta{
-			Name:      "ambient-content",
+			Name:      resources.ContentServiceName,
 			Namespace: namespace,
-			Labels:    map[string]string{"app": "ambient-content"},
+			Labels:    map[string]string{resources.AppLabelKey: resources.ContentServiceName},
 		},
 		Spec: appsv1.DeploymentSpec{
 			Replicas: &replicas,
-			Selector: &v1.LabelSelector{MatchLabels: map[string]string{"app": "ambient-content"}},
+			Selector: &v1.LabelSelector{MatchLabels: map[string]string{resources.AppLabelKey: resources.ContentServiceName}},
 			Template: corev1.PodTemplateSpec{
-				ObjectMeta: v1.ObjectMeta{Labels: map[string]string{"app": "ambient-content"}},
+				ObjectMeta: v1.ObjectMeta{Labels: map[string]string{resources.AppLabelKey: resources.ContentServiceName}},
 				Spec: corev1.PodSpec{
 					// Keep content service singleton for RWO PVC; rely on runner job podAffinity (set below) to co-locate with content if needed
 					Containers: []corev1.Container{
@@ -592,7 +602,7 @@ func ensureContentService(namespace string) error {
 						},
 					},
 					Volumes: []corev1.Volume{
-						{Name: "workspace", VolumeSource: corev1.VolumeSource{PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: "ambient-workspace"}}},
+						{Name: "workspace", VolumeSource: corev1.VolumeSource{PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: resources.WorkspacePVCName}}},
 					},
 				},
 			},
@@ -605,12 +615,12 @@ func ensureContentService(namespace string) error {
 	// Service
 	svc := &corev1.Service{
 		ObjectMeta: v1.ObjectMeta{
-			Name:      "ambient-content",
+			Name:      resources.ContentServiceName,
 			Namespace: namespace,
-			Labels:    map[string]string{"app": "ambient-content"},
+			Labels:    map[string]string{resources.AppLabelKey: resources.ContentServiceName},
 		},
 		Spec: corev1.ServiceSpec{
-			Selector: map[string]string{"app": "ambient-content"},
+			Selector: map[string]string{resources.AppLabelKey: resources.ContentServiceName},
 			Ports:    []corev1.ServicePort{{Name: "http", Port: 8080, TargetPort: intstrFromString("http")}},
 			Type:     corev1.ServiceTypeClusterIP,
 		},
@@ -757,8 +767,13 @@ func watchNamespaces() {
 				}
 
 				// Copy essential secrets from parent namespace to child namespace
-				if err := copySecretsToNamespace(namespace.Name); err != nil {
+				if err := secretController.ReconcileSecretsForNamespace(namespace.Name); err != nil {
 					log.Printf("Failed to copy secrets to namespace %s: %v", namespace.Name, err)
+				}
+
+				// Ensure default git configuration exists
+				if err := configMapController.ReconcileDefaultGitConfig(namespace.Name); err != nil {
+					log.Printf("Failed to create default git config in namespace %s: %v", namespace.Name, err)
 				}
 
 				// Ensure shared workspace PVC and content service exist
@@ -839,7 +854,7 @@ func createDefaultProjectSettings(namespaceName string) error {
 	// Get default runner secrets name from environment or use default
 	defaultRunnerSecretsName := os.Getenv("SECRETS_TO_COPY")
 	if defaultRunnerSecretsName == "" {
-		defaultRunnerSecretsName = "ambient-code-secrets"
+		defaultRunnerSecretsName = resources.DefaultRunnerSecretsName
 	}
 	// Use first secret name if multiple are configured
 	if strings.Contains(defaultRunnerSecretsName, ",") {
@@ -1021,86 +1036,6 @@ func updateProjectSettingsStatus(namespace, name string, statusUpdate map[string
 	return nil
 }
 
-// copySecretsToNamespace copies essential secrets from the operator namespace to the target namespace
-func copySecretsToNamespace(targetNamespace string) error {
-	// Skip copying to the operator's own namespace
-	if targetNamespace == namespace {
-		return nil
-	}
-
-	// Get source namespace from environment or use operator namespace
-	sourceNamespace := os.Getenv("SECRETS_SOURCE_NAMESPACE")
-	if sourceNamespace == "" {
-		sourceNamespace = namespace
-	}
-
-	// Define secrets to copy (configurable via environment)
-	secretsToCopy := []string{"ambient-code-secrets"}
-	if envSecrets := os.Getenv("SECRETS_TO_COPY"); envSecrets != "" {
-		secretsToCopy = strings.Split(envSecrets, ",")
-	}
-
-	log.Printf("Copying secrets from namespace %s to %s: %v", sourceNamespace, targetNamespace, secretsToCopy)
-
-	for _, secretName := range secretsToCopy {
-		secretName = strings.TrimSpace(secretName)
-		if secretName == "" {
-			continue
-		}
-
-		// Get source secret
-		sourceSecret, err := k8sClient.CoreV1().Secrets(sourceNamespace).Get(context.TODO(), secretName, v1.GetOptions{})
-		if err != nil {
-			if errors.IsNotFound(err) {
-				log.Printf("Source secret %s not found in namespace %s, skipping", secretName, sourceNamespace)
-				continue
-			}
-			return fmt.Errorf("failed to get source secret %s from namespace %s: %v", secretName, sourceNamespace, err)
-		}
-
-		// Check if target secret already exists
-		_, err = k8sClient.CoreV1().Secrets(targetNamespace).Get(context.TODO(), secretName, v1.GetOptions{})
-		if err == nil {
-			log.Printf("Secret %s already exists in namespace %s, skipping", secretName, targetNamespace)
-			continue
-		}
-		if !errors.IsNotFound(err) {
-			return fmt.Errorf("error checking if secret %s exists in namespace %s: %v", secretName, targetNamespace, err)
-		}
-
-		// Create target secret (copy data but reset metadata)
-		targetSecret := &corev1.Secret{
-			ObjectMeta: v1.ObjectMeta{
-				Name:      secretName,
-				Namespace: targetNamespace,
-				Labels: map[string]string{
-					"ambient-code.io/managed":      "true",
-					"ambient-code.io/copied-from":  sourceNamespace,
-					"ambient-code.io/secret-type": "runner-secrets",
-				},
-				Annotations: map[string]string{
-					"ambient-code.io/copied-at": time.Now().Format(time.RFC3339),
-				},
-			},
-			Type: sourceSecret.Type,
-			Data: sourceSecret.Data,
-		}
-
-		// Create the secret in target namespace
-		_, err = k8sClient.CoreV1().Secrets(targetNamespace).Create(context.TODO(), targetSecret, v1.CreateOptions{})
-		if err != nil {
-			if errors.IsAlreadyExists(err) {
-				log.Printf("Secret %s already exists in namespace %s", secretName, targetNamespace)
-				continue
-			}
-			return fmt.Errorf("failed to create secret %s in namespace %s: %v", secretName, targetNamespace, err)
-		}
-
-		log.Printf("Successfully copied secret %s from %s to %s", secretName, sourceNamespace, targetNamespace)
-	}
-
-	return nil
-}
 
 var (
 	boolPtr          = func(b bool) *bool { return &b }

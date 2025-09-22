@@ -5,7 +5,8 @@ metadata:
   name: vteam-ambient-runner
 
 # Namespace for all resources (can be overridden with kustomize edit set namespace)
-namespace: ambient-code
+#namespace: ambient-code
+namespace: sallyom-vteam
 
 # Resources to include in deployment
 resources:
@@ -19,14 +20,14 @@ resources:
 - operator-deployment.yaml
 images:
 - name: quay.io/ambient_code/vteam_backend:latest
-  newName: quay.io/ambient_code/vteam_backend
+  newName: quay.io/sallyom/vteam-backend
   newTag: latest
 - name: quay.io/ambient_code/vteam_claude_runner:latest
   newName: quay.io/ambient_code/vteam_claude_runner
   newTag: latest
 - name: quay.io/ambient_code/vteam_frontend:latest
-  newName: quay.io/ambient_code/vteam_frontend
+  newName: quay.io/sallyom/vteam-frontend
   newTag: latest
 - name: quay.io/ambient_code/vteam_operator:latest
-  newName: quay.io/ambient_code/vteam_operator
+  newName: quay.io/sallyom/vteam-operator
   newTag: latest

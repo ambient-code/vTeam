@@ -10,9 +10,7 @@ import { Button } from "@/components/ui/button";
 import { RefreshCw, Save, Loader2 } from "lucide-react";
 import { getApiUrl } from "@/lib/config";
 import type { Project } from "@/types/project";
-import { Plus, Trash2, Eye, EyeOff } from "lucide-react";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { CheckCircle, XCircle, AlertCircle, ChevronDown, ChevronRight, Plus, Trash2 } from "lucide-react";
 
 export default function ProjectSettingsPage({ params }: { params: Promise<{ name: string }> }) {
   const [projectName, setProjectName] = useState<string>("");
@@ -22,30 +20,128 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ name
   const [error, setError] = useState<string | null>(null);
   const [formData, setFormData] = useState({ displayName: "", description: "" });
   const [secretName, setSecretName] = useState<string>("");
-  const [secrets, setSecrets] = useState<Array<{ key: string; value: string }>>([]);
-  const [secretsLoading, setSecretsLoading] = useState<boolean>(true);
-  const [secretsSaving, setSecretsSaving] = useState<boolean>(false);
   const [configSaving, setConfigSaving] = useState<boolean>(false);
-  const [warnNoSecret, setWarnNoSecret] = useState<boolean>(false);
-  const [secretList, setSecretList] = useState<Array<{ name: string }>>([]);
-  const [mode, setMode] = useState<"existing" | "new">("existing");
-  const [showValues, setShowValues] = useState<Record<number, boolean>>({});
-  const loadSecretValues = async (name: string) => {
-    if (!name) return;
+  const [validationLoading, setValidationLoading] = useState<boolean>(false);
+  const [validationResult, setValidationResult] = useState<{ valid: boolean; message: string } | null>(null);
+  const [syncTriggering, setSyncTriggering] = useState<boolean>(false);
+  const [showCreateSecret, setShowCreateSecret] = useState<boolean>(false);
+  const [secretData, setSecretData] = useState<{ key: string; value: string }[]>([
+    { key: "ANTHROPIC_API_KEY", value: "" },
+    { key: "GITHUB_TOKEN", value: "" },
+    { key: "GIT_TOKEN", value: "" },
+    { key: "GIT_SSH_KEY", value: "" }
+  ]);
+  const [creatingSecret, setCreatingSecret] = useState<boolean>(false);
+  const validateSourceSecret = async () => {
+    if (!projectName) return;
     try {
-      setSecretsLoading(true);
+      setValidationLoading(true);
       const apiUrl = getApiUrl();
-      const secRes = await fetch(`${apiUrl}/projects/${encodeURIComponent(projectName)}/runner-secrets`);
-      if (secRes.ok) {
-        const data = await secRes.json();
-        const items = Object.entries<string>(data.data || {}).map(([k, v]) => ({ key: k, value: v }));
-        setSecrets(items);
+      const response = await fetch(`${apiUrl}/projects/${encodeURIComponent(projectName)}/runner-secrets/validate`);
+      if (response.ok) {
+        const result = await response.json();
+        setValidationResult(result);
       } else {
-        setSecrets([]);
+        setValidationResult({ valid: false, message: "Failed to validate secret" });
       }
+    } catch (e) {
+      setValidationResult({ valid: false, message: "Error validating secret" });
     } finally {
-      setSecretsLoading(false);
+      setValidationLoading(false);
     }
+  };
+
+  const triggerSecretSync = async () => {
+    if (!projectName) return;
+    try {
+      setSyncTriggering(true);
+      const apiUrl = getApiUrl();
+      const response = await fetch(`${apiUrl}/projects/${encodeURIComponent(projectName)}/runner-secrets/trigger-sync`, {
+        method: "PUT",
+      });
+      if (response.ok) {
+        const result = await response.json();
+        // Trigger validation after sync to check status
+        await validateSourceSecret();
+      } else {
+        throw new Error("Failed to trigger sync");
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to trigger secret sync");
+    } finally {
+      setSyncTriggering(false);
+    }
+  };
+
+  const createSourceSecret = async () => {
+    if (!projectName || !secretName.trim()) return;
+
+    // Validate that ANTHROPIC_API_KEY is provided
+    const anthropicKey = secretData.find(item => item.key === "ANTHROPIC_API_KEY")?.value?.trim();
+    if (!anthropicKey) {
+      setError("ANTHROPIC_API_KEY is required");
+      return;
+    }
+
+    try {
+      setCreatingSecret(true);
+      setError(null);
+      const apiUrl = getApiUrl();
+
+      // Convert array to object, filtering out empty values
+      const data: Record<string, string> = {};
+      secretData.forEach(item => {
+        if (item.key.trim() && item.value.trim()) {
+          data[item.key.trim()] = item.value.trim();
+        }
+      });
+
+      const response = await fetch(`${apiUrl}/projects/${encodeURIComponent(projectName)}/runner-secrets/create-source`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          secretName: secretName.trim(),
+          data: data
+        }),
+      });
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({ error: "Unknown error" }));
+        throw new Error(err.message || err.error || "Failed to create source secret");
+      }
+
+      // Clear the form and hide the section
+      setSecretData([
+        { key: "ANTHROPIC_API_KEY", value: "" },
+        { key: "GITHUB_TOKEN", value: "" },
+        { key: "GIT_TOKEN", value: "" },
+        { key: "GIT_SSH_KEY", value: "" }
+      ]);
+      setShowCreateSecret(false);
+
+      // Re-validate to show the new status
+      await validateSourceSecret();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to create source secret");
+    } finally {
+      setCreatingSecret(false);
+    }
+  };
+
+  const addSecretField = () => {
+    setSecretData([...secretData, { key: "", value: "" }]);
+  };
+
+  const removeSecretField = (index: number) => {
+    if (secretData.length > 1) {
+      setSecretData(secretData.filter((_, i) => i !== index));
+    }
+  };
+
+  const updateSecretField = (index: number, field: 'key' | 'value', value: string) => {
+    const updated = [...secretData];
+    updated[index][field] = value;
+    setSecretData(updated);
   };
 
   useEffect(() => {
@@ -72,43 +168,34 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ name
   }, [projectName]);
 
   useEffect(() => {
-    const fetchRunnerSecrets = async () => {
+    const fetchRunnerSecretsConfig = async () => {
       if (!projectName) return;
       try {
-        setSecretsLoading(true);
+        setValidationLoading(true);
         const apiUrl = getApiUrl();
-        // Load list of secrets for dropdown
-        const listRes = await fetch(`${apiUrl}/projects/${encodeURIComponent(projectName)}/secrets`);
-        if (listRes.ok) {
-          const list = await listRes.json();
-          setSecretList((list.items || []).map((i: { name: string }) => ({ name: i.name })));
-        }
+
+        // Load current configuration
         const cfgRes = await fetch(`${apiUrl}/projects/${encodeURIComponent(projectName)}/runner-secrets/config`);
         if (cfgRes.ok) {
           const cfg = await cfgRes.json();
-          const hasExisting = (secretList.length > 0);
           if (cfg.secretName) {
             setSecretName(cfg.secretName);
-            setWarnNoSecret(false);
-            setMode("existing");
           } else {
-            setSecretName("ambient-runner-secrets");
-            setWarnNoSecret(false);
-            setMode(hasExisting ? "existing" : "new");
+            setSecretName("ambient-runner-secrets"); // Default operator secret name
           }
-          if (cfg.secretName) {
-            await loadSecretValues(cfg.secretName);
-          } else {
-            setSecrets([]);
-          }
+        } else {
+          setSecretName("ambient-runner-secrets"); // Default operator secret name
         }
+
+        // Validate the source secret automatically
+        await validateSourceSecret();
       } catch {
         // noop
       } finally {
-        setSecretsLoading(false);
+        setValidationLoading(false);
       }
     };
-    if (projectName) void fetchRunnerSecrets();
+    if (projectName) void fetchRunnerSecretsConfig();
   }, [projectName]);
 
   const handleRefresh = () => {
@@ -173,7 +260,8 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ name
         throw new Error(err.message || err.error || "Failed to save secret config");
       }
       setSecretName(name);
-      setWarnNoSecret(false);
+      // Re-validate after configuration change
+      await validateSourceSecret();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to save secret config");
     } finally {
@@ -181,41 +269,6 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ name
     }
   };
 
-  const handleSaveSecrets = async () => {
-    if (!projectName) return;
-    // Always persist config first (auto default name when creating new)
-    await handleSaveConfig();
-    setSecretsSaving(true);
-    try {
-      const apiUrl = getApiUrl();
-      const data: Record<string, string> = {};
-      for (const { key, value } of secrets) {
-        if (!key) continue;
-        data[key] = value ?? "";
-      }
-      const res = await fetch(`${apiUrl}/projects/${encodeURIComponent(projectName)}/runner-secrets`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ data }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: "Unknown error" }));
-        throw new Error(err.message || err.error || "Failed to save secrets");
-      }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save secrets");
-    } finally {
-      setSecretsSaving(false);
-    }
-  };
-
-  const addSecretRow = () => {
-    setSecrets((prev) => [...prev, { key: "", value: "" }]);
-  };
-
-  const removeSecretRow = (idx: number) => {
-    setSecrets((prev) => prev.filter((_, i) => i !== idx));
-  };
 
   return (
     <div className="container mx-auto p-6 max-w-4xl">
@@ -286,139 +339,217 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ name
 
       <Card>
         <CardHeader>
-          <CardTitle>Runner Secrets</CardTitle>
+          <CardTitle>Runner Secrets Configuration</CardTitle>
           <CardDescription>
-            Configure the Secret and manage key/value pairs used by project runners.
+            Configure which operator secret is used for this project. The operator copies secrets from its namespace to this project.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {error && (
             <div className="p-2 rounded border border-red-200 bg-red-50 text-sm text-red-700">{error}</div>
           )}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <Label>Runner Secret</Label>
-                <div className="text-sm text-muted-foreground">Using: {secretName || "ambient-runner-secrets"}</div>
-              </div>
-            </div>
-            <Tabs value={mode} onValueChange={(v) => setMode(v as typeof mode)}>
-              <TabsList>
-                <TabsTrigger value="existing">Use existing</TabsTrigger>
-                <TabsTrigger value="new">Create new</TabsTrigger>
-              </TabsList>
-              <TabsContent value="existing">
-                <div className="flex gap-2 items-center pt-2">
-                  {secretList.length > 0 && (
-                    <Select
-                      value={secretName}
-                      onValueChange={(val) => {
-                        setSecretName(val);
-                        void loadSecretValues(val);
-                      }}
-                    >
-                      <SelectTrigger className="w-80">
-                        <SelectValue placeholder="Select a secret..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {secretList.map((s) => (
-                          <SelectItem key={s.name} value={s.name}>{s.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-                </div>
-                {secretList.length === 0 ? (
-                  <div className="mt-2 text-sm text-amber-600">No runner secrets found in this project. Use the &quot;Create new&quot; tab to create one.</div>
-                ) : (!secretName ? (
-                  <div className="mt-2 text-sm text-muted-foreground">No secret selected. You can still add key/value pairs below and Save; they will be written to the default secret name.</div>
-                ) : null)}
-              </TabsContent>
-              <TabsContent value="new">
-                <div className="flex gap-2 items-center pt-2">
-                  <Input
-                    id="secretName"
-                    value={secretName}
-                    onChange={(e) => setSecretName(e.target.value)}
-                    placeholder="ambient-runner-secrets"
-                    maxLength={253}
-                  />
-                </div>
-              </TabsContent>
-            </Tabs>
-          </div>
 
-          {(mode === "new" || (mode === "existing" && !!secretName)) && (
-            <div className="pt-2 space-y-2">
-              <div className="flex items-center justify-between">
-                <Label>Key/Value Pairs</Label>
-                <Button variant="outline" onClick={addSecretRow} disabled={secretsLoading}>
-                  <Plus className="w-4 h-4 mr-2" /> Add Row
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="sourceSecretName">Source Secret Name</Label>
+              <Input
+                id="sourceSecretName"
+                value={secretName}
+                onChange={(e) => setSecretName(e.target.value)}
+                placeholder="ambient-runner-secrets"
+                maxLength={253}
+                className="max-w-md"
+              />
+              <p className="text-sm text-muted-foreground">
+                Name of the secret in the operator namespace containing API keys and git tokens.
+              </p>
+            </div>
+
+            {/* Expected Keys Documentation */}
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <h4 className="font-medium text-sm mb-2">Expected Secret Keys</h4>
+              <ul className="text-sm space-y-1 text-muted-foreground">
+                <li><strong>ANTHROPIC_API_KEY</strong>: API key for Claude/Anthropic services (required)</li>
+                <li><strong>GITHUB_TOKEN</strong>: GitHub personal access token for repository operations (optional)</li>
+                <li><strong>GIT_TOKEN</strong>: Git token for non-GitHub providers (optional)</li>
+                <li><strong>GIT_SSH_KEY</strong>: SSH private key for git operations (optional)</li>
+              </ul>
+              <p className="text-xs text-muted-foreground mt-2">
+                Git authentication is only needed for private repositories and push operations.
+              </p>
+            </div>
+
+            {/* Validation Status */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Label>Source Secret Status</Label>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={validateSourceSecret}
+                  disabled={validationLoading}
+                >
+                  {validationLoading ? (
+                    <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                  ) : (
+                    <RefreshCw className="w-4 h-4 mr-1" />
+                  )}
+                  Check
                 </Button>
               </div>
-              {secretsLoading ? (
-                <div className="text-sm text-muted-foreground">Loading secrets...</div>
-              ) : (
-                <div className="space-y-2">
-                  {secrets.length === 0 && (
-                    <div className="text-sm text-muted-foreground">No keys configured.</div>
+
+              {validationResult && (
+                <div className={`flex items-center gap-2 p-3 rounded-lg ${
+                  validationResult.valid
+                    ? "bg-green-50 text-green-700 border border-green-200"
+                    : "bg-red-50 text-red-700 border border-red-200"
+                }`}>
+                  {validationResult.valid ? (
+                    <CheckCircle className="w-4 h-4" />
+                  ) : (
+                    <XCircle className="w-4 h-4" />
                   )}
-                  {secrets.map((item, idx) => (
-                    <div key={idx} className="flex gap-2 items-center">
-                      <Input
-                        value={item.key}
-                        onChange={(e) =>
-                          setSecrets((prev) => prev.map((it, i) => (i === idx ? { ...it, key: e.target.value } : it)))
-                        }
-                        placeholder="KEY"
-                        className="w-1/3"
-                      />
-                      <div className="flex-1 flex items-center gap-2">
-                        <Input
-                          type={showValues[idx] ? "text" : "password"}
-                          value={item.value}
-                          onChange={(e) =>
-                            setSecrets((prev) => prev.map((it, i) => (i === idx ? { ...it, value: e.target.value } : it)))
-                          }
-                          placeholder="value"
-                          className="flex-1"
-                        />
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          onClick={() => setShowValues((prev) => ({ ...prev, [idx]: !prev[idx] }))}
-                          aria-label={showValues[idx] ? "Hide value" : "Show value"}
-                        >
-                          {showValues[idx] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                        </Button>
-                      </div>
-                      <Button variant="ghost" onClick={() => removeSecretRow(idx)} aria-label="Remove row">
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  ))}
+                  <span className="text-sm">{validationResult.message}</span>
                 </div>
               )}
             </div>
-          )}
 
-          <div className="pt-2">
-              <Button onClick={async () => {
-                await handleSaveSecrets();
-                setWarnNoSecret(false);
-              }} disabled={secretsSaving || secretsLoading || (mode === "existing" && (secretList.length === 0 || !secretName))}>
-                {secretsSaving ? (
+            {/* Action Buttons */}
+            <div className="flex gap-3 pt-2">
+              <Button onClick={handleSaveConfig} disabled={configSaving || !secretName.trim()}>
+                {configSaving ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Saving Secrets
+                    Saving...
                   </>
                 ) : (
                   <>
                     <Save className="w-4 h-4 mr-2" />
-                    Save Secrets
+                    Save Configuration
                   </>
                 )}
               </Button>
+
+              <Button variant="outline" onClick={triggerSecretSync} disabled={syncTriggering}>
+                {syncTriggering ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Syncing...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                    Trigger Sync
+                  </>
+                )}
+              </Button>
+            </div>
+
+            {/* Advanced: Create Source Secret (Not Recommended) */}
+            <div className="border-t pt-4 mt-6">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowCreateSecret(!showCreateSecret)}
+                className="text-orange-600 hover:text-orange-700"
+              >
+                {showCreateSecret ? (
+                  <ChevronDown className="w-4 h-4 mr-2" />
+                ) : (
+                  <ChevronRight className="w-4 h-4 mr-2" />
+                )}
+                Advanced: Create Source Secret (Not Recommended)
+              </Button>
+
+              {showCreateSecret && (
+                <div className="mt-4 space-y-4 bg-orange-50 p-4 rounded-lg border border-orange-200">
+                  <div className="flex items-center gap-2 text-orange-700">
+                    <AlertCircle className="w-4 h-4" />
+                    <span className="text-sm font-medium">Warning: Not Recommended</span>
+                  </div>
+                  <p className="text-sm text-orange-600">
+                    Creating secrets via UI is not recommended. Use operator-managed secrets for better security.
+                    This option is provided for testing or environments where operator secrets are not available.
+                  </p>
+
+                  <div className="space-y-3">
+                    <div className="space-y-2">
+                      <Label>Secret Key-Value Pairs</Label>
+                      {secretData.map((item, index) => (
+                        <div key={index} className="flex gap-2 items-center">
+                          <Input
+                            placeholder="Key (e.g., ANTHROPIC_API_KEY)"
+                            value={item.key}
+                            onChange={(e) => updateSecretField(index, 'key', e.target.value)}
+                            className="flex-1"
+                          />
+                          <Input
+                            type="password"
+                            placeholder="Value"
+                            value={item.value}
+                            onChange={(e) => updateSecretField(index, 'value', e.target.value)}
+                            className="flex-1"
+                          />
+                          {secretData.length > 1 && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => removeSecretField(index)}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          )}
+                        </div>
+                      ))}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={addSecretField}
+                        className="w-fit"
+                      >
+                        <Plus className="w-4 h-4 mr-2" />
+                        Add Key
+                      </Button>
+                    </div>
+
+                    <div className="flex gap-2">
+                      <Button
+                        onClick={createSourceSecret}
+                        disabled={creatingSecret || !secretName.trim()}
+                        className="bg-orange-600 hover:bg-orange-700"
+                      >
+                        {creatingSecret ? (
+                          <>
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            Creating...
+                          </>
+                        ) : (
+                          <>
+                            <Save className="w-4 h-4 mr-2" />
+                            Create Source Secret
+                          </>
+                        )}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setShowCreateSecret(false);
+                          setSecretData([
+                            { key: "ANTHROPIC_API_KEY", value: "" },
+                            { key: "GITHUB_TOKEN", value: "" },
+                            { key: "GIT_TOKEN", value: "" },
+                            { key: "GIT_SSH_KEY", value: "" }
+                          ]);
+                        }}
+                        disabled={creatingSecret}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </CardContent>
       </Card>

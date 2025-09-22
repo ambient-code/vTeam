@@ -134,8 +134,9 @@ func main() {
 			projectGroup.GET("/secrets", listNamespaceSecrets)
 			projectGroup.GET("/runner-secrets/config", getRunnerSecretsConfig)
 			projectGroup.PUT("/runner-secrets/config", updateRunnerSecretsConfig)
-			projectGroup.GET("/runner-secrets", listRunnerSecrets)
-			projectGroup.PUT("/runner-secrets", updateRunnerSecrets)
+			projectGroup.GET("/runner-secrets/validate", validateSourceSecret)
+			projectGroup.PUT("/runner-secrets/trigger-sync", triggerSecretSync)
+			projectGroup.PUT("/runner-secrets/create-source", createSourceSecret)
 		}
 
 		// Project management (cluster-wide)

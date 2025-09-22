@@ -35,7 +35,7 @@ spec:
         - name: IMAGE_PULL_POLICY
           value: "Always"
         - name: SECRETS_TO_COPY
-          value: "ambient-code-secrets"
+          value: "ambient-runner-secrets"
         - name: SECRETS_SOURCE_NAMESPACE
           valueFrom:
             fieldRef:

@@ -1053,14 +1053,14 @@ func getRFEWorkflowWorkspaceFile(c *gin.Context) {
 
 func stringPtr(s string) *string { return &s }
 
-// loadGitConfigFromConfigMapForProject reads Git defaults from ConfigMap "git-config" in the project namespace
+// loadGitConfigFromConfigMapForProject reads Git defaults from ConfigMap "rfe-controller-git-config" in the project namespace
 func loadGitConfigFromConfigMapForProject(c *gin.Context, reqK8s *kubernetes.Clientset, project string) (*GitConfig, error) {
-	configMap, err := reqK8s.CoreV1().ConfigMaps(project).Get(c.Request.Context(), "git-config", v1.GetOptions{})
+	configMap, err := reqK8s.CoreV1().ConfigMaps(project).Get(c.Request.Context(), "rfe-controller-git-config", v1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("failed to get git-config ConfigMap: %v", err)
+		return nil, fmt.Errorf("failed to get rfe-controller-git-config ConfigMap: %v", err)
 	}
 
 	gitConfig := &GitConfig{}
@@ -2875,7 +2875,7 @@ func createProjectRFEWorkflow(c *gin.Context) {
 func initSpecKitInWorkspace(c *gin.Context, project, workspaceRoot string) error {
 	version := strings.TrimSpace(os.Getenv("SPEC_KIT_VERSION"))
 	if version == "" {
-		version = "v0.0.50"
+		version = "v0.0.51"
 	}
 	tmplName := strings.TrimSpace(os.Getenv("SPEC_KIT_TEMPLATE_NAME"))
 	if tmplName == "" {
@@ -3348,64 +3348,13 @@ func updateRunnerSecretsConfig(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"secretName": req.SecretName})
 }
 
-// GET /api/projects/:projectName/runner-secrets -> { data: { key: value } }
-func listRunnerSecrets(c *gin.Context) {
+// GET /api/projects/:projectName/runner-secrets/validate -> { valid: bool, message: string }
+// Validates that the configured source secret exists in the operator namespace
+func validateSourceSecret(c *gin.Context) {
 	projectName := c.Param("projectName")
 	reqK8s, reqDyn := getK8sClientsForRequest(c)
 
-	// Read config
-	gvr := getProjectSettingsResource()
-	obj, err := reqDyn.Resource(gvr).Namespace(projectName).Get(c.Request.Context(), "projectsettings", v1.GetOptions{})
-	if err != nil && !errors.IsNotFound(err) {
-		log.Printf("Failed to read ProjectSettings for %s: %v", projectName, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read runner secrets config"})
-		return
-	}
-	secretName := ""
-	if obj != nil {
-		if spec, ok := obj.Object["spec"].(map[string]interface{}); ok {
-			if v, ok := spec["runnerSecretsName"].(string); ok {
-				secretName = v
-			}
-		}
-	}
-	if secretName == "" {
-		c.JSON(http.StatusOK, gin.H{"data": map[string]string{}})
-		return
-	}
-
-	sec, err := reqK8s.CoreV1().Secrets(projectName).Get(c.Request.Context(), secretName, v1.GetOptions{})
-	if err != nil {
-		if errors.IsNotFound(err) {
-			c.JSON(http.StatusOK, gin.H{"data": map[string]string{}})
-			return
-		}
-		log.Printf("Failed to get Secret %s/%s: %v", projectName, secretName, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read runner secrets"})
-		return
-	}
-
-	out := map[string]string{}
-	for k, v := range sec.Data {
-		out[k] = string(v)
-	}
-	c.JSON(http.StatusOK, gin.H{"data": out})
-}
-
-// PUT /api/projects/:projectName/runner-secrets { data: { key: value } }
-func updateRunnerSecrets(c *gin.Context) {
-	projectName := c.Param("projectName")
-	reqK8s, reqDyn := getK8sClientsForRequest(c)
-
-	var req struct {
-		Data map[string]string `json:"data" binding:"required"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	// Read config for secret name
+	// Read config to get the source secret name
 	gvr := getProjectSettingsResource()
 	obj, err := reqDyn.Resource(gvr).Namespace(projectName).Get(c.Request.Context(), "projectsettings", v1.GetOptions{})
 	if err != nil && !errors.IsNotFound(err) {
@@ -3422,49 +3371,183 @@ func updateRunnerSecrets(c *gin.Context) {
 		}
 	}
 	if secretName == "" {
+		secretName = "ambient-runner-secrets" // Default operator secret name
+	}
+
+	// Get operator namespace from environment, default to ambient-code
+	operatorNamespace := os.Getenv("OPERATOR_NAMESPACE")
+	if operatorNamespace == "" {
+		operatorNamespace = "ambient-code"
+	}
+	sec, err := reqK8s.CoreV1().Secrets(operatorNamespace).Get(c.Request.Context(), secretName, v1.GetOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			c.JSON(http.StatusOK, gin.H{
+				"valid":   false,
+				"message": fmt.Sprintf("Source secret '%s' not found in operator namespace '%s'", secretName, operatorNamespace),
+			})
+			return
+		}
+		log.Printf("Failed to get Secret %s/%s: %v", operatorNamespace, secretName, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to validate source secret"})
+		return
+	}
+
+	// Validate required keys exist
+	missingKeys := []string{}
+	requiredKeys := []string{"ANTHROPIC_API_KEY"}
+	for _, key := range requiredKeys {
+		if _, exists := sec.Data[key]; !exists {
+			missingKeys = append(missingKeys, key)
+		}
+	}
+
+	if len(missingKeys) > 0 {
+		c.JSON(http.StatusOK, gin.H{
+			"valid":   false,
+			"message": fmt.Sprintf("Source secret missing required keys: %v", missingKeys),
+		})
+		return
+	}
+
+	// Check for optional Git keys and include in success message
+	optionalKeys := []string{"GITHUB_TOKEN", "GIT_TOKEN", "GIT_SSH_KEY"}
+	presentOptional := []string{}
+	for _, key := range optionalKeys {
+		if _, exists := sec.Data[key]; exists {
+			presentOptional = append(presentOptional, key)
+		}
+	}
+
+	message := "Source secret is valid and contains required keys"
+	if len(presentOptional) > 0 {
+		message = fmt.Sprintf("Source secret is valid and contains required keys. Optional Git keys present: %v", presentOptional)
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"valid":   true,
+		"message": message,
+	})
+}
+
+// PUT /api/projects/:projectName/runner-secrets/trigger-sync
+// Triggers the operator to re-sync secrets for this project
+// In operator-first model, we don't manage secrets directly - we trigger operator reconciliation
+func triggerSecretSync(c *gin.Context) {
+	projectName := c.Param("projectName")
+	reqK8s, _ := getK8sClientsForRequest(c)
+
+	// Add/update annotation on the namespace to trigger operator reconciliation
+	// This is a simple way to signal the operator to re-sync secrets
+	ns, err := reqK8s.CoreV1().Namespaces().Get(c.Request.Context(), projectName, v1.GetOptions{})
+	if err != nil {
+		log.Printf("Failed to get namespace %s: %v", projectName, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to access project namespace"})
+		return
+	}
+
+	// Add trigger annotation with current timestamp
+	if ns.Annotations == nil {
+		ns.Annotations = make(map[string]string)
+	}
+	ns.Annotations["ambient-code.io/secret-sync-requested"] = time.Now().Format(time.RFC3339)
+
+	_, err = reqK8s.CoreV1().Namespaces().Update(c.Request.Context(), ns, v1.UpdateOptions{})
+	if err != nil {
+		log.Printf("Failed to update namespace %s annotations: %v", projectName, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to trigger secret sync"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Secret sync triggered - operator will reconcile secrets for this project",
+		"timestamp": time.Now().Format(time.RFC3339),
+	})
+}
+
+// PUT /api/projects/:projectName/runner-secrets/create-source
+// Creates or updates the source secret in the operator namespace (not recommended approach)
+func createSourceSecret(c *gin.Context) {
+	reqK8s, _ := getK8sClientsForRequest(c)
+
+	var req struct {
+		SecretName string            `json:"secretName" binding:"required"`
+		Data       map[string]string `json:"data" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	secretName := req.SecretName
+	if strings.TrimSpace(secretName) == "" {
 		secretName = "ambient-runner-secrets"
 	}
 
-	// Do not create/update ProjectSettings here. The operator owns it.
+	// Validate required keys are present
+	if _, hasKey := req.Data["ANTHROPIC_API_KEY"]; !hasKey {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ANTHROPIC_API_KEY is required"})
+		return
+	}
 
-	// Try to get existing Secret
-	sec, err := reqK8s.CoreV1().Secrets(projectName).Get(c.Request.Context(), secretName, v1.GetOptions{})
+	// Get operator namespace from environment, default to ambient-code
+	operatorNamespace := os.Getenv("OPERATOR_NAMESPACE")
+	if operatorNamespace == "" {
+		operatorNamespace = "ambient-code"
+	}
+
+	// Try to get existing secret
+	sec, err := reqK8s.CoreV1().Secrets(operatorNamespace).Get(c.Request.Context(), secretName, v1.GetOptions{})
 	if errors.IsNotFound(err) {
-		// Create new Secret
+		// Create new secret
 		newSec := &corev1.Secret{
 			ObjectMeta: v1.ObjectMeta{
 				Name:      secretName,
-				Namespace: projectName,
+				Namespace: operatorNamespace,
 				Labels:    map[string]string{"app": "ambient-runner-secrets"},
 				Annotations: map[string]string{
 					"ambient-code.io/runner-secret": "true",
+					"ambient-code.io/created-by": "ui",
+					"ambient-code.io/warning": "This secret was created via UI - operator-managed secrets are recommended",
 				},
 			},
 			Type:       corev1.SecretTypeOpaque,
 			StringData: req.Data,
 		}
-		if _, err := reqK8s.CoreV1().Secrets(projectName).Create(c.Request.Context(), newSec, v1.CreateOptions{}); err != nil {
-			log.Printf("Failed to create Secret %s/%s: %v", projectName, secretName, err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create runner secrets"})
+		if _, err := reqK8s.CoreV1().Secrets(operatorNamespace).Create(c.Request.Context(), newSec, v1.CreateOptions{}); err != nil {
+			log.Printf("Failed to create source Secret %s/%s: %v", operatorNamespace, secretName, err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create source secret"})
 			return
 		}
 	} else if err != nil {
-		log.Printf("Failed to get Secret %s/%s: %v", projectName, secretName, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read runner secrets"})
+		log.Printf("Failed to get source Secret %s/%s: %v", operatorNamespace, secretName, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to access source secret"})
 		return
 	} else {
-		// Update existing - replace Data
+		// Update existing secret
 		sec.Type = corev1.SecretTypeOpaque
 		sec.Data = map[string][]byte{}
 		for k, v := range req.Data {
 			sec.Data[k] = []byte(v)
 		}
-		if _, err := reqK8s.CoreV1().Secrets(projectName).Update(c.Request.Context(), sec, v1.UpdateOptions{}); err != nil {
-			log.Printf("Failed to update Secret %s/%s: %v", projectName, secretName, err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update runner secrets"})
+		// Update annotations to indicate UI creation
+		if sec.Annotations == nil {
+			sec.Annotations = make(map[string]string)
+		}
+		sec.Annotations["ambient-code.io/updated-by"] = "ui"
+		sec.Annotations["ambient-code.io/warning"] = "This secret was updated via UI - operator-managed secrets are recommended"
+		sec.Annotations["ambient-code.io/updated-at"] = time.Now().Format(time.RFC3339)
+
+		if _, err := reqK8s.CoreV1().Secrets(operatorNamespace).Update(c.Request.Context(), sec, v1.UpdateOptions{}); err != nil {
+			log.Printf("Failed to update source Secret %s/%s: %v", operatorNamespace, secretName, err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update source secret"})
 			return
 		}
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "runner secrets updated"})
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Source secret created/updated successfully",
+		"warning": "Creating secrets via UI is not recommended - use operator-managed secrets for better security",
+		"secretName": secretName,
+	})
 }
