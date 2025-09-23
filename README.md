@@ -1,15 +1,14 @@
 # vTeam: Ambient Agentic Runner
 
-> Kubernetes-native AI automation platform for intelligent agentic sessions with browser automation capabilities
+> Kubernetes-native AI automation platform for intelligent agentic sessions with multi-agent collaboration
 
 ## Overview
 
-**vTeam** is an AI automation platform that combines Claude Code CLI with integrated browser automation through MCP (Model Context Protocol) servers. The platform enables teams to create and manage intelligent agentic sessions through a modern web interface.
+**vTeam** is an AI automation platform that combines Claude Code CLI with multi-agent collaboration capabilities. The platform enables teams to create and manage intelligent agentic sessions through a modern web interface.
 
 ### Key Capabilities
 
-- **Intelligent Agentic Sessions**: AI-powered automation for website analysis, competitive research, content auditing, and testing
-- **Browser Automation**: Integrated Playwright MCP server provides sophisticated web interaction capabilities
+- **Intelligent Agentic Sessions**: AI-powered automation for analysis, research, content creation, and development tasks
 - **Multi-Agent Workflows**: Specialized AI agents model realistic software team dynamics
 - **Kubernetes Native**: Built with Custom Resources, Operators, and proper RBAC for enterprise deployment
 - **Real-time Monitoring**: Live status updates and job execution tracking
@@ -23,15 +22,14 @@ The platform consists of containerized microservices orchestrated via Kubernetes
 | **Frontend** | NextJS + Shadcn | User interface for managing agentic sessions |
 | **Backend API** | Go + Gin | REST API for managing Kubernetes Custom Resources (multi-tenant: projects, sessions, access control) |
 | **Agentic Operator** | Go | Kubernetes operator that watches CRs and creates Jobs |
-| **Ambient Runner** | Python + Claude Code CLI | Pod that executes AI with Playwright MCP server capabilities |
-| **Playwright MCP** | MCP Server | Provides browser automation and web interaction capabilities |
+| **Claude Code Runner** | Python + Claude Code CLI | Pod that executes AI with multi-agent collaboration capabilities |
 
 ### Agentic Session Flow
 
-1. **Create Session**: User creates agentic session via web UI with task description and target website
+1. **Create Session**: User creates agentic session via web UI with task description
 2. **API Processing**: Backend creates `AgenticSession` Custom Resource in Kubernetes
 3. **Job Scheduling**: Operator detects CR and creates Kubernetes Job with runner pod
-4. **AI Execution**: Pod runs Claude Code CLI with Playwright MCP for intelligent web automation
+4. **AI Execution**: Pod runs Claude Code CLI with multi-agent collaboration for intelligent analysis
 5. **Result Storage**: Analysis results stored back in Custom Resource status
 6. **UI Updates**: Frontend displays real-time progress and completed results
 
@@ -93,8 +91,7 @@ kubectl port-forward svc/frontend-service 3000:3000 -n ambient-code
 
 1. **Access Web Interface**: Navigate to your deployed route URL
 2. **Create New Session**:
-   - **Prompt**: Task description (e.g., "Analyze this website's user experience and accessibility")
-   - **Target URL**: Website to analyze
+   - **Prompt**: Task description (e.g., "Review this codebase for security vulnerabilities and suggest improvements")
    - **Model**: Choose AI model (Claude Sonnet/Haiku)
    - **Settings**: Adjust temperature, token limits, timeout (default: 300s)
 3. **Monitor Progress**: View real-time status updates and execution logs
@@ -102,11 +99,11 @@ kubectl port-forward svc/frontend-service 3000:3000 -n ambient-code
 
 ### Example Use Cases
 
-- **Website Analysis**: UX assessment, accessibility audits, performance analysis
-- **Competitive Research**: Feature comparison across competitor websites
-- **Content Auditing**: SEO optimization and content quality review
-- **Automation Testing**: Functionality verification across different scenarios
-- **Data Extraction**: Intelligent scraping and data processing workflows
+- **Code Analysis**: Security reviews, code quality assessments, architecture analysis
+- **Technical Documentation**: API documentation, user guides, technical specifications
+- **Project Planning**: Feature specifications, implementation plans, task breakdowns
+- **Research & Analysis**: Technology research, competitive analysis, requirement gathering
+- **Development Workflows**: Code reviews, testing strategies, deployment planning
 
 ## Advanced Configuration
 
