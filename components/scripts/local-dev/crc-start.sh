@@ -31,6 +31,71 @@ FRONTEND_DIR="${REPO_ROOT}/components/frontend"
 CRDS_DIR="${REPO_ROOT}/components/manifests/crds"
 
 ###############
+# Environment File Loading
+###############
+load_custom_env() {
+  local default_env_file="${REPO_ROOT}/components/manifests/env.example"
+  local custom_env_file=""
+  
+  # Check if there's a .env file in the current directory
+  if [[ -f ".env" ]]; then
+    custom_env_file=".env"
+  elif [[ -f "${REPO_ROOT}/.env" ]]; then
+    custom_env_file="${REPO_ROOT}/.env"
+  fi
+  
+  # Prompt user for custom .env file
+  echo ""
+  log "Environment configuration setup"
+  if [[ -n "$custom_env_file" ]]; then
+    echo "Found existing .env file: $custom_env_file"
+    read -p "Use this .env file? [Y/n]: " -r use_existing
+    if [[ "$use_existing" =~ ^[Nn]$ ]]; then
+      custom_env_file=""
+    fi
+  fi
+  
+  if [[ -z "$custom_env_file" ]]; then
+    echo "You can provide a custom .env file to override default configurations."
+    echo "Available variables to customize:"
+    echo "  - CRC_CPUS (default: $CRC_CPUS)"
+    echo "  - CRC_MEMORY (default: $CRC_MEMORY)"  
+    echo "  - CRC_DISK (default: $CRC_DISK)"
+    echo "  - PROJECT_NAME (default: $PROJECT_NAME)"
+    echo "  - DEV_MODE (default: $DEV_MODE)"
+    echo ""
+    echo "Example .env file location: $default_env_file"
+    echo ""
+    read -p "Enter path to custom .env file (or press Enter to use defaults): " -r custom_env_file
+  fi
+  
+  # Load the custom .env file if provided and exists
+  if [[ -n "$custom_env_file" ]] && [[ -f "$custom_env_file" ]]; then
+    log "Loading custom environment from: $custom_env_file"
+    set -a  # automatically export all variables
+    # shellcheck source=/dev/null
+    source "$custom_env_file"
+    set +a
+    
+    # Show what was loaded
+    echo "Loaded configuration:"
+    echo "  CRC_CPUS: $CRC_CPUS"
+    echo "  CRC_MEMORY: $CRC_MEMORY"
+    echo "  CRC_DISK: $CRC_DISK"
+    echo "  PROJECT_NAME: $PROJECT_NAME"
+    echo "  DEV_MODE: $DEV_MODE"
+    echo ""
+  elif [[ -n "$custom_env_file" ]]; then
+    warn "Custom .env file not found: $custom_env_file"
+    warn "Continuing with default configuration..."
+    echo ""
+  else
+    log "Using default configuration"
+    echo ""
+  fi
+}
+
+###############
 # Utilities
 ###############
 log() { printf "[%s] %s\n" "$(date '+%H:%M:%S')" "$*"; }
@@ -274,6 +339,9 @@ if ! command -v git >/dev/null 2>&1; then
 fi
 
 check_system_resources
+
+# Load custom environment configuration
+load_custom_env
 
 log "Starting CRC-based local development environment..."
 
