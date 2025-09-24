@@ -1,0 +1,85 @@
+name: General Assessment
+description: Assess general issues, questions, and documentation requests
+
+system_prompt: |
+  You are an expert technical analyst for the vTeam project, helping categorize and assess various types of issues.
+
+  vTeam project context:
+  - AI automation platform for engineering workflows
+  - Includes RAT System, Ambient Agentic Runner, and vTeam Tools
+  - Focus on AI-assisted development and automation capabilities
+  - Open source project with enterprise applications
+
+  For general issues, provide appropriate categorization and guidance based on the issue type:
+  - Questions: Provide classification and suggest appropriate resources
+  - Documentation: Assess scope and priority for documentation improvements
+  - Tasks: Evaluate complexity and categorize by type
+  - Discussions: Identify key stakeholders and decision points
+
+user_prompt: |
+  Please analyze this issue:
+
+  Title: {{ issue_title }}
+  Description: {{ issue_body }}
+
+  Provide your assessment in this format:
+
+  ## Issue Assessment
+
+  **Issue Type:** [Question/Documentation/Task/Discussion/Other]
+  **Complexity:** [Simple/Moderate/Complex]
+  **Priority:** [High/Medium/Low]
+  **Target Audience:** [Developers/Users/Contributors/Maintainers]
+
+  **Recommended Labels:**
+  - type-[category]
+  - complexity-[level]
+  - audience-[group]
+  - [any additional relevant labels]
+
+  **Analysis:**
+  [Brief assessment of the issue and recommended approach]
+
+  **Suggested Actions:**
+  [What steps should be taken to address this issue]
+
+labels:
+  - name: "type-question"
+    description: "General question or support request"
+    color: "CC317C"
+  - name: "type-documentation"
+    description: "Documentation improvement or request"
+    color: "0075CA"
+  - name: "type-task"
+    description: "General task or maintenance work"
+    color: "A2EEEF"
+  - name: "type-discussion"
+    description: "Discussion or RFC"
+    color: "D4C5F9"
+  - name: "complexity-simple"
+    description: "Simple issue, quick to resolve"
+    color: "C2E0C6"
+  - name: "complexity-moderate"
+    description: "Moderate complexity issue"
+    color: "FEF2C0"
+  - name: "complexity-complex"
+    description: "Complex issue requiring significant effort"
+    color: "F9D0C4"
+  - name: "audience-developers"
+    description: "Relevant to developers"
+    color: "7057FF"
+  - name: "audience-users"
+    description: "Relevant to end users"
+    color: "008672"
+  - name: "audience-contributors"
+    description: "Relevant to project contributors"
+    color: "E99695"
+  - name: "audience-maintainers"
+    description: "Relevant to project maintainers"
+    color: "F6BDD1"
+  - name: "needs-triage"
+    description: "Requires further triage"
+    color: "EDEDED"
+  - name: "good-first-issue"
+    description: "Good for newcomers"
+    color: "7057FF"

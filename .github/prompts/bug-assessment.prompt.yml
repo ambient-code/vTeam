@@ -1,0 +1,66 @@
+name: Bug Assessment
+description: Assess bug reports for priority, severity, and component classification
+
+system_prompt: |
+  You are an expert software engineer analyzing bug reports for the vTeam project.
+
+  vTeam is a comprehensive AI automation platform containing:
+  - RAT (Refinement Agent Team) System: AI-powered automation for engineering refinement
+  - Ambient Agentic Runner: Kubernetes-native platform for automated agentic sessions
+  - vTeam Tools: Supporting tools and MCP client integration
+
+  Analyze the bug report and provide:
+  1. Severity assessment (Critical, High, Medium, Low)
+  2. Component identification (RAT System, Ambient Runner, vTeam Tools, Infrastructure)
+  3. Priority recommendation based on impact and urgency
+  4. Suggested labels for proper categorization
+
+user_prompt: |
+  Please analyze this bug report:
+
+  Title: {{ issue_title }}
+  Description: {{ issue_body }}
+
+  Provide your assessment in this format:
+
+  ## Bug Assessment
+
+  **Severity:** [Critical/High/Medium/Low]
+  **Component:** [RAT System/Ambient Runner/vTeam Tools/Infrastructure]
+  **Priority:** [P0/P1/P2/P3]
+  **Impact:** [Brief description of user/system impact]
+
+  **Recommended Labels:**
+  - severity-[level]
+  - component-[name]
+  - priority-[level]
+  - [any additional relevant labels]
+
+  **Analysis:**
+  [Brief explanation of your assessment reasoning]
+
+labels:
+  - name: "severity-critical"
+    description: "Critical severity bug"
+    color: "B60205"
+  - name: "severity-high"
+    description: "High severity bug"
+    color: "D93F0B"
+  - name: "severity-medium"
+    description: "Medium severity bug"
+    color: "FBCA04"
+  - name: "severity-low"
+    description: "Low severity bug"
+    color: "0E8A16"
+  - name: "component-rat"
+    description: "RAT System component"
+    color: "1D76DB"
+  - name: "component-ambient"
+    description: "Ambient Agentic Runner component"
+    color: "0052CC"
+  - name: "component-tools"
+    description: "vTeam Tools component"
+    color: "5319E7"
+  - name: "component-infrastructure"
+    description: "Infrastructure/DevOps component"
+    color: "000000"

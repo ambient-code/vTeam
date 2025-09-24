@@ -1,0 +1,35 @@
+name: AI Assessment Comment Labeler
+
+on:
+  issues:
+    types: [labeled]
+
+permissions:
+  issues: write
+  models: read
+  contents: read
+
+jobs:
+  ai-assessment:
+    runs-on: ubuntu-latest
+    if: contains(github.event.label.name, 'ai-review') || contains(github.event.label.name, 'request ai review')
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: AI Assessment Comment Labeler
+        uses: github/ai-assessment-comment-labeler@main
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          issue_number: ${{ github.event.issue.number }}
+          issue_body: ${{ github.event.issue.body }}
+          issue_title: ${{ github.event.issue.title }}
+          ai_review_label: 'ai-review'
+          prompts_directory: '.github/prompts'
+          labels_to_prompts_mapping: |
+            bug,bug-assessment.prompt.yml
+            enhancement,feature-assessment.prompt.yml
+            question,general-assessment.prompt.yml
+            documentation,general-assessment.prompt.yml
+            default,general-assessment.prompt.yml
