@@ -18,11 +18,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
       - name: Run AI assessment
-        uses: github/ai-assessment-comment-labeler@main
+        uses: github/ai-assessment-comment-labeler@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           issue_number: ${{ github.event.issue.number }}
           issue_body: ${{ github.event.issue.body }}
           ai_review_label: 'ai-review'
-          prompts_directory: './Prompts'
+          prompts_directory: 'Prompts'
           labels_to_prompts_mapping: 'bug,bug-assessment.prompt.yml|enhancement,feature-assessment.prompt.yml|question,general-assessment.prompt.yml|documentation,general-assessment.prompt.yml|default,general-assessment.prompt.yml'
