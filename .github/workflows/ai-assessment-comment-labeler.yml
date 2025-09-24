@@ -25,4 +25,4 @@ jobs:
           issue_body: ${{ github.event.issue.body }}
           ai_review_label: 'ai-review'
           prompts_directory: 'Prompts'
-          labels_to_prompts_mapping: 'bug,bug-assessment.prompt.yml|enhancement,feature-assessment.prompt.yml|question,general-assessment.prompt.yml|documentation,general-assessment.prompt.yml|default,general-assessment.prompt.yml'
+          labels_to_prompts_mapping: 'bug,bug-assessment.prompt.yml|question,general-assessment.prompt.yml|documentation,general-assessment.prompt.yml|default,general-assessment.prompt.yml'
