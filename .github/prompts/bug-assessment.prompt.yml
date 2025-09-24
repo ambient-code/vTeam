@@ -18,8 +18,7 @@ system_prompt: |
 user_prompt: |
   Please analyze this bug report:
 
-  Title: {{ issue_title }}
-  Description: {{ issue_body }}
+  {{ issue_body }}
 
   Provide your assessment in this format:
 

@@ -24,7 +24,6 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           issue_number: ${{ github.event.issue.number }}
           issue_body: ${{ github.event.issue.body }}
-          issue_title: ${{ github.event.issue.title }}
           ai_review_label: 'ai-review'
           prompts_directory: '.github/prompts'
           labels_to_prompts_mapping: |
