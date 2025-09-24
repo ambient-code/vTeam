@@ -2,27 +2,144 @@ name: AI Assessment Comment Labeler
 
 on:
   issues:
-    types: [labeled]
+    types:
+      - opened
+      - reopened
+      - labeled
+  pull_request_target:
+    types:
+      - opened
+      - reopened
+      - ready_for_review
+      - labeled
+  issue_comment:
+    types:
+      - created
 
 permissions:
   issues: write
-  models: read
+  pull-requests: write
   contents: read
+  models: read
+
+concurrency:
+  group: ai-assessment-${{ github.event.issue.number || github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: false
 
 jobs:
-  ai-assessment:
+  issue-opened:
+    if: github.event_name == 'issues' && (github.event.action == 'opened' || github.event.action == 'reopened')
     runs-on: ubuntu-latest
-    if: contains(github.event.label.name, 'ai-review') || contains(github.event.label.name, 'request ai review')
-
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Ensure AI review trigger label
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const core = require('@actions/core');
+            const label = 'ai-review';
+            const issueNumber = context.payload.issue.number;
+            const existingLabels = (context.payload.issue.labels || []).map(label => label.name);
+            if (existingLabels.includes(label)) {
+              core.info(`Label ${label} already present`);
+              return;
+            }
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              labels: [label],
+            });
+            core.info(`Added label ${label} to issue #${issueNumber}`);
       - name: Run AI assessment
         uses: github/ai-assessment-comment-labeler@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           issue_number: ${{ github.event.issue.number }}
-          issue_body: ${{ github.event.issue.body }}
+          issue_body: ${{ github.event.issue.body || 'No description provided.' }}
           ai_review_label: 'ai-review'
           prompts_directory: 'Prompts'
-          labels_to_prompts_mapping: 'bug,bug-assessment.prompt.yml|question,general-assessment.prompt.yml|documentation,general-assessment.prompt.yml|default,general-assessment.prompt.yml'
+          labels_to_prompts_mapping: 'bug,bug-assessment.prompt.yml|story,general-assessment.prompt.yml|enhancement,general-assessment.prompt.yml|question,general-assessment.prompt.yml|documentation,general-assessment.prompt.yml|dependencies,general-assessment.prompt.yml|github_actions,general-assessment.prompt.yml|ai-review,general-assessment.prompt.yml'
+
+  issue-labeled:
+    if: github.event_name == 'issues' && github.event.action == 'labeled' && github.event.label.name == 'ai-review' && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run AI assessment
+        uses: github/ai-assessment-comment-labeler@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          issue_number: ${{ github.event.issue.number }}
+          issue_body: ${{ github.event.issue.body || 'No description provided.' }}
+          ai_review_label: 'ai-review'
+          prompts_directory: 'Prompts'
+          labels_to_prompts_mapping: 'bug,bug-assessment.prompt.yml|story,general-assessment.prompt.yml|enhancement,general-assessment.prompt.yml|question,general-assessment.prompt.yml|documentation,general-assessment.prompt.yml|dependencies,general-assessment.prompt.yml|github_actions,general-assessment.prompt.yml|ai-review,general-assessment.prompt.yml'
+
+  pr-opened:
+    if: github.event_name == 'pull_request_target' && (github.event.action == 'opened' || github.event.action == 'reopened' || github.event.action == 'ready_for_review')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ensure AI review trigger label
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const core = require('@actions/core');
+            const label = 'ai-review';
+            const issueNumber = context.payload.pull_request.number;
+            const existingLabels = (context.payload.pull_request.labels || []).map(label => label.name);
+            if (existingLabels.includes(label)) {
+              core.info(`Label ${label} already present`);
+              return;
+            }
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              labels: [label],
+            });
+            core.info(`Added label ${label} to pull request #${issueNumber}`);
+      - name: Run AI assessment
+        uses: github/ai-assessment-comment-labeler@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          issue_number: ${{ github.event.pull_request.number }}
+          issue_body: ${{ github.event.pull_request.body || 'No description provided.' }}
+          ai_review_label: 'ai-review'
+          prompts_directory: 'Prompts'
+          labels_to_prompts_mapping: 'bug,bug-assessment.prompt.yml|story,general-assessment.prompt.yml|enhancement,general-assessment.prompt.yml|question,general-assessment.prompt.yml|documentation,general-assessment.prompt.yml|dependencies,general-assessment.prompt.yml|github_actions,general-assessment.prompt.yml|ai-review,general-assessment.prompt.yml'
+
+  pr-labeled:
+    if: github.event_name == 'pull_request_target' && github.event.action == 'labeled' && github.event.label.name == 'ai-review' && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run AI assessment
+        uses: github/ai-assessment-comment-labeler@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          issue_number: ${{ github.event.pull_request.number }}
+          issue_body: ${{ github.event.pull_request.body || 'No description provided.' }}
+          ai_review_label: 'ai-review'
+          prompts_directory: 'Prompts'
+          labels_to_prompts_mapping: 'bug,bug-assessment.prompt.yml|story,general-assessment.prompt.yml|enhancement,general-assessment.prompt.yml|question,general-assessment.prompt.yml|documentation,general-assessment.prompt.yml|dependencies,general-assessment.prompt.yml|github_actions,general-assessment.prompt.yml|ai-review,general-assessment.prompt.yml'
+
+  comment-command:
+    if: github.event_name == 'issue_comment' && github.event.action == 'created' && github.event.comment.user.type != 'Bot' && contains(github.event.comment.body, '/ai-review')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Apply AI review trigger label
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const core = require('@actions/core');
+            const label = 'ai-review';
+            const issueNumber = context.payload.issue.number;
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              labels: [label],
+            });
+            core.info(`Added label ${label} via comment command on #${issueNumber}`);
