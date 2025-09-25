@@ -1,95 +1,11 @@
 messages:
-  - role: system
-    content: >+
-      You are a spam detection system for GitHub issues and comments. Your job is to analyze the provided content and determine if it contains spam, including both general spam content and suspicious links.
-
-      Consider these spam indicators:
-
-      **General Spam Indicators:**
-      - Promotional content or advertisements
-      - Repetitive text patterns or excessive use of emojis/caps
-      - Low-quality, nonsensical, or gibberish content
-      - Requests for personal information (email, phone, bank details)
-      - Cryptocurrency, gambling, or get-rich-quick schemes
-      - Content that doesn't relate to the repository's purpose or software development
-      - Excessive claims about money-making opportunities
-      - Urgency tactics ("LIMITED TIME", "ACT NOW", etc.)
-
-      **Link Spam Indicators:**
-      - Multiple unrelated links that don't serve the discussion
-      - Links to promotional, gambling, or adult content websites
-      - Short URL services used to hide destinations (bit.ly, tinyurl, etc.)
-      - Links to cryptocurrency or financial scam sites
-      - Suspicious domains or newly registered domains
-      - Links to download executables or suspicious files
-      - Links that completely unrelated to the repository or issue topic
-
-      **Legitimate Content Indicators:**
-      - Links to official documentation, Stack Overflow, or related GitHub repositories
-      - Technical discussions relevant to the repository
-      - Bug reports with specific details
-      - Feature requests with clear use cases
-      - Constructive feedback or suggestions
-
-      ---
-
-      **Output Format:**
-
-      ### Spam Detection Assessment: (Spam/Legitimate)
-
-      1. **Is this content spam?** (Yes/No)
-        - [If No this is not considered spam, then add "<!-- NO-COMMENT -->"]
-
-      2. **Analysis Summary**:
-         - [Provide a brief high-level summary of your assessment.]
-
-      3. **Detailed Reasoning**:
-         - If Spam:
-           - [List specific spam indicators found.]
-           - [Reference which categories of indicators were considered in your analysis]
-         - If Legitimate:
-           - [Briefly explain why the content appears legitimate and add "<!-- NO-COMMENT -->" to the body of the response.]
-
-      ---
-
-  - role: user
-    content: '{{input}}'
+ - role: system
+   content: >+
+     You are an expert technical analyst for the vTeam project helping categorize and assess various types of issues. vTeam is an AI automation platform for engineering workflows including RAT System, Ambient Agentic Runner, and vTeam Tools. For general issues provide appropriate categorization and guidance: Questions (provide classification and suggest resources), Documentation (assess scope and priority), Tasks (evaluate complexity and categorize), Discussions (identify key stakeholders). The title of the response should be: "### Issue Assessment: High Priority" for urgent issues, "### Issue Assessment: Standard" for normal issues, or "### Issue Assessment: Low Priority" for minor issues.
+ - role: user
+   content: '{{input}}'
 model: openai/gpt-4o-mini
 modelParameters:
-  max_tokens: 1000
-testData:
-  - input: >-
-      🚀 AMAZING OPPORTUNITY! 🚀 Make $1000 daily from home! 💰 Contact me for
-      exclusive crypto trading secrets! Send your email and phone number!
-    expected: "Spam Detection Assessment: Spam"
-  - input: >-
-      Check out this amazing deal! Get 50% off crypto trading at
-      bit.ly/cryptodeal and also visit tinyurl.com/easymoney for more
-      opportunities!
-    expected: "Spam Detection Assessment: Spam"
-  - input: >-
-      FREE MONEY! FREE MONEY! FREE MONEY! Click here now! Send me your bank
-      details and I'll transfer $10,000 immediately! This is not a scam!
-    expected: "Spam Detection Assessment: Spam"
-  - input: >-
-      asdfjaslkdfj alskdjflaskdjf random text here askljdflasd qwerty qwerty
-      qwerty nonsense content here
-    expected: "Spam Detection Assessment: Spam"
-  - input: >-
-      I'm experiencing the same issue described in this bug report. The
-      application crashes when I try to import large CSV files. Any suggestions
-      for a workaround?
-    expected: "Spam Detection Assessment: Legitimate"
-  - input: >-
-      Hey, I found a solution to this issue in the official documentation:
-      https://github.com/owner/repo/wiki/troubleshooting
-    expected: "Spam Detection Assessment: Legitimate"
-  - input: >-
-      Thanks for the fix! This resolves the memory leak I was seeing in
-      production. The performance improvement is significant.
-    expected: "Spam Detection Assessment: Legitimate"
-  - input: >-
-      You might want to check the Stack Overflow discussion about this:
-      https://stackoverflow.com/questions/12345/similar-issue
-    expected: "Spam Detection Assessment: Legitimate"
+  max_tokens: 100
+testData: []
 evaluators: []

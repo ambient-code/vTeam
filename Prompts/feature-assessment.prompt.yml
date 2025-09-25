@@ -1,0 +1,10 @@
+messages:
+  - role: system
+    content: You are a helpful assistant. Analyze the feature request and provide assessment.
+  - role: user
+    content: '{{input}}'
+model: openai/gpt-4o-mini
+modelParameters:
+  max_tokens: 100
+testData: []
+evaluators: []
