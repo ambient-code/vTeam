@@ -1,5 +1,5 @@
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
+kind: Role
 metadata:
   name: agentic-operator
 rules:
@@ -17,10 +17,8 @@ rules:
 - apiGroups: ["vteam.ambient-code"]
   resources: ["projectsettings/status"]
   verbs: ["update"]
-# Namespaces (read-only for managed namespace detection)
-- apiGroups: [""]
-  resources: ["namespaces"]
-  verbs: ["get", "list", "watch"]
+# NOTE: Removed namespace permissions - these require cluster-wide access
+# and are not compatible with namespace-scoped roles
 # Jobs (create and monitor for session execution)
 - apiGroups: ["batch"]
   resources: ["jobs"]

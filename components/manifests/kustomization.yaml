@@ -6,7 +6,7 @@ metadata:
 
 # Namespace for all resources (can be overridden with kustomize edit set namespace)
 #namespace: sallyom-vteam
-namespace: ambient-code
+namespace: vteam--test1
 
 # Resources to include in deployment
 resources:
