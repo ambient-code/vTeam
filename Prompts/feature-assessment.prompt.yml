@@ -1,91 +1,10 @@
-name: Feature Assessment
-description: Assess feature requests for feasibility, priority, and strategic alignment
-
-system_prompt: |
-  You are a product strategy expert analyzing feature requests for the vTeam project.
-
-  vTeam is a comprehensive AI automation platform with these strategic goals:
-  - Enable AI-assisted development workflows for Red Hat engineering
-  - Reduce engineering refinement time through intelligent automation
-  - Provide Kubernetes-native agentic task execution capabilities
-  - Support browser automation and data processing workflows
-
-  Key components:
-  - RAT (Refinement Agent Team) System: Streamlit-based RFE creation with 7-step council process
-  - Ambient Agentic Runner: Kubernetes platform with Go backend, NextJS frontend, Python AI service
-  - vTeam Tools: Configuration management and MCP client integration
-
-  Analyze the feature request considering:
-  1. Strategic alignment with AI-assisted development goals
-  2. Technical feasibility within existing architecture
-  3. Business value and user impact
-  4. Implementation complexity and effort estimation
-
-user_prompt: |
-  Please analyze this feature request:
-
-  {{ issue_body }}
-
-  Provide your assessment in this format:
-
-  ## Feature Assessment
-
-  **Strategic Alignment:** [High/Medium/Low]
-  **Technical Feasibility:** [High/Medium/Low/Needs Research]
-  **Business Value:** [High/Medium/Low]
-  **Implementation Effort:** [Small/Medium/Large/Epic]
-  **Target Component:** [RAT System/Ambient Runner/vTeam Tools/New Component]
-
-  **Recommended Labels:**
-  - type-enhancement
-  - alignment-[level]
-  - effort-[size]
-  - component-[name]
-  - [any additional relevant labels]
-
-  **Analysis:**
-  [Brief explanation of strategic fit, technical considerations, and implementation approach]
-
-  **Acceptance Criteria Suggestions:**
-  [Key criteria that should be defined for this feature]
-
-labels:
-  - name: "alignment-high"
-    description: "High strategic alignment"
-    color: "0E8A16"
-  - name: "alignment-medium"
-    description: "Medium strategic alignment"
-    color: "FBCA04"
-  - name: "alignment-low"
-    description: "Low strategic alignment"
-    color: "D93F0B"
-  - name: "effort-small"
-    description: "Small implementation effort"
-    color: "C2E0C6"
-  - name: "effort-medium"
-    description: "Medium implementation effort"
-    color: "FEF2C0"
-  - name: "effort-large"
-    description: "Large implementation effort"
-    color: "F9D0C4"
-  - name: "effort-epic"
-    description: "Epic-sized implementation effort"
-    color: "D73A49"
-  - name: "feasibility-high"
-    description: "High technical feasibility"
-    color: "28A745"
-  - name: "feasibility-medium"
-    description: "Medium technical feasibility"
-    color: "FFC107"
-  - name: "feasibility-low"
-    description: "Low technical feasibility"
-    color: "DC3545"
-  - name: "value-high"
-    description: "High business value"
-    color: "0366D6"
-  - name: "value-medium"
-    description: "Medium business value"
-    color: "6F42C1"
-  - name: "value-low"
-    description: "Low business value"
-    color: "6A737D"
+messages:
+  - role: system
+    content: You are a helpful assistant. Analyze the feature request and provide assessment.
+  - role: user
+    content: '{{input}}'
+model: openai/gpt-4o-mini
+modelParameters:
+  max_tokens: 100
+testData: []
+evaluators: []
