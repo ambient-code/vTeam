@@ -1,4 +1,3 @@
-import { BACKEND_URL } from '@/lib/config'
 import { buildForwardHeadersAsync } from '@/lib/auth'
 
 export async function GET(
@@ -7,11 +6,14 @@ export async function GET(
 ) {
   const { name, sessionName } = await params
   const headers = await buildForwardHeadersAsync(request)
+  // Per-job content service (sidecar) name
+  const contentBase = `http://ambient-content-${encodeURIComponent(sessionName)}.${encodeURIComponent(name)}.svc.cluster.local:8080`
   const url = new URL(request.url)
   const subpath = url.searchParams.get('path')
-  const qs = subpath ? `?path=${encodeURIComponent(subpath)}` : ''
+  // Match backend resolveWorkspaceAbsPath semantics: /sessions/<session>/workspace[/subpath]
+  const pathRoot = `/sessions/${encodeURIComponent(sessionName)}/workspace${subpath ? `/${subpath}` : ''}`
   const resp = await fetch(
-    `${BACKEND_URL}/projects/${encodeURIComponent(name)}/agentic-sessions/${encodeURIComponent(sessionName)}/workspace${qs}`,
+    `${contentBase}/content/list?path=${encodeURIComponent(pathRoot)}`,
     { headers },
   )
   const contentType = resp.headers.get('content-type') || 'application/json'

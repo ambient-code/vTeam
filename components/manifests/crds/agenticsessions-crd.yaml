@@ -19,6 +19,42 @@ spec:
             required:
             - prompt
             properties:
+              # Multiple-repo configuration (new unified mapping)
+              repos:
+                type: array
+                description: "List of repositories. Each has an input (required) and an optional output mapping."
+                items:
+                  type: object
+                  required:
+                  - input
+                  properties:
+                    input:
+                      type: object
+                      required:
+                      - url
+                      properties:
+                        url:
+                          type: string
+                          description: "Input (upstream) Git repository URL"
+                        branch:
+                          type: string
+                          description: "Input branch to checkout"
+                          default: "main"
+                    output:
+                      type: object
+                      description: "Optional output (fork/target) repository"
+                      properties:
+                        url:
+                          type: string
+                          description: "Output Git repository URL (fork or same as input)"
+                        branch:
+                          type: string
+                          description: "Output branch to push to"
+                          default: "main"
+              mainRepoIndex:
+                type: integer
+                description: "Index of the repo in repos array treated as the main repo (Claude working dir). Defaults to 0 (first repo)."
+                default: 0
               interactive:
                 type: boolean
                 description: "When true, run session in interactive chat mode using inbox/outbox files"
@@ -45,59 +81,6 @@ spec:
                 type: integer
                 default: 300
                 description: "Timeout in seconds for the agentic session"
-              gitConfig:
-                type: object
-                description: "Git configuration for repository operations"
-                properties:
-                  user:
-                    type: object
-                    description: "Git user configuration"
-                    properties:
-                      name:
-                        type: string
-                        description: "Git user name for commits"
-                      email:
-                        type: string
-                        description: "Git user email for commits"
-                  authentication:
-                    type: object
-                    description: "Git authentication configuration"
-                    properties:
-                      sshKeySecret:
-                        type: string
-                        description: "Name of Kubernetes secret containing SSH private key"
-                      tokenSecret:
-                        type: string
-                        description: "Name of Kubernetes secret containing Git access token"
-                  repositories:
-                    type: array
-                    description: "List of Git repositories to clone"
-                    items:
-                      type: object
-                      properties:
-                        url:
-                          type: string
-                          description: "Git repository URL"
-                        branch:
-                          type: string
-                          default: "main"
-                          description: "Branch to checkout"
-                        clonePath:
-                          type: string
-                          description: "Relative path where to clone the repository"
-              paths:
-                type: object
-                description: "PVC storage paths used by the runner"
-                properties:
-                  workspace:
-                    type: string
-                    description: "Root workspace directory on PVC containing repos, .claude, specs, etc."
-                  messages:
-                    type: string
-                    description: "Path on PVC where conversation messages are stored (e.g., /sessions/{id}/messages.json)"
-                  inbox:
-                    type: string
-                    description: "Path on PVC where user chat inputs are appended as JSONL (e.g., /sessions/{id}/inbox.jsonl)"
           status:
             type: object
             properties:

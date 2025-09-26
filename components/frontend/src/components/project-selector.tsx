@@ -25,7 +25,7 @@ export function ProjectSelector() {
       const items: ProjectSummary[] = Array.isArray(data?.items) ? data.items : [];
       setProjects(items);
       // Hydrate selection from URL or storage
-      const match = pathname.match(/^\/projects\/([^\/]+)/);
+      const match = pathname?.match(/^\/projects\/([^\/]+)/);
       const urlProject = match?.[1];
       const stored = typeof window !== "undefined" ? localStorage.getItem("selectedProject") || "" : "";
       const initial = urlProject || stored;

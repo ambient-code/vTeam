@@ -10,6 +10,7 @@ import (
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/joho/godotenv"
 	"k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -22,6 +23,7 @@ import (
 
 var (
 	k8sClient      *kubernetes.Clientset
+	dynamicClient  dynamic.Interface
 	namespace      string
 	stateBaseDir   string
 	pvcBaseDir     string
@@ -29,6 +31,14 @@ var (
 )
 
 func main() {
+	// Load environment from .env in development if present
+	// Order: .env.local overrides .env
+	_ = godotenv.Overload(".env.local")
+	_ = godotenv.Overload(".env")
+
+	// Initialize components that depend on env vars loaded above
+	initializeGitHubTokenManager()
+
 	// Initialize Kubernetes clients
 	if err := initK8sClients(); err != nil {
 		log.Fatalf("Failed to initialize Kubernetes clients: %v", err)
@@ -72,6 +82,20 @@ func main() {
 		r.POST("/content/write", contentWrite)
 		r.GET("/content/file", contentRead)
 		r.GET("/content/list", contentList)
+		// Health check endpoint
+		r.GET("/health", func(c *gin.Context) {
+			c.JSON(http.StatusOK, gin.H{"status": "healthy"})
+		})
+
+		port := os.Getenv("PORT")
+		if port == "" {
+			port = "8080"
+		}
+		log.Printf("Content service starting on port %s", port)
+		if err := r.Run(":" + port); err != nil {
+			log.Fatalf("Failed to start content service: %v", err)
+		}
+		return
 	}
 
 	// API routes (all consolidated under /api) remain available
@@ -85,6 +109,10 @@ func main() {
 		{
 			// Access check (SSAR based)
 			projectGroup.GET("/access", accessCheck)
+			projectGroup.GET("/users/forks", listUserForks)
+			projectGroup.POST("/users/forks", createUserFork)
+
+			// Repo browsing moved to global routes (non project-scoped)
 			// Agentic sessions under a project
 			projectGroup.GET("/agentic-sessions", listSessions)
 			projectGroup.POST("/agentic-sessions", createSession)
@@ -95,13 +123,6 @@ func main() {
 			projectGroup.POST("/agentic-sessions/:sessionName/start", startSession)
 			projectGroup.POST("/agentic-sessions/:sessionName/stop", stopSession)
 			projectGroup.PUT("/agentic-sessions/:sessionName/status", updateSessionStatus)
-			projectGroup.PUT("/agentic-sessions/:sessionName/displayname", updateSessionDisplayName)
-			projectGroup.GET("/agentic-sessions/:sessionName/messages", getSessionMessages)
-			projectGroup.POST("/agentic-sessions/:sessionName/messages", postSessionMessage)
-			// Session workspace APIs
-			projectGroup.GET("/agentic-sessions/:sessionName/workspace", getSessionWorkspace)
-			projectGroup.GET("/agentic-sessions/:sessionName/workspace/*path", getSessionWorkspaceFile)
-			projectGroup.PUT("/agentic-sessions/:sessionName/workspace/*path", putSessionWorkspaceFile)
 
 			// RFE workflow endpoints (project-scoped)
 			projectGroup.GET("/rfe-workflows", listProjectRFEWorkflows)
@@ -109,21 +130,25 @@ func main() {
 			projectGroup.GET("/rfe-workflows/:id", getProjectRFEWorkflow)
 			projectGroup.GET("/rfe-workflows/:id/summary", getProjectRFEWorkflowSummary)
 			projectGroup.DELETE("/rfe-workflows/:id", deleteProjectRFEWorkflow)
-			// Workflow workspace APIs
-			projectGroup.GET("/rfe-workflows/:id/workspace", getRFEWorkflowWorkspace)
-			projectGroup.GET("/rfe-workflows/:id/workspace/*path", getRFEWorkflowWorkspaceFile)
-			projectGroup.PUT("/rfe-workflows/:id/workspace/*path", putRFEWorkflowWorkspaceFile)
+			projectGroup.POST("/rfe-workflows/:id/seed", seedProjectRFEWorkflow)
+			projectGroup.GET("/rfe-workflows/:id/check-seeding", checkProjectRFEWorkflowSeeding)
+
+			// Removed dead endpoints: runSpecify, createRunnerSession - AgenticSession CRD flow is used instead
+
+			// Session WebSocket and messages
+			projectGroup.GET("/sessions/:sessionId/ws", handleSessionWebSocket)
+			projectGroup.GET("/sessions/:sessionId/messages", getSessionMessagesWS)
+			projectGroup.POST("/sessions/:sessionId/messages", postSessionMessageWS)
 			// Publish a workspace file to Jira and record linkage on the CR
 			projectGroup.POST("/rfe-workflows/:id/jira", publishWorkflowFileToJira)
 			projectGroup.GET("/rfe-workflows/:id/jira", getWorkflowJira)
 			// Sessions linkage within an RFE
 			projectGroup.GET("/rfe-workflows/:id/sessions", listProjectRFEWorkflowSessions)
-			projectGroup.POST("/rfe-workflows/:id/sessions", addProjectRFEWorkflowSession)
+			// Link an existing session to the RFE; avoid conflict with session creation endpoint
+			projectGroup.POST("/rfe-workflows/:id/sessions/link", addProjectRFEWorkflowSession)
 			projectGroup.DELETE("/rfe-workflows/:id/sessions/:sessionName", removeProjectRFEWorkflowSession)
 
-			// Agents
-			projectGroup.GET("/agents", listAgents)
-			projectGroup.GET("/agents/:persona/markdown", getAgentMarkdown)
+			// Agents moved to global routes (non project-scoped)
 
 			// Permissions (users & groups)
 			projectGroup.GET("/permissions", listProjectPermissions)
@@ -143,6 +168,19 @@ func main() {
 			projectGroup.PUT("/runner-secrets", updateRunnerSecrets)
 		}
 
+		// Global GitHub auth endpoints
+		api.POST("/auth/github/install", linkGitHubInstallationGlobal)
+		api.GET("/auth/github/status", getGitHubStatusGlobal)
+		api.POST("/auth/github/disconnect", disconnectGitHubGlobal)
+		api.GET("/auth/github/user/callback", handleGitHubUserOAuthCallback)
+
+		// Repo browsing via backend proxy (global)
+		api.GET("/repo/tree", getRepoTree)
+		api.GET("/repo/blob", getRepoBlob)
+
+		// Webhooks (deprecated for install flow; kept for future use)
+		// api.POST("/webhooks/github", handleGitHubWebhook)
+
 		// Project management (cluster-wide)
 		api.GET("/projects", listProjects)
 		api.POST("/projects", createProject)
@@ -150,9 +188,6 @@ func main() {
 		api.PUT("/projects/:projectName", updateProject)
 		api.DELETE("/projects/:projectName", deleteProject)
 	}
-
-	// Metrics endpoint
-	r.GET("/metrics", getMetrics)
 
 	// Health check endpoint
 	r.GET("/health", func(c *gin.Context) {
@@ -187,12 +222,19 @@ func initK8sClients() error {
 		if config, err = clientcmd.BuildConfigFromFlags("", kubeconfig); err != nil {
 			return fmt.Errorf("failed to create Kubernetes config: %v", err)
 		}
+
 	}
 
 	// Create standard Kubernetes client
 	k8sClient, err = kubernetes.NewForConfig(config)
 	if err != nil {
 		return fmt.Errorf("failed to create Kubernetes client: %v", err)
+	}
+
+	// Create dynamic client for CRD operations
+	dynamicClient, err = dynamic.NewForConfig(config)
+	if err != nil {
+		return fmt.Errorf("failed to create dynamic client: %v", err)
 	}
 
 	// Save base config for per-request impersonation/user-token clients
@@ -252,8 +294,9 @@ type AgenticSessionSpec struct {
 	BotAccount        *BotAccountRef     `json:"botAccount,omitempty"`
 	ResourceOverrides *ResourceOverrides `json:"resourceOverrides,omitempty"`
 	Project           string             `json:"project,omitempty"`
-	GitConfig         *GitConfig         `json:"gitConfig,omitempty"`
-	Paths             *Paths             `json:"paths,omitempty"`
+	// Multi-repo support (unified mapping)
+	Repos         []SessionRepoMapping `json:"repos,omitempty"`
+	MainRepoIndex *int                 `json:"mainRepoIndex,omitempty"`
 }
 
 type LLMSettings struct {
@@ -262,26 +305,30 @@ type LLMSettings struct {
 	MaxTokens   int     `json:"maxTokens"`
 }
 
-type GitUser struct {
-	Name  string `json:"name"`
-	Email string `json:"email"`
-}
-
-type GitAuthentication struct {
-	SSHKeySecret *string `json:"sshKeySecret,omitempty"`
-	TokenSecret  *string `json:"tokenSecret,omitempty"`
-}
-
 type GitRepository struct {
-	URL       string  `json:"url"`
-	Branch    *string `json:"branch,omitempty"`
-	ClonePath *string `json:"clonePath,omitempty"`
+	URL    string  `json:"url"`
+	Branch *string `json:"branch,omitempty"`
+}
+
+// Named repository types for multi-repo session support
+type NamedGitRepo struct {
+	URL    string  `json:"url"`
+	Branch *string `json:"branch,omitempty"`
+}
+
+type OutputNamedGitRepo struct {
+	URL    string  `json:"url"`
+	Branch *string `json:"branch,omitempty"`
+}
+
+// Unified session repo mapping
+type SessionRepoMapping struct {
+	Input  NamedGitRepo        `json:"input"`
+	Output *OutputNamedGitRepo `json:"output,omitempty"`
 }
 
 type GitConfig struct {
-	User           *GitUser           `json:"user,omitempty"`
-	Authentication *GitAuthentication `json:"authentication,omitempty"`
-	Repositories   []GitRepository    `json:"repositories,omitempty"`
+	Repositories []GitRepository `json:"repositories,omitempty"`
 }
 
 type Paths struct {
@@ -308,19 +355,21 @@ type AgenticSessionStatus struct {
 }
 
 type CreateAgenticSessionRequest struct {
-	Prompt               string             `json:"prompt" binding:"required"`
-	DisplayName          string             `json:"displayName,omitempty"`
-	LLMSettings          *LLMSettings       `json:"llmSettings,omitempty"`
-	Timeout              *int               `json:"timeout,omitempty"`
-	Interactive          *bool              `json:"interactive,omitempty"`
-	WorkspacePath        string             `json:"workspacePath,omitempty"`
-	GitConfig            *GitConfig         `json:"gitConfig,omitempty"`
-	UserContext          *UserContext       `json:"userContext,omitempty"`
-	BotAccount           *BotAccountRef     `json:"botAccount,omitempty"`
-	ResourceOverrides    *ResourceOverrides `json:"resourceOverrides,omitempty"`
-	EnvironmentVariables map[string]string  `json:"environmentVariables,omitempty"`
-	Labels               map[string]string  `json:"labels,omitempty"`
-	Annotations          map[string]string  `json:"annotations,omitempty"`
+	Prompt        string       `json:"prompt" binding:"required"`
+	DisplayName   string       `json:"displayName,omitempty"`
+	LLMSettings   *LLMSettings `json:"llmSettings,omitempty"`
+	Timeout       *int         `json:"timeout,omitempty"`
+	Interactive   *bool        `json:"interactive,omitempty"`
+	WorkspacePath string       `json:"workspacePath,omitempty"`
+	// Multi-repo support (unified mapping)
+	Repos                []SessionRepoMapping `json:"repos,omitempty"`
+	MainRepoIndex        *int                 `json:"mainRepoIndex,omitempty"`
+	UserContext          *UserContext         `json:"userContext,omitempty"`
+	BotAccount           *BotAccountRef       `json:"botAccount,omitempty"`
+	ResourceOverrides    *ResourceOverrides   `json:"resourceOverrides,omitempty"`
+	EnvironmentVariables map[string]string    `json:"environmentVariables,omitempty"`
+	Labels               map[string]string    `json:"labels,omitempty"`
+	Annotations          map[string]string    `json:"annotations,omitempty"`
 }
 
 type CloneSessionRequest struct {
@@ -330,15 +379,16 @@ type CloneSessionRequest struct {
 
 // RFE Workflow Data Structures
 type RFEWorkflow struct {
-	ID            string             `json:"id"`
-	Title         string             `json:"title"`
-	Description   string             `json:"description"`
-	Repositories  []GitRepository    `json:"repositories,omitempty"`
-	Project       string             `json:"project,omitempty"`
-	WorkspacePath string             `json:"workspacePath"`
-	CreatedAt     string             `json:"createdAt"`
-	UpdatedAt     string             `json:"updatedAt"`
-	JiraLinks     []WorkflowJiraLink `json:"jiraLinks,omitempty"`
+	ID              string             `json:"id"`
+	Title           string             `json:"title"`
+	Description     string             `json:"description"`
+	UmbrellaRepo    *GitRepository     `json:"umbrellaRepo,omitempty"`
+	SupportingRepos []GitRepository    `json:"supportingRepos,omitempty"`
+	Project         string             `json:"project,omitempty"`
+	WorkspacePath   string             `json:"workspacePath"`
+	CreatedAt       string             `json:"createdAt"`
+	UpdatedAt       string             `json:"updatedAt"`
+	JiraLinks       []WorkflowJiraLink `json:"jiraLinks,omitempty"`
 }
 
 type WorkflowJiraLink struct {
@@ -347,10 +397,11 @@ type WorkflowJiraLink struct {
 }
 
 type CreateRFEWorkflowRequest struct {
-	Title         string          `json:"title" binding:"required"`
-	Description   string          `json:"description" binding:"required"`
-	Repositories  []GitRepository `json:"repositories,omitempty"`
-	WorkspacePath string          `json:"workspacePath,omitempty"`
+	Title           string          `json:"title" binding:"required"`
+	Description     string          `json:"description" binding:"required"`
+	UmbrellaRepo    GitRepository   `json:"umbrellaRepo"`
+	SupportingRepos []GitRepository `json:"supportingRepos,omitempty"`
+	WorkspacePath   string          `json:"workspacePath,omitempty"`
 }
 
 type AdvancePhaseRequest struct {
@@ -436,21 +487,24 @@ func rfeWorkflowToCRObject(workflow *RFEWorkflow) map[string]interface{} {
 		spec["jiraLinks"] = links
 	}
 
-	if len(workflow.Repositories) > 0 {
-		repos := make([]map[string]interface{}, 0, len(workflow.Repositories))
-		for _, r := range workflow.Repositories {
-			rm := map[string]interface{}{
-				"url": r.URL,
-			}
+	// Prefer umbrellaRepo/supportingRepos; fallback to legacy repositories array
+	if workflow.UmbrellaRepo != nil {
+		u := map[string]interface{}{"url": workflow.UmbrellaRepo.URL}
+		if workflow.UmbrellaRepo.Branch != nil {
+			u["branch"] = *workflow.UmbrellaRepo.Branch
+		}
+		spec["umbrellaRepo"] = u
+	}
+	if len(workflow.SupportingRepos) > 0 {
+		items := make([]map[string]interface{}, 0, len(workflow.SupportingRepos))
+		for _, r := range workflow.SupportingRepos {
+			rm := map[string]interface{}{"url": r.URL}
 			if r.Branch != nil {
 				rm["branch"] = *r.Branch
 			}
-			if r.ClonePath != nil {
-				rm["clonePath"] = *r.ClonePath
-			}
-			repos = append(repos, rm)
+			items = append(items, rm)
 		}
-		spec["repositories"] = repos
+		spec["supportingRepos"] = items
 	}
 
 	labels := map[string]string{

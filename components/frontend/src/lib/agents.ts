@@ -141,6 +141,7 @@ export const WORKFLOW_PHASE_LABELS = {
   specify: "📝 Specify",
   plan: "🗂️ Plan",
   tasks: "✅ Tasks",
+  implement: "🚧 Implement",
   review: "👁️ Review",
   completed: "🎉 Completed"
 };
@@ -150,6 +151,7 @@ export const WORKFLOW_PHASE_DESCRIPTIONS = {
   specify: "Create comprehensive specifications from different perspectives",
   plan: "Generate detailed implementation plans with technical approach",
   tasks: "Break down features into actionable development tasks",
+  implement: "Start implementation session to begin coding based on tasks",
   review: "Review and finalize all artifacts before implementation",
   completed: "All phases complete, artifacts pushed to repository"
 };

@@ -1,6 +1,6 @@
 # OpenShift Deployment Guide
 
-vTeam is a Kubernetes-native AI automation platform that combines Claude Code CLI with browser automation capabilities.
+vTeam is an OpenShift-native platform that deploys a backend API, frontend, and operator into a managed namespace.
 
 ## Prerequisites
 
@@ -12,6 +12,9 @@ vTeam is a Kubernetes-native AI automation platform that combines Claude Code CL
 
 1. **Deploy** (from project root):
    ```bash
+   # Prepare env once
+   cp components/manifests/env.example components/manifests/.env
+   # Edit .env and set ANTHROPIC_API_KEY
    make deploy
    ```
    This deploys to the `ambient-code` namespace using default images from quay.io/ambient_code.
@@ -43,7 +46,7 @@ make deploy NAMESPACE=my-namespace
 To build and use your own images:
 ```bash
 # Set your container registry
-export REGISTRY="your-registry.com"  # e.g., "quay.io/your-username"
+export REGISTRY="quay.io/your-username"
 
 # Login to your container registry
 docker login $REGISTRY
@@ -65,13 +68,19 @@ cp env.example .env
 ```
 
 ### Setting up API Keys
-After deployment, create runner secrets through the project settings in the web UI. The system requires an Anthropic API key to function.
+After deployment, configure runner secrets through Settings → Runner Secrets in the UI. At minimum, provide `ANTHROPIC_API_KEY`.
 
 ### OpenShift OAuth (Recommended)
-For cluster login and authentication, see [OpenShift OAuth Setup](docs/OPENSHIFT_OAUTH.md).
+For cluster login and authentication, see [OpenShift OAuth Setup](OPENSHIFT_OAUTH.md). The deploy script also supports a `secrets` subcommand if you only need to (re)configure OAuth secrets:
+
+```bash
+cd components/manifests
+./deploy.sh secrets
+```
 
 ## Cleanup
 
 ```bash
-make clean
+# Uninstall resources
+make clean  # alias to ./components/manifests/deploy.sh clean
 ```

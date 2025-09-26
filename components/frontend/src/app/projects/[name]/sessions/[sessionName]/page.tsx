@@ -11,10 +11,6 @@ import {
   Square,
   Trash2,
   Copy,
-  ChevronRight,
-  ChevronDown,
-  CheckCircle2,
-  XCircle,
 } from "lucide-react";
 
 // Custom components
@@ -31,22 +27,22 @@ import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FileTree, type FileTreeNode } from "@/components/file-tree";
 import {
   AgenticSession,
   AgenticSessionPhase,
 } from "@/types/agentic-session";
-import type { MessageObject, ToolUseBlock, ToolUseMessages, ToolResultBlock, ResultMessage } from "@/types/agentic-session";
 import { CloneSessionDialog } from "@/components/clone-session-dialog";
+import { FileTree, type FileTreeNode } from "@/components/file-tree";
 
 import { getApiUrl } from "@/lib/config";
 import { cn } from "@/lib/utils";
+import type { SessionMessage } from "@/types";
+import type { MessageObject, ToolUseMessages, ToolUseBlock, ToolResultBlock } from "@/types/agentic-session";
 
 const getPhaseColor = (phase: AgenticSessionPhase) => {
   switch (phase) {
@@ -120,24 +116,18 @@ const outputComponents: Components = {
   ),
 };
 
-export default function ProjectSessionDetailPage({ params }: { params: Promise<{ name: string; sessionName: string }> }) {
+export default function ProjectSessionDetailPage({ params }: { params: Promise<{ name: string; sessionName: string }>}) {
   const [projectName, setProjectName] = useState<string>("");
   const [sessionName, setSessionName] = useState<string>("");
 
   const [session, setSession] = useState<AgenticSession | null>(null);
-  const [messages, setMessages] = useState<MessageObject[]>([]);
+  const [liveMessages, setLiveMessages] = useState<SessionMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
-  const [hasWorkspace, setHasWorkspace] = useState<boolean | null>(null);
   const [activeTab, setActiveTab] = useState<string>("overview");
 
-  // Embedded workspace state
-  const [wsTree, setWsTree] = useState<FileTreeNode[]>([]);
-  const [wsSelectedPath, setWsSelectedPath] = useState<string | undefined>(undefined);
-  const [wsFileContent, setWsFileContent] = useState<string>("");
-  const [wsLoading, setWsLoading] = useState<boolean>(false);
-  const [usageExpanded, setUsageExpanded] = useState(false);
+  // const [usageExpanded, setUsageExpanded] = useState(false);
   const [promptExpanded, setPromptExpanded] = useState(false);
 
   const [chatInput, setChatInput] = useState("")
@@ -159,6 +149,210 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
       } catch {}
     });
   }, [params]);
+  // Adapter: convert transport SessionMessage shape into StreamMessage model
+  type RawWireMessage = SessionMessage & { payload?: unknown };
+  type InnerEnvelope = { type?: string; timestamp?: string; payload?: Record<string, unknown>; partial?: { id: string; index: number; total: number; data: string }; seq?: number };
+
+  const streamMessages: Array<MessageObject | ToolUseMessages> = useMemo(() => {
+    const toolUseBlocks: { block: ToolUseBlock; timestamp: string }[] = [];
+    const toolResultBlocks: { block: ToolResultBlock; timestamp: string }[] = [];
+    const agenticMessages: MessageObject[] = [];
+
+    for (const raw of liveMessages as RawWireMessage[]) {
+      // Some backends wrap the actual message under payload.payload (and partial under payload.partial)
+      const envelope = ((raw?.payload as InnerEnvelope) ?? (raw as unknown as InnerEnvelope)) || {};
+      const innerType: string = envelope.type || (raw as unknown as InnerEnvelope)?.type || "";
+      // Always use the top-level timestamp for ordering/rendering
+      const innerTs: string = (raw as any)?.timestamp || new Date().toISOString();
+      const payloadAny = (envelope as any).payload;
+      const innerPayload: Record<string, unknown> = (payloadAny && typeof payloadAny === 'object')
+        ? (payloadAny as Record<string, unknown>)
+        : ((typeof envelope === 'object' ? (envelope as unknown as Record<string, unknown>) : {}) as Record<string, unknown>);
+      const partial = (envelope.partial as InnerEnvelope["partial"]) || ((raw as any)?.partial as InnerEnvelope["partial"]) || undefined;
+
+      switch (innerType) {
+        case "message.partial": {
+          const text = partial?.data || "";
+          if (text) {
+            agenticMessages.push({
+              type: "agent_message",
+              content: { type: "text_block", text },
+              model: "claude",
+              timestamp: innerTs,
+            });
+          }
+          break;
+        }
+        case "agent.message": {
+          // Show partial text if present on agent messages
+          if (partial?.data) {
+            const text = String(partial.data || "");
+            if (text) {
+              agenticMessages.push({
+                type: "agent_message",
+                content: { type: "text_block", text },
+                model: "claude",
+                timestamp: innerTs,
+              });
+              break;
+            }
+          }
+
+          const toolName = (innerPayload?.tool as string | undefined);
+          const toolInput = (innerPayload?.input as Record<string, unknown> | undefined) || {};
+          const providedId = (innerPayload?.id as string | undefined);
+          const result = innerPayload?.tool_result as unknown as { tool_use_id?: string; content?: unknown; is_error?: boolean } | undefined;
+          if (toolName) {
+            const id = providedId ? String(providedId) : String(envelope?.seq ?? `${toolName}-${toolUseBlocks.length}`);
+            toolUseBlocks.push({
+              block: {
+                type: "tool_use_block",
+                id,
+                name: toolName,
+                input: toolInput,
+              },
+              timestamp: innerTs,
+            });
+          } else if (result?.tool_use_id) {
+            toolResultBlocks.push({
+              block: {
+                type: "tool_result_block",
+                tool_use_id: String(result.tool_use_id),
+                content: (result.content as string | Array<Record<string, unknown>> | null | undefined) ?? null,
+                is_error: Boolean(result.is_error),
+              },
+              timestamp: innerTs,
+            });
+          } else if ((innerPayload as any)?.type === 'result.message') {
+            // Unwrap nested payloads: may be payload.payload
+            let rp: any = (innerPayload as any).payload || {};
+            if (rp && typeof rp === 'object' && 'payload' in rp && rp.payload) {
+              rp = rp.payload;
+            }
+            agenticMessages.push({
+              type: "result_message",
+              subtype: String(rp.subtype || ""),
+              duration_ms: Number(rp.duration_ms || 0),
+              duration_api_ms: Number(rp.duration_api_ms || 0),
+              is_error: Boolean(rp.is_error || false),
+              num_turns: Number(rp.num_turns || 0),
+              session_id: String(rp.session_id || ""),
+              total_cost_usd: (typeof rp.total_cost_usd === 'number' ? rp.total_cost_usd : null),
+              usage: (typeof rp.usage === 'object' && rp.usage ? rp.usage as Record<string, any> : null),
+              result: (typeof rp.result === 'string' ? rp.result : null),
+              timestamp: innerTs,
+            } as any);
+            if (typeof rp.result === 'string' && rp.result.trim()) {
+              agenticMessages.push({
+                type: "agent_message",
+                content: { type: "text_block", text: String(rp.result) },
+                model: "claude",
+                timestamp: innerTs,
+              } as any);
+            }
+          } else {
+            // Free-form agent message text
+            const text = (typeof (envelope as any).payload === 'string')
+              ? String((envelope as any).payload)
+              : (
+                  // Prefer structured content block
+                  (typeof (innerPayload as any)?.content?.text === 'string' ? String((innerPayload as any).content.text) : undefined)
+                  || (typeof (innerPayload as any)?.message === 'string' ? String((innerPayload as any).message) : undefined)
+                  || (typeof (innerPayload as any)?.payload?.content?.text === 'string' ? String((innerPayload as any).payload.content.text) : '')
+                );
+            if (text) {
+              agenticMessages.push({
+                type: "agent_message",
+                content: { type: "text_block", text },
+                model: "claude",
+                timestamp: innerTs,
+              });
+            }
+          }
+          break;
+        }
+        case "system.message": {
+          const text = (typeof (envelope as any).payload === 'string')
+            ? String((envelope as any).payload)
+            : "";
+          if (text) {
+            agenticMessages.push({
+              type: "system_message",
+              subtype: "system.message",
+              data: { message: text },
+              timestamp: innerTs,
+            });
+          }
+          break;
+        }
+        case "user.message":
+        case "user_message": {
+          const text = (innerPayload?.content as string | undefined) || "";
+          if (text) {
+            agenticMessages.push({
+              type: "user_message",
+              content: { type: "text_block", text },
+              timestamp: innerTs,
+            });
+          }
+          break;
+        }
+        case "agent.running": {
+          agenticMessages.push({
+            type: "agent_running",
+            timestamp: innerTs,
+          });
+        }
+        case "agent.waiting": {
+          agenticMessages.push({
+            type: "agent_waiting",
+            timestamp: innerTs,
+          });
+        }
+      
+        default: {
+          agenticMessages.push({
+            type: "system_message",
+            subtype: innerType || "unknown",
+            data: innerPayload || {},
+            timestamp: innerTs,
+          });
+        }
+      }
+    }
+
+    // Merge tool use blocks with their corresponding result blocks
+    const toolUseMessages: ToolUseMessages[] = [];
+    for (const tu of toolUseBlocks) {
+      const match = toolResultBlocks.find((tr) => tr.block.tool_use_id === tu.block.id);
+      if (match) {
+        toolUseMessages.push({
+          type: "tool_use_messages",
+          timestamp: tu.timestamp,
+          toolUseBlock: tu.block,
+          resultBlock: match.block,
+        });
+      } else {
+        // No result yet; show as loading
+        toolUseMessages.push({
+          type: "tool_use_messages",
+          timestamp: tu.timestamp,
+          toolUseBlock: tu.block,
+          resultBlock: { type: "tool_result_block", tool_use_id: tu.block.id, content: null, is_error: false },
+        });
+      }
+    }
+
+    const all = [...agenticMessages, ...toolUseMessages];
+    // Sort by timestamp (ascending)
+    const sorted = all.sort((a, b) => {
+      const at = new Date((a as any).timestamp || 0).getTime();
+      const bt = new Date((b as any).timestamp || 0).getTime();
+      return at - bt;
+    });
+    return session?.spec?.interactive ? sorted.filter((m) => m.type !== "result_message") : sorted;
+  }, [liveMessages, session?.spec?.interactive]);
+
 
 
   const fetchSession = useCallback(async () => {
@@ -176,14 +370,6 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
       }
       const data = await response.json();
       setSession(data);
-      // Fetch messages from proxy endpoint to ensure latest content
-      const msgResp = await fetch(
-        `${apiUrl}/projects/${encodeURIComponent(projectName)}/agentic-sessions/${encodeURIComponent(sessionName)}/messages`
-      );
-      if (msgResp.ok) {
-        const msgData = await msgResp.json();
-        if (Array.isArray(msgData)) setMessages(msgData);
-      }
 
 
     } catch (err) {
@@ -205,48 +391,157 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
       setChatInput("")
       await fetchSession()
       setActiveTab('messages')
+      // Refresh live messages after sending
+      try {
+        const resp = await fetch(`${apiUrl}/projects/${encodeURIComponent(projectName)}/agentic-sessions/${encodeURIComponent(sessionName)}/messages`)
+        if (resp.ok) {
+          const data = await resp.json()
+          setLiveMessages(Array.isArray(data.messages) ? data.messages : [])
+        }
+      } catch {}
     } catch {}
   }, [chatInput, projectName, sessionName, fetchSession])
 
   useEffect(() => {
     if (projectName && sessionName) {
       fetchSession();
-      // Poll for updates every 5 seconds if the session is still running
+      // Initial load of live messages
+      const apiUrl = getApiUrl()
+      ;(async () => {
+        try {
+          const resp = await fetch(`${apiUrl}/projects/${encodeURIComponent(projectName)}/agentic-sessions/${encodeURIComponent(sessionName)}/messages`)
+          if (resp.ok) {
+            const data = await resp.json()
+            setLiveMessages(Array.isArray(data.messages) ? data.messages : [])
+          }
+        } catch {}
+      })()
+      // Poll for updates every 3 seconds while session is active
       const interval = setInterval(() => {
         if (
           session?.status?.phase === "Pending" ||
-          session?.status?.phase === "Running"
+          session?.status?.phase === "Running" ||
+          session?.status?.phase === "Creating"
         ) {
           fetchSession();
+          ;(async () => {
+            try {
+              const resp = await fetch(`${apiUrl}/projects/${encodeURIComponent(projectName)}/agentic-sessions/${encodeURIComponent(sessionName)}/messages`)
+              if (resp.ok) {
+                const data = await resp.json()
+                setLiveMessages(Array.isArray(data.messages) ? data.messages : [])
+              }
+            } catch {}
+          })()
         }
-      }, 5000);
+      }, 3000);
       return () => clearInterval(interval);
     }
   }, [projectName, sessionName, session?.status?.phase, fetchSession]);
 
 
-  const workspaceBasePath = session?.spec?.paths?.workspace || `/agentic-sessions/${encodeURIComponent(sessionName)}/workspace`
 
-    
-  const probeWorkspace = useCallback(async () => {
-    // Probe workspace existence via API proxy
+  // Workspace (PVC) browser state
+  const [wsTree, setWsTree] = useState<FileTreeNode[]>([]);
+  const [wsSelectedPath, setWsSelectedPath] = useState<string | undefined>(undefined);
+  const [wsFileContent, setWsFileContent] = useState<string>("");
+  const [wsLoading, setWsLoading] = useState<boolean>(false);
+  const [wsUnavailable, setWsUnavailable] = useState<boolean>(false);
+
+  type ListItem = { name: string; path: string; isDir: boolean; size: number; modifiedAt: string };
+  const listWsPath = useCallback(async (relPath?: string) => {
     try {
-      const apiUrl = getApiUrl();
-      const wsResp = await fetch(
-        `${apiUrl}/projects/${encodeURIComponent(projectName)}${workspaceBasePath}`
-      );
-      setHasWorkspace(wsResp.ok);
+      const url = new URL(`${getApiUrl()}/projects/${encodeURIComponent(projectName)}/agentic-sessions/${encodeURIComponent(sessionName)}/workspace`, window.location.origin);
+      if (relPath) url.searchParams.set("path", relPath);
+      const resp = await fetch(url.toString());
+      if (!resp.ok) {
+        // Treat service errors as unavailable; caller will render empty state
+        setWsUnavailable(true);
+        return [] as ListItem[];
+      }
+      const data = await resp.json();
+      const items: ListItem[] = Array.isArray(data.items) ? data.items : [];
+      setWsUnavailable(false);
+      return items;
     } catch {
-      setHasWorkspace(false);
+      setWsUnavailable(true);
+      return [] as ListItem[];
     }
-  }, [projectName, workspaceBasePath]);
+  }, [projectName, sessionName]);
 
+  const readWsFile = useCallback(async (rel: string) => {
+    const resp = await fetch(`${getApiUrl()}/projects/${encodeURIComponent(projectName)}/agentic-sessions/${encodeURIComponent(sessionName)}/workspace/${encodeURIComponent(rel)}`);
+    if (!resp.ok) throw new Error("Failed to fetch file");
+    const text = await resp.text();
+    return text;
+  }, [projectName, sessionName]);
+
+  const writeWsFile = useCallback(async (rel: string, content: string) => {
+    const resp = await fetch(`${getApiUrl()}/projects/${encodeURIComponent(projectName)}/agentic-sessions/${encodeURIComponent(sessionName)}/workspace/${encodeURIComponent(rel)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "text/plain; charset=utf-8" },
+      body: content,
+    });
+    if (!resp.ok) throw new Error("Failed to save file");
+  }, [projectName, sessionName]);
+
+  const buildWsRoot = useCallback(async () => {
+    setWsLoading(true);
+    try {
+      const items = await listWsPath();
+      // Strip the backend's /sessions/<sessionName>/workspace/ prefix from paths
+      const prefix = `/sessions/${sessionName}/workspace/`;
+      const children: FileTreeNode[] = items.map((it) => ({
+        name: it.name,
+        path: it.path.startsWith(prefix) ? it.path.slice(prefix.length) : it.name,
+        type: it.isDir ? "folder" : "file",
+        expanded: it.isDir,
+        sizeKb: it.isDir ? undefined : it.size / 1024,
+      }));
+      setWsTree(children);
+    } finally {
+      setWsLoading(false);
+    }
+  }, [listWsPath, sessionName]);
+
+  const onWsToggle = useCallback(async (node: FileTreeNode) => {
+    if (node.type !== "folder") return;
+    const items = await listWsPath(node.path);
+    const prefix = `/sessions/${sessionName}/workspace/`;
+    const children: FileTreeNode[] = items.map((it) => ({
+      name: it.name,
+      path: it.path.startsWith(prefix) ? it.path.slice(prefix.length) : `${node.path}/${it.name}`,
+      type: it.isDir ? "folder" : "file",
+      expanded: false,
+      sizeKb: it.isDir ? undefined : it.size / 1024,
+    }));
+    node.children = children;
+    setWsTree((prev) => [...prev]);
+  }, [listWsPath, sessionName]);
+
+  const onWsSelect = useCallback(async (node: FileTreeNode) => {
+    if (node.type !== "file") return;
+    setWsSelectedPath(node.path);
+    const text = await readWsFile(node.path);
+    setWsFileContent(text);
+  }, [readWsFile]);
+
+  // Initial load when switching to workspace tab
   useEffect(() => {
-    if (projectName && sessionName) {
-      probeWorkspace();
+    if (activeTab === "workspace" && wsTree.length === 0 && projectName && sessionName) {
+      buildWsRoot();
     }
-  }, [projectName, sessionName, probeWorkspace]);
+  }, [activeTab, wsTree.length, projectName, sessionName, buildWsRoot]);
 
+  // Poll workspace while tab is active and session is running
+  useEffect(() => {
+    if (activeTab === "workspace" && projectName && sessionName && session?.status?.phase === "Running") {
+      const interval = setInterval(() => {
+        buildWsRoot();
+      }, 5000); // Poll every 5 seconds
+      return () => clearInterval(interval);
+    }
+  }, [activeTab, projectName, sessionName, session?.status?.phase, buildWsRoot]);
 
  
   const handleStop = async () => {
@@ -302,54 +597,11 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
 
   
 
-  const allMessages = useMemo(() => {
-    const toolUseBlocks: { block: ToolUseBlock; timestamp: string }[] = [];
-    const toolResultBlocks: { block: ToolResultBlock; timestamp: string }[] = [];
-    const agenticMessages: MessageObject[] = [];
-    
-    for (const message of messages) {
-      if (message.type === "assistant_message" || message.type === "user_message") {
-        if (typeof message.content === "object" && message.content.type === "tool_use_block") {
-          toolUseBlocks.push({ block: message.content, timestamp: message.timestamp });
-        } else if (typeof message.content === "object" && message.content.type === "tool_result_block") {
-          toolResultBlocks.push({ block: message.content, timestamp: message.timestamp });
-        } else {
-          agenticMessages.push(message);
-        }
-      } else {
-        agenticMessages.push(message);
-      }
-    }
-
-    // Merge tool use blocks with their corresponding result blocks
-    const toolUseMessages: ToolUseMessages[] = [];
-    for (const toolUseItem of toolUseBlocks) {
-      const resultItem = toolResultBlocks.find(result => result.block.tool_use_id === toolUseItem.block.id);
-      if (resultItem) {
-        toolUseMessages.push({
-          type: "tool_use_messages",
-          timestamp: toolUseItem.timestamp,
-          toolUseBlock: toolUseItem.block,
-          resultBlock: resultItem.block,
-        });
-      }
-    }
-
-    const all = [...agenticMessages, ...toolUseMessages]
-    return session?.spec?.interactive ? all.filter((m) => m.type !== "result_message") : all;
-  }, [messages, session?.spec?.interactive]);
-
-  const latestDisplayMessage = useMemo(() => {
-    if (allMessages.length === 0) return null;
-    const sorted = [...allMessages].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-    return sorted[sorted.length - 1];
-  }, [allMessages]);
-
-  // Stats: derive latest result metrics and duration
-  const latestResult: ResultMessage | null = useMemo(() => {
-    const results = messages.filter((m) => m.type === "result_message");
-    return results.length > 0 ? (results[results.length - 1] as any) : null;
-  }, [messages]);
+  // Latest live message (from polled backend messages)
+  const latestLiveMessage = useMemo(() => {
+    if (liveMessages.length === 0) return null;
+    return liveMessages[liveMessages.length - 1];
+  }, [liveMessages]);
 
   const durationMs = useMemo(() => {
     const start = session?.status?.startTime
@@ -361,111 +613,9 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
     return start ? Math.max(0, end - start) : undefined;
   }, [session?.status?.startTime, session?.status?.completionTime]);
 
-  // Subagent aggregation from tool_use messages
-  const subagentStats = useMemo(() => {
-    const counts: Record<string, number> = {};
-    const orderedTypes: string[] = [];
-    for (const message of messages) {
-      if (message.type === "assistant_message") {
-        const content = message.content;
-        if (content && typeof content === "object" && (content as any).type === "tool_use_block") {
-          const block = content as ToolUseBlock;
-          const input = block.input as unknown as Record<string, unknown> | undefined;
-          const subagentType = (input?.subagent_type as string) || undefined;
-          if (block.name === "Task" && typeof subagentType === "string" && subagentType.trim().length > 0) {
-            counts[subagentType] = (counts[subagentType] || 0) + 1;
-            if (!orderedTypes.includes(subagentType)) orderedTypes.push(subagentType);
-          }
-        }
-      } else if (message.type === "user_message") {
-        const content = message.content;
-        if (content && typeof content === "object" && (content as any).type === "tool_use_block") {
-          const block = content as ToolUseBlock;
-          const input = block.input as unknown as Record<string, unknown> | undefined;
-          const subagentType = (input?.subagent_type as string) || undefined;
-          if (block.name === "Task" && typeof subagentType === "string" && subagentType.trim().length > 0) {
-            counts[subagentType] = (counts[subagentType] || 0) + 1;
-            if (!orderedTypes.includes(subagentType)) orderedTypes.push(subagentType);
-          }
-        }
-      }
-    }
-    return { uniqueCount: orderedTypes.length, orderedTypes, counts };
-  }, [messages]);
+  // Subagent aggregation not available without structured tool messages; show empty
+  const subagentStats = useMemo(() => ({ uniqueCount: 0, orderedTypes: [], counts: {} as Record<string, number> }), []);
 
-  // Workspace helpers (loaded when Workspace tab opens)
-  type ListItem = { name: string; path: string; isDir: boolean; size: number; modifiedAt: string };
-  const listWsPath = useCallback(async (relPath?: string) => {
-    const url = new URL(`${getApiUrl()}/projects/${encodeURIComponent(projectName)}${workspaceBasePath}`, window.location.origin);
-    if (relPath) url.searchParams.set("path", relPath);
-    const resp = await fetch(url.toString());
-    if (!resp.ok) throw new Error("Failed to list workspace");
-    const data = await resp.json();
-    const items: ListItem[] = Array.isArray(data.items) ? data.items : [];
-    return items;
-  }, [projectName, sessionName, workspaceBasePath]);
-
-  const readWsFile = useCallback(async (rel: string) => {
-    const resp = await fetch(`${getApiUrl()}/projects/${encodeURIComponent(projectName)}${workspaceBasePath}/${encodeURIComponent(rel)}`);
-    if (!resp.ok) throw new Error("Failed to fetch file");
-    const text = await resp.text();
-    return text;
-  }, [projectName, sessionName, workspaceBasePath]);
-
-  const writeWsFile = useCallback(async (rel: string, content: string) => {
-    const resp = await fetch(`${getApiUrl()}/projects/${encodeURIComponent(projectName)}${workspaceBasePath}/${encodeURIComponent(rel)}`, {
-      method: "PUT",
-      headers: { "Content-Type": "text/plain; charset=utf-8" },
-      body: content,
-    });
-    if (!resp.ok) throw new Error("Failed to save file");
-  }, [projectName, workspaceBasePath]);
-
-  const buildWsRoot = useCallback(async () => {
-    if (!hasWorkspace) return;
-    setWsLoading(true);
-    try {
-      const items = await listWsPath();
-      const children: FileTreeNode[] = items.map((it) => ({
-        name: it.name,
-        path: it.path.replace(/^\/+/, ""),
-        type: it.isDir ? "folder" : "file",
-        expanded: it.isDir,
-        sizeKb: it.isDir ? undefined : it.size / 1024,
-      }));
-      setWsTree(children);
-    } finally {
-      setWsLoading(false);
-    }
-  }, [hasWorkspace, listWsPath]);
-
-  const onWsToggle = useCallback(async (node: FileTreeNode) => {
-    if (node.type !== "folder") return;
-    // Lazy-load folder children when expanding
-    const items = await listWsPath(node.path);
-    const children: FileTreeNode[] = items.map((it) => ({
-      name: it.name,
-      path: `${node.path}/${it.name}`.replace(/^\/+/, ""),
-      type: it.isDir ? "folder" : "file",
-      expanded: false,
-      sizeKb: it.isDir ? undefined : it.size / 1024,
-    }));
-    node.children = children;
-    setWsTree((prev) => [...prev]);
-  }, [listWsPath]);
-
-  const onWsSelect = useCallback(async (node: FileTreeNode) => {
-    if (node.type !== "file") return;
-    setWsSelectedPath(node.path);
-    const text = await readWsFile(node.path);
-    setWsFileContent(text);
-  }, [readWsFile]);
-
-  useEffect(() => {
-    if (activeTab === "workspace" && wsTree.length === 0) {
-      buildWsRoot();
-    }
-  }, [activeTab, wsTree.length, buildWsRoot]);
 
   if (loading) {
     return (
@@ -559,12 +709,6 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
         {/* Top compact stat cards */}
         <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
           <Card className="py-4">
-            <CardContent>
-              <div className="text-xs text-muted-foreground">Cost</div>
-              <div className="text-lg font-semibold">{typeof session.status?.total_cost_usd === "number" ? `$${session.status.total_cost_usd.toFixed(4)}` : "-"}</div>
-            </CardContent>
-          </Card>
-          <Card className="py-4">
             <CardContent >
               <div className="text-xs text-muted-foreground">Duration</div>
               <div className="text-lg font-semibold">{typeof durationMs === "number" ? `${durationMs} ms` : "-"}</div>
@@ -573,7 +717,7 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
           <Card className="py-4">
             <CardContent >
               <div className="text-xs text-muted-foreground">Messages</div>
-              <div className="text-lg font-semibold">{allMessages.length}</div>
+              <div className="text-lg font-semibold">{liveMessages.length}</div>
             </CardContent>
           </Card>
           <Card className="py-4">
@@ -592,7 +736,7 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
           <TabsList>
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="messages">Messages</TabsTrigger>
-            {hasWorkspace ? <TabsTrigger value="workspace">Workspace</TabsTrigger> : null}
+            <TabsTrigger value="workspace">Workspace</TabsTrigger>
             {!session.spec.interactive ? <TabsTrigger value="results">Results</TabsTrigger> : null}
           </TabsList>
 
@@ -648,9 +792,13 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
                   </div>
                 </CardHeader>
                 <CardContent>
-                  {latestDisplayMessage ? (
-                    <div className="space-y-4">
-                      <StreamMessage message={latestDisplayMessage} onGoToResults={() => setActiveTab("results")} />
+                  {latestLiveMessage ? (
+                    <div className="space-y-2 text-sm">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-xs">{latestLiveMessage.type}</Badge>
+                        <span className="text-xs text-gray-500">{new Date(latestLiveMessage.timestamp).toLocaleTimeString()}</span>
+                      </div>
+                      <pre className="whitespace-pre-wrap break-words bg-gray-50 rounded p-2 text-xs text-gray-800">{JSON.stringify(latestLiveMessage.payload, null, 2)}</pre>
                     </div>
                   ) : (
                     <div className="text-sm text-gray-500">No messages yet</div>
@@ -673,6 +821,12 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
                       <div>
                         <div className="text-xs font-semibold text-muted-foreground mb-2">Runtime</div>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        {session.status.message && (
+                            <div>
+                              <p className="font-semibold">Status</p>
+                              <p className="text-muted-foreground">{session.status.message}</p>
+                            </div>
+                          )}
                           {session.status.startTime && (
                             <div>
                               <p className="font-semibold">Started</p>
@@ -720,6 +874,43 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
                           </div>
                         </div>
                       </div>
+
+                      <div>
+                        <div className="text-xs font-semibold text-muted-foreground mb-2">Repositories</div>
+                        {session.spec.repos && session.spec.repos.length > 0 ? (
+                          <div className="space-y-2">
+                            {session.spec.repos.map((repo, idx) => {
+                              const isMain = session.spec.mainRepoIndex === idx;
+                              return (
+                                <div key={idx} className="flex items-center gap-2 text-sm font-mono">
+                                  {isMain && <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded font-sans">MAIN</span>}
+                                  <span className="text-muted-foreground break-all">{repo.input.url}</span>
+                                  <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded font-sans">{repo.input.branch || "main"}</span>
+                                  <span className="text-muted-foreground">→</span>
+                                  <span className="text-muted-foreground break-all">{repo.output?.url || "(no push)"}</span>
+                                  {repo.output?.url && (
+                                    <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded font-sans">{repo.output?.branch || "auto"}</span>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <p className="text-muted-foreground">No repositories configured</p>
+                        )}
+                        {Array.isArray((session.spec as any)?.inputRepos) && ((session.spec as any)?.inputRepos?.length > 0) ? (
+                          <div className="mt-3">
+                            <div className="text-xs font-semibold text-muted-foreground mb-2">Additional Input Repos</div>
+                            <div className="space-y-1 text-sm">
+                              {((session.spec as any).inputRepos as Array<{ name?: string; url?: string; branch?: string }>).map((r, i) => (
+                                <div key={`inrepo-${i}`} className="text-muted-foreground break-all">
+                                  <span className="font-medium">{r.name || `repo-${i+1}`}:</span> {r.url || "—"}{r.branch ? <span className="text-gray-500"> @{r.branch}</span> : null}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
@@ -729,39 +920,14 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
 
           {/* Messages */}
           <TabsContent value="messages">
-            <div className="flex flex-col gap-4 max-h-[60vh] overflow-y-auto pr-1">
-              {allMessages
-                .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
-                .map((message, index) => (
-                  <StreamMessage key={`msg-${index}`} message={message} onGoToResults={() => setActiveTab("results")} />
+            <div className="flex flex-col gap-2 max-h-[60vh] overflow-y-auto pr-1">
+              {streamMessages.map((m, idx) => (
+                <StreamMessage key={`sm-${idx}`} message={m} />
               ))}
 
+             
 
-              {(session.status?.phase === "Running" ||
-                session.status?.phase === "Pending" ||
-                session.status?.phase === "Creating") && (
-                <Message
-                  role="bot"
-                  content={session.status.message || (() => {
-                    const messages = [
-                      "Pretending to be productive...",
-                      "Downloading more RAM...",
-                      "Consulting the magic 8-ball...",
-                      "Teaching bugs to behave...",
-                      "Brewing digital coffee...",
-                      "Rolling for initiative...",
-                      "Surfing the data waves...",
-                      "Juggling bits and bytes...",
-                      "Tipping my fedora...",
-                    ];
-                    return messages[Math.floor(Math.random() * messages.length)];
-                  })()}
-                  name="Claude AI"
-                  isLoading={true}
-                />
-              )}
-
-              {(messages.length === 0) &&
+              {(liveMessages.length === 0) &&
                 session.status?.phase !== "Running" &&
                 session.status?.phase !== "Pending" &&
                 session.status?.phase !== "Creating" && (
@@ -778,20 +944,44 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
                     <div className="border rounded-md p-3 space-y-2 bg-white">
                       <textarea
                         className="w-full border rounded p-2 text-sm"
-                        placeholder="Type a message to the agent... (use /end to finish)"
+                        placeholder="Type a message to the agent..."
                         value={chatInput}
                         onChange={(e) => setChatInput(e.target.value)}
                         rows={3}
                       />
                       <div className="flex items-center justify-between">
-                        <div className="text-xs text-muted-foreground">Type <span className="font-mono">/end</span> to end the session</div>
+                        <div className="text-xs text-muted-foreground">Interactive session</div>
                         <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={async () => {
+                              // Interrupt current agent activity
+                              try {
+                                const apiUrl = getApiUrl();
+                                await fetch(`${apiUrl}/projects/${encodeURIComponent(projectName)}/agentic-sessions/${encodeURIComponent(sessionName)}/messages`, {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ type: 'interrupt' })
+                                })
+                              } catch {}
+                            }}
+                          >
+                            Interrupt agent
+                          </Button>
                           <Button
                             variant="secondary"
                             size="sm"
                             onClick={async () => {
-                              setChatInput("/end")
-                              await sendChat()
+                              // End interactive session
+                              try {
+                                const apiUrl = getApiUrl();
+                                await fetch(`${apiUrl}/projects/${encodeURIComponent(projectName)}/agentic-sessions/${encodeURIComponent(sessionName)}/messages`, {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ type: 'end_session' })
+                                })
+                              } catch {}
                             }}
                           >
                             End session
@@ -808,127 +998,95 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
             </div>
           </TabsContent>
 
-          {/* Workspace */}
-          {hasWorkspace ? (
-            <TabsContent value="workspace">
-              {wsLoading && (
-                <div className="flex items-center justify-center h-32 text-sm text-muted-foreground">
-                  <RefreshCw className="animate-spin h-4 w-4 mr-2" /> Loading workspace...
-                </div>
-              )}
-              {!wsLoading && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-0">
-                  <div className="border rounded-md overflow-hidden">
-                    <div className="p-3 border-b">
+          {/* Workspace (PVC) */}
+          <TabsContent value="workspace">
+            {wsLoading && (
+              <div className="flex items-center justify-center h-32 text-sm text-muted-foreground">
+                <RefreshCw className="animate-spin h-4 w-4 mr-2" /> Loading workspace...
+              </div>
+            )}
+            {!wsLoading && wsUnavailable && (
+              <div className="flex items-center justify-center h-32 text-sm text-muted-foreground text-center">
+                {session.status?.phase === "Pending" || session.status?.phase === "Creating" ? (
+                  <div>
+                    <div className="flex items-center justify-center"><RefreshCw className="animate-spin h-4 w-4 mr-2" /> Service not ready</div>
+                    <div className="mt-2">{session.status?.message || "Preparing session workspace..."}</div>
+                  </div>
+                ) : (
+                  <div>
+                    <div className="font-medium">Workspace unavailable</div>
+                    <div className="mt-1">Access to the PVC is not available when the session is {session.status?.phase || "Unavailable"}.</div>
+                  </div>
+                )}
+              </div>
+            )}
+            {!wsLoading && !wsUnavailable && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-0">
+                <div className="border rounded-md overflow-hidden">
+                  <div className="p-3 border-b flex items-center justify-between">
+                    <div>
                       <h3 className="font-medium text-sm">Files</h3>
                       <p className="text-xs text-muted-foreground">{wsTree.length} items</p>
                     </div>
-                    <div className="p-2">
-                      <FileTree nodes={wsTree} selectedPath={wsSelectedPath} onSelect={onWsSelect} onToggle={onWsToggle} />
-                    </div>
+                    <Button 
+                      size="sm" 
+                      variant="outline" 
+                      onClick={buildWsRoot}
+                      disabled={wsLoading}
+                      className="h-8"
+                    >
+                      <RefreshCw className="h-4 w-4" />
+                    </Button>
                   </div>
-                  <div className="overflow-auto">
-                    <Card className="m-3">
-                      <CardContent className="p-4">
-                        {wsSelectedPath ? (
-                          <>
-                            <div className="flex items-center justify-between mb-2">
-                              <div className="text-sm">
-                                <span className="font-medium">{wsSelectedPath.split('/').pop()}</span>
-                                <Badge variant="outline" className="ml-2">{wsSelectedPath}</Badge>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <Button size="sm" onClick={async () => {
-                                  try {
-                                    await writeWsFile(wsSelectedPath, wsFileContent);
-                                  } catch {
-                                    // noop for now
-                                  }
-                                }}>Save</Button>
-                              </div>
-                            </div>
-                            <textarea
-                              className="w-full h-[60vh] bg-gray-900 text-gray-100 p-4 rounded overflow-auto text-sm font-mono"
-                              value={wsFileContent}
-                              onChange={(e) => setWsFileContent(e.target.value)}
-                            />
-                          </>
-                        ) : (
-                          <div className="text-sm text-muted-foreground p-4">Select a file to preview</div>
-                        )}
-                      </CardContent>
-                    </Card>
+                  <div className="p-2">
+                    <FileTree nodes={wsTree} selectedPath={wsSelectedPath} onSelect={onWsSelect} onToggle={onWsToggle} />
                   </div>
                 </div>
-              )}
-            </TabsContent>
-          ) : null}
+                <div className="overflow-auto">
+                  <Card className="m-3">
+                    <CardContent className="p-4">
+                      {wsSelectedPath ? (
+                        <>
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="text-sm">
+                              <span className="font-medium">{wsSelectedPath.split('/').pop()}</span>
+                              <Badge variant="outline" className="ml-2">{wsSelectedPath}</Badge>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Button size="sm" onClick={async () => {
+                                try { await writeWsFile(wsSelectedPath, wsFileContent); } catch {}
+                              }}>Save</Button>
+                            </div>
+                          </div>
+                          <textarea
+                            className="w-full h-[60vh] bg-gray-900 text-gray-100 p-4 rounded overflow-auto text-sm font-mono"
+                            value={wsFileContent}
+                            onChange={(e) => setWsFileContent(e.target.value)}
+                          />
+                        </>
+                      ) : (
+                        <div className="text-sm text-muted-foreground p-4">Select a file to preview</div>
+                      )}
+                    </CardContent>
+                  </Card>
+                </div>
+              </div>
+            )}
+          </TabsContent>
 
           {/* Results */}
           <TabsContent value="results">
-            {latestResult ? (
+            {session.status?.result ? (
               <Card>
                 <CardHeader>
                   <CardTitle>Agent Results</CardTitle>
-                  <CardDescription>
-                    <Badge variant={latestResult.is_error ? "destructive" : "secondary"} className="text-xs">
-                      {latestResult.is_error ? (
-                        <span className="inline-flex items-center"><XCircle className="w-3 h-3 mr-1" /> Error</span>
-                      ) : (
-                        <span className="inline-flex items-center"><CheckCircle2 className="w-3 h-3 mr-1" /> Success</span>
-                      )}
-                    </Badge>
-                  </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="mb-4">
-                    <div className="flex flex-col justify-between mb-2">
-                      <div className="flex justify-between w-full gap-2 text-xs text-gray-700">
-                        <div><span className="font-medium">Duration:</span> {latestResult.duration_ms} ms</div>
-                        <div><span className="font-medium">API:</span> {latestResult.duration_api_ms} ms</div>
-                        <div><span className="font-medium">Turns:</span> {latestResult.num_turns}</div>
-                        {typeof latestResult.total_cost_usd === "number" && <div><span className="font-medium">Cost:</span> ${latestResult.total_cost_usd.toFixed(4)}</div>}
-                      </div>
-
-                      {latestResult.usage && (
-                        <div className="mt-2">
-                          <div className="flex flex-col justify-between mb-1">
-                            <div className="text-[11px] text-gray-500">Usage</div>
-                            <button
-                              className="text-xs text-blue-600 hover:underline inline-flex items-center gap-1"
-                              onClick={() => setUsageExpanded((e) => !e)}
-                              aria-expanded={usageExpanded}
-                            >
-                              {usageExpanded ? "Hide" : "Show"} details
-                              {usageExpanded ? (
-                                <ChevronDown className="w-3 h-3 text-gray-500" />
-                              ) : (
-                                <ChevronRight className="w-3 h-3 text-gray-500" />
-                              )}
-                            </button>
-                          </div>
-
-                          {!usageExpanded && (
-                            <div className="text-xs text-gray-600 italic">Usage details hidden</div>
-                          )}
-
-                          {usageExpanded && (
-                            <pre className="bg-gray-50 border rounded p-2 whitespace-pre-wrap break-words text-xs text-gray-800">
-                              {JSON.stringify(latestResult.usage, null, 2)}
-                            </pre>
-                          )}
-                        </div>
-                      )}
-                    </div>
+                  <div className="bg-white rounded-lg prose prose-sm max-w-none prose-headings:text-gray-900 prose-p:text-gray-700 prose-strong:text-gray-900 prose-code:bg-gray-100 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-pre:bg-gray-900 prose-pre:text-gray-100">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]} components={outputComponents}>
+                      {session.status.result}
+                    </ReactMarkdown>
                   </div>
-
-                  {session.status?.result && (
-                    <div className="bg-white rounded-lg prose prose-sm max-w-none prose-headings:text-gray-900 prose-p:text-gray-700 prose-strong:text-gray-900 prose-code:bg-gray-100 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-pre:bg-gray-900 prose-pre:text-gray-100">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]} components={outputComponents}>
-                        {session.status.result}
-                      </ReactMarkdown>
-                    </div>
-                  )}
                 </CardContent>
               </Card>
             ) : (

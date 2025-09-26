@@ -39,11 +39,11 @@ rules:
 # Services (create per-namespace content services)
 - apiGroups: [""]
   resources: ["services"]
-  verbs: ["get", "create"]
+  verbs: ["get", "list", "watch", "create"]
 # Deployments (create per-namespace content services)
 - apiGroups: ["apps"]
   resources: ["deployments"]
-  verbs: ["create"]
+  verbs: ["get", "list", "watch", "create"]
 # RoleBindings (create group access bindings)
 - apiGroups: ["rbac.authorization.k8s.io"]
   resources: ["rolebindings"]

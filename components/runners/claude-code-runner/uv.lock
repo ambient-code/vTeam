@@ -206,13 +206,26 @@ wheels = [
 ]
 
 [[package]]
+name = "claude-agent-sdk"
+version = "0.1.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "anyio" },
+    { name = "mcp" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/dd/21/9466f7c38cf02f0a4e5ddeeba7450ef4cddbf21945d2497eac4637f463dc/claude_agent_sdk-0.1.0.tar.gz", hash = "sha256:f60d148f8e9f69991582863a6cdbf337ff908c1bd7d5de2f7845eb830f72d2a5", size = 42827, upload-time = "2025-09-28T23:39:33.333Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/60/27/0081f232b1119d3973ce5301b31f407bb604ca4434152d39ff62b9e18a0c/claude_agent_sdk-0.1.0-py3-none-any.whl", hash = "sha256:92d9a83689a6a3a54f69aac1224dd2004109bf1fecd0272e2241251747afdb3d", size = 32635, upload-time = "2025-09-28T23:39:32.184Z" },
+]
+
+[[package]]
 name = "claude-code-runner"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
     { name = "anthropic" },
-    { name = "claude-code-sdk" },
+    { name = "claude-agent-sdk" },
     { name = "pyjwt" },
     { name = "requests" },
 ]
@@ -221,26 +234,13 @@ dependencies = [
 requires-dist = [
     { name = "aiohttp", specifier = ">=3.8.0" },
     { name = "anthropic", specifier = ">=0.68.0" },
-    { name = "claude-code-sdk", specifier = ">=0.0.23" },
+    { name = "claude-agent-sdk", specifier = ">=0.1.0" },
     { name = "pyjwt", specifier = ">=2.8.0" },
     { name = "requests", specifier = ">=2.31.0" },
 ]
 
 [package.metadata.requires-dev]
 dev = []
-
-[[package]]
-name = "claude-code-sdk"
-version = "0.0.23"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "anyio" },
-    { name = "mcp" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/24/57/3d84b1e48fa8d7b0f14d5511cb21270e6d7b6e8930a19795c5aa6f3705c6/claude_code_sdk-0.0.23.tar.gz", hash = "sha256:17098365e03520637375a8dafab9e93ad2b50463ca1df6d744c5a85a450667e6", size = 41173, upload-time = "2025-09-18T02:45:54.492Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/b5/8d/8bb9db486fc934884420c9543eefb897b110df99f8605388172c0f3c1c3f/claude_code_sdk-0.0.23-py3-none-any.whl", hash = "sha256:5260d940f8a38d9b6eb93f443711b19f2f9130dedf662c2d73a4d78b8d1dc1f0", size = 30916, upload-time = "2025-09-18T02:45:53.555Z" },
-]
 
 [[package]]
 name = "click"

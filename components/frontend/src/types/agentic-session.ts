@@ -6,26 +6,24 @@ export type LLMSettings = {
 	maxTokens: number;
 };
 
-export type GitUser = {
-	name: string;
-	email: string;
-};
-
-export type GitAuthentication = {
-	sshKeySecret?: string;
-	tokenSecret?: string;
-};
-
+// Generic repo type used by RFE workflows (retains optional clonePath)
 export type GitRepository = {
-	url: string;
-	branch?: string;
-	clonePath?: string;
+    url: string;
+    branch?: string;
 };
 
-export type GitConfig = {
-	user?: GitUser;
-	authentication?: GitAuthentication;
-	repositories?: GitRepository[];
+// Unified multi-repo session mapping
+export type SessionRepoInput = {
+    url: string;
+    branch?: string;
+};
+export type SessionRepoOutput = {
+    url: string;
+    branch?: string;
+};
+export type SessionRepo = {
+    input: SessionRepoInput;
+    output?: SessionRepoOutput;
 };
 
 export type AgenticSessionSpec = {
@@ -33,12 +31,11 @@ export type AgenticSessionSpec = {
 	llmSettings: LLMSettings;
 	timeout: number;
 	displayName?: string;
-	gitConfig?: GitConfig;
 	project?: string;
 	interactive?: boolean;
-	paths?: {
-		workspace?: string;
-	}
+	// Multi-repo support
+	repos?: SessionRepo[];
+	mainRepoIndex?: number;
 };
 
 // -----------------------------
@@ -78,15 +75,24 @@ export type ToolUseMessages = {
 // -----------------------------
 // Message Types
 // -----------------------------
-export type Message = UserMessage | AssistantMessage | SystemMessage | ResultMessage | ToolUseMessages;
+export type Message = UserMessage | AgentMessage | SystemMessage | ResultMessage | ToolUseMessages | AgentRunningMessage | AgentWaitingMessage;
+
+export type AgentRunningMessage = {
+	type: "agent_running";
+	timestamp: string;
+}
+export type AgentWaitingMessage = {
+	type: "agent_waiting";
+	timestamp: string;
+}
 
 export type UserMessage = {
 	type: "user_message";
 	content: ContentBlock | string;
 	timestamp: string;
 }
-export type AssistantMessage = {
-	type: "assistant_message";
+export type AgentMessage = {
+	type: "agent_message";
 	content: ContentBlock;
 	model: string;
 	timestamp: string;
@@ -151,17 +157,19 @@ export type CreateAgenticSessionRequest = {
 	llmSettings?: Partial<LLMSettings>;
 	displayName?: string;
 	timeout?: number;
-	gitConfig?: GitConfig;
 	project?: string;
   	environmentVariables?: Record<string, string>;
 	interactive?: boolean;
 	workspacePath?: string;
+	// Multi-repo support
+	repos?: SessionRepo[];
+	mainRepoIndex?: number;
 	labels?: Record<string, string>;
 	annotations?: Record<string, string>;
 };
 
 // New types for RFE workflows
-export type WorkflowPhase = "pre" | "ideate" | "specify" | "plan" | "tasks" | "review" | "completed";
+export type WorkflowPhase = "pre" | "ideate" | "specify" | "plan" | "tasks" | "implement" | "review" | "completed";
 
 export type AgentPersona = {
 	persona: string;
@@ -197,7 +205,9 @@ export type RFEWorkflow = {
 	description: string;
   currentPhase?: WorkflowPhase; // derived in UI
   status?: "active" | "completed" | "failed" | "paused"; // derived in UI
-  repositories?: GitRepository[]; // CRD-aligned optional array
+  // New CRD-aligned repo fields
+  umbrellaRepo?: GitRepository; // required in CRD, but optional in API reads
+  supportingRepos?: GitRepository[];
   workspacePath?: string; // CRD-aligned optional path
   agentSessions?: RFESession[];
   artifacts?: ArtifactFile[];
@@ -210,7 +220,8 @@ export type RFEWorkflow = {
 export type CreateRFEWorkflowRequest = {
 	title: string;
 	description: string;
-  repositories?: GitRepository[];
+  umbrellaRepo: GitRepository;
+  supportingRepos?: GitRepository[];
   workspacePath?: string;
 };
 

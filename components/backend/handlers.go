@@ -177,6 +177,47 @@ func updateAccessKeyLastUsedAnnotation(c *gin.Context) {
 	}
 }
 
+// extractServiceAccountFromAuth extracts namespace and ServiceAccount name from the Authorization Bearer JWT 'sub' claim
+// Returns (namespace, saName, true) when a SA subject is present, otherwise ("","",false)
+func extractServiceAccountFromAuth(c *gin.Context) (string, string, bool) {
+	rawAuth := c.GetHeader("Authorization")
+	parts := strings.SplitN(rawAuth, " ", 2)
+	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
+		return "", "", false
+	}
+	token := strings.TrimSpace(parts[1])
+	if token == "" {
+		return "", "", false
+	}
+	segs := strings.Split(token, ".")
+	if len(segs) < 2 {
+		return "", "", false
+	}
+	payloadB64 := segs[1]
+	if m := len(payloadB64) % 4; m != 0 {
+		payloadB64 += strings.Repeat("=", 4-m)
+	}
+	data, err := base64.URLEncoding.DecodeString(payloadB64)
+	if err != nil {
+		return "", "", false
+	}
+	var payload map[string]interface{}
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return "", "", false
+	}
+	sub, _ := payload["sub"].(string)
+	const prefix = "system:serviceaccount:"
+	if !strings.HasPrefix(sub, prefix) {
+		return "", "", false
+	}
+	rest := strings.TrimPrefix(sub, prefix)
+	parts2 := strings.SplitN(rest, ":", 2)
+	if len(parts2) != 2 {
+		return "", "", false
+	}
+	return parts2[0], parts2[1], true
+}
+
 // Middleware for project context validation
 func validateProjectContext() gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -301,20 +342,6 @@ func parseSpec(spec map[string]interface{}) AgenticSessionSpec {
 		result.Interactive = interactive
 	}
 
-	if paths, ok := spec["paths"].(map[string]interface{}); ok {
-		p := &Paths{}
-		if ws, ok := paths["workspace"].(string); ok {
-			p.Workspace = ws
-		}
-		if ms, ok := paths["messages"].(string); ok {
-			p.Messages = ms
-		}
-		if ib, ok := paths["inbox"].(string); ok {
-			p.Inbox = ib
-		}
-		result.Paths = p
-	}
-
 	if displayName, ok := spec["displayName"].(string); ok {
 		result.DisplayName = displayName
 	}
@@ -382,51 +409,44 @@ func parseSpec(spec map[string]interface{}) AgenticSessionSpec {
 		result.ResourceOverrides = ro
 	}
 
-	// Parse Git configuration
-	if gitConfig, ok := spec["gitConfig"].(map[string]interface{}); ok {
-		result.GitConfig = &GitConfig{}
-
-		// Parse user
-		if user, ok := gitConfig["user"].(map[string]interface{}); ok {
-			result.GitConfig.User = &GitUser{}
-			if name, ok := user["name"].(string); ok {
-				result.GitConfig.User.Name = name
+	// Multi-repo parsing (unified repos)
+	if arr, ok := spec["repos"].([]interface{}); ok {
+		repos := make([]SessionRepoMapping, 0, len(arr))
+		for _, it := range arr {
+			m, ok := it.(map[string]interface{})
+			if !ok {
+				continue
 			}
-			if email, ok := user["email"].(string); ok {
-				result.GitConfig.User.Email = email
-			}
-		}
-
-		// Parse authentication
-		if auth, ok := gitConfig["authentication"].(map[string]interface{}); ok {
-			result.GitConfig.Authentication = &GitAuthentication{}
-			if sshKeySecret, ok := auth["sshKeySecret"].(string); ok {
-				result.GitConfig.Authentication.SSHKeySecret = &sshKeySecret
-			}
-			if tokenSecret, ok := auth["tokenSecret"].(string); ok {
-				result.GitConfig.Authentication.TokenSecret = &tokenSecret
-			}
-		}
-
-		// Parse repositories
-		if repos, ok := gitConfig["repositories"].([]interface{}); ok {
-			result.GitConfig.Repositories = make([]GitRepository, len(repos))
-			for i, repo := range repos {
-				if repoMap, ok := repo.(map[string]interface{}); ok {
-					gitRepo := GitRepository{}
-					if url, ok := repoMap["url"].(string); ok {
-						gitRepo.URL = url
-					}
-					if branch, ok := repoMap["branch"].(string); ok {
-						gitRepo.Branch = &branch
-					}
-					if clonePath, ok := repoMap["clonePath"].(string); ok {
-						gitRepo.ClonePath = &clonePath
-					}
-					result.GitConfig.Repositories[i] = gitRepo
+			r := SessionRepoMapping{}
+			if in, ok := m["input"].(map[string]interface{}); ok {
+				ng := NamedGitRepo{}
+				if s, ok := in["url"].(string); ok {
+					ng.URL = s
 				}
+				if s, ok := in["branch"].(string); ok && strings.TrimSpace(s) != "" {
+					ng.Branch = stringPtr(s)
+				}
+				r.Input = ng
+			}
+			if out, ok := m["output"].(map[string]interface{}); ok {
+				og := &OutputNamedGitRepo{}
+				if s, ok := out["url"].(string); ok {
+					og.URL = s
+				}
+				if s, ok := out["branch"].(string); ok && strings.TrimSpace(s) != "" {
+					og.Branch = stringPtr(s)
+				}
+				r.Output = og
+			}
+			if strings.TrimSpace(r.Input.URL) != "" {
+				repos = append(repos, r)
 			}
 		}
+		result.Repos = repos
+	}
+	if idx, ok := spec["mainRepoIndex"].(float64); ok {
+		idxInt := int(idx)
+		result.MainRepoIndex = &idxInt
 	}
 
 	return result
@@ -478,6 +498,8 @@ func createSession(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+
+	// Validation for multi-repo can be added here if needed
 
 	// Set defaults for LLM settings if not provided
 	llmSettings := LLMSettings{
@@ -547,14 +569,6 @@ func createSession(c *gin.Context) {
 		},
 	}
 
-	// Only include paths if a workspacePath was provided
-	if strings.TrimSpace(req.WorkspacePath) != "" {
-		spec := session["spec"].(map[string]interface{})
-		spec["paths"] = map[string]interface{}{
-			"workspace": req.WorkspacePath,
-		}
-	}
-
 	// Optional environment variables passthrough (always, independent of git config presence)
 	if len(req.EnvironmentVariables) > 0 {
 		spec := session["spec"].(map[string]interface{})
@@ -566,51 +580,32 @@ func createSession(c *gin.Context) {
 		session["spec"].(map[string]interface{})["interactive"] = *req.Interactive
 	}
 
-	// Load Git configuration from ConfigMap and merge with user-provided config
-	if defaultGitConfig, err := loadGitConfigFromConfigMapForProject(c, reqK8s, project); err != nil {
-		log.Printf("Warning: failed to load Git config from ConfigMap in %s: %v", project, err)
-	} else {
-		mergedGitConfig := mergeGitConfigs(req.GitConfig, defaultGitConfig)
-		if mergedGitConfig != nil {
-			gitConfig := map[string]interface{}{}
-			if mergedGitConfig.User != nil {
-				gitConfig["user"] = map[string]interface{}{
-					"name":  mergedGitConfig.User.Name,
-					"email": mergedGitConfig.User.Email,
+	// Set multi-repo configuration on spec
+	{
+		spec := session["spec"].(map[string]interface{})
+		// Multi-repo pass-through (unified repos)
+		if len(req.Repos) > 0 {
+			arr := make([]map[string]interface{}, 0, len(req.Repos))
+			for _, r := range req.Repos {
+				m := map[string]interface{}{}
+				in := map[string]interface{}{"url": r.Input.URL}
+				if r.Input.Branch != nil {
+					in["branch"] = *r.Input.Branch
 				}
-			}
-
-			if mergedGitConfig.Authentication != nil {
-				auth := map[string]interface{}{}
-				if mergedGitConfig.Authentication.SSHKeySecret != nil {
-					auth["sshKeySecret"] = *mergedGitConfig.Authentication.SSHKeySecret
-				}
-				if mergedGitConfig.Authentication.TokenSecret != nil {
-					auth["tokenSecret"] = *mergedGitConfig.Authentication.TokenSecret
-				}
-				if len(auth) > 0 {
-					gitConfig["authentication"] = auth
-				}
-			}
-			if len(mergedGitConfig.Repositories) > 0 {
-				repos := make([]map[string]interface{}, len(mergedGitConfig.Repositories))
-				for i, repo := range mergedGitConfig.Repositories {
-					repoMap := map[string]interface{}{
-						"url": repo.URL,
+				m["input"] = in
+				if r.Output != nil {
+					out := map[string]interface{}{"url": r.Output.URL}
+					if r.Output.Branch != nil {
+						out["branch"] = *r.Output.Branch
 					}
-					if repo.Branch != nil {
-						repoMap["branch"] = *repo.Branch
-					}
-					if repo.ClonePath != nil {
-						repoMap["clonePath"] = *repo.ClonePath
-					}
-					repos[i] = repoMap
+					m["output"] = out
 				}
-				gitConfig["repositories"] = repos
+				arr = append(arr, m)
 			}
-			if len(gitConfig) > 0 {
-				session["spec"].(map[string]interface{})["gitConfig"] = gitConfig
-			}
+			spec["repos"] = arr
+		}
+		if req.MainRepoIndex != nil {
+			spec["mainRepoIndex"] = *req.MainRepoIndex
 		}
 	}
 
@@ -673,26 +668,14 @@ func createSession(c *gin.Context) {
 		if strings.TrimSpace(personasCsv) == "" {
 			return
 		}
-		// Determine workspace base path in PVC
-		workspaceBase := req.WorkspacePath
-		if strings.TrimSpace(workspaceBase) == "" {
-			workspaceBase = fmt.Sprintf("/sessions/%s/workspace", name)
-		}
+		// content service removed; skip workspace path handling
 		// Write each agent markdown
 		for _, p := range strings.Split(personasCsv, ",") {
 			persona := strings.TrimSpace(p)
 			if persona == "" {
 				continue
 			}
-			md, err := renderAgentMarkdownContent(persona)
-			if err != nil {
-				log.Printf("agent prefill: failed to render persona %s: %v", persona, err)
-				continue
-			}
-			path := fmt.Sprintf("%s/.claude/agents/%s.md", workspaceBase, persona)
-			if err := writeProjectContentFile(c, project, path, []byte(md)); err != nil {
-				log.Printf("agent prefill: write failed for %s: %v", path, err)
-			}
+			// ambient-content removed: skip agent prefill writes
 		}
 	}()
 
@@ -780,24 +763,48 @@ func provisionRunnerTokenForSession(c *gin.Context, reqK8s *kubernetes.Clientset
 		RoleRef:  rbacv1.RoleRef{APIGroup: "rbac.authorization.k8s.io", Kind: "Role", Name: roleName},
 		Subjects: []rbacv1.Subject{{Kind: "ServiceAccount", Name: saName, Namespace: project}},
 	}
-	if _, err := reqK8s.RbacV1().RoleBindings(project).Create(c.Request.Context(), rb, v1.CreateOptions{}); err != nil {
+	if _, err := reqK8s.RbacV1().RoleBindings(project).Create(context.TODO(), rb, v1.CreateOptions{}); err != nil {
 		if !errors.IsAlreadyExists(err) {
 			return fmt.Errorf("create RoleBinding: %w", err)
 		}
 	}
 
-	// Mint short-lived token for the ServiceAccount
+	// Mint short-lived K8s ServiceAccount token for CR status updates
 	tr := &authnv1.TokenRequest{Spec: authnv1.TokenRequestSpec{}}
 	tok, err := reqK8s.CoreV1().ServiceAccounts(project).CreateToken(c.Request.Context(), saName, tr, v1.CreateOptions{})
 	if err != nil {
 		return fmt.Errorf("mint token: %w", err)
 	}
-	token := tok.Status.Token
-	if strings.TrimSpace(token) == "" {
+	k8sToken := tok.Status.Token
+	if strings.TrimSpace(k8sToken) == "" {
 		return fmt.Errorf("received empty token for SA %s", saName)
 	}
 
-	// Store token in a Secret
+	// Extract userID from AgenticSession spec.userContext to mint GitHub token
+	spec, _ := obj.Object["spec"].(map[string]interface{})
+	userID := ""
+	if uc, ok := spec["userContext"].(map[string]interface{}); ok {
+		if v, ok2 := uc["userId"].(string); ok2 {
+			userID = v
+		}
+	}
+
+	// Mint GitHub App installation token for the user (if configured)
+	secretData := map[string]string{
+		"k8s-token": k8sToken, // K8s ServiceAccount token for CR updates
+	}
+	if strings.TrimSpace(userID) != "" {
+		githubToken, expiresAt, err := MintSessionToken(c.Request.Context(), userID)
+		if err != nil {
+			log.Printf("Warning: failed to mint GitHub token for user %s: %v", userID, err)
+			// Continue without GitHub token - operator will use ProjectSettings secret instead
+		} else {
+			secretData["token"] = githubToken // GitHub token for git operations
+			secretData["github-token-expires-at"] = expiresAt.Format(time.RFC3339)
+		}
+	}
+
+	// Store both tokens in a Secret
 	secretName := fmt.Sprintf("ambient-runner-token-%s", sessionName)
 	sec := &corev1.Secret{
 		ObjectMeta: v1.ObjectMeta{
@@ -807,7 +814,7 @@ func provisionRunnerTokenForSession(c *gin.Context, reqK8s *kubernetes.Clientset
 			OwnerReferences: []v1.OwnerReference{ownerRef},
 		},
 		Type:       corev1.SecretTypeOpaque,
-		StringData: map[string]string{"token": token},
+		StringData: secretData,
 	}
 	if _, err := reqK8s.CoreV1().Secrets(project).Create(c.Request.Context(), sec, v1.CreateOptions{}); err != nil {
 		if !errors.IsAlreadyExists(err) {
@@ -870,404 +877,14 @@ func getSession(c *gin.Context) {
 	c.JSON(http.StatusOK, session)
 }
 
-// GET /api/projects/:projectName/agentic-sessions/:sessionName/messages
-// Returns the messages.json content for a session by fetching from the per-project content service
-// and falling back to local state directory if the content service is unavailable.
-func getSessionMessages(c *gin.Context) {
-	project := c.GetString("project")
-	sessionName := c.Param("sessionName")
-
-	// First try via per-namespace content service using caller's token
-	data, err := readProjectContentFile(c, project, fmt.Sprintf("/sessions/%s/messages.json", sessionName))
-	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": "failed to fetch messages"})
-		return
-	}
-	c.Data(http.StatusOK, "application/json", data)
-}
-
-// POST /api/projects/:projectName/agentic-sessions/:sessionName/messages
-// Appends a user message to the session inbox (JSONL) using the per-project content service
-func postSessionMessage(c *gin.Context) {
-	project := c.GetString("project")
-	sessionName := c.Param("sessionName")
-
-	var body struct {
-		Content string `json:"content" binding:"required"`
-	}
-	if err := c.ShouldBindJSON(&body); err != nil || strings.TrimSpace(body.Content) == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "content is required"})
-		return
-	}
-
-	entry := map[string]interface{}{
-		"type":      "user_message",
-		"content":   body.Content,
-		"timestamp": time.Now().UTC().Format(time.RFC3339),
-	}
-
-	inboxPath := fmt.Sprintf("/sessions/%s/inbox.jsonl", sessionName)
-
-	// Read current inbox (best effort)
-	cur, _ := readProjectContentFile(c, project, inboxPath)
-	curStr := string(cur)
-	if curStr != "" && !strings.HasSuffix(curStr, "\n") {
-		curStr += "\n"
-	}
-	b, _ := json.Marshal(entry)
-	newContent := curStr + string(b) + "\n"
-
-	if err := writeProjectContentFile(c, project, inboxPath, []byte(newContent)); err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": "failed to write inbox"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"ok": true})
-}
-
-// resolveWorkspaceAbsPath normalizes a workspace-relative or absolute path to the
-// absolute workspace path for a given session.
-func resolveWorkspaceAbsPath(sessionName string, relOrAbs string) string {
-	base := fmt.Sprintf("/sessions/%s/workspace", sessionName)
-	trimmed := strings.TrimSpace(relOrAbs)
-	if trimmed == "" || trimmed == "/" {
-		return base
-	}
-	cleaned := "/" + strings.TrimLeft(trimmed, "/")
-	if cleaned == base || strings.HasPrefix(cleaned, base+"/") {
-		return cleaned
-	}
-	// Join under base for any other relative path
-	return filepath.Join(base, strings.TrimPrefix(cleaned, "/"))
-}
-
-// GET /api/projects/:projectName/agentic-sessions/:sessionName/workspace
-// Lists the contents of a session's workspace by delegating to the per-project content service
-func getSessionWorkspace(c *gin.Context) {
-	project := c.GetString("project")
-	sessionName := c.Param("sessionName")
-
-	// Optional subpath within the workspace to list
-	rel := strings.TrimSpace(c.Query("path"))
-	absPath := resolveWorkspaceAbsPath(sessionName, rel)
-
-	items, err := listProjectContent(c, project, absPath)
-	if err == nil {
-		// If content/list returns exactly this file (non-dir), serve file bytes
-		if len(items) == 1 && strings.TrimRight(items[0].Path, "/") == absPath && !items[0].IsDir {
-			b, ferr := readProjectContentFile(c, project, absPath)
-			if ferr != nil {
-				c.JSON(http.StatusBadGateway, gin.H{"error": "failed to read workspace file"})
-				return
-			}
-			c.Data(http.StatusOK, "application/octet-stream", b)
-			return
-		}
-		c.JSON(http.StatusOK, gin.H{"items": items})
-		return
-	}
-	// Fallback: try file read directly
-	b, ferr := readProjectContentFile(c, project, absPath)
-	if ferr != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": "failed to access workspace"})
-		return
-	}
-	c.Data(http.StatusOK, "application/octet-stream", b)
-}
-
-// GET /api/projects/:projectName/agentic-sessions/:sessionName/workspace/*path
-// Reads a file from a session's workspace by delegating to the per-project content service
-func getSessionWorkspaceFile(c *gin.Context) {
-	project := c.GetString("project")
-	sessionName := c.Param("sessionName")
-	pathParam := c.Param("path")
-
-	absPath := resolveWorkspaceAbsPath(sessionName, pathParam)
-
-	// Try directory listing first to determine type
-	items, err := listProjectContent(c, project, absPath)
-	if err == nil {
-		if len(items) == 1 && strings.TrimRight(items[0].Path, "/") == absPath && !items[0].IsDir {
-			// It's a file
-			b, ferr := readProjectContentFile(c, project, absPath)
-			if ferr != nil {
-				c.JSON(http.StatusBadGateway, gin.H{"error": "failed to read workspace file"})
-				return
-			}
-			c.Data(http.StatusOK, "application/octet-stream", b)
-			return
-		}
-		// It's a directory
-		c.JSON(http.StatusOK, gin.H{"items": items})
-		return
-	}
-	// Fallback to file read
-	b, ferr := readProjectContentFile(c, project, absPath)
-	if ferr != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": "failed to access workspace"})
-		return
-	}
-	c.Data(http.StatusOK, "application/octet-stream", b)
-}
-
-// PUT /api/projects/:projectName/agentic-sessions/:sessionName/workspace/*path
-// Writes a file into a session's workspace via the per-project content service
-func putSessionWorkspaceFile(c *gin.Context) {
-	project := c.GetString("project")
-	sessionName := c.Param("sessionName")
-	pathParam := c.Param("path")
-
-	absPath := resolveWorkspaceAbsPath(sessionName, pathParam)
-
-	// Read raw request body and forward as-is (treat as text/binary pass-through)
-	data, err := ioutil.ReadAll(c.Request.Body)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to read request body"})
-		return
-	}
-
-	if err := writeProjectContentFile(c, project, absPath, data); err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": "failed to write workspace file"})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"message": "ok"})
-}
-
-// resolveWorkflowWorkspaceAbsPath normalizes a workspace-relative or absolute path to the
-// absolute workspace path for a given RFE workflow.
-func resolveWorkflowWorkspaceAbsPath(workflowID string, relOrAbs string) string {
-	base := fmt.Sprintf("/rfe-workflows/%s/workspace", workflowID)
-	trimmed := strings.TrimSpace(relOrAbs)
-	if trimmed == "" || trimmed == "/" {
-		return base
-	}
-	cleaned := "/" + strings.TrimLeft(trimmed, "/")
-	if cleaned == base || strings.HasPrefix(cleaned, base+"/") {
-		return cleaned
-	}
-	// Join under base for any other relative path
-	return filepath.Join(base, strings.TrimPrefix(cleaned, "/"))
-}
-
-// GET /api/projects/:projectName/rfe-workflows/:id/workspace
-// Lists the contents of a workflow's workspace by delegating to the per-project content service
-func getRFEWorkflowWorkspace(c *gin.Context) {
-	project := c.GetString("project")
-	workflowID := c.Param("id")
-
-	// Optional subpath within the workspace to list
-	rel := strings.TrimSpace(c.Query("path"))
-	absPath := resolveWorkflowWorkspaceAbsPath(workflowID, rel)
-
-	items, err := listProjectContent(c, project, absPath)
-	if err == nil {
-		// If content/list returns exactly this file (non-dir), serve file bytes
-		if len(items) == 1 && strings.TrimRight(items[0].Path, "/") == absPath && !items[0].IsDir {
-			b, ferr := readProjectContentFile(c, project, absPath)
-			if ferr != nil {
-				c.JSON(http.StatusBadGateway, gin.H{"error": "failed to read workspace file"})
-				return
-			}
-			c.Data(http.StatusOK, "application/octet-stream", b)
-			return
-		}
-		c.JSON(http.StatusOK, gin.H{"items": items})
-		return
-	}
-	// Fallback: try file read directly
-	b, ferr := readProjectContentFile(c, project, absPath)
-	if ferr != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": "failed to access workspace"})
-		return
-	}
-	c.Data(http.StatusOK, "application/octet-stream", b)
-}
-
-// GET /api/projects/:projectName/rfe-workflows/:id/workspace/*path
-// Reads a file from a workflow's workspace by delegating to the per-project content service
-func getRFEWorkflowWorkspaceFile(c *gin.Context) {
-	project := c.GetString("project")
-	workflowID := c.Param("id")
-	pathParam := c.Param("path")
-
-	absPath := resolveWorkflowWorkspaceAbsPath(workflowID, pathParam)
-
-	// Try directory listing first to determine type
-	items, err := listProjectContent(c, project, absPath)
-	if err == nil {
-		if len(items) == 1 && strings.TrimRight(items[0].Path, "/") == absPath && !items[0].IsDir {
-			// It's a file
-			b, ferr := readProjectContentFile(c, project, absPath)
-			if ferr != nil {
-				c.JSON(http.StatusBadGateway, gin.H{"error": "failed to read workspace file"})
-				return
-			}
-			c.Data(http.StatusOK, "application/octet-stream", b)
-			return
-		}
-		// It's a directory
-		c.JSON(http.StatusOK, gin.H{"items": items})
-		return
-	}
-	// Fallback to file read
-	b, ferr := readProjectContentFile(c, project, absPath)
-	if ferr != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": "failed to access workspace"})
-		return
-	}
-	c.Data(http.StatusOK, "application/octet-stream", b)
-}
-
-// PUT /api/projects/:projectName/rfe-workflows/:id/workspace/*path
-// Writes a file into a workflow's workspace via the per-project content service
-func putRFEWorkflowWorkspaceFile(c *gin.Context) {
-	project := c.GetString("project")
-	workflowID := c.Param("id")
-	pathParam := c.Param("path")
-
-	absPath := resolveWorkflowWorkspaceAbsPath(workflowID, pathParam)
-
-	// Read raw request body and forward as-is (treat as text/binary pass-through)
-	data, err := ioutil.ReadAll(c.Request.Body)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to read request body"})
-		return
-	}
-
-	if err := writeProjectContentFile(c, project, absPath, data); err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": "failed to write workspace file"})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"message": "ok"})
-}
+// mintGitHubTokenForSession handles POST /projects/:projectName/sessions/:sessionId/github/token
+// AuthZ model: caller must be the per-session runner ServiceAccount for this session in the same project
+// and have access to the project via validateProjectContext(). The token minted is a short-lived GitHub
+// App installation token for the original session user.
 
 // --- Git helpers (project-scoped) ---
 
 func stringPtr(s string) *string { return &s }
-
-// loadGitConfigFromConfigMapForProject reads Git defaults from ConfigMap "git-config" in the project namespace
-func loadGitConfigFromConfigMapForProject(c *gin.Context, reqK8s *kubernetes.Clientset, project string) (*GitConfig, error) {
-	configMap, err := reqK8s.CoreV1().ConfigMaps(project).Get(c.Request.Context(), "git-config", v1.GetOptions{})
-	if err != nil {
-		if errors.IsNotFound(err) {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("failed to get git-config ConfigMap: %v", err)
-	}
-
-	gitConfig := &GitConfig{}
-
-	if name := configMap.Data["git-user-name"]; name != "" {
-		if gitConfig.User == nil {
-			gitConfig.User = &GitUser{}
-		}
-		gitConfig.User.Name = name
-	}
-	if email := configMap.Data["git-user-email"]; email != "" {
-		if gitConfig.User == nil {
-			gitConfig.User = &GitUser{}
-		}
-		gitConfig.User.Email = email
-	}
-
-	if sshKeySecret := configMap.Data["git-ssh-key-secret"]; sshKeySecret != "" {
-		if gitConfig.Authentication == nil {
-			gitConfig.Authentication = &GitAuthentication{}
-		}
-		gitConfig.Authentication.SSHKeySecret = &sshKeySecret
-	}
-	if tokenSecret := configMap.Data["git-token-secret"]; tokenSecret != "" {
-		if gitConfig.Authentication == nil {
-			gitConfig.Authentication = &GitAuthentication{}
-		}
-		gitConfig.Authentication.TokenSecret = &tokenSecret
-	}
-
-	if reposList := configMap.Data["git-repositories"]; reposList != "" {
-		lines := strings.Split(strings.TrimSpace(reposList), "\n")
-		var repos []GitRepository
-		for _, line := range lines {
-			line = strings.TrimSpace(line)
-			if line != "" && !strings.HasPrefix(line, "#") {
-				repos = append(repos, GitRepository{URL: line, Branch: stringPtr("main")})
-			}
-		}
-		if len(repos) > 0 {
-			gitConfig.Repositories = repos
-		}
-	}
-
-	return gitConfig, nil
-}
-
-// mergeGitConfigs merges user-provided GitConfig with ConfigMap defaults
-func mergeGitConfigs(userConfig, defaultConfig *GitConfig) *GitConfig {
-	if userConfig == nil && defaultConfig == nil {
-		return nil
-	}
-	if userConfig == nil {
-		return defaultConfig
-	}
-	if defaultConfig == nil {
-		return userConfig
-	}
-
-	merged := &GitConfig{}
-	if userConfig.User != nil {
-		merged.User = userConfig.User
-	} else if defaultConfig.User != nil {
-		merged.User = defaultConfig.User
-	}
-	if userConfig.Authentication != nil {
-		merged.Authentication = userConfig.Authentication
-	} else if defaultConfig.Authentication != nil {
-		merged.Authentication = defaultConfig.Authentication
-	}
-
-	if len(userConfig.Repositories) > 0 || len(defaultConfig.Repositories) > 0 {
-		merged.Repositories = make([]GitRepository, 0, len(userConfig.Repositories)+len(defaultConfig.Repositories))
-		merged.Repositories = append(merged.Repositories, userConfig.Repositories...)
-		for _, def := range defaultConfig.Repositories {
-			conflict := false
-			for _, usr := range userConfig.Repositories {
-				if usr.URL == def.URL {
-					conflict = true
-					break
-				}
-			}
-			if !conflict {
-				merged.Repositories = append(merged.Repositories, def)
-			}
-		}
-	}
-	return merged
-}
-
-// countArtifacts recursively counts files under the provided directory (returns 0 if missing)
-func countArtifacts(artifactsDir string) int {
-	info, err := os.Stat(artifactsDir)
-	if err != nil || !info.IsDir() {
-		return 0
-	}
-	var count int
-	var walk func(string)
-	walk = func(dir string) {
-		entries, err := ioutil.ReadDir(dir)
-		if err != nil {
-			return
-		}
-		for _, e := range entries {
-			p := filepath.Join(dir, e.Name())
-			if e.IsDir() {
-				walk(p)
-			} else {
-				count++
-			}
-		}
-	}
-	walk(artifactsDir)
-	return count
-}
 
 func updateSession(c *gin.Context) {
 	project := c.GetString("project")
@@ -1762,65 +1379,6 @@ func updateSessionStatus(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "agentic session status updated"})
-}
-
-// proxyContentWrites forwards write operations to the per-namespace content service using the caller token
-func proxyContentWrites(c *gin.Context, project, sessionName string, statusUpdate map[string]interface{}) error {
-	token := c.GetHeader("Authorization")
-	if strings.TrimSpace(token) == "" {
-		log.Printf("content proxy: skip write (no Authorization token) project=%s session=%s", project, sessionName)
-		return nil
-	}
-	base := os.Getenv("CONTENT_SERVICE_BASE")
-	if base == "" {
-		base = "http://ambient-content.%s.svc:8080"
-	}
-	endpoint := fmt.Sprintf(base, project)
-	log.Printf("content proxy: preparing writes project=%s session=%s endpoint=%s tokenLen=%d", project, sessionName, endpoint, len(token))
-
-	type writeReq struct {
-		Path     string `json:"path"`
-		Content  string `json:"content"`
-		Encoding string `json:"encoding"`
-	}
-
-	// Serialize writes we care about
-	writes := []writeReq{}
-
-	if msgs, ok := statusUpdate["messages"].([]interface{}); ok && len(msgs) > 0 {
-		if b, err := json.Marshal(msgs); err == nil {
-			writes = append(writes, writeReq{Path: fmt.Sprintf("/sessions/%s/messages.json", sessionName), Content: string(b), Encoding: "utf8"})
-			delete(statusUpdate, "messages")
-		}
-	}
-	// Always write condensed status.json
-	if b, err := json.Marshal(statusUpdate); err == nil {
-		writes = append(writes, writeReq{Path: fmt.Sprintf("/sessions/%s/status.json", sessionName), Content: string(b), Encoding: "utf8"})
-	}
-
-	log.Printf("content proxy: total writes=%d project=%s session=%s", len(writes), project, sessionName)
-
-	client := &http.Client{Timeout: 10 * time.Second}
-	for _, w := range writes {
-		b, _ := json.Marshal(w)
-		log.Printf("content proxy: POST /content/write path=%s encoding=%s contentLen=%d", w.Path, w.Encoding, len(w.Content))
-		req, _ := http.NewRequestWithContext(c.Request.Context(), http.MethodPost, endpoint+"/content/write", strings.NewReader(string(b)))
-		req.Header.Set("Authorization", token)
-		req.Header.Set("Content-Type", "application/json")
-		if resp, err := client.Do(req); err != nil {
-			log.Printf("content proxy: write failed path=%s err=%v", w.Path, err)
-			continue
-		} else {
-			code := resp.StatusCode
-			_ = resp.Body.Close()
-			if code >= 200 && code < 300 {
-				log.Printf("content proxy: write ok path=%s status=%d", w.Path, code)
-			} else {
-				log.Printf("content proxy: write non-2xx path=%s status=%d", w.Path, code)
-			}
-		}
-	}
-	return nil
 }
 
 // writeProjectContentFile writes arbitrary file content to the per-namespace content service
@@ -2803,15 +2361,7 @@ func deleteProjectKey(c *gin.Context) {
 
 // handleJiraWebhook removed; use standard session creation endpoint instead
 
-// Metrics handler - placeholder implementation
-func getMetrics(c *gin.Context) {
-	// TODO: Implement Prometheus metrics
-	metrics := `# HELP agenticsession_total Total number of agentic sessions
-# TYPE agenticsession_total counter
-agenticsession_total 0
-`
-	c.String(http.StatusOK, metrics)
-}
+// (removed) Metrics handler placeholder; real implementation lives in observability.go
 
 // ========================= Project-scoped RFE Handlers =========================
 
@@ -2837,10 +2387,20 @@ func rfeFromUnstructured(item *unstructured.Unstructured) *RFEWorkflow {
 		UpdatedAt:     time.Now().UTC().Format(time.RFC3339),
 	}
 
-	// Parse repositories array if present
-	if repos, ok := spec["repositories"].([]interface{}); ok {
-		wf.Repositories = make([]GitRepository, 0, len(repos))
-		for _, r := range repos {
+	// Parse umbrellaRepo/supportingRepos when present; fallback to repositories
+	if um, ok := spec["umbrellaRepo"].(map[string]interface{}); ok {
+		repo := GitRepository{}
+		if u, ok := um["url"].(string); ok {
+			repo.URL = u
+		}
+		if b, ok := um["branch"].(string); ok && strings.TrimSpace(b) != "" {
+			repo.Branch = stringPtr(b)
+		}
+		wf.UmbrellaRepo = &repo
+	}
+	if srs, ok := spec["supportingRepos"].([]interface{}); ok {
+		wf.SupportingRepos = make([]GitRepository, 0, len(srs))
+		for _, r := range srs {
 			if rm, ok := r.(map[string]interface{}); ok {
 				repo := GitRepository{}
 				if u, ok := rm["url"].(string); ok {
@@ -2849,10 +2409,26 @@ func rfeFromUnstructured(item *unstructured.Unstructured) *RFEWorkflow {
 				if b, ok := rm["branch"].(string); ok && strings.TrimSpace(b) != "" {
 					repo.Branch = stringPtr(b)
 				}
-				if cp, ok := rm["clonePath"].(string); ok && strings.TrimSpace(cp) != "" {
-					repo.ClonePath = stringPtr(cp)
+				wf.SupportingRepos = append(wf.SupportingRepos, repo)
+			}
+		}
+	} else if repos, ok := spec["repositories"].([]interface{}); ok {
+		// Backward compatibility: map legacy repositories -> umbrellaRepo (first) + supportingRepos (rest)
+		for i, r := range repos {
+			if rm, ok := r.(map[string]interface{}); ok {
+				repo := GitRepository{}
+				if u, ok := rm["url"].(string); ok {
+					repo.URL = u
 				}
-				wf.Repositories = append(wf.Repositories, repo)
+				if b, ok := rm["branch"].(string); ok && strings.TrimSpace(b) != "" {
+					repo.Branch = stringPtr(b)
+				}
+				if i == 0 {
+					rcopy := repo
+					wf.UmbrellaRepo = &rcopy
+				} else {
+					wf.SupportingRepos = append(wf.SupportingRepos, repo)
+				}
 			}
 		}
 	}
@@ -2869,6 +2445,7 @@ func rfeFromUnstructured(item *unstructured.Unstructured) *RFEWorkflow {
 			}
 		}
 	}
+
 	return wf
 }
 
@@ -2904,19 +2481,23 @@ func listProjectRFEWorkflows(c *gin.Context) {
 			"createdAt":     w.CreatedAt,
 			"updatedAt":     w.UpdatedAt,
 		}
-		if len(w.Repositories) > 0 {
-			repos := make([]map[string]interface{}, 0, len(w.Repositories))
-			for _, r := range w.Repositories {
+		if w.UmbrellaRepo != nil {
+			u := map[string]interface{}{"url": w.UmbrellaRepo.URL}
+			if w.UmbrellaRepo.Branch != nil {
+				u["branch"] = *w.UmbrellaRepo.Branch
+			}
+			item["umbrellaRepo"] = u
+		}
+		if len(w.SupportingRepos) > 0 {
+			repos := make([]map[string]interface{}, 0, len(w.SupportingRepos))
+			for _, r := range w.SupportingRepos {
 				rm := map[string]interface{}{"url": r.URL}
 				if r.Branch != nil {
 					rm["branch"] = *r.Branch
 				}
-				if r.ClonePath != nil {
-					rm["clonePath"] = *r.ClonePath
-				}
 				repos = append(repos, rm)
 			}
-			item["repositories"] = repos
+			item["supportingRepos"] = repos
 		}
 		summaries = append(summaries, item)
 	}
@@ -2935,204 +2516,473 @@ func createProjectRFEWorkflow(c *gin.Context) {
 	now := time.Now().UTC().Format(time.RFC3339)
 	workflowID := fmt.Sprintf("rfe-%d", time.Now().Unix())
 	workflow := &RFEWorkflow{
-		ID:            workflowID,
-		Title:         req.Title,
-		Description:   req.Description,
-		Repositories:  req.Repositories,
-		WorkspacePath: req.WorkspacePath,
-		Project:       project,
-		CreatedAt:     now,
-		UpdatedAt:     now,
+		ID:              workflowID,
+		Title:           req.Title,
+		Description:     req.Description,
+		UmbrellaRepo:    &req.UmbrellaRepo,
+		SupportingRepos: req.SupportingRepos,
+		WorkspacePath:   req.WorkspacePath,
+		Project:         project,
+		CreatedAt:       now,
+		UpdatedAt:       now,
 	}
 	_, reqDyn := getK8sClientsForRequest(c)
 	if err := upsertProjectRFEWorkflowCR(reqDyn, workflow); err != nil {
 		log.Printf("⚠️ Failed to upsert RFEWorkflow CR: %v", err)
 	}
 
-	// Initialize workspace structure and optionally seed repositories
-	workspaceRoot := resolveWorkflowWorkspaceAbsPath(workflowID, "")
-
-	// Initialize Spec Kit template into workspace (version via SPEC_KIT_VERSION)
-	if err := initSpecKitInWorkspace(c, project, workspaceRoot); err != nil {
-		log.Printf("spec-kit init failed for %s/%s: %v", project, workflowID, err)
-	}
-
-	// Clone repositories into workspace (full repo contents); preserve dot-prefixed paths
-	for _, r := range workflow.Repositories {
-		targetDir := ""
-		if r.ClonePath != nil && strings.TrimSpace(*r.ClonePath) != "" {
-			targetDir = *r.ClonePath
-		} else {
-			name := filepath.Base(strings.TrimSuffix(strings.TrimSuffix(r.URL, ".git"), "/"))
-			targetDir = filepath.Join("repos", name)
-		}
-		absTarget := filepath.Join(workspaceRoot, targetDir)
-
-		// Ensure target directory exists in content service
-		_ = writeProjectContentFile(c, project, filepath.Join(absTarget, ".keep"), []byte(""))
-
-		// Perform shallow clone to a temp dir on backend container filesystem
-		tmpDir, terr := os.MkdirTemp("", "clone-*")
-		if terr != nil {
-			log.Printf("repo clone: temp dir failed for %s: %v", r.URL, terr)
-			continue
-		}
-		defer os.RemoveAll(tmpDir)
-
-		// Use git CLI for shallow clone
-		args := []string{"clone", "--depth", "1"}
-		if r.Branch != nil && strings.TrimSpace(*r.Branch) != "" {
-			args = append(args, "--branch", strings.TrimSpace(*r.Branch))
-		}
-		args = append(args, r.URL, tmpDir)
-		cmd := exec.Command("git", args...)
-		cmd.Env = os.Environ()
-		if out, cerr := cmd.CombinedOutput(); cerr != nil {
-			log.Printf("repo clone failed: %s: %v output=%s", r.URL, cerr, string(out))
-			continue
-		}
-
-		// Walk cloned files and write each to content service (skip .git directory)
-		_ = filepath.WalkDir(tmpDir, func(path string, d fs.DirEntry, err error) error {
-			if err != nil {
-				return nil
-			}
-			rel, rerr := filepath.Rel(tmpDir, path)
-			if rerr != nil {
-				return nil
-			}
-			unixRel := strings.ReplaceAll(rel, "\\", "/")
-			// skip git metadata and root
-			if unixRel == "." || strings.HasPrefix(unixRel, ".git/") || unixRel == ".git" {
-				return nil
-			}
-			if d.IsDir() {
-				// ensure directory exists by placing a marker (harmless if overwritten later)
-				_ = writeProjectContentFile(c, project, filepath.Join(absTarget, unixRel, ".keep"), []byte(""))
-				return nil
-			}
-			// file: read and write
-			b, rerr2 := os.ReadFile(path)
-			if rerr2 != nil {
-				return nil
-			}
-			if werr := writeProjectContentFile(c, project, filepath.Join(absTarget, unixRel), b); werr != nil {
-				log.Printf("repo write failed: %s -> %s: %v", path, filepath.Join(absTarget, unixRel), werr)
-			}
-			return nil
-		})
-	}
-
-	// Best-effort prefill of all agent markdown into workflow workspace for immediate UI availability
-	func() {
-		defer func() { _ = recover() }()
-		agentsBase := filepath.Join(workspaceRoot, ".claude", "agents")
-		_ = writeProjectContentFile(c, project, filepath.Join(agentsBase, ".keep"), []byte(""))
-		dir := resolveAgentsDir()
-		agents, err := readAllAgentYAMLs(dir)
-		if err != nil {
-			log.Printf("agent prefill: failed to read agents: %v", err)
-			return
-		}
-		for _, a := range agents {
-			persona := extractPersonaFromName(a.Name)
-			if persona == "" {
-				continue
-			}
-			md, err := renderAgentMarkdownContent(persona)
-			if err != nil {
-				log.Printf("agent prefill: failed to render persona %s: %v", persona, err)
-				continue
-			}
-			path := fmt.Sprintf("%s/%s.md", agentsBase, persona)
-			if err := writeProjectContentFile(c, project, path, []byte(md)); err != nil {
-				log.Printf("agent prefill: write failed for %s: %v", path, err)
-			}
-		}
-	}()
+	// Seeding (spec-kit + agents) is now handled by POST /seed endpoint after creation
 
 	c.JSON(http.StatusCreated, workflow)
 }
 
-// initSpecKitInWorkspace downloads a Spec Kit template zip and writes its contents into the workflow workspace
-// SPEC_KIT_VERSION env var controls version tag (e.g., v0.0.50). Template assumed: spec-kit-template-claude-sh-<ver>.zip
-func initSpecKitInWorkspace(c *gin.Context, project, workspaceRoot string) error {
-	version := strings.TrimSpace(os.Getenv("SPEC_KIT_VERSION"))
-	if version == "" {
-		version = "v0.0.50"
-	}
-	tmplName := strings.TrimSpace(os.Getenv("SPEC_KIT_TEMPLATE_NAME"))
-	if tmplName == "" {
-		tmplName = "spec-kit-template-claude-sh"
-	}
-	url := fmt.Sprintf("https://github.com/github/spec-kit/releases/download/%s/%s-%s.zip", version, tmplName, version)
+// seedProjectRFEWorkflow seeds the umbrella repo with spec-kit and agents via direct git operations
+func seedProjectRFEWorkflow(c *gin.Context) {
+	project := c.Param("projectName")
+	id := c.Param("id")
 
-	req, err := http.NewRequestWithContext(c.Request.Context(), http.MethodGet, url, nil)
-	if err != nil {
-		return err
+	// Get the workflow
+	gvr := getRFEWorkflowResource()
+	_, reqDyn := getK8sClientsForRequest(c)
+	if reqDyn == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
+		return
 	}
+
+	item, err := reqDyn.Resource(gvr).Namespace(project).Get(context.TODO(), id, v1.GetOptions{})
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Workflow not found"})
+		return
+	}
+	wf := rfeFromUnstructured(item)
+	if wf == nil || wf.UmbrellaRepo == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "No umbrella repo configured"})
+		return
+	}
+
+	// Get user ID from forwarded identity middleware
+	userID, _ := c.Get("userID")
+	userIDStr, ok := userID.(string)
+	if !ok || userIDStr == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User identity required"})
+		return
+	}
+
+	// Get user's GitHub installation and mint token
+	installation, err := getGitHubInstallation(c.Request.Context(), userIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "GitHub App not installed. Please connect your GitHub account first."})
+		return
+	}
+
+	githubToken, _, err := githubTokenManager.MintInstallationTokenForHost(c.Request.Context(), installation.InstallationID, installation.Host)
+	if err != nil {
+		log.Printf("Failed to mint GitHub token for user %s: %v", userIDStr, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get GitHub credentials"})
+		return
+	}
+
+	// Read request body for optional agent source
+	type SeedRequest struct {
+		AgentSourceURL    string `json:"agentSourceUrl,omitempty"`
+		AgentSourceBranch string `json:"agentSourceBranch,omitempty"`
+		AgentSourcePath   string `json:"agentSourcePath,omitempty"`
+		SpecKitVersion    string `json:"specKitVersion,omitempty"`
+		SpecKitTemplate   string `json:"specKitTemplate,omitempty"`
+	}
+	var req SeedRequest
+	_ = c.ShouldBindJSON(&req)
+
+	// Defaults
+	agentURL := req.AgentSourceURL
+	if agentURL == "" {
+		agentURL = "https://github.com/ambient-code/vTeam.git"
+	}
+	agentBranch := req.AgentSourceBranch
+	if agentBranch == "" {
+		agentBranch = "main"
+	}
+	agentPath := req.AgentSourcePath
+	if agentPath == "" {
+		agentPath = "agents"
+	}
+	specKitVersion := req.SpecKitVersion
+	if specKitVersion == "" {
+		specKitVersion = "v0.0.55"
+	}
+	specKitTemplate := req.SpecKitTemplate
+	if specKitTemplate == "" {
+		specKitTemplate = "spec-kit-template-cursor-sh"
+	}
+
+	// Perform seeding operations
+	seedErr := performRepoSeeding(c.Request.Context(), wf, githubToken, agentURL, agentBranch, agentPath, specKitVersion, specKitTemplate)
+
+	if seedErr != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": seedErr.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"status":  "completed",
+		"message": "Repository seeded successfully",
+	})
+}
+
+// checkProjectRFEWorkflowSeeding checks if the umbrella repo is seeded by querying GitHub API
+func checkProjectRFEWorkflowSeeding(c *gin.Context) {
+	project := c.Param("projectName")
+	id := c.Param("id")
+
+	// Get the workflow
+	gvr := getRFEWorkflowResource()
+	_, reqDyn := getK8sClientsForRequest(c)
+	if reqDyn == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
+		return
+	}
+
+	item, err := reqDyn.Resource(gvr).Namespace(project).Get(context.TODO(), id, v1.GetOptions{})
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Workflow not found"})
+		return
+	}
+	wf := rfeFromUnstructured(item)
+	if wf == nil || wf.UmbrellaRepo == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "No umbrella repo configured"})
+		return
+	}
+
+	// Get user ID from forwarded identity middleware
+	userID, _ := c.Get("userID")
+	userIDStr, ok := userID.(string)
+	if !ok || userIDStr == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User identity required"})
+		return
+	}
+
+	// Get user's GitHub installation and mint token
+	installation, err := getGitHubInstallation(c.Request.Context(), userIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "GitHub App not installed"})
+		return
+	}
+
+	githubToken, _, err := githubTokenManager.MintInstallationTokenForHost(c.Request.Context(), installation.InstallationID, installation.Host)
+	if err != nil {
+		log.Printf("Failed to mint GitHub token for user %s: %v", userIDStr, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get GitHub credentials"})
+		return
+	}
+
+	// Check if repo is seeded
+	isSeeded, details, err := checkRepoSeeding(c.Request.Context(), wf.UmbrellaRepo.URL, wf.UmbrellaRepo.Branch, githubToken)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"isSeeded": isSeeded,
+		"details":  details,
+	})
+}
+
+// checkRepoSeeding checks if a repo has been seeded by verifying .claude/ and .specify/ exist
+func checkRepoSeeding(ctx context.Context, repoURL string, branch *string, githubToken string) (bool, map[string]interface{}, error) {
+	// Parse repo URL to get owner/repo
+	owner, repo, err := parseGitHubURL(repoURL)
+	if err != nil {
+		return false, nil, err
+	}
+
+	branchName := "main"
+	if branch != nil && strings.TrimSpace(*branch) != "" {
+		branchName = strings.TrimSpace(*branch)
+	}
+
+	// Check for .claude directory
+	claudeExists, err := checkGitHubPathExists(ctx, owner, repo, branchName, ".claude", githubToken)
+	if err != nil {
+		return false, nil, fmt.Errorf("failed to check .claude: %w", err)
+	}
+
+	// Check for .specify directory (from spec-kit)
+	specifyExists, err := checkGitHubPathExists(ctx, owner, repo, branchName, ".specify", githubToken)
+	if err != nil {
+		return false, nil, fmt.Errorf("failed to check .specify: %w", err)
+	}
+
+	details := map[string]interface{}{
+		"claudeExists":  claudeExists,
+		"specifyExists": specifyExists,
+	}
+
+	isSeeded := claudeExists && specifyExists
+	return isSeeded, details, nil
+}
+
+// parseGitHubURL extracts owner and repo from a GitHub URL
+func parseGitHubURL(gitURL string) (owner, repo string, err error) {
+	// Handle both https://github.com/owner/repo and git@github.com:owner/repo
+	gitURL = strings.TrimSuffix(gitURL, ".git")
+
+	if strings.Contains(gitURL, "github.com") {
+		parts := strings.Split(gitURL, "github.com")
+		if len(parts) != 2 {
+			return "", "", fmt.Errorf("invalid GitHub URL")
+		}
+		path := strings.Trim(parts[1], "/:")
+		pathParts := strings.Split(path, "/")
+		if len(pathParts) < 2 {
+			return "", "", fmt.Errorf("invalid GitHub URL path")
+		}
+		return pathParts[0], pathParts[1], nil
+	}
+
+	return "", "", fmt.Errorf("not a GitHub URL")
+}
+
+// checkGitHubPathExists checks if a path exists in a GitHub repo
+func checkGitHubPathExists(ctx context.Context, owner, repo, branch, path, token string) (bool, error) {
+	// Use GitHub Contents API
+	apiURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/%s?ref=%s",
+		owner, repo, path, branch)
+
+	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
+	if err != nil {
+		return false, err
+	}
+
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "application/vnd.github.v3+json")
+
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return err
+		return false, err
+	}
+	defer resp.Body.Close()
+
+	// 200 = exists, 404 = doesn't exist
+	if resp.StatusCode == http.StatusOK {
+		return true, nil
+	}
+	if resp.StatusCode == http.StatusNotFound {
+		return false, nil
+	}
+
+	// Other error
+	body, _ := io.ReadAll(resp.Body)
+	return false, fmt.Errorf("GitHub API error: %s (body: %s)", resp.Status, string(body))
+}
+
+// performRepoSeeding performs the actual seeding operations
+func performRepoSeeding(ctx context.Context, wf *RFEWorkflow, githubToken, agentURL, agentBranch, agentPath, specKitVersion, specKitTemplate string) error {
+	// Create temp directories
+	umbrellaDir, err := os.MkdirTemp("", "umbrella-*")
+	if err != nil {
+		return fmt.Errorf("failed to create temp dir for umbrella repo: %w", err)
+	}
+	defer os.RemoveAll(umbrellaDir)
+
+	agentSrcDir, err := os.MkdirTemp("", "agents-*")
+	if err != nil {
+		return fmt.Errorf("failed to create temp dir for agent source: %w", err)
+	}
+	defer os.RemoveAll(agentSrcDir)
+
+	// 1. Clone umbrella repo with authentication
+	log.Printf("Cloning umbrella repo: %s", wf.UmbrellaRepo.URL)
+	authenticatedURL, err := injectGitHubToken(wf.UmbrellaRepo.URL, githubToken)
+	if err != nil {
+		return fmt.Errorf("failed to prepare umbrella repo URL: %w", err)
+	}
+	umbrellaArgs := []string{"clone", "--depth", "1"}
+	if wf.UmbrellaRepo.Branch != nil && strings.TrimSpace(*wf.UmbrellaRepo.Branch) != "" {
+		umbrellaArgs = append(umbrellaArgs, "--branch", strings.TrimSpace(*wf.UmbrellaRepo.Branch))
+	}
+	umbrellaArgs = append(umbrellaArgs, authenticatedURL, umbrellaDir)
+	cmd := exec.CommandContext(ctx, "git", umbrellaArgs...)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to clone umbrella repo: %w (output: %s)", err, string(out))
+	}
+
+	// Configure git user for commits
+	cmd = exec.CommandContext(ctx, "git", "-C", umbrellaDir, "config", "user.email", "vteam-bot@ambient-code.io")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		log.Printf("Warning: failed to set git user.email: %v (output: %s)", err, string(out))
+	}
+	cmd = exec.CommandContext(ctx, "git", "-C", umbrellaDir, "config", "user.name", "vTeam Bot")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		log.Printf("Warning: failed to set git user.name: %v (output: %s)", err, string(out))
+	}
+
+	// 2. Download and extract spec-kit template
+	log.Printf("Downloading spec-kit template: %s", specKitVersion)
+	specKitURL := fmt.Sprintf("https://github.com/github/spec-kit/releases/download/%s/%s-%s.zip", specKitVersion, specKitTemplate, specKitVersion)
+	resp, err := http.Get(specKitURL)
+	if err != nil {
+		return fmt.Errorf("failed to download spec-kit: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("download spec-kit template failed: %s", resp.Status)
+		return fmt.Errorf("spec-kit download failed with status: %s", resp.Status)
 	}
-	data, err := io.ReadAll(resp.Body)
+
+	zipData, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to read spec-kit zip: %w", err)
 	}
-	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+
+	zr, err := zip.NewReader(bytes.NewReader(zipData), int64(len(zipData)))
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to open spec-kit zip: %w", err)
 	}
-	// Extract files
-	total := len(zr.File)
-	var filesWritten, skippedDirs, openErrors, readErrors, writeErrors int
-	log.Printf("initSpecKitInWorkspace: extracting spec-kit template: %d entries", total)
+
+	// Extract spec-kit files to umbrella repo (skip if exists)
+	specKitFilesAdded := 0
 	for _, f := range zr.File {
 		if f.FileInfo().IsDir() {
-			skippedDirs++
-			log.Printf("spec-kit: skipping directory: %s", f.Name)
 			continue
 		}
-		rc, err := f.Open()
-		if err != nil {
-			openErrors++
-			log.Printf("spec-kit: open failed: %s: %v", f.Name, err)
-			continue
-		}
-		b, err := io.ReadAll(rc)
-		rc.Close()
-		if err != nil {
-			readErrors++
-			log.Printf("spec-kit: read failed: %s: %v", f.Name, err)
-			continue
-		}
-		// Normalize path: keep leading dots intact; only trim explicit "./" prefix
-		rel := f.Name
-		origRel := rel
-		rel = strings.TrimPrefix(rel, "./")
-		// Ensure we do not write outside workspace
+		// Normalize path
+		rel := strings.TrimPrefix(f.Name, "./")
 		rel = strings.ReplaceAll(rel, "\\", "/")
 		for strings.Contains(rel, "../") {
 			rel = strings.ReplaceAll(rel, "../", "")
 		}
-		if rel != origRel {
-			log.Printf("spec-kit: normalized path %q -> %q", origRel, rel)
+
+		targetPath := filepath.Join(umbrellaDir, rel)
+
+		// Skip if file already exists
+		if _, err := os.Stat(targetPath); err == nil {
+			continue
 		}
-		target := filepath.Join(workspaceRoot, rel)
-		if err := writeProjectContentFile(c, project, target, b); err != nil {
-			writeErrors++
-			log.Printf("write spec-kit file failed: %s: %v", target, err)
-		} else {
-			filesWritten++
-			log.Printf("spec-kit: wrote %s (%d bytes)", target, len(b))
+
+		// Create parent directory
+		if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
+			log.Printf("Failed to create dir for %s: %v", rel, err)
+			continue
 		}
+
+		// Extract file
+		rc, err := f.Open()
+		if err != nil {
+			log.Printf("Failed to open zip entry %s: %v", f.Name, err)
+			continue
+		}
+		content, err := io.ReadAll(rc)
+		rc.Close()
+		if err != nil {
+			log.Printf("Failed to read zip entry %s: %v", f.Name, err)
+			continue
+		}
+
+		if err := os.WriteFile(targetPath, content, 0644); err != nil {
+			log.Printf("Failed to write %s: %v", targetPath, err)
+			continue
+		}
+		specKitFilesAdded++
 	}
-	log.Printf("initSpecKitInWorkspace: extraction summary: written=%d, skipped_dirs=%d, open_errors=%d, read_errors=%d, write_errors=%d", filesWritten, skippedDirs, openErrors, readErrors, writeErrors)
+	log.Printf("Extracted %d spec-kit files", specKitFilesAdded)
+
+	// 3. Clone agent source repo
+	log.Printf("Cloning agent source: %s", agentURL)
+	agentArgs := []string{"clone", "--depth", "1"}
+	if agentBranch != "" {
+		agentArgs = append(agentArgs, "--branch", agentBranch)
+	}
+	agentArgs = append(agentArgs, agentURL, agentSrcDir)
+	cmd = exec.CommandContext(ctx, "git", agentArgs...)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to clone agent source: %w (output: %s)", err, string(out))
+	}
+
+	// 4. Copy agent markdown files to .claude/
+	agentSourcePath := filepath.Join(agentSrcDir, agentPath)
+	claudeDir := filepath.Join(umbrellaDir, ".claude")
+	if err := os.MkdirAll(claudeDir, 0755); err != nil {
+		return fmt.Errorf("failed to create .claude directory: %w", err)
+	}
+
+	agentsCopied := 0
+	err = filepath.WalkDir(agentSourcePath, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return nil
+		}
+		if !strings.HasSuffix(strings.ToLower(d.Name()), ".md") {
+			return nil
+		}
+
+		content, err := os.ReadFile(path)
+		if err != nil {
+			log.Printf("Failed to read agent file %s: %v", path, err)
+			return nil
+		}
+
+		targetPath := filepath.Join(claudeDir, d.Name())
+		if err := os.WriteFile(targetPath, content, 0644); err != nil {
+			log.Printf("Failed to write agent file %s: %v", targetPath, err)
+			return nil
+		}
+		agentsCopied++
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("failed to copy agents: %w", err)
+	}
+	log.Printf("Copied %d agent files", agentsCopied)
+
+	// 5. Commit and push changes
+	cmd = exec.CommandContext(ctx, "git", "-C", umbrellaDir, "add", ".")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git add failed: %w (output: %s)", err, string(out))
+	}
+
+	// Check if there are changes to commit
+	cmd = exec.CommandContext(ctx, "git", "-C", umbrellaDir, "diff", "--cached", "--quiet")
+	if err := cmd.Run(); err == nil {
+		// No changes to commit
+		log.Printf("No changes to commit for seeding")
+		return nil
+	}
+
+	cmd = exec.CommandContext(ctx, "git", "-C", umbrellaDir, "commit", "-m", "chore: seed workspace with spec-kit and agents")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git commit failed: %w (output: %s)", err, string(out))
+	}
+
+	// Configure git to use the authenticated URL for push
+	cmd = exec.CommandContext(ctx, "git", "-C", umbrellaDir, "remote", "set-url", "origin", authenticatedURL)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to set remote URL: %w (output: %s)", err, string(out))
+	}
+
+	cmd = exec.CommandContext(ctx, "git", "-C", umbrellaDir, "push")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git push failed: %w (output: %s)", err, string(out))
+	}
+
+	log.Printf("Successfully seeded umbrella repo")
 	return nil
+}
+
+// injectGitHubToken injects a GitHub token into a git URL for authentication
+func injectGitHubToken(gitURL, token string) (string, error) {
+	// Parse the URL
+	u, err := url.Parse(gitURL)
+	if err != nil {
+		return "", fmt.Errorf("invalid git URL: %w", err)
+	}
+
+	// Only inject token for https URLs
+	if u.Scheme != "https" {
+		return gitURL, nil // Return as-is for ssh or other schemes
+	}
+
+	// Set credentials: GitHub App tokens use x-access-token as username
+	u.User = url.UserPassword("x-access-token", token)
+	return u.String(), nil
 }
 
 func getProjectRFEWorkflow(c *gin.Context) {
@@ -3172,19 +3022,23 @@ func getProjectRFEWorkflow(c *gin.Context) {
 		}
 		resp["jiraLinks"] = links
 	}
-	if len(wf.Repositories) > 0 {
-		repos := make([]map[string]interface{}, 0, len(wf.Repositories))
-		for _, r := range wf.Repositories {
+	if wf.UmbrellaRepo != nil {
+		u := map[string]interface{}{"url": wf.UmbrellaRepo.URL}
+		if wf.UmbrellaRepo.Branch != nil {
+			u["branch"] = *wf.UmbrellaRepo.Branch
+		}
+		resp["umbrellaRepo"] = u
+	}
+	if len(wf.SupportingRepos) > 0 {
+		repos := make([]map[string]interface{}, 0, len(wf.SupportingRepos))
+		for _, r := range wf.SupportingRepos {
 			rm := map[string]interface{}{"url": r.URL}
 			if r.Branch != nil {
 				rm["branch"] = *r.Branch
 			}
-			if r.ClonePath != nil {
-				rm["clonePath"] = *r.ClonePath
-			}
 			repos = append(repos, rm)
 		}
-		resp["repositories"] = repos
+		resp["supportingRepos"] = repos
 	}
 	c.JSON(http.StatusOK, resp)
 }
@@ -3196,9 +3050,8 @@ func getProjectRFEWorkflowSummary(c *gin.Context) {
 	id := c.Param("id")
 
 	// Determine workspace and expected files
-	workspaceRoot := resolveWorkflowWorkspaceAbsPath(id, "")
-	specsPath := filepath.Join(workspaceRoot, "specs")
-	specsItems, _ := listProjectContent(c, project, specsPath)
+	// workspace content removed
+	specsItems := []contentListItem{}
 
 	hasSpec := false
 	hasPlan := false
@@ -3231,7 +3084,7 @@ func getProjectRFEWorkflowSummary(c *gin.Context) {
 		if !(hasSpec || hasPlan || hasTasks) {
 			for _, it := range specsItems {
 				if it.IsDir {
-					subItems, _ := listProjectContent(c, project, filepath.Join(specsPath, it.Name))
+					subItems := []contentListItem{}
 					s2, p2, t2 := scanFor(subItems)
 					hasSpec, hasPlan, hasTasks = s2, p2, t2
 					break
@@ -3407,126 +3260,10 @@ func publishWorkflowFileToJira(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Workflow not found"})
 		return
 	}
-	wf := rfeFromUnstructured(item)
+	_ = rfeFromUnstructured(item)
 
-	// Read file content
-	absPath := resolveWorkflowWorkspaceAbsPath(id, req.Path)
-	b, ferr := readProjectContentFile(c, project, absPath)
-	if ferr != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to read workspace file"})
-		return
-	}
-	content := string(b)
-
-	// Extract title from spec content or fallback to workflow title
-	title := extractTitleFromContent(content)
-	if title == "" {
-		title = wf.Title
-	}
-
-	// Create or update Jira issue (v2 API)
-	jiraBase := strings.TrimRight(jiraURL, "/")
-	// Check existing link for this path
-	existingKey := ""
-	for _, jl := range wf.JiraLinks {
-		if strings.TrimSpace(jl.Path) == strings.TrimSpace(req.Path) {
-			existingKey = jl.JiraKey
-			break
-		}
-	}
-	var httpReq *http.Request
-	if existingKey == "" {
-		// Create
-		jiraEndpoint := fmt.Sprintf("%s/rest/api/2/issue", jiraBase)
-		// Determine issue type based on file type
-		issueType := "Feature"
-		if strings.Contains(req.Path, "plan.md") {
-			issueType = "Feature"  // plan.md creates Features for now (was Epic)
-		}
-
-		reqBody := map[string]interface{}{
-			"fields": map[string]interface{}{
-				"project":     map[string]string{"key": jiraProject},
-				"summary":     title,
-				"description": content,
-				"issuetype":   map[string]string{"name": issueType},
-			},
-		}
-		payload, _ := json.Marshal(reqBody)
-		httpReq, _ = http.NewRequest("POST", jiraEndpoint, bytes.NewReader(payload))
-	} else {
-		// Update existing
-		jiraEndpoint := fmt.Sprintf("%s/rest/api/2/issue/%s", jiraBase, url.PathEscape(existingKey))
-		reqBody := map[string]interface{}{
-			"fields": map[string]interface{}{
-				"summary":     title,
-				"description": content,
-			},
-		}
-		payload, _ := json.Marshal(reqBody)
-		httpReq, _ = http.NewRequest("PUT", jiraEndpoint, bytes.NewReader(payload))
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Authorization", "Bearer "+jiraToken)
-	httpClient := &http.Client{Timeout: 30 * time.Second}
-	httpResp, httpErr := httpClient.Do(httpReq)
-	if httpErr != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": "Jira request failed", "details": httpErr.Error()})
-		return
-	}
-	defer httpResp.Body.Close()
-	respBody, _ := io.ReadAll(httpResp.Body)
-	if httpResp.StatusCode < 200 || httpResp.StatusCode >= 300 {
-		c.Data(httpResp.StatusCode, "application/json", respBody)
-		return
-	}
-	var outKey string
-	if existingKey == "" {
-		var created struct {
-			Key string `json:"key"`
-		}
-		_ = json.Unmarshal(respBody, &created)
-		if strings.TrimSpace(created.Key) == "" {
-			c.JSON(http.StatusBadGateway, gin.H{"error": "Jira creation returned no key"})
-			return
-		}
-		outKey = created.Key
-	} else {
-		outKey = existingKey
-	}
-
-	// Update CR: append jiraLinks entry
-	obj := item.DeepCopy()
-	spec, _ := obj.Object["spec"].(map[string]interface{})
-	if spec == nil {
-		spec = map[string]interface{}{}
-		obj.Object["spec"] = spec
-	}
-	var links []interface{}
-	if existing, ok := spec["jiraLinks"].([]interface{}); ok {
-		links = existing
-	}
-	// Add only if new; if exists, update key
-	found := false
-	for _, li := range links {
-		if m, ok := li.(map[string]interface{}); ok {
-			if fmt.Sprintf("%v", m["path"]) == req.Path {
-				m["jiraKey"] = outKey
-				found = true
-				break
-			}
-		}
-	}
-	if !found {
-		links = append(links, map[string]interface{}{"path": req.Path, "jiraKey": outKey})
-	}
-	spec["jiraLinks"] = links
-	if _, err := reqDyn.Resource(gvrWf).Namespace(project).Update(c.Request.Context(), obj, v1.UpdateOptions{}); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update workflow with Jira link", "details": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"key": outKey, "url": fmt.Sprintf("%s/browse/%s", jiraBase, outKey)})
+	// Workspace content service removed; reject
+	c.JSON(http.StatusGone, gin.H{"error": "workspace API removed"})
 }
 
 // List sessions linked to a project-scoped RFE workflow by label selector

@@ -54,6 +54,10 @@ The platform consists of containerized microservices orchestrated via Kubernetes
 Deploy using the default images from `quay.io/ambient_code`:
 
 ```bash
+# From repo root, prepare env for deploy script (required once)
+cp components/manifests/env.example components/manifests/.env
+# Edit .env and set at least ANTHROPIC_API_KEY
+
 # Deploy to ambient-code namespace (default)
 make deploy
 
@@ -144,15 +148,9 @@ make build-all BUILD_FLAGS="--no-cache --pull"
 
 ### OpenShift OAuth Integration
 
-For cluster-based authentication and authorization:
+For cluster-based authentication and authorization, the deployment script can configure the Route host, create an `OAuthClient`, and set the frontend secret when provided a `.env` file. See the guide for details and a manual alternative:
 
-```bash
-# Enable OAuth integration during deployment
-cd components/manifests
-ENABLE_OAUTH=true ./deploy.sh
-```
-
-See [docs/OPENSHIFT_OAUTH.md](docs/OPENSHIFT_OAUTH.md) for detailed OAuth configuration.
+- [docs/OPENSHIFT_OAUTH.md](docs/OPENSHIFT_OAUTH.md)
 
 ## Configuration & Secrets
 

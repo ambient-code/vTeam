@@ -127,8 +127,8 @@ DEFAULT_FRONTEND_IMAGE="${DEFAULT_FRONTEND_IMAGE:-${CONTAINER_REGISTRY}/vteam_fr
 DEFAULT_OPERATOR_IMAGE="${DEFAULT_OPERATOR_IMAGE:-${CONTAINER_REGISTRY}/vteam_operator:${IMAGE_TAG}}"
 DEFAULT_RUNNER_IMAGE="${DEFAULT_RUNNER_IMAGE:-${CONTAINER_REGISTRY}/vteam_claude_runner:${IMAGE_TAG}}"
 
-# Handle uninstall command early
-if [ "${1:-}" = "uninstall" ]; then
+# Handle uninstall/clean command early
+if [ "${1:-}" = "uninstall" ] || [ "${1:-}" = "clean" ]; then
     echo -e "${YELLOW}Uninstalling vTeam from namespace ${NAMESPACE}...${NC}"
 
     # Check prerequisites for uninstall
@@ -303,32 +303,6 @@ EOF
 echo -e "${GREEN}✅ Generated ${OAUTH_ENV_FILE}${NC}"
 echo ""
 
-# Update git-configmap with environment variables if they exist
-echo -e "${YELLOW}Updating Git configuration...${NC}"
-if [[ -n "$GIT_USER_NAME" ]] || [[ -n "$GIT_USER_EMAIL" ]]; then
-    echo -e "${BLUE}Found Git configuration in .env, updating git-configmap...${NC}"
-
-    # Create temporary configmap patch
-    cat > /tmp/git-config-patch.yaml << EOF
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: git-config
-  namespace: $NAMESPACE
-data:
-  git-user-name: "${GIT_USER_NAME:-}"
-  git-user-email: "${GIT_USER_EMAIL:-}"
-  git-ssh-key-secret: "${GIT_SSH_KEY_SECRET:-}"
-  git-token-secret: "${GIT_TOKEN_SECRET:-}"
-  git-repositories: |
-    ${GIT_REPOSITORIES:-}
-  git-clone-on-startup: "${GIT_CLONE_ON_STARTUP:-false}"
-  git-workspace-path: "/workspace/git-repos"
-EOF
-else
-    echo -e "${YELLOW}No Git configuration found in .env, using defaults${NC}"
-fi
-echo ""
 
 # Deploy using kustomize
 echo -e "${YELLOW}Deploying to OpenShift using Kustomize...${NC}"

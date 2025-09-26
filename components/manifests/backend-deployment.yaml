@@ -29,8 +29,33 @@ spec:
               fieldPath: metadata.namespace
         - name: PORT
           value: "8080"
-        - name: AGENTS_DIR
-          value: "/app/agents"
+        - name: STATE_BASE_DIR
+          value: "/data/state"
+        - name: GITHUB_APP_ID
+          valueFrom:
+            secretKeyRef:
+              name: github-app-secret
+              key: GITHUB_APP_ID
+        - name: GITHUB_PRIVATE_KEY
+          valueFrom:
+            secretKeyRef:
+              name: github-app-secret
+              key: GITHUB_PRIVATE_KEY
+        - name: GITHUB_CLIENT_ID
+          valueFrom:
+            secretKeyRef:
+              name: github-app-secret
+              key: GITHUB_CLIENT_ID
+        - name: GITHUB_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: github-app-secret
+              key: GITHUB_CLIENT_SECRET
+        - name: GITHUB_STATE_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: github-app-secret
+              key: GITHUB_STATE_SECRET
         
         resources:
           requests:
@@ -51,7 +76,13 @@ spec:
             port: http
           initialDelaySeconds: 5
           periodSeconds: 5
+        volumeMounts:
+        - name: backend-state
+          mountPath: /data/state
       volumes:
+      - name: backend-state
+        persistentVolumeClaim:
+          claimName: backend-state-pvc
       
 ---
 apiVersion: v1

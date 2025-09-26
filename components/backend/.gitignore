@@ -43,3 +43,6 @@ coverage.html
 coverage.out
 
 ambient-code-backend
+
+.env
+private-key.pem

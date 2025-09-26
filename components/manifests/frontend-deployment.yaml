@@ -27,6 +27,8 @@ spec:
           value: "http://backend-service:8080/api"
         - name: NODE_ENV
           value: "production"
+        - name: GITHUB_APP_SLUG
+          value: "ambient-code-vteam"
         resources:
           requests:
             cpu: 100m

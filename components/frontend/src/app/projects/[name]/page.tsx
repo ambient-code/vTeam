@@ -23,22 +23,11 @@ import { ProjectSubpageHeader } from "@/components/project-subpage-header";
 export default function ProjectDetailsPage({ params }: { params: Promise<{ name: string }> }) {
   const router = useRouter();
   // Sessions state
-  const [sessions, setSessions] = useState<any[]>([]);
-  const [sessionsLoading, setSessionsLoading] = useState<boolean>(true);
-  const [sessionActionLoading, setSessionActionLoading] = useState<{ [key: string]: string }>({});
   const [projectName, setProjectName] = useState<string>('');
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // tabs removed; this page is Overview only
 
-  // Form state for editing
-  const [formData, setFormData] = useState({
-    displayName: "",
-    description: "",
-    // projectType removed
-  });
 
   const fetchProject = async () => {
     if (!projectName) return;
@@ -54,12 +43,7 @@ export default function ProjectDetailsPage({ params }: { params: Promise<{ name:
       const data: Project = await response.json();
       setProject(data);
 
-      // Update form data
-      setFormData({
-        displayName: data.displayName || "",
-        description: data.description || "",
-        // projectType removed
-      });
+     
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
     } finally {
@@ -82,120 +66,7 @@ export default function ProjectDetailsPage({ params }: { params: Promise<{ name:
     }
   }, [projectName]);
 
-  // Sessions fetching
-  const fetchSessions = async () => {
-    if (!projectName) return;
-    try {
-      setSessionsLoading(true);
-      const apiUrl = getApiUrl();
-      const res = await fetch(`${apiUrl}/projects/${encodeURIComponent(projectName)}/agentic-sessions`);
-      if (!res.ok) throw new Error("Failed to fetch sessions");
-      const data = await res.json();
-      setSessions(Array.isArray(data?.items) ? data.items : []);
-    } catch (e) {
-      // keep project error separate; optionally show in tab content
-    } finally {
-      setSessionsLoading(false);
-    }
-  };
 
-  useEffect(() => {
-    if (projectName) {
-      fetchSessions();
-      const i = setInterval(fetchSessions, 10000);
-      return () => clearInterval(i);
-    }
-  }, [projectName]);
-
-  const handleSessionStop = async (sessionName: string) => {
-    setSessionActionLoading((prev) => ({ ...prev, [sessionName]: "stopping" }));
-    try {
-      const apiUrl = getApiUrl();
-      const res = await fetch(`${apiUrl}/projects/${encodeURIComponent(projectName)}/agentic-sessions/${encodeURIComponent(sessionName)}/stop`, { method: 'POST' });
-      if (!res.ok) throw new Error("Failed to stop session");
-      await fetchSessions();
-    } finally {
-      setSessionActionLoading((prev) => {
-        const { [sessionName]: _, ...rest } = prev;
-        return rest;
-      });
-    }
-  };
-
-  const handleSessionRestart = async (sessionName: string) => {
-    setSessionActionLoading((prev) => ({ ...prev, [sessionName]: "restarting" }));
-    try {
-      const apiUrl = getApiUrl();
-      const res = await fetch(`${apiUrl}/projects/${encodeURIComponent(projectName)}/agentic-sessions/${encodeURIComponent(sessionName)}/start`, { method: 'POST' });
-      if (!res.ok) throw new Error("Failed to restart session");
-      await fetchSessions();
-    } finally {
-      setSessionActionLoading((prev) => {
-        const { [sessionName]: _, ...rest } = prev;
-        return rest;
-      });
-    }
-  };
-
-  const handleSessionDelete = async (sessionName: string) => {
-    if (!confirm(`Delete agentic session "${sessionName}"? This action cannot be undone.`)) return;
-    setSessionActionLoading((prev) => ({ ...prev, [sessionName]: "deleting" }));
-    try {
-      const apiUrl = getApiUrl();
-      const res = await fetch(`${apiUrl}/projects/${encodeURIComponent(projectName)}/agentic-sessions/${encodeURIComponent(sessionName)}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error("Failed to delete session");
-      await fetchSessions();
-    } finally {
-      setSessionActionLoading((prev) => {
-        const { [sessionName]: _, ...rest } = prev;
-        return rest;
-      });
-    }
-  };
-
-  const handleSave = async () => {
-    if (!project) return;
-
-    setSaving(true);
-    setError(null);
-
-    try {
-      const apiUrl = getApiUrl();
-
-      // Prepare the update payload
-      const updatedProject = {
-        name: project.name,
-        displayName: formData.displayName.trim(),
-        description: formData.description.trim() || undefined,
-        annotations: {
-          ...project.annotations,
-        },
-      } as Partial<Project> & { name: string };
-
-      const response = await fetch(`${apiUrl}/projects/${projectName}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(updatedProject),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: "Unknown error" }));
-        throw new Error(errorData.message || errorData.error || "Failed to update project");
-      }
-
-      const updatedData = await response.json();
-      setProject(updatedData);
-
-      // Show success feedback (you could add a toast notification here)
-      console.log("Project updated successfully");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to update project");
-    } finally {
-      setSaving(false);
-    }
-  };
 
   const handleRefresh = () => {
     setLoading(true);

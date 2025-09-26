@@ -59,32 +59,30 @@ Discover testing strategies for AI-powered workflows and integration patterns.
 
 Understanding our core technologies:
 
-### **Backend (Python)**
-- **LlamaDeploy**: Production workflow orchestration and deployment
-- **LlamaIndex**: RAG and document processing (v0.12+)
-- **Uvicorn**: ASGI web server for API endpoints
-- **FAISS**: Vector similarity search and indexing
-- **Pydantic**: Data validation and serialization
-- **YAML**: Agent configuration and deployment specs
+### **Backend (Go)**
+- **Gin**: HTTP server and routing
+- **Kubernetes Client**: Interacts with CRDs and cluster APIs
+- **GitHub App Integration**: Installation tokens, repo proxying
 
-### **Frontend (TypeScript)**
-- **@llamaindex/server**: Modern chat interface framework
-- **Node.js**: JavaScript runtime for frontend tooling
-- **pnpm**: Fast, efficient package manager
-- **WebSocket**: Real-time communication with backend
+### **Operator (Go)**
+- **Controller Runtime**: Watches CRDs and manages Jobs
+- **Runner Orchestration**: Creates per-session runner pods with PVC
+
+### **Frontend (TypeScript/Next.js)**
+- **Next.js + React**: UI and routing
+- **Shadcn UI**: Component library
+- **WebSocket**: Real-time session updates
+
+### **Runner (Python)**
+- **Claude Agent SDK**: Executes tasks with allowed tools
+- **runner-shell**: Standardized adapter protocol
 
 ### **AI Integration**
-- **Anthropic Claude**: Primary language model
-- **OpenAI**: Embeddings and fallback model
-- **Google Vertex AI**: Alternative AI provider
+- **Anthropic Claude**: Primary model via Claude Agent SDK
 
 ### **Development Tools**
-- **uv**: Fast Python package manager and environment management
-- **pytest**: Python testing framework
-- **black/isort/flake8**: Code formatting and linting
-- **mypy**: Static type checking
-- **llamactl**: CLI tool for LlamaDeploy management
-- **pre-commit**: Git hook automation
+- **docker/podman**: Container builds
+- **make**: Build and deploy automation
 
 ## Architecture Overview
 

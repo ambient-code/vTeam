@@ -5,19 +5,19 @@ This document explains how the vTeam Claude Code runner works and details all th
 ## How the Claude Code Runner Works
 
 ### Core Architecture
-The **Claude Code runner** (`vTeam/components/runners/claude-code-runner/`) is a Python service that orchestrates AI-powered agentic sessions by:
+The Claude Code runner (`components/runners/claude-code-runner/`) runs inside a Kubernetes Job created by the operator for each `AgenticSession`. It orchestrates AI-powered sessions by:
 
 1. **Execution Environment**: Runs Claude Code CLI in a Kubernetes pod with workspace persistence
 2. **Multi-Agent System**: Integrates with specialized AI agent personas (16 different roles)
 3. **Spec-Kit Integration**: Supports spec-driven development with `/specify`, `/plan`, `/tasks` commands
-4. **Git Integration**: Clones repositories, manages Git authentication, creates branches
+4. **Git Integration**: Clones repositories, manages Git authentication (installation token or runner secret), creates branches
 5. **Interactive vs Headless**: Supports both chat-based and one-shot execution modes
 
 ### Key Components
 
-#### 1. **Main Orchestrator** (`main.py`)
+#### 1. **Runner Wrapper** (`wrapper.py`)
 - **Session Management**: Manages session lifecycle, status updates, workspace sync
-- **Claude Code Integration**: Runs Claude Code CLI with configured tools and permissions
+- **Claude Agent SDK Integration**: Invokes the Claude Agent SDK with configured tools and permissions
 - **Mode Switching**: Handles both interactive chat and headless execution
 - **Result Processing**: Captures and reports session results back to Kubernetes API
 
@@ -26,15 +26,13 @@ The **Claude Code runner** (`vTeam/components/runners/claude-code-runner/`) is a
 - **Dynamic Prompting**: Generates role-specific prompts for spec-kit workflows
 - **Multi-Perspective Analysis**: Each agent provides domain-specific analysis
 
-#### 3. **Spec-Kit Integration** (`spek_kit_integration.py`)
-- **Command Detection**: Detects `/specify`, `/plan`, `/tasks` commands in user prompts
-- **Workspace Management**: Creates spek-kit projects with proper directory structure
-- **Artifact Generation**: Generates specifications, plans, and task breakdowns
+#### 3. **Spec-Kit Integration**
+Handled via prompts and workflow tooling at a higher level; the runner focuses on session orchestration and SDK integration.
 
-#### 4. **Git Integration** (`git_integration.py`)
-- **Authentication**: Supports SSH keys and token-based Git authentication
-- **Repository Management**: Clones configured repositories into workspace
-- **Branch Operations**: Creates branches, commits changes, pushes to remote
+#### 4. **Git Integration** (in `wrapper.py`)
+- **Authentication**: Uses short-lived GitHub tokens from the backend or project secrets
+- **Repository Management**: Clones input repositories into the workspace (multi-repo supported)
+- **Branch Operations**: Commits changes, pushes to output remotes, and optionally creates PRs
 
 ## All Prompts Being Added Across Components
 

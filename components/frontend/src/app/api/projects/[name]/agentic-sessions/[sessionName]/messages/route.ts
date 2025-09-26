@@ -7,7 +7,7 @@ export async function GET(
 ) {
   const { name, sessionName } = await params
   const headers = await buildForwardHeadersAsync(request)
-  const resp = await fetch(`${BACKEND_URL}/projects/${encodeURIComponent(name)}/agentic-sessions/${encodeURIComponent(sessionName)}/messages`, {
+  const resp = await fetch(`${BACKEND_URL}/projects/${encodeURIComponent(name)}/sessions/${encodeURIComponent(sessionName)}/messages`, {
     method: 'GET',
     headers,
   })
@@ -22,7 +22,7 @@ export async function POST(
   const { name, sessionName } = await params
   const headers = await buildForwardHeadersAsync(request)
   const body = await request.text()
-  const resp = await fetch(`${BACKEND_URL}/projects/${encodeURIComponent(name)}/agentic-sessions/${encodeURIComponent(sessionName)}/messages`, {
+  const resp = await fetch(`${BACKEND_URL}/projects/${encodeURIComponent(name)}/sessions/${encodeURIComponent(sessionName)}/messages`, {
     method: 'POST',
     headers: { ...headers, 'Content-Type': 'application/json' },
     body,

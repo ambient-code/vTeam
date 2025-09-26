@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -18,18 +18,18 @@ import { getApiUrl } from "@/lib/config";
 
 const repoSchema = z.object({
   url: z.string().url("Please enter a valid repository URL"),
-  branch: z.string().min(1, "Branch is required"),
-  clonePath: z.string().optional(),
+  branch: z.string().min(1, "Branch is required").default("main"),
 });
 
 const formSchema = z.object({
   title: z.string().min(5, "Title must be at least 5 characters long"),
   description: z.string().min(20, "Description must be at least 20 characters long"),
   workspacePath: z.string().optional(),
-  repositories: z.array(repoSchema).optional(),
+  umbrellaRepo: repoSchema,
+  supportingRepos: z.array(repoSchema).optional().default([]),
 });
 
-type FormValues = z.infer<typeof formSchema>;
+type FormValues = z.input<typeof formSchema>;
 
 export default function ProjectNewRFEWorkflowPage() {
   const router = useRouter();
@@ -45,16 +45,15 @@ export default function ProjectNewRFEWorkflowPage() {
       title: "",
       description: "",
       workspacePath: "",
-      repositories: [{ url: "", branch: "main", clonePath: "" }],
+      umbrellaRepo: { url: "", branch: "main" },
+      supportingRepos: [],
     },
   });
 
   const { fields, append, remove } = useFieldArray({
     control: form.control,
-    name: "repositories",
+    name: "supportingRepos",
   });
-
-  const handleAgentSelectionChange = useCallback((_agents: string[]) => {}, []);
 
   const onSubmit = async (values: FormValues) => {
     setIsSubmitting(true);
@@ -65,9 +64,13 @@ export default function ProjectNewRFEWorkflowPage() {
         title: values.title,
         description: values.description,
         workspacePath: values.workspacePath || undefined,
-        repositories: (values.repositories || [])
+        umbrellaRepo: {
+          url: values.umbrellaRepo.url.trim(),
+          branch: (values.umbrellaRepo.branch || "main").trim(),
+        },
+        supportingRepos: (values.supportingRepos || [])
           .filter(r => r && r.url && r.url.trim() !== "")
-          .map(r => ({ url: r.url.trim(), branch: r.branch?.trim() || "main", clonePath: (r.clonePath || "").trim() || undefined })),
+          .map(r => ({ url: r.url.trim(), branch: r.branch?.trim() || "main"})),
       };
 
       const url = `${getApiUrl()}/projects/${encodeURIComponent(project)}/rfe-workflows`;
@@ -129,14 +132,39 @@ export default function ProjectNewRFEWorkflowPage() {
 
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2"><GitBranch className="h-5 w-5" />Repositories (optional)</CardTitle>
-                <CardDescription>Add one or more repos to clone into the workspace</CardDescription>
+                <CardTitle className="flex items-center gap-2"><GitBranch className="h-5 w-5" />Repositories</CardTitle>
+                <CardDescription>Set the umbrella repo and optional supporting repos</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                  <div className="md:col-span-3">
+                    <FormField control={form.control} name={`umbrellaRepo.url`} render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Umbrella Repo URL</FormLabel>
+                        <FormControl><Input placeholder="https://github.com/org/repo.git" {...field} /></FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )} />
+                  </div>
+                  <div className="md:col-span-1">
+                    <FormField control={form.control} name={`umbrellaRepo.branch`} render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Branch</FormLabel>
+                        <FormControl><Input placeholder="main" {...field} /></FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )} />
+                  </div>
+                  
+                </div>
+
+                <div className="pt-2">
+                  <div className="text-sm font-medium">Supporting Repositories (optional)</div>
+                </div>
                 {fields.map((field, index) => (
-                  <div key={field.id} className="grid grid-cols-1 md:grid-cols-6 gap-4 items-end">
+                  <div key={field.id} className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
                     <div className="md:col-span-3">
-                      <FormField control={form.control} name={`repositories.${index}.url`} render={({ field }) => (
+                      <FormField control={form.control} name={`supportingRepos.${index}.url`} render={({ field }) => (
                         <FormItem>
                           <FormLabel>Repository URL</FormLabel>
                           <FormControl><Input placeholder="https://github.com/org/repo.git" {...field} /></FormControl>
@@ -145,7 +173,7 @@ export default function ProjectNewRFEWorkflowPage() {
                       )} />
                     </div>
                     <div className="md:col-span-1">
-                      <FormField control={form.control} name={`repositories.${index}.branch`} render={({ field }) => (
+                      <FormField control={form.control} name={`supportingRepos.${index}.branch`} render={({ field }) => (
                         <FormItem>
                           <FormLabel>Branch</FormLabel>
                           <FormControl><Input placeholder="main" {...field} /></FormControl>
@@ -153,22 +181,14 @@ export default function ProjectNewRFEWorkflowPage() {
                         </FormItem>
                       )} />
                     </div>
-                    <div className="md:col-span-2">
-                      <FormField control={form.control} name={`repositories.${index}.clonePath`} render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Clone Path</FormLabel>
-                          <FormControl><Input placeholder="e.g., src/feature" {...field} /></FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )} />
-                    </div>
+                    
                     <div className="md:col-span-6 flex justify-end">
                       <Button type="button" variant="outline" size="sm" onClick={() => remove(index)}>Remove</Button>
                     </div>
                   </div>
                 ))}
                 <div>
-                  <Button type="button" variant="secondary" size="sm" onClick={() => append({ url: "", branch: "main", clonePath: "" })}>Add repository</Button>
+                  <Button type="button" variant="secondary" size="sm" onClick={() => append({ url: "", branch: "main" })}>Add supporting repo</Button>
                 </div>
               </CardContent>
             </Card>

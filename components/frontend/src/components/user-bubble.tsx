@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 type Me = {
   authenticated: boolean;
@@ -43,12 +44,15 @@ export function UserBubble() {
   }
 
   return (
-    <div className="flex items-center gap-2">
-      <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-sm font-medium">
-        {initials || "?"}
+    <Button variant="ghost" size="sm" className="m-2 p-1 pr-2 cursor-pointer" asChild>
+      <div className="flex items-center gap-2">
+        <Avatar>
+          <AvatarImage alt={me.displayName || initials} />
+          <AvatarFallback>{initials || "?"}</AvatarFallback>
+        </Avatar>
+        <span className="hidden sm:block text-sm text-muted-foreground">{me.displayName}</span>
       </div>
-      <span className="hidden sm:block text-sm text-muted-foreground">{me.displayName}</span>
-    </div>
+    </Button>
   );
 }
 

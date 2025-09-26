@@ -15,7 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { CreateProjectRequest } from "@/types/project";
-import { ArrowLeft, Save, Loader2, Activity, Settings } from "lucide-react";
+import { ArrowLeft, Save, Loader2 } from "lucide-react";
 import { getApiUrl } from "@/lib/config";
 
 // Project type selection removed

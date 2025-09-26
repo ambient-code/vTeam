@@ -31,37 +31,19 @@ ls site/
 
 ```
 docs/
-├── index.md                    # Landing page
-├── user-guide/                # End-user documentation
-│   ├── index.md               # User guide overview
-│   ├── getting-started.md     # 5-minute setup guide
-│   ├── creating-rfes.md       # RFE creation workflows
-│   ├── agent-framework.md     # Understanding AI agents
-│   ├── configuration.md       # Settings and customization
-│   └── troubleshooting.md     # Common issues & solutions
-├── developer-guide/           # Developer/contributor docs
-│   ├── index.md              # Developer overview
-│   ├── setup.md              # Development environment
-│   ├── architecture.md       # Technical deep dive
-│   ├── plugin-development.md # Extending the system
-│   ├── api-reference.md      # API documentation
-│   ├── contributing.md       # Contribution guidelines
-│   └── testing.md            # Testing strategies
-├── labs/                     # Hands-on learning exercises
+├── index.md                 # Landing page
+├── user-guide/
+│   ├── index.md             # User guide overview
+│   └── getting-started.md   # 5-minute setup guide
+├── developer-guide/
+│   └── index.md             # Developer overview
+├── labs/
 │   ├── index.md             # Labs overview
-│   ├── basic/               # Foundational labs
-│   ├── advanced/            # Complex scenarios
-│   ├── production/          # Enterprise deployment
-│   └── solutions/           # Lab answers & explanations
-├── reference/               # Reference documentation
-│   ├── index.md            # Reference overview
-│   ├── agent-personas.md   # Complete agent specs
-│   ├── api-endpoints.md    # REST API reference
-│   ├── configuration-schema.md # Config file schemas
-│   └── glossary.md         # Terms and definitions
-└── assets/                 # Shared resources
-    ├── images/             # Screenshots, diagrams
-    └── diagrams/           # Architecture diagrams
+│   └── basic/
+│       └── lab-1-first-rfe.md
+└── reference/
+    ├── index.md             # Reference overview
+    └── glossary.md          # Terms and definitions
 ```
 
 ## Contributing to Documentation
@@ -111,8 +93,7 @@ Key configuration in `mkdocs.yml`:
 # Deploy to gh-pages branch
 mkdocs gh-deploy
 
-# Automatically builds and publishes
-# Available at: https://red-hat-data-services.github.io/vTeam/
+# Automatically builds and publishes to the gh-pages branch
 ```
 
 ### Custom Hosting

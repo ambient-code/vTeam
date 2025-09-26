@@ -17,13 +17,14 @@ const phaseLabel: Record<WorkflowPhase, string> = {
   specify: "Specify",
   plan: "Plan",
   tasks: "Tasks",
+  implement: "Implement",
   review: "Review",
   completed: "Completed",
   ideate: "Ideate",
 };
 
 function calcProgress(w: RFEWorkflow): number {
-  const phases: WorkflowPhase[] = ["pre", "specify", "plan", "tasks", "review"];
+  const phases: WorkflowPhase[] = ["pre", "specify", "plan", "tasks", "implement", "review"];
   if (w.status === "completed") return 100;
   const phase = (w.currentPhase || "pre") as WorkflowPhase;
   const idx = phases.indexOf(phase);

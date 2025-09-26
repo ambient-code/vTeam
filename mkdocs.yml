@@ -73,6 +73,8 @@ nav:
     - API Endpoints: reference/api-endpoints.md
     - Configuration Schema: reference/configuration-schema.md
     - Glossary: reference/glossary.md
+  - Integrations:
+    - GitHub App Setup: GITHUB_APP_SETUP.md
 
 plugins:
   - search

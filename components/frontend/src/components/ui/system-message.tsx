@@ -1,7 +1,7 @@
-import React, { useState } from "react";
+import React from "react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
-import { Info, ChevronDown, ChevronRight } from "lucide-react";
+import { Info } from "lucide-react";
 
 export type SystemMessageProps = {
   subtype: string;
@@ -11,9 +11,8 @@ export type SystemMessageProps = {
 };
 
 export const SystemMessage: React.FC<SystemMessageProps> = ({ subtype, data, className, borderless }) => {
-  const [expanded, setExpanded] = useState(false);
-
-  const pretty = React.useMemo(() => JSON.stringify(data ?? {}, null, 2), [data]);
+  // Expect a simple string in data.message; fallback to JSON.stringify
+  const text: string = typeof (data?.message) === 'string' ? data.message : (typeof data === 'string' ? data : JSON.stringify(data ?? {}, null, 2));
 
   return (
     <div className={cn("mb-4", className)}>
@@ -25,39 +24,12 @@ export const SystemMessage: React.FC<SystemMessageProps> = ({ subtype, data, cla
         </div>
 
         <div className="flex-1 min-w-0">
-          <div className={cn(borderless ? "p-0" : "bg-white rounded-lg border shadow-sm")}>
-            <div className="flex items-center justify-between p-3">
-              <div className="flex items-center gap-2">
-                <Badge variant="secondary" className="text-xs">System</Badge>
-                <span className="text-[10px] text-gray-500">{subtype || (data?.subtype as string) || "system"}</span>
-              </div>
-              <button
-                className="text-xs text-blue-600 hover:underline flex items-center gap-1"
-                onClick={() => setExpanded((e) => !e)}
-                aria-expanded={expanded}
-              >
-                {expanded ? "Hide" : "Show"} details
-                {expanded ? (
-                  <ChevronDown className="w-3 h-3 text-gray-500" />
-                ) : (
-                  <ChevronRight className="w-3 h-3 text-gray-500" />
-                )}
-              </button>
+          <div className={cn(borderless ? "p-0" : "bg-white rounded-lg border shadow-sm p-3")}> 
+            <div className="flex items-center gap-2 mb-1">
+              <Badge variant="secondary" className="text-xs">System</Badge>
+              <span className="text-[10px] text-gray-500">{subtype || "system.message"}</span>
             </div>
-
-            {!expanded && (
-              <div className="px-3 pb-3 text-xs text-gray-600">
-                System message details hidden
-              </div>
-            )}
-
-            {expanded && (
-              <div className="px-3 pb-3">
-                <pre className="bg-gray-50 border rounded p-2 whitespace-pre-wrap break-words text-xs text-gray-800">
-                  {pretty}
-                </pre>
-              </div>
-            )}
+            <div className="text-xs text-gray-700 whitespace-pre-wrap break-words">{text}</div>
           </div>
         </div>
       </div>

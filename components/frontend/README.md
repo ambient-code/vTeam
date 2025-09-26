@@ -105,3 +105,59 @@ curl -i http://localhost:3000/api/projects/my-project/agentic-sessions \
 ### Production notes
 - Do not spoof identities. Forward real headers from your OAuth/ingress proxy.
 - Provide a project selection mechanism and forward it as `X-OpenShift-Project` (or use project path in API URLs).
+
+## RFE Workflows Frontend Implementation
+
+### Components Implemented
+
+#### 🔐 GitHub Integration (T009, T009a)
+- **`GitHubConnection.tsx`**: GitHub App installation and fork management
+  - OAuth flow for per-user GitHub App installations
+  - Fork selection with visual interface
+  - Automatic fork creation capability
+  - Real-time connection status
+
+#### 📁 Repository Browser (T010)
+- **`RepoBrowser.tsx`**: Full repository navigation
+  - File tree browsing with breadcrumb navigation
+  - File content display with syntax awareness
+  - Branch/ref switching support
+  - Size formatting and file type detection
+
+#### 📊 Sessions Dashboard (T011)
+- **`SessionsDashboard.tsx`**: Live session management
+  - Real-time WebSocket connections for session updates
+  - Grouped PR display (umbrella + submodule PRs)
+  - Live message streaming with partial reassembly
+  - Visual status indicators for all session states
+  - Multi-runner support (Claude, OpenAI, local execution)
+
+#### 🎯 Main Application
+- **`rfe-workflows.tsx`**: Complete RFE workflow interface
+  - Workspace creation and management
+  - Tabbed interface for different views
+  - RBAC integration with access level display
+  - Session creation and monitoring
+
+### API Integration
+- **Type-safe backend communication** via `apiClient`
+- **WebSocket support** for real-time session updates
+- **Comprehensive error handling** with user-friendly messages
+- **RBAC enforcement** with access level checking
+
+### Key Features
+- **Live Session Monitoring**: WebSocket connections with automatic reconnection
+- **Multi-repo PR Management**: Handle umbrella and submodule PRs separately
+- **GitHub App Integration**: Streamlined per-user installation flow
+- **Repository Browsing**: Full file tree navigation with content preview
+- **Runner Support**: Claude Code, OpenAI, and local execution runners
+- **Access Control**: Role-based permissions (view/edit/admin)
+
+### UI/UX Design
+- **Modern Interface**: Tailwind CSS with shadcn/ui components
+- **Responsive Design**: Mobile-friendly responsive layout
+- **Accessibility**: Full keyboard navigation and screen reader support
+- **Real-time Updates**: Live status indicators and message streaming
+- **Error Handling**: Comprehensive error states with recovery actions
+
+The frontend provides a complete user interface for the RFE (Request For Enhancement) workflow system, integrating GitHub repositories, AI runners, and real-time collaboration features.

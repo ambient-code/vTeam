@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
 import { getApiUrl } from "@/lib/config";
 import { Button } from "@/components/ui/button";
@@ -11,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Activity, AlertTriangle, ArrowLeft, Copy, KeyRound, Loader2, Plus, RefreshCw, Settings, Trash2, Eye, Edit, Shield } from "lucide-react";
+import { AlertTriangle, Copy, KeyRound, Loader2, Plus, RefreshCw, Trash2, Eye, Edit, Shield } from "lucide-react";
 import { ProjectSubpageHeader } from "@/components/project-subpage-header";
 
 type ProjectKey = {

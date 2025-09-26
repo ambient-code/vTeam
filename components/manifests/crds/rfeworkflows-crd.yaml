@@ -28,28 +28,38 @@ spec:
             type: object
           spec:
             type: object
-            required: [title, description]
+            required: [title, description, umbrellaRepo]
             properties:
               title:
                 type: string
               description:
                 type: string
-              repositories:
-                  type: array
-                  description: "List of Git repositories to clone"
-                  items:
-                    type: object
-                    properties:
-                      url:
-                        type: string
-                        description: "Git repository URL"
-                      branch:
-                        type: string
-                        default: "main"
-                        description: "Branch to checkout"
-                      clonePath:
-                        type: string
-                        description: "Relative path where to clone the repository"
+              umbrellaRepo:
+                type: object
+                description: "Primary umbrella Git repository"
+                required: [url]
+                properties:
+                  url:
+                    type: string
+                    description: "Git repository URL"
+                  branch:
+                    type: string
+                    default: "main"
+                    description: "Branch to checkout"
+              supportingRepos:
+                type: array
+                description: "Optional supporting Git repositories cloned alongside umbrella repo"
+                items:
+                  type: object
+                  required: [url]
+                  properties:
+                    url:
+                      type: string
+                      description: "Git repository URL"
+                    branch:
+                      type: string
+                      default: "main"
+                      description: "Branch to checkout"
               workspacePath:
                 type: string
               jiraLinks:
@@ -67,6 +77,23 @@ spec:
                       description: "Jira issue key (e.g., PROJ-123)"
           status:
             type: object
+            properties:
+              phase:
+                type: string
+                enum:
+                - "Initializing"
+                - "Ready"
+                default: "Initializing"
+              message:
+                type: string
     subresources:
       status: {}
+    additionalPrinterColumns:
+    - name: Phase
+      type: string
+      description: Current phase of the RFE workflow
+      jsonPath: .status.phase
+    - name: Age
+      type: date
+      jsonPath: .metadata.creationTimestamp
 

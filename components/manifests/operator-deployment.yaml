@@ -32,6 +32,8 @@ spec:
           value: "http://backend-service:8080/api"
         - name: AMBIENT_CODE_RUNNER_IMAGE
           value: "quay.io/ambient_code/vteam_claude_runner:latest"
+        - name: CONTENT_SERVICE_IMAGE
+          value: "quay.io/ambient_code/vteam_backend:latest"
         - name: IMAGE_PULL_POLICY
           value: "Always"
         resources:

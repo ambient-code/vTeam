@@ -15,9 +15,12 @@ resources:
 - rbac
 - route.yaml
 - git-configmap.yaml
+- github-app-secret.yaml
 - backend-deployment.yaml
+- backend-route.yaml
 - frontend-deployment.yaml
 - operator-deployment.yaml
+- workspace-pvc.yaml
 images:
 - name: quay.io/ambient_code/vteam_backend:latest
   newName: quay.io/ambient_code/vteam_backend

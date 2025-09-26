@@ -16,8 +16,13 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const backendUrl = process.env.BACKEND_URL || 'http://localhost:8080/api'
+  const wsBase = backendUrl.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:')
   return (
     <html lang="en">
+      <head>
+        <meta name="backend-ws-base" content={wsBase} />
+      </head>
       <body className={`${inter.className} min-h-screen flex flex-col overflow-hidden`}>
         <Navigation />
         <main className="flex-1 bg-background overflow-hidden">{children}</main>

@@ -59,7 +59,7 @@ build-operator: ## Build the operator container image
 
 build-runner: ## Build the Claude Code runner container image
 	@echo "Building Claude Code runner image with $(CONTAINER_ENGINE)..."
-	cd components/runners/claude-code-runner && $(CONTAINER_ENGINE) build $(PLATFORM_FLAG) $(BUILD_FLAGS) -t $(RUNNER_IMAGE) .
+	cd components/runners && $(CONTAINER_ENGINE) build $(PLATFORM_FLAG) $(BUILD_FLAGS) -t $(RUNNER_IMAGE) -f claude-code-runner/Dockerfile .
 
 # Kubernetes deployment
 deploy: ## Deploy all components to Kubernetes

@@ -1,19 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
-import { ProjectSelector } from "@/components/project-selector";
-import { Plus } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { UserBubble } from "@/components/user-bubble";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Plug } from "lucide-react";
 
 
 
 export function Navigation() {
-  const pathname = usePathname();
-  const segments = pathname.split("/").filter(Boolean);
-  const isProjectDetail = segments[0] === "projects" && !!segments[1] && segments[1] !== "new";
+  // const pathname = usePathname();
+  // const segments = pathname?.split("/").filter(Boolean) || [];
+  const router = useRouter();
 
   return (
     <nav className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -25,17 +23,17 @@ export function Navigation() {
             </Link>
           </div>
           <div className="flex items-center gap-3">
-            {isProjectDetail && (
-              <>
-                <ProjectSelector />
-                <Link href="/projects/new">
-                  <Button variant="ghost" size="icon" aria-label="Create project">
-                    <Plus className="w-4 h-4" />
-                  </Button>
-                </Link>
-              </>
-            )}
-            <UserBubble />
+            <DropdownMenu>
+              <DropdownMenuTrigger className="outline-none">
+                <UserBubble />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={() => router.push('/integrations')}>
+                  <Plug className="w-4 h-4 mr-2" />
+                  Integrations
+                  </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </div>

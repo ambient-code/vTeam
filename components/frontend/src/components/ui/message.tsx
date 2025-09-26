@@ -74,7 +74,7 @@ const LOADING_MESSAGES = [
   "Tipping my fedora",
 ];
 
-const LoadingDots = () => {
+export const LoadingDots = () => {
   const [messageIndex, setMessageIndex] = React.useState(() =>
     Math.floor(Math.random() * LOADING_MESSAGES.length)
   );

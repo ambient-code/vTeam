@@ -68,7 +68,6 @@ Content-Type: application/json
 | GET | `/deployments/rhoai/tasks/{id}` | Get task status and results |
 | GET | `/deployments/rhoai/tasks/{id}/events` | Stream real-time task events |
 | GET | `/health` | System health check |
-| GET | `/agents` | List available agent personas |
 
 ## Configuration Reference
 
