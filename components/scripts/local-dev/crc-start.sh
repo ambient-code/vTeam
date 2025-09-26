@@ -152,7 +152,7 @@ check_system_resources() {
   # Check disk space in home directory
   local available_space_gb
   if command -v df >/dev/null 2>&1; then
-    available_space_gb=$(df -h "$HOME" | awk 'NR==2 {print $4}' | sed 's/G//')
+    available_space_gb=$(df --block-size=1G "$HOME" | awk 'NR==2 {print $4}' | sed 's/G//')
     if [[ "$available_space_gb" -lt "$CRC_DISK" ]] 2>/dev/null; then
       warn "Available disk space (~${available_space_gb}GB) may be insufficient for CRC (${CRC_DISK}GB)"
       warn "Consider reducing: CRC_DISK=30 make dev-start"
