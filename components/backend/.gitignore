@@ -43,3 +43,8 @@ coverage.html
 coverage.out
 
 ambient-code-backend
+
+# Backup files from refactoring
+*.backup
+*.bak
+*~
