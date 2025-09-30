@@ -1,0 +1,23 @@
+@startuml
+set separator none
+title vTeam Platform - System Context
+
+top to bottom direction
+
+!include <C4/C4>
+!include <C4/C4_Context>
+
+Person(PlatformUser, "Platform User", $descr="Engineering team member who creates and manages AI-powered agentic sessions for automation tasks", $tags="", $link="")
+System(AnthropicAPI, "Anthropic API", $descr="Claude AI language model service providing intelligent code generation and analysis capabilities", $tags="", $link="")
+System(KubernetesOpenShiftCluster, "Kubernetes/OpenShift Cluster", $descr="Container orchestration platform providing compute, storage, and networking infrastructure", $tags="", $link="")
+System(GitHub, "GitHub", $descr="Source code repository and CI/CD platform for vTeam development", $tags="", $link="")
+System(vTeamPlatform, "vTeam Platform", $descr="Ambient Agentic Runner - Kubernetes-native AI automation platform", $tags="", $link="")
+
+Rel(PlatformUser, vTeamPlatform, "Creates AI sessions, monitors progress via", $techn="HTTPS", $tags="", $link="")
+Rel(vTeamPlatform, KubernetesOpenShiftCluster, "Creates namespaces, quotas, RBAC", $techn="", $tags="", $link="")
+Rel(KubernetesOpenShiftCluster, vTeamPlatform, "Schedules pods for", $techn="", $tags="", $link="")
+Rel(vTeamPlatform, AnthropicAPI, "Calls Claude AI API via", $techn="HTTPS", $tags="", $link="")
+Rel(vTeamPlatform, GitHub, "Deploys via", $techn="GitHub Actions", $tags="", $link="")
+
+SHOW_LEGEND(true)
+@enduml

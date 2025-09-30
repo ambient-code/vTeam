@@ -1,0 +1,27 @@
+@startuml
+set separator none
+title vTeam Platform - Frontend Web Application - Components
+
+top to bottom direction
+
+!include <C4/C4>
+!include <C4/C4_Context>
+!include <C4/C4_Container>
+!include <C4/C4_Component>
+
+Container(vTeamPlatform.BackendAPIService, "Backend API Service", $techn="Go, Gin Framework", $descr="REST API for managing Kubernetes Custom Resources", $tags="", $link="")
+
+Container_Boundary("vTeamPlatform.FrontendWebApplication_boundary", "Frontend Web Application", $tags="") {
+  Component(vTeamPlatform.FrontendWebApplication.SettingsSecretsUI, "Settings & Secrets UI", $techn="React Components", $descr="Configure runner secrets and API keys", $tags="", $link="")
+  Component(vTeamPlatform.FrontendWebApplication.AuthenticationHandler, "Authentication Handler", $techn="NextAuth.js", $descr="OpenShift OAuth integration", $tags="", $link="")
+  Component(vTeamPlatform.FrontendWebApplication.SessionManagementUI, "Session Management UI", $techn="React Components", $descr="Create, monitor, and manage agentic sessions", $tags="", $link="")
+  Component(vTeamPlatform.FrontendWebApplication.ProjectManagementUI, "Project Management UI", $techn="React Components", $descr="Multi-tenant project organization", $tags="", $link="")
+}
+
+Rel(vTeamPlatform.FrontendWebApplication.SessionManagementUI, vTeamPlatform.BackendAPIService, "Creates/reads sessions", $techn="", $tags="", $link="")
+Rel(vTeamPlatform.FrontendWebApplication.ProjectManagementUI, vTeamPlatform.BackendAPIService, "Manages projects", $techn="", $tags="", $link="")
+Rel(vTeamPlatform.FrontendWebApplication.SettingsSecretsUI, vTeamPlatform.BackendAPIService, "Configures API keys", $techn="", $tags="", $link="")
+Rel(vTeamPlatform.FrontendWebApplication.AuthenticationHandler, vTeamPlatform.BackendAPIService, "Authenticates requests", $techn="", $tags="", $link="")
+
+SHOW_LEGEND(true)
+@enduml

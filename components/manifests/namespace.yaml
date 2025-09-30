@@ -1,13 +1,17 @@
+# Namespace for vTeam platform components
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: ambient-code
+  name: vteam-system
   labels:
-    name: ambient-code
     app: vteam
-    openshift.io/cluster-monitoring: "true"
-  annotations:
-    openshift.io/description: "vTeam Ambient Agentic Runner - AI-powered automation system"
-    openshift.io/display-name: "vTeam Ambient Runner"
-    app.kubernetes.io/name: ambient-code
-    app.kubernetes.io/part-of: ambient-code
+    component: system
+---
+# Namespace for vTeam projects
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: vteam-projects
+  labels:
+    app: vteam
+    component: projects

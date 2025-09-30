@@ -1,52 +1,132 @@
+# Agentic Operator Deployment
+# C4 Architecture: Kubernetes operator watching Custom Resources and creating Jobs
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: agentic-operator
+  name: vteam-operator
+  namespace: vteam-system
   labels:
-    app: agentic-operator
+    app: vteam
+    component: operator
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: agentic-operator
+      app: vteam
+      component: operator
   template:
     metadata:
       labels:
-        app: agentic-operator
+        app: vteam
+        component: operator
     spec:
-      serviceAccountName: agentic-operator
+      serviceAccountName: vteam-operator
       containers:
-      - name: agentic-operator
-        image: quay.io/ambient_code/vteam_operator:latest
+      - name: manager
+        image: quay.io/ambient_code/vteam-operator:latest
         imagePullPolicy: Always
+        args:
+        - --leader-elect
+        - --metrics-bind-address=:8080
+        - --health-probe-bind-address=:8081
         env:
-        - name: NAMESPACE
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.namespace
-        - name: BACKEND_NAMESPACE
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.namespace
-        - name: BACKEND_API_URL
-          value: "http://backend-service:8080/api"
-        - name: AMBIENT_CODE_RUNNER_IMAGE
-          value: "quay.io/ambient_code/vteam_claude_runner:latest"
-        - name: IMAGE_PULL_POLICY
-          value: "Always"
+        - name: WATCH_NAMESPACE
+          value: "" # Watch all namespaces
         resources:
           requests:
-            cpu: 50m
-            memory: 64Mi
+            memory: "128Mi"
+            cpu: "100m"
           limits:
-            cpu: 200m
-            memory: 256Mi
+            memory: "256Mi"
+            cpu: "500m"
         livenessProbe:
-          exec:
-            command:
-            - /bin/sh
-            - -c
-            - "ps aux | grep '[o]perator' || exit 1"
-          initialDelaySeconds: 30
+          httpGet:
+            path: /healthz
+            port: 8081
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: 8081
+          initialDelaySeconds: 5
           periodSeconds: 10
-      restartPolicy: Always
+        ports:
+        - containerPort: 8080
+          name: metrics
+          protocol: TCP
+        - containerPort: 8081
+          name: health
+          protocol: TCP
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: vteam-operator
+  namespace: vteam-system
+  labels:
+    app: vteam
+    component: operator
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: vteam-operator
+  labels:
+    app: vteam
+    component: operator
+rules:
+# Project Controller permissions
+- apiGroups: ["vteam.io"]
+  resources: ["projects"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["vteam.io"]
+  resources: ["projects/status", "projects/finalizers"]
+  verbs: ["get", "update", "patch"]
+# Session Controller permissions
+- apiGroups: ["vteam.io"]
+  resources: ["agenticsessions"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["vteam.io"]
+  resources: ["agenticsessions/status", "agenticsessions/finalizers"]
+  verbs: ["get", "update", "patch"]
+# Resource Manager permissions
+- apiGroups: [""]
+  resources: ["namespaces", "resourcequotas", "secrets", "configmaps"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["rbac.authorization.k8s.io"]
+  resources: ["roles", "rolebindings"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["networking.k8s.io"]
+  resources: ["networkpolicies"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+# Job Orchestrator permissions
+- apiGroups: ["batch"]
+  resources: ["jobs"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: [""]
+  resources: ["pods", "pods/log"]
+  verbs: ["get", "list", "watch"]
+# Leader election permissions
+- apiGroups: ["coordination.k8s.io"]
+  resources: ["leases"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: [""]
+  resources: ["events"]
+  verbs: ["create", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: vteam-operator
+  labels:
+    app: vteam
+    component: operator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: vteam-operator
+subjects:
+- kind: ServiceAccount
+  name: vteam-operator
+  namespace: vteam-system

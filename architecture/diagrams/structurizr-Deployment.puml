@@ -1,0 +1,52 @@
+@startuml
+set separator none
+title vTeam Platform - Deployment - Production
+
+top to bottom direction
+
+!include <C4/C4>
+!include <C4/C4_Context>
+!include <C4/C4_Container>
+!include <C4/C4_Deployment>
+
+Deployment_Node(Production.OpenShiftCluster, "OpenShift Cluster", $type="Kubernetes", $descr="Red Hat OpenShift 4.x", $tags="", $link="") {
+  Deployment_Node(Production.OpenShiftCluster.ambientcodeNamespace, "ambient-code Namespace", $type="", $descr="Multi-tenant project namespace", $tags="", $link="") {
+    Deployment_Node(Production.OpenShiftCluster.ambientcodeNamespace.FrontendPod, "Frontend Pod", $type="Kubernetes Pod", $descr="NextJS application pod", $tags="", $link="") {
+      Container(Production.OpenShiftCluster.ambientcodeNamespace.FrontendPod.FrontendWebApplication_1, "Frontend Web Application", $techn="NextJS 14, TypeScript, Shadcn UI", $descr="User interface for creating and monitoring AI sessions", $tags="", $link="")
+    }
+
+    Deployment_Node(Production.OpenShiftCluster.ambientcodeNamespace.BackendPod, "Backend Pod", $type="Kubernetes Pod", $descr="Go API service pod", $tags="", $link="") {
+      Container(Production.OpenShiftCluster.ambientcodeNamespace.BackendPod.BackendAPIService_1, "Backend API Service", $techn="Go, Gin Framework", $descr="REST API for managing Kubernetes Custom Resources", $tags="", $link="")
+    }
+
+    Deployment_Node(Production.OpenShiftCluster.ambientcodeNamespace.OperatorPod, "Operator Pod", $type="Kubernetes Pod", $descr="Kubernetes operator pod", $tags="", $link="") {
+      Container(Production.OpenShiftCluster.ambientcodeNamespace.OperatorPod.AgenticOperator_1, "Agentic Operator", $techn="Go, Kubebuilder, controller-runtime", $descr="Kubernetes operator watching Custom Resources and creating Jobs", $tags="", $link="")
+    }
+
+    Deployment_Node(Production.OpenShiftCluster.ambientcodeNamespace.RunnerJobPod, "Runner Job Pod", $type="Kubernetes Job Pod", $descr="AI execution pod (ephemeral)", $tags="", $link="") {
+      Container(Production.OpenShiftCluster.ambientcodeNamespace.RunnerJobPod.ClaudeCodeRunner_1, "Claude Code Runner", $techn="Python, Claude Code CLI", $descr="Execution pod running Claude Code CLI with multi-agent capabilities", $tags="", $link="")
+    }
+
+  }
+
+  Deployment_Node(Production.OpenShiftCluster.kubesystem, "kube-system", $type="", $descr="Kubernetes system namespace", $tags="", $link="") {
+    Deployment_Node(Production.OpenShiftCluster.kubesystem.etcdCluster, "etcd Cluster", $type="etcd", $descr="Distributed key-value store", $tags="", $link="") {
+      ContainerDb(Production.OpenShiftCluster.kubesystem.etcdCluster.CustomResourcesetcd_1, "Custom Resources (etcd)", $techn="Kubernetes etcd", $descr="Kubernetes API storage for Custom Resource Definitions", $tags="", $link="")
+    }
+
+  }
+
+}
+
+Deployment_Node(Production.ExternalServices, "External Services", $type="", $descr="", $tags="", $link="") {
+  System(Production.ExternalServices.AnthropicAPI_1, "Anthropic API", $descr="Claude AI language model service providing intelligent code generation and analysis capabilities", $tags="", $link="")
+}
+
+Rel(Production.OpenShiftCluster.ambientcodeNamespace.FrontendPod.FrontendWebApplication_1, Production.OpenShiftCluster.ambientcodeNamespace.BackendPod.BackendAPIService_1, "Makes API calls to", $techn="HTTPS, REST", $tags="", $link="")
+Rel(Production.OpenShiftCluster.ambientcodeNamespace.BackendPod.BackendAPIService_1, Production.OpenShiftCluster.kubesystem.etcdCluster.CustomResourcesetcd_1, "Reads/writes Custom Resources via", $techn="Kubernetes API", $tags="", $link="")
+Rel(Production.OpenShiftCluster.ambientcodeNamespace.OperatorPod.AgenticOperator_1, Production.OpenShiftCluster.kubesystem.etcdCluster.CustomResourcesetcd_1, "Watches Custom Resources via", $techn="Kubernetes API", $tags="", $link="")
+Rel(Production.OpenShiftCluster.ambientcodeNamespace.RunnerJobPod.ClaudeCodeRunner_1, Production.OpenShiftCluster.kubesystem.etcdCluster.CustomResourcesetcd_1, "Updates session status in", $techn="Kubernetes API", $tags="", $link="")
+Rel(Production.OpenShiftCluster.ambientcodeNamespace.RunnerJobPod.ClaudeCodeRunner_1, Production.ExternalServices.AnthropicAPI_1, "Calls Claude AI API via", $techn="HTTPS", $tags="", $link="")
+
+SHOW_LEGEND(true)
+@enduml

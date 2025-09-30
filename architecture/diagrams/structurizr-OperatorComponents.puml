@@ -1,0 +1,29 @@
+@startuml
+set separator none
+title vTeam Platform - Agentic Operator - Components
+
+top to bottom direction
+
+!include <C4/C4>
+!include <C4/C4_Context>
+!include <C4/C4_Container>
+!include <C4/C4_Component>
+
+System(KubernetesOpenShiftCluster, "Kubernetes/OpenShift Cluster", $descr="Container orchestration platform providing compute, storage, and networking infrastructure", $tags="", $link="")
+ContainerDb(vTeamPlatform.CustomResourcesetcd, "Custom Resources (etcd)", $techn="Kubernetes etcd", $descr="Kubernetes API storage for Custom Resource Definitions", $tags="", $link="")
+
+Container_Boundary("vTeamPlatform.AgenticOperator_boundary", "Agentic Operator", $tags="") {
+  Component(vTeamPlatform.AgenticOperator.ProjectController, "Project Controller", $techn="controller-runtime", $descr="Reconciles Project CRs, manages namespaces", $tags="", $link="")
+  Component(vTeamPlatform.AgenticOperator.SessionController, "Session Controller", $techn="controller-runtime", $descr="Reconciles AgenticSession CRs, creates Jobs", $tags="", $link="")
+  Component(vTeamPlatform.AgenticOperator.ResourceManager, "Resource Manager", $techn="controller-runtime", $descr="Manages quotas, network policies, RBAC", $tags="", $link="")
+  Component(vTeamPlatform.AgenticOperator.JobOrchestrator, "Job Orchestrator", $techn="controller-runtime", $descr="Creates and monitors Kubernetes Jobs for AI runners", $tags="", $link="")
+}
+
+Rel(vTeamPlatform.AgenticOperator.ProjectController, vTeamPlatform.CustomResourcesetcd, "Reconciles Project CRs", $techn="", $tags="", $link="")
+Rel(vTeamPlatform.AgenticOperator.SessionController, vTeamPlatform.CustomResourcesetcd, "Reconciles AgenticSession CRs", $techn="", $tags="", $link="")
+Rel(vTeamPlatform.AgenticOperator.SessionController, vTeamPlatform.AgenticOperator.JobOrchestrator, "Triggers Job creation", $techn="", $tags="", $link="")
+Rel(vTeamPlatform.AgenticOperator.ResourceManager, KubernetesOpenShiftCluster, "Creates namespaces, quotas, RBAC", $techn="", $tags="", $link="")
+Rel(vTeamPlatform.AgenticOperator.JobOrchestrator, KubernetesOpenShiftCluster, "Creates Kubernetes Jobs", $techn="", $tags="", $link="")
+
+SHOW_LEGEND(true)
+@enduml

@@ -1,0 +1,37 @@
+@startuml
+set separator none
+title vTeam Platform - Dynamic
+
+top to bottom direction
+
+!include <C4/C4>
+!include <C4/C4_Context>
+!include <C4/C4_Container>
+
+System_Boundary("vTeamPlatform_boundary", "vTeam Platform", $tags="") {
+  Container(vTeamPlatform.BackendAPIService, "Backend API Service", $techn="Go, Gin Framework", $descr="REST API for managing Kubernetes Custom Resources", $tags="", $link="")
+  Container(vTeamPlatform.AgenticOperator, "Agentic Operator", $techn="Go, Kubebuilder, controller-runtime", $descr="Kubernetes operator watching Custom Resources and creating Jobs", $tags="", $link="")
+  Container(vTeamPlatform.ClaudeCodeRunner, "Claude Code Runner", $techn="Python, Claude Code CLI", $descr="Execution pod running Claude Code CLI with multi-agent capabilities", $tags="", $link="")
+  ContainerDb(vTeamPlatform.CustomResourcesetcd, "Custom Resources (etcd)", $techn="Kubernetes etcd", $descr="Kubernetes API storage for Custom Resource Definitions", $tags="", $link="")
+  Container(vTeamPlatform.FrontendWebApplication, "Frontend Web Application", $techn="NextJS 14, TypeScript, Shadcn UI", $descr="User interface for creating and monitoring AI sessions", $tags="", $link="")
+}
+
+Person(PlatformUser, "Platform User", $descr="Engineering team member who creates and manages AI-powered agentic sessions for automation tasks", $tags="", $link="")
+System(AnthropicAPI, "Anthropic API", $descr="Claude AI language model service providing intelligent code generation and analysis capabilities", $tags="", $link="")
+System(KubernetesOpenShiftCluster, "Kubernetes/OpenShift Cluster", $descr="Container orchestration platform providing compute, storage, and networking infrastructure", $tags="", $link="")
+
+Rel(PlatformUser, vTeamPlatform.FrontendWebApplication, "1. 1. Creates new AI session", $techn="HTTPS", $tags="", $link="")
+Rel(vTeamPlatform.FrontendWebApplication, vTeamPlatform.BackendAPIService, "2. 2. POST /api/sessions", $techn="HTTPS, REST", $tags="", $link="")
+Rel(vTeamPlatform.BackendAPIService, vTeamPlatform.CustomResourcesetcd, "3. 3. Creates AgenticSession CR", $techn="Kubernetes API", $tags="", $link="")
+Rel(vTeamPlatform.AgenticOperator, vTeamPlatform.CustomResourcesetcd, "4. 4. Watches CR creation", $techn="Kubernetes API", $tags="", $link="")
+Rel(vTeamPlatform.AgenticOperator, KubernetesOpenShiftCluster, "5. 5. Creates Kubernetes Job", $techn="", $tags="", $link="")
+Rel(KubernetesOpenShiftCluster, vTeamPlatform.ClaudeCodeRunner, "6. 6. Schedules runner pod", $techn="", $tags="", $link="")
+Rel(vTeamPlatform.ClaudeCodeRunner, AnthropicAPI, "7. 7. Executes AI tasks via Claude API", $techn="HTTPS", $tags="", $link="")
+Rel(vTeamPlatform.ClaudeCodeRunner, vTeamPlatform.CustomResourcesetcd, "8. 8. Updates session status", $techn="Kubernetes API", $tags="", $link="")
+Rel(vTeamPlatform.FrontendWebApplication, vTeamPlatform.BackendAPIService, "9. 9. Polls session status", $techn="HTTPS, REST", $tags="", $link="")
+Rel(vTeamPlatform.BackendAPIService, vTeamPlatform.CustomResourcesetcd, "10. 10. Reads updated CR", $techn="Kubernetes API", $tags="", $link="")
+Rel(vTeamPlatform.BackendAPIService, vTeamPlatform.FrontendWebApplication, "11. 11. Returns results", $techn="HTTPS, REST", $tags="", $link="")
+Rel(vTeamPlatform.FrontendWebApplication, PlatformUser, "12. 12. Displays session output", $techn="HTTPS", $tags="", $link="")
+
+SHOW_LEGEND(true)
+@enduml

@@ -1,0 +1,26 @@
+@startuml
+set separator none
+title vTeam Platform - Claude Code Runner - Components
+
+top to bottom direction
+
+!include <C4/C4>
+!include <C4/C4_Context>
+!include <C4/C4_Component>
+
+System(AnthropicAPI, "Anthropic API", $descr="Claude AI language model service providing intelligent code generation and analysis capabilities", $tags="", $link="")
+
+Container_Boundary("vTeamPlatform.ClaudeCodeRunner_boundary", "Claude Code Runner", $tags="") {
+  Component(vTeamPlatform.ClaudeCodeRunner.AgentLoader, "Agent Loader", $techn="Python", $descr="Loads and orchestrates 17 specialized AI agents", $tags="", $link="")
+  Component(vTeamPlatform.ClaudeCodeRunner.MCPIntegration, "MCP Integration", $techn="Python, MCP SDK", $descr="Model Context Protocol for browser automation", $tags="", $link="")
+  Component(vTeamPlatform.ClaudeCodeRunner.SessionExecutor, "Session Executor", $techn="Python", $descr="Executes AI tasks and stores results", $tags="", $link="")
+  Component(vTeamPlatform.ClaudeCodeRunner.ClaudeAPIClient, "Claude API Client", $techn="Python, anthropic SDK", $descr="Communicates with Anthropic API", $tags="", $link="")
+}
+
+Rel(vTeamPlatform.ClaudeCodeRunner.SessionExecutor, vTeamPlatform.ClaudeCodeRunner.ClaudeAPIClient, "Executes AI tasks via", $techn="", $tags="", $link="")
+Rel(vTeamPlatform.ClaudeCodeRunner.ClaudeAPIClient, AnthropicAPI, "Calls Claude AI API via", $techn="HTTPS", $tags="", $link="")
+Rel(vTeamPlatform.ClaudeCodeRunner.AgentLoader, vTeamPlatform.ClaudeCodeRunner.SessionExecutor, "Provides agent context to", $techn="", $tags="", $link="")
+Rel(vTeamPlatform.ClaudeCodeRunner.MCPIntegration, vTeamPlatform.ClaudeCodeRunner.SessionExecutor, "Provides browser automation to", $techn="", $tags="", $link="")
+
+SHOW_LEGEND(true)
+@enduml

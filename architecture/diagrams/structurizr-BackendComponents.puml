@@ -1,0 +1,32 @@
+@startuml
+set separator none
+title vTeam Platform - Backend API Service - Components
+
+top to bottom direction
+
+!include <C4/C4>
+!include <C4/C4_Context>
+!include <C4/C4_Container>
+!include <C4/C4_Component>
+
+Container(vTeamPlatform.FrontendWebApplication, "Frontend Web Application", $techn="NextJS 14, TypeScript, Shadcn UI", $descr="User interface for creating and monitoring AI sessions", $tags="", $link="")
+ContainerDb(vTeamPlatform.CustomResourcesetcd, "Custom Resources (etcd)", $techn="Kubernetes etcd", $descr="Kubernetes API storage for Custom Resource Definitions", $tags="", $link="")
+ContainerDb(vTeamPlatform.KubernetesSecrets, "Kubernetes Secrets", $techn="Kubernetes Secrets", $descr="Encrypted secret storage for API keys and credentials", $tags="", $link="")
+
+Container_Boundary("vTeamPlatform.BackendAPIService_boundary", "Backend API Service", $tags="") {
+  Component(vTeamPlatform.BackendAPIService.ProjectsAPI, "Projects API", $techn="Go HTTP Handlers", $descr="Multi-tenant project CRUD operations", $tags="", $link="")
+  Component(vTeamPlatform.BackendAPIService.SessionsAPI, "Sessions API", $techn="Go HTTP Handlers", $descr="Agentic session lifecycle management", $tags="", $link="")
+  Component(vTeamPlatform.BackendAPIService.SecretsAPI, "Secrets API", $techn="Go HTTP Handlers", $descr="Secure storage of runner API keys", $tags="", $link="")
+  Component(vTeamPlatform.BackendAPIService.RBACMiddleware, "RBAC Middleware", $techn="Go Middleware", $descr="Authorization and multi-tenancy enforcement", $tags="", $link="")
+  Component(vTeamPlatform.BackendAPIService.KubernetesClient, "Kubernetes Client", $techn="client-go", $descr="Custom Resource management", $tags="", $link="")
+}
+
+Rel(vTeamPlatform.FrontendWebApplication, vTeamPlatform.BackendAPIService.SessionsAPI, "Creates/reads sessions", $techn="", $tags="", $link="")
+Rel(vTeamPlatform.FrontendWebApplication, vTeamPlatform.BackendAPIService.ProjectsAPI, "Manages projects", $techn="", $tags="", $link="")
+Rel(vTeamPlatform.FrontendWebApplication, vTeamPlatform.BackendAPIService.SecretsAPI, "Configures API keys", $techn="", $tags="", $link="")
+Rel(vTeamPlatform.FrontendWebApplication, vTeamPlatform.BackendAPIService.RBACMiddleware, "Authenticates requests", $techn="", $tags="", $link="")
+Rel(vTeamPlatform.BackendAPIService.KubernetesClient, vTeamPlatform.CustomResourcesetcd, "Manages CRs", $techn="", $tags="", $link="")
+Rel(vTeamPlatform.BackendAPIService.KubernetesClient, vTeamPlatform.KubernetesSecrets, "Manages secrets", $techn="", $tags="", $link="")
+
+SHOW_LEGEND(true)
+@enduml

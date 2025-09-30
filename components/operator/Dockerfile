@@ -1,34 +1,26 @@
 # Build stage
-FROM golang:1.24-alpine AS builder
+FROM golang:1.21-alpine AS builder
 
-WORKDIR /app
+WORKDIR /workspace
 
-# Install git and build dependencies
-RUN apk add --no-cache git build-base
-
-# Copy go mod and sum files
+# Copy go mod files
 COPY go.mod go.sum ./
-
-# Download dependencies
 RUN go mod download
 
-# Copy the source code
+# Copy source code
 COPY . .
 
-# Build the application (with flags to avoid segfault)
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o operator .
+# Build
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o manager main.go
 
-# Final stage
-FROM alpine:latest
+# Runtime stage
+FROM gcr.io/distroless/static:nonroot
 
-RUN apk --no-cache add ca-certificates
-WORKDIR /app
+WORKDIR /
 
-# Copy the binary from builder stage
-COPY --from=builder /app/operator .
+# Copy the binary from builder
+COPY --from=builder /workspace/manager .
 
-# Set executable permissions and make accessible to any user
-RUN chmod +x ./operator && chmod 755 /app
+USER 65532:65532
 
-# Command to run the executable
-CMD ["./operator"]
+ENTRYPOINT ["/manager"]

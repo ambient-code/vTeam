@@ -1,0 +1,1514 @@
+{
+  "configuration" : {
+    "scope" : "SoftwareSystem"
+  },
+  "description" : "Kubernetes-native AI automation platform for intelligent agentic sessions",
+  "documentation" : { },
+  "id" : 1,
+  "lastModifiedAgent" : "structurizr-ui",
+  "lastModifiedDate" : "2025-09-30T18:39:25Z",
+  "model" : {
+    "deploymentNodes" : [ {
+      "children" : [ {
+        "children" : [ {
+          "containerInstances" : [ {
+            "containerId" : "7",
+            "deploymentGroups" : [ "Default" ],
+            "environment" : "Production",
+            "id" : "75",
+            "instanceId" : 1,
+            "properties" : {
+              "structurizr.dsl.identifier" : "1e65428c-e442-47d4-b967-5f8506bff1cd"
+            },
+            "relationships" : [ {
+              "description" : "Makes API calls to",
+              "destinationId" : "77",
+              "id" : "78",
+              "linkedRelationshipId" : "33",
+              "sourceId" : "75",
+              "technology" : "HTTPS, REST"
+            } ],
+            "tags" : "Container Instance"
+          } ],
+          "description" : "NextJS application pod",
+          "environment" : "Production",
+          "id" : "74",
+          "instances" : "1",
+          "name" : "Frontend Pod",
+          "properties" : {
+            "structurizr.dsl.identifier" : "69dbdf8b-8b12-46a1-b471-eafb8d06220b"
+          },
+          "tags" : "Element,Deployment Node",
+          "technology" : "Kubernetes Pod"
+        }, {
+          "containerInstances" : [ {
+            "containerId" : "12",
+            "deploymentGroups" : [ "Default" ],
+            "environment" : "Production",
+            "id" : "77",
+            "instanceId" : 1,
+            "properties" : {
+              "structurizr.dsl.identifier" : "38e9ff97-d0ef-444d-ab05-d313943c04c1"
+            },
+            "relationships" : [ {
+              "description" : "Reads/writes Custom Resources via",
+              "destinationId" : "85",
+              "id" : "86",
+              "linkedRelationshipId" : "46",
+              "sourceId" : "77",
+              "technology" : "Kubernetes API"
+            } ],
+            "tags" : "Container Instance"
+          } ],
+          "description" : "Go API service pod",
+          "environment" : "Production",
+          "id" : "76",
+          "instances" : "1",
+          "name" : "Backend Pod",
+          "properties" : {
+            "structurizr.dsl.identifier" : "de274344-a212-4743-bd26-78630e1ebcb2"
+          },
+          "tags" : "Element,Deployment Node",
+          "technology" : "Kubernetes Pod"
+        }, {
+          "containerInstances" : [ {
+            "containerId" : "18",
+            "deploymentGroups" : [ "Default" ],
+            "environment" : "Production",
+            "id" : "80",
+            "instanceId" : 1,
+            "properties" : {
+              "structurizr.dsl.identifier" : "6ab69d72-c0c3-438c-b664-6517003965be"
+            },
+            "relationships" : [ {
+              "description" : "Watches Custom Resources via",
+              "destinationId" : "85",
+              "id" : "87",
+              "linkedRelationshipId" : "50",
+              "sourceId" : "80",
+              "technology" : "Kubernetes API"
+            } ],
+            "tags" : "Container Instance"
+          } ],
+          "description" : "Kubernetes operator pod",
+          "environment" : "Production",
+          "id" : "79",
+          "instances" : "1",
+          "name" : "Operator Pod",
+          "properties" : {
+            "structurizr.dsl.identifier" : "04899b43-9c24-48b9-9373-ec19a8e58074"
+          },
+          "tags" : "Element,Deployment Node",
+          "technology" : "Kubernetes Pod"
+        }, {
+          "containerInstances" : [ {
+            "containerId" : "23",
+            "deploymentGroups" : [ "Default" ],
+            "environment" : "Production",
+            "id" : "82",
+            "instanceId" : 1,
+            "properties" : {
+              "structurizr.dsl.identifier" : "ccc93693-50c3-4023-92c6-0b91c52aa291"
+            },
+            "relationships" : [ {
+              "description" : "Updates session status in",
+              "destinationId" : "85",
+              "id" : "88",
+              "linkedRelationshipId" : "60",
+              "sourceId" : "82",
+              "technology" : "Kubernetes API"
+            }, {
+              "description" : "Calls Claude AI API via",
+              "destinationId" : "90",
+              "id" : "91",
+              "linkedRelationshipId" : "63",
+              "sourceId" : "82",
+              "technology" : "HTTPS"
+            } ],
+            "tags" : "Container Instance"
+          } ],
+          "description" : "AI execution pod (ephemeral)",
+          "environment" : "Production",
+          "id" : "81",
+          "instances" : "1",
+          "name" : "Runner Job Pod",
+          "properties" : {
+            "structurizr.dsl.identifier" : "a6821311-9be2-4ea6-907b-0e5647ecf1d3"
+          },
+          "tags" : "Element,Deployment Node",
+          "technology" : "Kubernetes Job Pod"
+        } ],
+        "description" : "Multi-tenant project namespace",
+        "environment" : "Production",
+        "id" : "73",
+        "instances" : "1",
+        "name" : "ambient-code Namespace",
+        "properties" : {
+          "structurizr.dsl.identifier" : "02bb4064-e160-4a35-9233-0d594334543c"
+        },
+        "tags" : "Element,Deployment Node"
+      }, {
+        "children" : [ {
+          "containerInstances" : [ {
+            "containerId" : "28",
+            "deploymentGroups" : [ "Default" ],
+            "environment" : "Production",
+            "id" : "85",
+            "instanceId" : 1,
+            "properties" : {
+              "structurizr.dsl.identifier" : "6015a28b-e1c8-4f59-a77d-d1f63ce98527"
+            },
+            "tags" : "Container Instance"
+          } ],
+          "description" : "Distributed key-value store",
+          "environment" : "Production",
+          "id" : "84",
+          "instances" : "1",
+          "name" : "etcd Cluster",
+          "properties" : {
+            "structurizr.dsl.identifier" : "4780ca29-e0e2-4d43-bbd0-fd14453607a5"
+          },
+          "tags" : "Element,Deployment Node",
+          "technology" : "etcd"
+        } ],
+        "description" : "Kubernetes system namespace",
+        "environment" : "Production",
+        "id" : "83",
+        "instances" : "1",
+        "name" : "kube-system",
+        "properties" : {
+          "structurizr.dsl.identifier" : "15f871dd-e7c7-4e5e-98c1-b34eeb5ba251"
+        },
+        "tags" : "Element,Deployment Node"
+      } ],
+      "description" : "Red Hat OpenShift 4.x",
+      "environment" : "Production",
+      "id" : "72",
+      "instances" : "1",
+      "name" : "OpenShift Cluster",
+      "properties" : {
+        "structurizr.dsl.identifier" : "6d0629f0-8b2c-4ea0-b449-65c9cf16060b"
+      },
+      "tags" : "Element,Deployment Node,OpenShift",
+      "technology" : "Kubernetes"
+    }, {
+      "environment" : "Production",
+      "id" : "89",
+      "instances" : "1",
+      "name" : "External Services",
+      "properties" : {
+        "structurizr.dsl.identifier" : "aab36afd-2a41-4666-86a8-7c7a61fc16f0"
+      },
+      "softwareSystemInstances" : [ {
+        "deploymentGroups" : [ "Default" ],
+        "environment" : "Production",
+        "id" : "90",
+        "instanceId" : 1,
+        "properties" : {
+          "structurizr.dsl.identifier" : "31f714a8-a20b-4b20-a710-d6f9d8a0ef95"
+        },
+        "softwareSystemId" : "3",
+        "tags" : "Software System Instance"
+      } ],
+      "tags" : "Element,Deployment Node"
+    } ],
+    "people" : [ {
+      "description" : "Engineering team member who creates and manages AI-powered agentic sessions for automation tasks",
+      "id" : "1",
+      "location" : "Unspecified",
+      "name" : "Platform User",
+      "properties" : {
+        "structurizr.dsl.identifier" : "user"
+      },
+      "relationships" : [ {
+        "description" : "Creates AI sessions, monitors progress via",
+        "destinationId" : "7",
+        "id" : "30",
+        "sourceId" : "1",
+        "tags" : "Relationship",
+        "technology" : "HTTPS"
+      }, {
+        "description" : "Creates AI sessions, monitors progress via",
+        "destinationId" : "6",
+        "id" : "31",
+        "linkedRelationshipId" : "30",
+        "sourceId" : "1",
+        "technology" : "HTTPS"
+      } ],
+      "tags" : "Element,Person"
+    }, {
+      "description" : "Red Hat SRE/Platform team member who manages infrastructure and multi-tenant configuration",
+      "id" : "2",
+      "location" : "Unspecified",
+      "name" : "Platform Administrator",
+      "properties" : {
+        "structurizr.dsl.identifier" : "admin"
+      },
+      "relationships" : [ {
+        "description" : "Deploys and manages platform via",
+        "destinationId" : "4",
+        "id" : "32",
+        "sourceId" : "2",
+        "tags" : "Relationship",
+        "technology" : "oc/kubectl CLI"
+      } ],
+      "tags" : "Element,Person"
+    } ],
+    "softwareSystems" : [ {
+      "description" : "Claude AI language model service providing intelligent code generation and analysis capabilities",
+      "documentation" : { },
+      "id" : "3",
+      "location" : "Unspecified",
+      "name" : "Anthropic API",
+      "properties" : {
+        "structurizr.dsl.identifier" : "anthropic"
+      },
+      "tags" : "Element,Software System,External System"
+    }, {
+      "description" : "Container orchestration platform providing compute, storage, and networking infrastructure",
+      "documentation" : { },
+      "id" : "4",
+      "location" : "Unspecified",
+      "name" : "Kubernetes/OpenShift Cluster",
+      "properties" : {
+        "structurizr.dsl.identifier" : "k8s"
+      },
+      "relationships" : [ {
+        "description" : "Schedules pods for",
+        "destinationId" : "23",
+        "id" : "58",
+        "sourceId" : "4",
+        "tags" : "Relationship"
+      }, {
+        "description" : "Schedules pods for",
+        "destinationId" : "6",
+        "id" : "59",
+        "linkedRelationshipId" : "58",
+        "sourceId" : "4"
+      } ],
+      "tags" : "Element,Software System,External System"
+    }, {
+      "description" : "Source code repository and CI/CD platform for vTeam development",
+      "documentation" : { },
+      "id" : "5",
+      "location" : "Unspecified",
+      "name" : "GitHub",
+      "properties" : {
+        "structurizr.dsl.identifier" : "github"
+      },
+      "tags" : "Element,Software System,External System"
+    }, {
+      "containers" : [ {
+        "components" : [ {
+          "description" : "Create, monitor, and manage agentic sessions",
+          "documentation" : { },
+          "id" : "8",
+          "name" : "Session Management UI",
+          "properties" : {
+            "structurizr.dsl.identifier" : "sessionui"
+          },
+          "relationships" : [ {
+            "description" : "Creates/reads sessions",
+            "destinationId" : "14",
+            "id" : "34",
+            "sourceId" : "8",
+            "tags" : "Relationship"
+          }, {
+            "description" : "Creates/reads sessions",
+            "destinationId" : "12",
+            "id" : "35",
+            "linkedRelationshipId" : "34",
+            "sourceId" : "8"
+          } ],
+          "tags" : "Element,Component",
+          "technology" : "React Components"
+        }, {
+          "description" : "Multi-tenant project organization",
+          "documentation" : { },
+          "id" : "9",
+          "name" : "Project Management UI",
+          "properties" : {
+            "structurizr.dsl.identifier" : "projectui"
+          },
+          "relationships" : [ {
+            "description" : "Manages projects",
+            "destinationId" : "13",
+            "id" : "37",
+            "sourceId" : "9",
+            "tags" : "Relationship"
+          }, {
+            "description" : "Manages projects",
+            "destinationId" : "12",
+            "id" : "38",
+            "linkedRelationshipId" : "37",
+            "sourceId" : "9"
+          } ],
+          "tags" : "Element,Component",
+          "technology" : "React Components"
+        }, {
+          "description" : "Configure runner secrets and API keys",
+          "documentation" : { },
+          "id" : "10",
+          "name" : "Settings & Secrets UI",
+          "properties" : {
+            "structurizr.dsl.identifier" : "settingsui"
+          },
+          "relationships" : [ {
+            "description" : "Configures API keys",
+            "destinationId" : "15",
+            "id" : "40",
+            "sourceId" : "10",
+            "tags" : "Relationship"
+          }, {
+            "description" : "Configures API keys",
+            "destinationId" : "12",
+            "id" : "41",
+            "linkedRelationshipId" : "40",
+            "sourceId" : "10"
+          } ],
+          "tags" : "Element,Component",
+          "technology" : "React Components"
+        }, {
+          "description" : "OpenShift OAuth integration",
+          "documentation" : { },
+          "id" : "11",
+          "name" : "Authentication Handler",
+          "properties" : {
+            "structurizr.dsl.identifier" : "authhandler"
+          },
+          "relationships" : [ {
+            "description" : "Authenticates requests",
+            "destinationId" : "16",
+            "id" : "43",
+            "sourceId" : "11",
+            "tags" : "Relationship"
+          }, {
+            "description" : "Authenticates requests",
+            "destinationId" : "12",
+            "id" : "44",
+            "linkedRelationshipId" : "43",
+            "sourceId" : "11"
+          } ],
+          "tags" : "Element,Component",
+          "technology" : "NextAuth.js"
+        } ],
+        "description" : "User interface for creating and monitoring AI sessions",
+        "documentation" : { },
+        "id" : "7",
+        "name" : "Frontend Web Application",
+        "properties" : {
+          "structurizr.dsl.identifier" : "frontend"
+        },
+        "relationships" : [ {
+          "description" : "Makes API calls to",
+          "destinationId" : "12",
+          "id" : "33",
+          "sourceId" : "7",
+          "tags" : "Relationship",
+          "technology" : "HTTPS, REST"
+        }, {
+          "description" : "Creates/reads sessions",
+          "destinationId" : "14",
+          "id" : "36",
+          "linkedRelationshipId" : "34",
+          "sourceId" : "7"
+        }, {
+          "description" : "Manages projects",
+          "destinationId" : "13",
+          "id" : "39",
+          "linkedRelationshipId" : "37",
+          "sourceId" : "7"
+        }, {
+          "description" : "Configures API keys",
+          "destinationId" : "15",
+          "id" : "42",
+          "linkedRelationshipId" : "40",
+          "sourceId" : "7"
+        }, {
+          "description" : "Authenticates requests",
+          "destinationId" : "16",
+          "id" : "45",
+          "linkedRelationshipId" : "43",
+          "sourceId" : "7"
+        }, {
+          "description" : "Deploys via",
+          "destinationId" : "5",
+          "id" : "68",
+          "sourceId" : "7",
+          "tags" : "Relationship",
+          "technology" : "GitHub Actions"
+        } ],
+        "tags" : "Element,Container,Web Browser",
+        "technology" : "NextJS 14, TypeScript, Shadcn UI"
+      }, {
+        "components" : [ {
+          "description" : "Multi-tenant project CRUD operations",
+          "documentation" : { },
+          "id" : "13",
+          "name" : "Projects API",
+          "properties" : {
+            "structurizr.dsl.identifier" : "projectsapi"
+          },
+          "tags" : "Element,Component",
+          "technology" : "Go HTTP Handlers"
+        }, {
+          "description" : "Agentic session lifecycle management",
+          "documentation" : { },
+          "id" : "14",
+          "name" : "Sessions API",
+          "properties" : {
+            "structurizr.dsl.identifier" : "sessionsapi"
+          },
+          "tags" : "Element,Component",
+          "technology" : "Go HTTP Handlers"
+        }, {
+          "description" : "Secure storage of runner API keys",
+          "documentation" : { },
+          "id" : "15",
+          "name" : "Secrets API",
+          "properties" : {
+            "structurizr.dsl.identifier" : "secretsapi"
+          },
+          "tags" : "Element,Component",
+          "technology" : "Go HTTP Handlers"
+        }, {
+          "description" : "Authorization and multi-tenancy enforcement",
+          "documentation" : { },
+          "id" : "16",
+          "name" : "RBAC Middleware",
+          "properties" : {
+            "structurizr.dsl.identifier" : "rbacmiddleware"
+          },
+          "tags" : "Element,Component",
+          "technology" : "Go Middleware"
+        }, {
+          "description" : "Custom Resource management",
+          "documentation" : { },
+          "id" : "17",
+          "name" : "Kubernetes Client",
+          "properties" : {
+            "structurizr.dsl.identifier" : "k8sclient"
+          },
+          "relationships" : [ {
+            "description" : "Manages CRs",
+            "destinationId" : "28",
+            "id" : "48",
+            "sourceId" : "17",
+            "tags" : "Relationship"
+          }, {
+            "description" : "Manages secrets",
+            "destinationId" : "29",
+            "id" : "49",
+            "sourceId" : "17",
+            "tags" : "Relationship"
+          } ],
+          "tags" : "Element,Component",
+          "technology" : "client-go"
+        } ],
+        "description" : "REST API for managing Kubernetes Custom Resources",
+        "documentation" : { },
+        "id" : "12",
+        "name" : "Backend API Service",
+        "properties" : {
+          "structurizr.dsl.identifier" : "backend"
+        },
+        "relationships" : [ {
+          "description" : "Reads/writes Custom Resources via",
+          "destinationId" : "28",
+          "id" : "46",
+          "sourceId" : "12",
+          "tags" : "Relationship",
+          "technology" : "Kubernetes API"
+        }, {
+          "description" : "Stores encrypted secrets via",
+          "destinationId" : "29",
+          "id" : "47",
+          "sourceId" : "12",
+          "tags" : "Relationship",
+          "technology" : "Kubernetes API"
+        }, {
+          "description" : "Deploys via",
+          "destinationId" : "5",
+          "id" : "70",
+          "sourceId" : "12",
+          "tags" : "Relationship",
+          "technology" : "GitHub Actions"
+        } ],
+        "tags" : "Element,Container,API",
+        "technology" : "Go, Gin Framework"
+      }, {
+        "components" : [ {
+          "description" : "Reconciles Project CRs, manages namespaces",
+          "documentation" : { },
+          "id" : "19",
+          "name" : "Project Controller",
+          "properties" : {
+            "structurizr.dsl.identifier" : "projectcontroller"
+          },
+          "relationships" : [ {
+            "description" : "Reconciles Project CRs",
+            "destinationId" : "28",
+            "id" : "51",
+            "sourceId" : "19",
+            "tags" : "Relationship"
+          } ],
+          "tags" : "Element,Component",
+          "technology" : "controller-runtime"
+        }, {
+          "description" : "Reconciles AgenticSession CRs, creates Jobs",
+          "documentation" : { },
+          "id" : "20",
+          "name" : "Session Controller",
+          "properties" : {
+            "structurizr.dsl.identifier" : "sessioncontroller"
+          },
+          "relationships" : [ {
+            "description" : "Reconciles AgenticSession CRs",
+            "destinationId" : "28",
+            "id" : "52",
+            "sourceId" : "20",
+            "tags" : "Relationship"
+          }, {
+            "description" : "Triggers Job creation",
+            "destinationId" : "22",
+            "id" : "53",
+            "sourceId" : "20",
+            "tags" : "Relationship"
+          } ],
+          "tags" : "Element,Component",
+          "technology" : "controller-runtime"
+        }, {
+          "description" : "Manages quotas, network policies, RBAC",
+          "documentation" : { },
+          "id" : "21",
+          "name" : "Resource Manager",
+          "properties" : {
+            "structurizr.dsl.identifier" : "resourcemanager"
+          },
+          "relationships" : [ {
+            "description" : "Creates namespaces, quotas, RBAC",
+            "destinationId" : "4",
+            "id" : "54",
+            "sourceId" : "21",
+            "tags" : "Relationship"
+          } ],
+          "tags" : "Element,Component",
+          "technology" : "controller-runtime"
+        }, {
+          "description" : "Creates and monitors Kubernetes Jobs for AI runners",
+          "documentation" : { },
+          "id" : "22",
+          "name" : "Job Orchestrator",
+          "properties" : {
+            "structurizr.dsl.identifier" : "joborchestrator"
+          },
+          "relationships" : [ {
+            "description" : "Creates Kubernetes Jobs",
+            "destinationId" : "4",
+            "id" : "57",
+            "sourceId" : "22",
+            "tags" : "Relationship"
+          } ],
+          "tags" : "Element,Component",
+          "technology" : "controller-runtime"
+        } ],
+        "description" : "Kubernetes operator watching Custom Resources and creating Jobs",
+        "documentation" : { },
+        "id" : "18",
+        "name" : "Agentic Operator",
+        "properties" : {
+          "structurizr.dsl.identifier" : "operator"
+        },
+        "relationships" : [ {
+          "description" : "Watches Custom Resources via",
+          "destinationId" : "28",
+          "id" : "50",
+          "sourceId" : "18",
+          "tags" : "Relationship",
+          "technology" : "Kubernetes API"
+        }, {
+          "description" : "Creates namespaces, quotas, RBAC",
+          "destinationId" : "4",
+          "id" : "55",
+          "linkedRelationshipId" : "54",
+          "sourceId" : "18"
+        }, {
+          "description" : "Deploys via",
+          "destinationId" : "5",
+          "id" : "71",
+          "sourceId" : "18",
+          "tags" : "Relationship",
+          "technology" : "GitHub Actions"
+        } ],
+        "tags" : "Element,Container,Kubernetes Operator",
+        "technology" : "Go, Kubebuilder, controller-runtime"
+      }, {
+        "components" : [ {
+          "description" : "Loads and orchestrates 17 specialized AI agents",
+          "documentation" : { },
+          "id" : "24",
+          "name" : "Agent Loader",
+          "properties" : {
+            "structurizr.dsl.identifier" : "agentloader"
+          },
+          "relationships" : [ {
+            "description" : "Provides agent context to",
+            "destinationId" : "26",
+            "id" : "65",
+            "sourceId" : "24",
+            "tags" : "Relationship"
+          } ],
+          "tags" : "Element,Component",
+          "technology" : "Python"
+        }, {
+          "description" : "Model Context Protocol for browser automation",
+          "documentation" : { },
+          "id" : "25",
+          "name" : "MCP Integration",
+          "properties" : {
+            "structurizr.dsl.identifier" : "mcpintegration"
+          },
+          "relationships" : [ {
+            "description" : "Provides browser automation to",
+            "destinationId" : "26",
+            "id" : "66",
+            "sourceId" : "25",
+            "tags" : "Relationship"
+          } ],
+          "tags" : "Element,Component",
+          "technology" : "Python, MCP SDK"
+        }, {
+          "description" : "Executes AI tasks and stores results",
+          "documentation" : { },
+          "id" : "26",
+          "name" : "Session Executor",
+          "properties" : {
+            "structurizr.dsl.identifier" : "sessionexecutor"
+          },
+          "relationships" : [ {
+            "description" : "Executes AI tasks via",
+            "destinationId" : "27",
+            "id" : "61",
+            "sourceId" : "26",
+            "tags" : "Relationship"
+          } ],
+          "tags" : "Element,Component",
+          "technology" : "Python"
+        }, {
+          "description" : "Communicates with Anthropic API",
+          "documentation" : { },
+          "id" : "27",
+          "name" : "Claude API Client",
+          "properties" : {
+            "structurizr.dsl.identifier" : "claudeapi"
+          },
+          "relationships" : [ {
+            "description" : "Calls Claude AI API via",
+            "destinationId" : "3",
+            "id" : "62",
+            "sourceId" : "27",
+            "tags" : "Relationship",
+            "technology" : "HTTPS"
+          } ],
+          "tags" : "Element,Component",
+          "technology" : "Python, anthropic SDK"
+        } ],
+        "description" : "Execution pod running Claude Code CLI with multi-agent capabilities",
+        "documentation" : { },
+        "id" : "23",
+        "name" : "Claude Code Runner",
+        "properties" : {
+          "structurizr.dsl.identifier" : "runner"
+        },
+        "relationships" : [ {
+          "description" : "Updates session status in",
+          "destinationId" : "28",
+          "id" : "60",
+          "sourceId" : "23",
+          "tags" : "Relationship",
+          "technology" : "Kubernetes API"
+        }, {
+          "description" : "Calls Claude AI API via",
+          "destinationId" : "3",
+          "id" : "63",
+          "linkedRelationshipId" : "62",
+          "sourceId" : "23",
+          "technology" : "HTTPS"
+        }, {
+          "description" : "Reads API keys from",
+          "destinationId" : "29",
+          "id" : "67",
+          "sourceId" : "23",
+          "tags" : "Relationship",
+          "technology" : "Kubernetes API"
+        } ],
+        "tags" : "Element,Container,AI Runner",
+        "technology" : "Python, Claude Code CLI"
+      }, {
+        "description" : "Kubernetes API storage for Custom Resource Definitions",
+        "documentation" : { },
+        "id" : "28",
+        "name" : "Custom Resources (etcd)",
+        "properties" : {
+          "structurizr.dsl.identifier" : "database"
+        },
+        "tags" : "Element,Container,Database",
+        "technology" : "Kubernetes etcd"
+      }, {
+        "description" : "Encrypted secret storage for API keys and credentials",
+        "documentation" : { },
+        "id" : "29",
+        "name" : "Kubernetes Secrets",
+        "properties" : {
+          "structurizr.dsl.identifier" : "secretsstore"
+        },
+        "tags" : "Element,Container,Database",
+        "technology" : "Kubernetes Secrets"
+      } ],
+      "description" : "Ambient Agentic Runner - Kubernetes-native AI automation platform",
+      "documentation" : { },
+      "id" : "6",
+      "location" : "Unspecified",
+      "name" : "vTeam Platform",
+      "properties" : {
+        "structurizr.dsl.identifier" : "vteam"
+      },
+      "relationships" : [ {
+        "description" : "Creates namespaces, quotas, RBAC",
+        "destinationId" : "4",
+        "id" : "56",
+        "linkedRelationshipId" : "54",
+        "sourceId" : "6"
+      }, {
+        "description" : "Calls Claude AI API via",
+        "destinationId" : "3",
+        "id" : "64",
+        "linkedRelationshipId" : "62",
+        "sourceId" : "6",
+        "technology" : "HTTPS"
+      }, {
+        "description" : "Deploys via",
+        "destinationId" : "5",
+        "id" : "69",
+        "linkedRelationshipId" : "68",
+        "sourceId" : "6",
+        "technology" : "GitHub Actions"
+      } ],
+      "tags" : "Element,Software System"
+    } ]
+  },
+  "name" : "vTeam Platform",
+  "properties" : {
+    "structurizr.dsl" : "d29ya3NwYWNlICJ2VGVhbSBQbGF0Zm9ybSIgIkt1YmVybmV0ZXMtbmF0aXZlIEFJIGF1dG9tYXRpb24gcGxhdGZvcm0gZm9yIGludGVsbGlnZW50IGFnZW50aWMgc2Vzc2lvbnMiIHsKCiAgICBtb2RlbCB7CiAgICAgICAgIyBQZW9wbGUKICAgICAgICB1c2VyID0gcGVyc29uICJQbGF0Zm9ybSBVc2VyIiAiRW5naW5lZXJpbmcgdGVhbSBtZW1iZXIgd2hvIGNyZWF0ZXMgYW5kIG1hbmFnZXMgQUktcG93ZXJlZCBhZ2VudGljIHNlc3Npb25zIGZvciBhdXRvbWF0aW9uIHRhc2tzIgogICAgICAgIGFkbWluID0gcGVyc29uICJQbGF0Zm9ybSBBZG1pbmlzdHJhdG9yIiAiUmVkIEhhdCBTUkUvUGxhdGZvcm0gdGVhbSBtZW1iZXIgd2hvIG1hbmFnZXMgaW5mcmFzdHJ1Y3R1cmUgYW5kIG11bHRpLXRlbmFudCBjb25maWd1cmF0aW9uIgoKICAgICAgICAjIEV4dGVybmFsIFN5c3RlbXMKICAgICAgICBhbnRocm9waWMgPSBzb2Z0d2FyZVN5c3RlbSAiQW50aHJvcGljIEFQSSIgIkNsYXVkZSBBSSBsYW5ndWFnZSBtb2RlbCBzZXJ2aWNlIHByb3ZpZGluZyBpbnRlbGxpZ2VudCBjb2RlIGdlbmVyYXRpb24gYW5kIGFuYWx5c2lzIGNhcGFiaWxpdGllcyIgewogICAgICAgICAgICB0YWdzICJFeHRlcm5hbCBTeXN0ZW0iCiAgICAgICAgfQoKICAgICAgICBrOHMgPSBzb2Z0d2FyZVN5c3RlbSAiS3ViZXJuZXRlcy9PcGVuU2hpZnQgQ2x1c3RlciIgIkNvbnRhaW5lciBvcmNoZXN0cmF0aW9uIHBsYXRmb3JtIHByb3ZpZGluZyBjb21wdXRlLCBzdG9yYWdlLCBhbmQgbmV0d29ya2luZyBpbmZyYXN0cnVjdHVyZSIgewogICAgICAgICAgICB0YWdzICJFeHRlcm5hbCBTeXN0ZW0iCiAgICAgICAgfQoKICAgICAgICBnaXRodWIgPSBzb2Z0d2FyZVN5c3RlbSAiR2l0SHViIiAiU291cmNlIGNvZGUgcmVwb3NpdG9yeSBhbmQgQ0kvQ0QgcGxhdGZvcm0gZm9yIHZUZWFtIGRldmVsb3BtZW50IiB7CiAgICAgICAgICAgIHRhZ3MgIkV4dGVybmFsIFN5c3RlbSIKICAgICAgICB9CgogICAgICAgICMgdlRlYW0gUGxhdGZvcm0KICAgICAgICB2dGVhbSA9IHNvZnR3YXJlU3lzdGVtICJ2VGVhbSBQbGF0Zm9ybSIgIkFtYmllbnQgQWdlbnRpYyBSdW5uZXIgLSBLdWJlcm5ldGVzLW5hdGl2ZSBBSSBhdXRvbWF0aW9uIHBsYXRmb3JtIiB7CgogICAgICAgICAgICAjIEZyb250ZW5kIENvbnRhaW5lcgogICAgICAgICAgICBmcm9udGVuZCA9IGNvbnRhaW5lciAiRnJvbnRlbmQgV2ViIEFwcGxpY2F0aW9uIiAiVXNlciBpbnRlcmZhY2UgZm9yIGNyZWF0aW5nIGFuZCBtb25pdG9yaW5nIEFJIHNlc3Npb25zIiAiTmV4dEpTIDE0LCBUeXBlU2NyaXB0LCBTaGFkY24gVUkiIHsKICAgICAgICAgICAgICAgIHNlc3Npb25VSSA9IGNvbXBvbmVudCAiU2Vzc2lvbiBNYW5hZ2VtZW50IFVJIiAiQ3JlYXRlLCBtb25pdG9yLCBhbmQgbWFuYWdlIGFnZW50aWMgc2Vzc2lvbnMiICJSZWFjdCBDb21wb25lbnRzIgogICAgICAgICAgICAgICAgcHJvamVjdFVJID0gY29tcG9uZW50ICJQcm9qZWN0IE1hbmFnZW1lbnQgVUkiICJNdWx0aS10ZW5hbnQgcHJvamVjdCBvcmdhbml6YXRpb24iICJSZWFjdCBDb21wb25lbnRzIgogICAgICAgICAgICAgICAgc2V0dGluZ3NVSSA9IGNvbXBvbmVudCAiU2V0dGluZ3MgJiBTZWNyZXRzIFVJIiAiQ29uZmlndXJlIHJ1bm5lciBzZWNyZXRzIGFuZCBBUEkga2V5cyIgIlJlYWN0IENvbXBvbmVudHMiCiAgICAgICAgICAgICAgICBhdXRoSGFuZGxlciA9IGNvbXBvbmVudCAiQXV0aGVudGljYXRpb24gSGFuZGxlciIgIk9wZW5TaGlmdCBPQXV0aCBpbnRlZ3JhdGlvbiIgIk5leHRBdXRoLmpzIgoKICAgICAgICAgICAgICAgIHRhZ3MgIldlYiBCcm93c2VyIgogICAgICAgICAgICB9CgogICAgICAgICAgICAjIEJhY2tlbmQgQ29udGFpbmVyCiAgICAgICAgICAgIGJhY2tlbmQgPSBjb250YWluZXIgIkJhY2tlbmQgQVBJIFNlcnZpY2UiICJSRVNUIEFQSSBmb3IgbWFuYWdpbmcgS3ViZXJuZXRlcyBDdXN0b20gUmVzb3VyY2VzIiAiR28sIEdpbiBGcmFtZXdvcmsiIHsKICAgICAgICAgICAgICAgIHByb2plY3RzQVBJID0gY29tcG9uZW50ICJQcm9qZWN0cyBBUEkiICJNdWx0aS10ZW5hbnQgcHJvamVjdCBDUlVEIG9wZXJhdGlvbnMiICJHbyBIVFRQIEhhbmRsZXJzIgogICAgICAgICAgICAgICAgc2Vzc2lvbnNBUEkgPSBjb21wb25lbnQgIlNlc3Npb25zIEFQSSIgIkFnZW50aWMgc2Vzc2lvbiBsaWZlY3ljbGUgbWFuYWdlbWVudCIgIkdvIEhUVFAgSGFuZGxlcnMiCiAgICAgICAgICAgICAgICBzZWNyZXRzQVBJID0gY29tcG9uZW50ICJTZWNyZXRzIEFQSSIgIlNlY3VyZSBzdG9yYWdlIG9mIHJ1bm5lciBBUEkga2V5cyIgIkdvIEhUVFAgSGFuZGxlcnMiCiAgICAgICAgICAgICAgICByYmFjTWlkZGxld2FyZSA9IGNvbXBvbmVudCAiUkJBQyBNaWRkbGV3YXJlIiAiQXV0aG9yaXphdGlvbiBhbmQgbXVsdGktdGVuYW5jeSBlbmZvcmNlbWVudCIgIkdvIE1pZGRsZXdhcmUiCiAgICAgICAgICAgICAgICBrOHNDbGllbnQgPSBjb21wb25lbnQgIkt1YmVybmV0ZXMgQ2xpZW50IiAiQ3VzdG9tIFJlc291cmNlIG1hbmFnZW1lbnQiICJjbGllbnQtZ28iCgogICAgICAgICAgICAgICAgdGFncyAiQVBJIgogICAgICAgICAgICB9CgogICAgICAgICAgICAjIE9wZXJhdG9yIENvbnRhaW5lcgogICAgICAgICAgICBvcGVyYXRvciA9IGNvbnRhaW5lciAiQWdlbnRpYyBPcGVyYXRvciIgIkt1YmVybmV0ZXMgb3BlcmF0b3Igd2F0Y2hpbmcgQ3VzdG9tIFJlc291cmNlcyBhbmQgY3JlYXRpbmcgSm9icyIgIkdvLCBLdWJlYnVpbGRlciwgY29udHJvbGxlci1ydW50aW1lIiB7CiAgICAgICAgICAgICAgICBwcm9qZWN0Q29udHJvbGxlciA9IGNvbXBvbmVudCAiUHJvamVjdCBDb250cm9sbGVyIiAiUmVjb25jaWxlcyBQcm9qZWN0IENScywgbWFuYWdlcyBuYW1lc3BhY2VzIiAiY29udHJvbGxlci1ydW50aW1lIgogICAgICAgICAgICAgICAgc2Vzc2lvbkNvbnRyb2xsZXIgPSBjb21wb25lbnQgIlNlc3Npb24gQ29udHJvbGxlciIgIlJlY29uY2lsZXMgQWdlbnRpY1Nlc3Npb24gQ1JzLCBjcmVhdGVzIEpvYnMiICJjb250cm9sbGVyLXJ1bnRpbWUiCiAgICAgICAgICAgICAgICByZXNvdXJjZU1hbmFnZXIgPSBjb21wb25lbnQgIlJlc291cmNlIE1hbmFnZXIiICJNYW5hZ2VzIHF1b3RhcywgbmV0d29yayBwb2xpY2llcywgUkJBQyIgImNvbnRyb2xsZXItcnVudGltZSIKICAgICAgICAgICAgICAgIGpvYk9yY2hlc3RyYXRvciA9IGNvbXBvbmVudCAiSm9iIE9yY2hlc3RyYXRvciIgIkNyZWF0ZXMgYW5kIG1vbml0b3JzIEt1YmVybmV0ZXMgSm9icyBmb3IgQUkgcnVubmVycyIgImNvbnRyb2xsZXItcnVudGltZSIKCiAgICAgICAgICAgICAgICB0YWdzICJLdWJlcm5ldGVzIE9wZXJhdG9yIgogICAgICAgICAgICB9CgogICAgICAgICAgICAjIFJ1bm5lciBDb250YWluZXIKICAgICAgICAgICAgcnVubmVyID0gY29udGFpbmVyICJDbGF1ZGUgQ29kZSBSdW5uZXIiICJFeGVjdXRpb24gcG9kIHJ1bm5pbmcgQ2xhdWRlIENvZGUgQ0xJIHdpdGggbXVsdGktYWdlbnQgY2FwYWJpbGl0aWVzIiAiUHl0aG9uLCBDbGF1ZGUgQ29kZSBDTEkiIHsKICAgICAgICAgICAgICAgIGFnZW50TG9hZGVyID0gY29tcG9uZW50ICJBZ2VudCBMb2FkZXIiICJMb2FkcyBhbmQgb3JjaGVzdHJhdGVzIDE3IHNwZWNpYWxpemVkIEFJIGFnZW50cyIgIlB5dGhvbiIKICAgICAgICAgICAgICAgIG1jcEludGVncmF0aW9uID0gY29tcG9uZW50ICJNQ1AgSW50ZWdyYXRpb24iICJNb2RlbCBDb250ZXh0IFByb3RvY29sIGZvciBicm93c2VyIGF1dG9tYXRpb24iICJQeXRob24sIE1DUCBTREsiCiAgICAgICAgICAgICAgICBzZXNzaW9uRXhlY3V0b3IgPSBjb21wb25lbnQgIlNlc3Npb24gRXhlY3V0b3IiICJFeGVjdXRlcyBBSSB0YXNrcyBhbmQgc3RvcmVzIHJlc3VsdHMiICJQeXRob24iCiAgICAgICAgICAgICAgICBjbGF1ZGVBUEkgPSBjb21wb25lbnQgIkNsYXVkZSBBUEkgQ2xpZW50IiAiQ29tbXVuaWNhdGVzIHdpdGggQW50aHJvcGljIEFQSSIgIlB5dGhvbiwgYW50aHJvcGljIFNESyIKCiAgICAgICAgICAgICAgICB0YWdzICJBSSBSdW5uZXIiCiAgICAgICAgICAgIH0KCiAgICAgICAgICAgICMgRGF0YSBTdG9yYWdlIChLdWJlcm5ldGVzKQogICAgICAgICAgICBkYXRhYmFzZSA9IGNvbnRhaW5lciAiQ3VzdG9tIFJlc291cmNlcyAoZXRjZCkiICJLdWJlcm5ldGVzIEFQSSBzdG9yYWdlIGZvciBDdXN0b20gUmVzb3VyY2UgRGVmaW5pdGlvbnMiICJLdWJlcm5ldGVzIGV0Y2QiIHsKICAgICAgICAgICAgICAgIHRhZ3MgIkRhdGFiYXNlIgogICAgICAgICAgICB9CgogICAgICAgICAgICBzZWNyZXRzU3RvcmUgPSBjb250YWluZXIgIkt1YmVybmV0ZXMgU2VjcmV0cyIgIkVuY3J5cHRlZCBzZWNyZXQgc3RvcmFnZSBmb3IgQVBJIGtleXMgYW5kIGNyZWRlbnRpYWxzIiAiS3ViZXJuZXRlcyBTZWNyZXRzIiB7CiAgICAgICAgICAgICAgICB0YWdzICJEYXRhYmFzZSIKICAgICAgICAgICAgfQogICAgICAgIH0KCiAgICAgICAgIyBSZWxhdGlvbnNoaXBzIC0gVXNlciBJbnRlcmFjdGlvbnMKICAgICAgICB1c2VyIC0+IGZyb250ZW5kICJDcmVhdGVzIEFJIHNlc3Npb25zLCBtb25pdG9ycyBwcm9ncmVzcyB2aWEiICJIVFRQUyIKICAgICAgICBhZG1pbiAtPiBrOHMgIkRlcGxveXMgYW5kIG1hbmFnZXMgcGxhdGZvcm0gdmlhIiAib2Mva3ViZWN0bCBDTEkiCgogICAgICAgICMgUmVsYXRpb25zaGlwcyAtIEZyb250ZW5kIHRvIEJhY2tlbmQKICAgICAgICBmcm9udGVuZCAtPiBiYWNrZW5kICJNYWtlcyBBUEkgY2FsbHMgdG8iICJIVFRQUywgUkVTVCIKICAgICAgICBzZXNzaW9uVUkgLT4gc2Vzc2lvbnNBUEkgIkNyZWF0ZXMvcmVhZHMgc2Vzc2lvbnMiCiAgICAgICAgcHJvamVjdFVJIC0+IHByb2plY3RzQVBJICJNYW5hZ2VzIHByb2plY3RzIgogICAgICAgIHNldHRpbmdzVUkgLT4gc2VjcmV0c0FQSSAiQ29uZmlndXJlcyBBUEkga2V5cyIKICAgICAgICBhdXRoSGFuZGxlciAtPiByYmFjTWlkZGxld2FyZSAiQXV0aGVudGljYXRlcyByZXF1ZXN0cyIKCiAgICAgICAgIyBSZWxhdGlvbnNoaXBzIC0gQmFja2VuZCB0byBLdWJlcm5ldGVzCiAgICAgICAgYmFja2VuZCAtPiBkYXRhYmFzZSAiUmVhZHMvd3JpdGVzIEN1c3RvbSBSZXNvdXJjZXMgdmlhIiAiS3ViZXJuZXRlcyBBUEkiCiAgICAgICAgYmFja2VuZCAtPiBzZWNyZXRzU3RvcmUgIlN0b3JlcyBlbmNyeXB0ZWQgc2VjcmV0cyB2aWEiICJLdWJlcm5ldGVzIEFQSSIKICAgICAgICBrOHNDbGllbnQgLT4gZGF0YWJhc2UgIk1hbmFnZXMgQ1JzIgogICAgICAgIGs4c0NsaWVudCAtPiBzZWNyZXRzU3RvcmUgIk1hbmFnZXMgc2VjcmV0cyIKCiAgICAgICAgIyBSZWxhdGlvbnNoaXBzIC0gT3BlcmF0b3IgV29ya2Zsb3dzCiAgICAgICAgb3BlcmF0b3IgLT4gZGF0YWJhc2UgIldhdGNoZXMgQ3VzdG9tIFJlc291cmNlcyB2aWEiICJLdWJlcm5ldGVzIEFQSSIKICAgICAgICBwcm9qZWN0Q29udHJvbGxlciAtPiBkYXRhYmFzZSAiUmVjb25jaWxlcyBQcm9qZWN0IENScyIKICAgICAgICBzZXNzaW9uQ29udHJvbGxlciAtPiBkYXRhYmFzZSAiUmVjb25jaWxlcyBBZ2VudGljU2Vzc2lvbiBDUnMiCiAgICAgICAgc2Vzc2lvbkNvbnRyb2xsZXIgLT4gam9iT3JjaGVzdHJhdG9yICJUcmlnZ2VycyBKb2IgY3JlYXRpb24iCiAgICAgICAgcmVzb3VyY2VNYW5hZ2VyIC0+IGs4cyAiQ3JlYXRlcyBuYW1lc3BhY2VzLCBxdW90YXMsIFJCQUMiCiAgICAgICAgam9iT3JjaGVzdHJhdG9yIC0+IGs4cyAiQ3JlYXRlcyBLdWJlcm5ldGVzIEpvYnMiCgogICAgICAgICMgUmVsYXRpb25zaGlwcyAtIFJ1bm5lciBFeGVjdXRpb24KICAgICAgICBrOHMgLT4gcnVubmVyICJTY2hlZHVsZXMgcG9kcyBmb3IiCiAgICAgICAgcnVubmVyIC0+IGRhdGFiYXNlICJVcGRhdGVzIHNlc3Npb24gc3RhdHVzIGluIiAiS3ViZXJuZXRlcyBBUEkiCiAgICAgICAgc2Vzc2lvbkV4ZWN1dG9yIC0+IGNsYXVkZUFQSSAiRXhlY3V0ZXMgQUkgdGFza3MgdmlhIgogICAgICAgIGNsYXVkZUFQSSAtPiBhbnRocm9waWMgIkNhbGxzIENsYXVkZSBBSSBBUEkgdmlhIiAiSFRUUFMiCiAgICAgICAgYWdlbnRMb2FkZXIgLT4gc2Vzc2lvbkV4ZWN1dG9yICJQcm92aWRlcyBhZ2VudCBjb250ZXh0IHRvIgogICAgICAgIG1jcEludGVncmF0aW9uIC0+IHNlc3Npb25FeGVjdXRvciAiUHJvdmlkZXMgYnJvd3NlciBhdXRvbWF0aW9uIHRvIgoKICAgICAgICAjIFJlbGF0aW9uc2hpcHMgLSBFeHRlcm5hbCBJbnRlZ3JhdGlvbnMKICAgICAgICBydW5uZXIgLT4gc2VjcmV0c1N0b3JlICJSZWFkcyBBUEkga2V5cyBmcm9tIiAiS3ViZXJuZXRlcyBBUEkiCiAgICAgICAgZnJvbnRlbmQgLT4gZ2l0aHViICJEZXBsb3lzIHZpYSIgIkdpdEh1YiBBY3Rpb25zIgogICAgICAgIGJhY2tlbmQgLT4gZ2l0aHViICJEZXBsb3lzIHZpYSIgIkdpdEh1YiBBY3Rpb25zIgogICAgICAgIG9wZXJhdG9yIC0+IGdpdGh1YiAiRGVwbG95cyB2aWEiICJHaXRIdWIgQWN0aW9ucyIKCiAgICAgICAgIyBEZXBsb3ltZW50IEVudmlyb25tZW50CiAgICAgICAgZGVwbG95bWVudEVudmlyb25tZW50ICJQcm9kdWN0aW9uIiB7CiAgICAgICAgICAgIGRlcGxveW1lbnROb2RlICJPcGVuU2hpZnQgQ2x1c3RlciIgIlJlZCBIYXQgT3BlblNoaWZ0IDQueCIgIkt1YmVybmV0ZXMiIHsKICAgICAgICAgICAgICAgIHRhZ3MgIk9wZW5TaGlmdCIKCiAgICAgICAgICAgICAgICBkZXBsb3ltZW50Tm9kZSAiYW1iaWVudC1jb2RlIE5hbWVzcGFjZSIgIk11bHRpLXRlbmFudCBwcm9qZWN0IG5hbWVzcGFjZSIgewoKICAgICAgICAgICAgICAgICAgICBkZXBsb3ltZW50Tm9kZSAiRnJvbnRlbmQgUG9kIiAiTmV4dEpTIGFwcGxpY2F0aW9uIHBvZCIgIkt1YmVybmV0ZXMgUG9kIiB7CiAgICAgICAgICAgICAgICAgICAgICAgIGNvbnRhaW5lckluc3RhbmNlIGZyb250ZW5kCiAgICAgICAgICAgICAgICAgICAgfQoKICAgICAgICAgICAgICAgICAgICBkZXBsb3ltZW50Tm9kZSAiQmFja2VuZCBQb2QiICJHbyBBUEkgc2VydmljZSBwb2QiICJLdWJlcm5ldGVzIFBvZCIgewogICAgICAgICAgICAgICAgICAgICAgICBjb250YWluZXJJbnN0YW5jZSBiYWNrZW5kCiAgICAgICAgICAgICAgICAgICAgfQoKICAgICAgICAgICAgICAgICAgICBkZXBsb3ltZW50Tm9kZSAiT3BlcmF0b3IgUG9kIiAiS3ViZXJuZXRlcyBvcGVyYXRvciBwb2QiICJLdWJlcm5ldGVzIFBvZCIgewogICAgICAgICAgICAgICAgICAgICAgICBjb250YWluZXJJbnN0YW5jZSBvcGVyYXRvcgogICAgICAgICAgICAgICAgICAgIH0KCiAgICAgICAgICAgICAgICAgICAgZGVwbG95bWVudE5vZGUgIlJ1bm5lciBKb2IgUG9kIiAiQUkgZXhlY3V0aW9uIHBvZCAoZXBoZW1lcmFsKSIgIkt1YmVybmV0ZXMgSm9iIFBvZCIgewogICAgICAgICAgICAgICAgICAgICAgICBjb250YWluZXJJbnN0YW5jZSBydW5uZXIKICAgICAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgICAgICB9CgogICAgICAgICAgICAgICAgZGVwbG95bWVudE5vZGUgImt1YmUtc3lzdGVtIiAiS3ViZXJuZXRlcyBzeXN0ZW0gbmFtZXNwYWNlIiB7CiAgICAgICAgICAgICAgICAgICAgZGVwbG95bWVudE5vZGUgImV0Y2QgQ2x1c3RlciIgIkRpc3RyaWJ1dGVkIGtleS12YWx1ZSBzdG9yZSIgImV0Y2QiIHsKICAgICAgICAgICAgICAgICAgICAgICAgY29udGFpbmVySW5zdGFuY2UgZGF0YWJhc2UKICAgICAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgIH0KCiAgICAgICAgICAgIGRlcGxveW1lbnROb2RlICJFeHRlcm5hbCBTZXJ2aWNlcyIgewogICAgICAgICAgICAgICAgc29mdHdhcmVTeXN0ZW1JbnN0YW5jZSBhbnRocm9waWMKICAgICAgICAgICAgfQogICAgICAgIH0KICAgIH0KCiAgICB2aWV3cyB7CiAgICAgICAgIyBTeXN0ZW0gQ29udGV4dCBEaWFncmFtCiAgICAgICAgc3lzdGVtQ29udGV4dCB2dGVhbSAiU3lzdGVtQ29udGV4dCIgewogICAgICAgICAgICBpbmNsdWRlICoKICAgICAgICAgICAgYXV0b0xheW91dAogICAgICAgICAgICBkZXNjcmlwdGlvbiAiU3lzdGVtIGNvbnRleHQgZGlhZ3JhbSBmb3IgdlRlYW0gcGxhdGZvcm0gc2hvd2luZyB1c2VycywgZXh0ZXJuYWwgc3lzdGVtcywgYW5kIGhpZ2gtbGV2ZWwgaW50ZXJhY3Rpb25zIgogICAgICAgIH0KCiAgICAgICAgIyBDb250YWluZXIgRGlhZ3JhbQogICAgICAgIGNvbnRhaW5lciB2dGVhbSAiQ29udGFpbmVycyIgewogICAgICAgICAgICBpbmNsdWRlICoKICAgICAgICAgICAgYXV0b0xheW91dAogICAgICAgICAgICBkZXNjcmlwdGlvbiAiQ29udGFpbmVyIGRpYWdyYW0gc2hvd2luZyB0aGUgbWFqb3IgdGVjaG5pY2FsIGJ1aWxkaW5nIGJsb2NrcyBvZiB2VGVhbSBwbGF0Zm9ybSIKICAgICAgICB9CgogICAgICAgICMgQ29tcG9uZW50IERpYWdyYW1zCiAgICAgICAgY29tcG9uZW50IGZyb250ZW5kICJGcm9udGVuZENvbXBvbmVudHMiIHsKICAgICAgICAgICAgaW5jbHVkZSAqCiAgICAgICAgICAgIGF1dG9MYXlvdXQKICAgICAgICAgICAgZGVzY3JpcHRpb24gIkNvbXBvbmVudCBkaWFncmFtIHNob3dpbmcgaW50ZXJuYWwgc3RydWN0dXJlIG9mIHRoZSBGcm9udGVuZCBjb250YWluZXIiCiAgICAgICAgfQoKICAgICAgICBjb21wb25lbnQgYmFja2VuZCAiQmFja2VuZENvbXBvbmVudHMiIHsKICAgICAgICAgICAgaW5jbHVkZSAqCiAgICAgICAgICAgIGF1dG9MYXlvdXQKICAgICAgICAgICAgZGVzY3JpcHRpb24gIkNvbXBvbmVudCBkaWFncmFtIHNob3dpbmcgaW50ZXJuYWwgc3RydWN0dXJlIG9mIHRoZSBCYWNrZW5kIEFQSSBjb250YWluZXIiCiAgICAgICAgfQoKICAgICAgICBjb21wb25lbnQgb3BlcmF0b3IgIk9wZXJhdG9yQ29tcG9uZW50cyIgewogICAgICAgICAgICBpbmNsdWRlICoKICAgICAgICAgICAgYXV0b0xheW91dAogICAgICAgICAgICBkZXNjcmlwdGlvbiAiQ29tcG9uZW50IGRpYWdyYW0gc2hvd2luZyBpbnRlcm5hbCBzdHJ1Y3R1cmUgb2YgdGhlIEt1YmVybmV0ZXMgT3BlcmF0b3IiCiAgICAgICAgfQoKICAgICAgICBjb21wb25lbnQgcnVubmVyICJSdW5uZXJDb21wb25lbnRzIiB7CiAgICAgICAgICAgIGluY2x1ZGUgKgogICAgICAgICAgICBhdXRvTGF5b3V0CiAgICAgICAgICAgIGRlc2NyaXB0aW9uICJDb21wb25lbnQgZGlhZ3JhbSBzaG93aW5nIGludGVybmFsIHN0cnVjdHVyZSBvZiB0aGUgQ2xhdWRlIENvZGUgUnVubmVyIgogICAgICAgIH0KCiAgICAgICAgIyBEZXBsb3ltZW50IERpYWdyYW0KICAgICAgICBkZXBsb3ltZW50IHZ0ZWFtICJQcm9kdWN0aW9uIiAiRGVwbG95bWVudCIgewogICAgICAgICAgICBpbmNsdWRlICoKICAgICAgICAgICAgYXV0b0xheW91dAogICAgICAgICAgICBkZXNjcmlwdGlvbiAiRGVwbG95bWVudCBkaWFncmFtIHNob3dpbmcgaG93IHZUZWFtIGNvbnRhaW5lcnMgYXJlIGRlcGxveWVkIHRvIE9wZW5TaGlmdCIKICAgICAgICB9CgogICAgICAgICMgRHluYW1pYyBEaWFncmFtIC0gU2Vzc2lvbiBDcmVhdGlvbiBGbG93CiAgICAgICAgZHluYW1pYyB2dGVhbSAiU2Vzc2lvbkNyZWF0aW9uRmxvdyIgIlNlc3Npb24gQ3JlYXRpb24gYW5kIEV4ZWN1dGlvbiBGbG93IiB7CiAgICAgICAgICAgIHVzZXIgLT4gZnJvbnRlbmQgIjEuIENyZWF0ZXMgbmV3IEFJIHNlc3Npb24iCiAgICAgICAgICAgIGZyb250ZW5kIC0+IGJhY2tlbmQgIjIuIFBPU1QgL2FwaS9zZXNzaW9ucyIKICAgICAgICAgICAgYmFja2VuZCAtPiBkYXRhYmFzZSAiMy4gQ3JlYXRlcyBBZ2VudGljU2Vzc2lvbiBDUiIKICAgICAgICAgICAgb3BlcmF0b3IgLT4gZGF0YWJhc2UgIjQuIFdhdGNoZXMgQ1IgY3JlYXRpb24iCiAgICAgICAgICAgIG9wZXJhdG9yIC0+IGs4cyAiNS4gQ3JlYXRlcyBLdWJlcm5ldGVzIEpvYiIKICAgICAgICAgICAgazhzIC0+IHJ1bm5lciAiNi4gU2NoZWR1bGVzIHJ1bm5lciBwb2QiCiAgICAgICAgICAgIHJ1bm5lciAtPiBhbnRocm9waWMgIjcuIEV4ZWN1dGVzIEFJIHRhc2tzIHZpYSBDbGF1ZGUgQVBJIgogICAgICAgICAgICBydW5uZXIgLT4gZGF0YWJhc2UgIjguIFVwZGF0ZXMgc2Vzc2lvbiBzdGF0dXMiCiAgICAgICAgICAgIGZyb250ZW5kIC0+IGJhY2tlbmQgIjkuIFBvbGxzIHNlc3Npb24gc3RhdHVzIgogICAgICAgICAgICBiYWNrZW5kIC0+IGRhdGFiYXNlICIxMC4gUmVhZHMgdXBkYXRlZCBDUiIKICAgICAgICAgICAgYmFja2VuZCAtPiBmcm9udGVuZCAiMTEuIFJldHVybnMgcmVzdWx0cyIKICAgICAgICAgICAgZnJvbnRlbmQgLT4gdXNlciAiMTIuIERpc3BsYXlzIHNlc3Npb24gb3V0cHV0IgogICAgICAgICAgICBhdXRvTGF5b3V0CiAgICAgICAgfQoKICAgICAgICAjIFN0eWxlcwogICAgICAgIHN0eWxlcyB7CiAgICAgICAgICAgIGVsZW1lbnQgIlNvZnR3YXJlIFN5c3RlbSIgewogICAgICAgICAgICAgICAgYmFja2dyb3VuZCAjMTE2OGJkCiAgICAgICAgICAgICAgICBjb2xvciAjZmZmZmZmCiAgICAgICAgICAgIH0KICAgICAgICAgICAgZWxlbWVudCAiRXh0ZXJuYWwgU3lzdGVtIiB7CiAgICAgICAgICAgICAgICBiYWNrZ3JvdW5kICM5OTk5OTkKICAgICAgICAgICAgICAgIGNvbG9yICNmZmZmZmYKICAgICAgICAgICAgfQogICAgICAgICAgICBlbGVtZW50ICJQZXJzb24iIHsKICAgICAgICAgICAgICAgIHNoYXBlIHBlcnNvbgogICAgICAgICAgICAgICAgYmFja2dyb3VuZCAjMDg0MjdiCiAgICAgICAgICAgICAgICBjb2xvciAjZmZmZmZmCiAgICAgICAgICAgIH0KICAgICAgICAgICAgZWxlbWVudCAiQ29udGFpbmVyIiB7CiAgICAgICAgICAgICAgICBiYWNrZ3JvdW5kICM0MzhkZDUKICAgICAgICAgICAgICAgIGNvbG9yICNmZmZmZmYKICAgICAgICAgICAgfQogICAgICAgICAgICBlbGVtZW50ICJDb21wb25lbnQiIHsKICAgICAgICAgICAgICAgIGJhY2tncm91bmQgIzg1YmJmMAogICAgICAgICAgICAgICAgY29sb3IgIzAwMDAwMAogICAgICAgICAgICB9CiAgICAgICAgICAgIGVsZW1lbnQgIldlYiBCcm93c2VyIiB7CiAgICAgICAgICAgICAgICBzaGFwZSBXZWJCcm93c2VyCiAgICAgICAgICAgIH0KICAgICAgICAgICAgZWxlbWVudCAiRGF0YWJhc2UiIHsKICAgICAgICAgICAgICAgIHNoYXBlIEN5bGluZGVyCiAgICAgICAgICAgIH0KICAgICAgICAgICAgZWxlbWVudCAiQVBJIiB7CiAgICAgICAgICAgICAgICBzaGFwZSBIZXhhZ29uCiAgICAgICAgICAgIH0KICAgICAgICAgICAgZWxlbWVudCAiS3ViZXJuZXRlcyBPcGVyYXRvciIgewogICAgICAgICAgICAgICAgc2hhcGUgQ29tcG9uZW50CiAgICAgICAgICAgIH0KICAgICAgICAgICAgZWxlbWVudCAiQUkgUnVubmVyIiB7CiAgICAgICAgICAgICAgICBzaGFwZSBSb2JvdAogICAgICAgICAgICB9CiAgICAgICAgICAgIGVsZW1lbnQgIk9wZW5TaGlmdCIgewogICAgICAgICAgICAgICAgYmFja2dyb3VuZCAjRUUwMDAwCiAgICAgICAgICAgICAgICBjb2xvciAjZmZmZmZmCiAgICAgICAgICAgIH0KICAgICAgICB9CgogICAgICAgICMgVGhlbWVzCiAgICAgICAgdGhlbWVzIGRlZmF1bHQgaHR0cHM6Ly9zdGF0aWMuc3RydWN0dXJpenIuY29tL3RoZW1lcy9rdWJlcm5ldGVzLXYwLjMvdGhlbWUuanNvbgogICAgfQoKICAgIGNvbmZpZ3VyYXRpb24gewogICAgICAgIHNjb3BlIHNvZnR3YXJlc3lzdGVtCiAgICB9Cgp9"
+  },
+  "views" : {
+    "componentViews" : [ {
+      "automaticLayout" : {
+        "applied" : true,
+        "edgeSeparation" : 0,
+        "implementation" : "Graphviz",
+        "nodeSeparation" : 300,
+        "rankDirection" : "TopBottom",
+        "rankSeparation" : 300,
+        "vertices" : false
+      },
+      "containerId" : "7",
+      "description" : "Component diagram showing internal structure of the Frontend container",
+      "dimensions" : {
+        "height" : 1409,
+        "width" : 3140
+      },
+      "elements" : [ {
+        "id" : "8",
+        "x" : 970,
+        "y" : 172
+      }, {
+        "id" : "9",
+        "x" : 220,
+        "y" : 172
+      }, {
+        "id" : "10",
+        "x" : 2470,
+        "y" : 172
+      }, {
+        "id" : "11",
+        "x" : 1720,
+        "y" : 172
+      }, {
+        "id" : "12",
+        "x" : 1345,
+        "y" : 772
+      } ],
+      "externalContainerBoundariesVisible" : false,
+      "key" : "FrontendComponents",
+      "order" : 3,
+      "relationships" : [ {
+        "id" : "35"
+      }, {
+        "id" : "38",
+        "vertices" : [ {
+          "x" : 820,
+          "y" : 576
+        } ]
+      }, {
+        "id" : "41",
+        "vertices" : [ {
+          "x" : 2320,
+          "y" : 576
+        } ]
+      }, {
+        "id" : "44"
+      } ]
+    }, {
+      "automaticLayout" : {
+        "applied" : true,
+        "edgeSeparation" : 0,
+        "implementation" : "Graphviz",
+        "nodeSeparation" : 300,
+        "rankDirection" : "TopBottom",
+        "rankSeparation" : 300,
+        "vertices" : false
+      },
+      "containerId" : "12",
+      "description" : "Component diagram showing internal structure of the Backend API container",
+      "dimensions" : {
+        "height" : 1900,
+        "width" : 4245
+      },
+      "elements" : [ {
+        "id" : "7",
+        "x" : 2449,
+        "y" : 152
+      }, {
+        "id" : "13",
+        "x" : 3574,
+        "y" : 752
+      }, {
+        "id" : "14",
+        "x" : 2824,
+        "y" : 752
+      }, {
+        "id" : "15",
+        "x" : 2074,
+        "y" : 752
+      }, {
+        "id" : "16",
+        "x" : 1324,
+        "y" : 752
+      }, {
+        "id" : "17",
+        "x" : 574,
+        "y" : 752
+      }, {
+        "id" : "28",
+        "x" : 199,
+        "y" : 1352
+      }, {
+        "id" : "29",
+        "x" : 949,
+        "y" : 1352
+      } ],
+      "externalContainerBoundariesVisible" : false,
+      "key" : "BackendComponents",
+      "order" : 4,
+      "relationships" : [ {
+        "id" : "36"
+      }, {
+        "id" : "39",
+        "vertices" : [ {
+          "x" : 3424,
+          "y" : 648
+        } ]
+      }, {
+        "id" : "42"
+      }, {
+        "id" : "45",
+        "vertices" : [ {
+          "x" : 1924,
+          "y" : 648
+        } ]
+      }, {
+        "id" : "48"
+      }, {
+        "id" : "49"
+      } ]
+    }, {
+      "automaticLayout" : {
+        "applied" : true,
+        "edgeSeparation" : 0,
+        "implementation" : "Graphviz",
+        "nodeSeparation" : 300,
+        "rankDirection" : "TopBottom",
+        "rankSeparation" : 300,
+        "vertices" : false
+      },
+      "containerId" : "18",
+      "description" : "Component diagram showing internal structure of the Kubernetes Operator",
+      "dimensions" : {
+        "height" : 1920,
+        "width" : 3253
+      },
+      "elements" : [ {
+        "id" : "4",
+        "x" : 1990,
+        "y" : 1372
+      }, {
+        "id" : "19",
+        "x" : 969,
+        "y" : 172
+      }, {
+        "id" : "20",
+        "x" : 219,
+        "y" : 172
+      }, {
+        "id" : "21",
+        "x" : 1719,
+        "y" : 172
+      }, {
+        "id" : "22",
+        "x" : 923,
+        "y" : 772
+      }, {
+        "id" : "28",
+        "x" : 2377,
+        "y" : 772
+      } ],
+      "externalContainerBoundariesVisible" : false,
+      "key" : "OperatorComponents",
+      "order" : 5,
+      "relationships" : [ {
+        "id" : "51",
+        "vertices" : [ {
+          "x" : 1569,
+          "y" : 472
+        } ]
+      }, {
+        "id" : "52",
+        "vertices" : [ {
+          "x" : 819,
+          "y" : 472
+        } ]
+      }, {
+        "id" : "53"
+      }, {
+        "id" : "54",
+        "vertices" : [ {
+          "x" : 2977,
+          "y" : 772
+        }, {
+          "x" : 2977,
+          "y" : 1176
+        } ]
+      }, {
+        "id" : "57"
+      } ]
+    }, {
+      "automaticLayout" : {
+        "applied" : true,
+        "edgeSeparation" : 0,
+        "implementation" : "Graphviz",
+        "nodeSeparation" : 300,
+        "rankDirection" : "TopBottom",
+        "rankSeparation" : 300,
+        "vertices" : false
+      },
+      "containerId" : "23",
+      "description" : "Component diagram showing internal structure of the Claude Code Runner",
+      "dimensions" : {
+        "height" : 2520,
+        "width" : 1640
+      },
+      "elements" : [ {
+        "id" : "3",
+        "x" : 594,
+        "y" : 1972
+      }, {
+        "id" : "24",
+        "x" : 969,
+        "y" : 172
+      }, {
+        "id" : "25",
+        "x" : 219,
+        "y" : 172
+      }, {
+        "id" : "26",
+        "x" : 594,
+        "y" : 772
+      }, {
+        "id" : "27",
+        "x" : 594,
+        "y" : 1372
+      } ],
+      "externalContainerBoundariesVisible" : false,
+      "key" : "RunnerComponents",
+      "order" : 6,
+      "relationships" : [ {
+        "id" : "61"
+      }, {
+        "id" : "62"
+      }, {
+        "id" : "65"
+      }, {
+        "id" : "66"
+      } ]
+    } ],
+    "configuration" : {
+      "branding" : { },
+      "lastSavedView" : "SystemContext",
+      "metadataSymbols" : "SquareBrackets",
+      "styles" : {
+        "elements" : [ {
+          "background" : "#1168bd",
+          "color" : "#ffffff",
+          "tag" : "Software System"
+        }, {
+          "background" : "#999999",
+          "color" : "#ffffff",
+          "tag" : "External System"
+        }, {
+          "background" : "#08427b",
+          "color" : "#ffffff",
+          "shape" : "Person",
+          "tag" : "Person"
+        }, {
+          "background" : "#438dd5",
+          "color" : "#ffffff",
+          "tag" : "Container"
+        }, {
+          "background" : "#85bbf0",
+          "color" : "#000000",
+          "tag" : "Component"
+        }, {
+          "shape" : "WebBrowser",
+          "tag" : "Web Browser"
+        }, {
+          "shape" : "Cylinder",
+          "tag" : "Database"
+        }, {
+          "shape" : "Hexagon",
+          "tag" : "API"
+        }, {
+          "shape" : "Component",
+          "tag" : "Kubernetes Operator"
+        }, {
+          "shape" : "Robot",
+          "tag" : "AI Runner"
+        }, {
+          "background" : "#ee0000",
+          "color" : "#ffffff",
+          "tag" : "OpenShift"
+        } ]
+      },
+      "terminology" : { },
+      "themes" : [ "https://static.structurizr.com/themes/default/theme.json", "https://static.structurizr.com/themes/kubernetes-v0.3/theme.json" ]
+    },
+    "containerViews" : [ {
+      "automaticLayout" : {
+        "applied" : true,
+        "edgeSeparation" : 0,
+        "implementation" : "Graphviz",
+        "nodeSeparation" : 300,
+        "rankDirection" : "TopBottom",
+        "rankSeparation" : 300,
+        "vertices" : false
+      },
+      "description" : "Container diagram showing the major technical building blocks of vTeam platform",
+      "dimensions" : {
+        "height" : 2791,
+        "width" : 4528
+      },
+      "elements" : [ {
+        "id" : "1",
+        "x" : 1369,
+        "y" : 152
+      }, {
+        "id" : "3",
+        "x" : 2377,
+        "y" : 2152
+      }, {
+        "id" : "4",
+        "x" : 3127,
+        "y" : 2152
+      }, {
+        "id" : "5",
+        "x" : 3877,
+        "y" : 2152
+      }, {
+        "id" : "7",
+        "x" : 1344,
+        "y" : 852
+      }, {
+        "id" : "12",
+        "x" : 969,
+        "y" : 1502
+      }, {
+        "id" : "18",
+        "x" : 1719,
+        "y" : 1502
+      }, {
+        "id" : "23",
+        "x" : 219,
+        "y" : 1452
+      }, {
+        "id" : "28",
+        "x" : 969,
+        "y" : 2152
+      }, {
+        "id" : "29",
+        "x" : 219,
+        "y" : 2152
+      } ],
+      "externalSoftwareSystemBoundariesVisible" : false,
+      "key" : "Containers",
+      "order" : 2,
+      "relationships" : [ {
+        "id" : "30"
+      }, {
+        "id" : "33"
+      }, {
+        "id" : "46"
+      }, {
+        "id" : "47"
+      }, {
+        "id" : "50"
+      }, {
+        "id" : "55"
+      }, {
+        "id" : "58",
+        "vertices" : [ {
+          "x" : 2977,
+          "y" : 2152
+        }, {
+          "x" : 819,
+          "y" : 1852
+        } ]
+      }, {
+        "id" : "60"
+      }, {
+        "id" : "63",
+        "vertices" : [ {
+          "x" : 819,
+          "y" : 1852
+        } ]
+      }, {
+        "id" : "67"
+      }, {
+        "id" : "68"
+      }, {
+        "id" : "70",
+        "vertices" : [ {
+          "x" : 1569,
+          "y" : 1852
+        }, {
+          "x" : 3727,
+          "y" : 2152
+        } ]
+      }, {
+        "id" : "71",
+        "vertices" : [ {
+          "x" : 3727,
+          "y" : 2152
+        } ]
+      } ],
+      "softwareSystemId" : "6"
+    } ],
+    "deploymentViews" : [ {
+      "automaticLayout" : {
+        "applied" : true,
+        "edgeSeparation" : 0,
+        "implementation" : "Graphviz",
+        "nodeSeparation" : 300,
+        "rankDirection" : "TopBottom",
+        "rankSeparation" : 300,
+        "vertices" : false
+      },
+      "description" : "Deployment diagram showing how vTeam containers are deployed to OpenShift",
+      "dimensions" : {
+        "height" : 2483,
+        "width" : 3355
+      },
+      "elements" : [ {
+        "id" : "72",
+        "x" : 175,
+        "y" : 175
+      }, {
+        "id" : "73",
+        "x" : 175,
+        "y" : 175
+      }, {
+        "id" : "74",
+        "x" : 175,
+        "y" : 175
+      }, {
+        "id" : "75",
+        "x" : 260,
+        "y" : 261
+      }, {
+        "id" : "76",
+        "x" : 175,
+        "y" : 175
+      }, {
+        "id" : "77",
+        "x" : 377,
+        "y" : 911
+      }, {
+        "id" : "79",
+        "x" : 175,
+        "y" : 175
+      }, {
+        "id" : "80",
+        "x" : 1023,
+        "y" : 261
+      }, {
+        "id" : "81",
+        "x" : 175,
+        "y" : 175
+      }, {
+        "id" : "82",
+        "x" : 1785,
+        "y" : 211
+      }, {
+        "id" : "83",
+        "x" : 175,
+        "y" : 175
+      }, {
+        "id" : "84",
+        "x" : 175,
+        "y" : 175
+      }, {
+        "id" : "85",
+        "x" : 1023,
+        "y" : 1661
+      }, {
+        "id" : "89",
+        "x" : 175,
+        "y" : 175
+      }, {
+        "id" : "90",
+        "x" : 2685,
+        "y" : 911
+      } ],
+      "environment" : "Production",
+      "key" : "Deployment",
+      "order" : 7,
+      "relationships" : [ {
+        "id" : "78"
+      }, {
+        "id" : "86"
+      }, {
+        "id" : "87"
+      }, {
+        "id" : "88"
+      }, {
+        "id" : "91"
+      } ],
+      "softwareSystemId" : "6"
+    } ],
+    "dynamicViews" : [ {
+      "automaticLayout" : {
+        "applied" : true,
+        "edgeSeparation" : 0,
+        "implementation" : "Graphviz",
+        "nodeSeparation" : 300,
+        "rankDirection" : "TopBottom",
+        "rankSeparation" : 300,
+        "vertices" : false
+      },
+      "description" : "Session Creation and Execution Flow",
+      "dimensions" : {
+        "height" : 2120,
+        "width" : 3778
+      },
+      "elementId" : "6",
+      "elements" : [ {
+        "id" : "1",
+        "x" : 244,
+        "y" : 1472
+      }, {
+        "id" : "3",
+        "x" : 3127,
+        "y" : 872
+      }, {
+        "id" : "4",
+        "x" : 2377,
+        "y" : 872
+      }, {
+        "id" : "7",
+        "x" : 219,
+        "y" : 872
+      }, {
+        "id" : "12",
+        "x" : 219,
+        "y" : 222
+      }, {
+        "id" : "18",
+        "x" : 969,
+        "y" : 222
+      }, {
+        "id" : "23",
+        "x" : 1719,
+        "y" : 172
+      }, {
+        "id" : "28",
+        "x" : 969,
+        "y" : 872
+      } ],
+      "externalBoundariesVisible" : false,
+      "key" : "SessionCreationFlow",
+      "order" : 8,
+      "relationships" : [ {
+        "description" : "1. Creates new AI session",
+        "id" : "30",
+        "order" : "1",
+        "response" : false,
+        "vertices" : [ {
+          "x" : 594,
+          "y" : 1347
+        } ]
+      }, {
+        "description" : "2. POST /api/sessions",
+        "id" : "33",
+        "order" : "2",
+        "response" : false,
+        "vertices" : [ {
+          "x" : 444,
+          "y" : 719
+        } ]
+      }, {
+        "description" : "3. Creates AgenticSession CR",
+        "id" : "46",
+        "order" : "3",
+        "response" : false,
+        "vertices" : [ {
+          "x" : 724,
+          "y" : 835
+        } ]
+      }, {
+        "description" : "4. Watches CR creation",
+        "id" : "50",
+        "order" : "4",
+        "response" : false
+      }, {
+        "description" : "5. Creates Kubernetes Job",
+        "id" : "55",
+        "order" : "5",
+        "response" : false,
+        "vertices" : [ {
+          "x" : 1569,
+          "y" : 572
+        } ]
+      }, {
+        "description" : "6. Schedules runner pod",
+        "id" : "58",
+        "order" : "6",
+        "response" : false
+      }, {
+        "description" : "7. Executes AI tasks via Claude API",
+        "id" : "63",
+        "order" : "7",
+        "response" : false
+      }, {
+        "description" : "8. Updates session status",
+        "id" : "60",
+        "order" : "8",
+        "response" : false
+      }, {
+        "description" : "9. Polls session status",
+        "id" : "33",
+        "order" : "9",
+        "response" : false,
+        "vertices" : [ {
+          "x" : 294,
+          "y" : 719
+        } ]
+      }, {
+        "description" : "10. Reads updated CR",
+        "id" : "46",
+        "order" : "10",
+        "response" : false,
+        "vertices" : [ {
+          "x" : 913,
+          "y" : 602
+        } ]
+      }, {
+        "description" : "11. Returns results",
+        "id" : "33",
+        "order" : "11",
+        "response" : true,
+        "vertices" : [ {
+          "x" : 594,
+          "y" : 719
+        } ]
+      }, {
+        "description" : "12. Displays session output",
+        "id" : "30",
+        "order" : "12",
+        "response" : true,
+        "vertices" : [ {
+          "x" : 294,
+          "y" : 1347
+        } ]
+      } ]
+    } ],
+    "systemContextViews" : [ {
+      "automaticLayout" : {
+        "applied" : true,
+        "edgeSeparation" : 0,
+        "implementation" : "Graphviz",
+        "nodeSeparation" : 300,
+        "rankDirection" : "TopBottom",
+        "rankSeparation" : 300,
+        "vertices" : false
+      },
+      "description" : "System context diagram for vTeam platform showing users, external systems, and high-level interactions",
+      "dimensions" : {
+        "height" : 2000,
+        "width" : 2350
+      },
+      "elements" : [ {
+        "id" : "1",
+        "x" : 599,
+        "y" : 151
+      }, {
+        "id" : "3",
+        "x" : 949,
+        "y" : 1451
+      }, {
+        "id" : "4",
+        "x" : 199,
+        "y" : 1451
+      }, {
+        "id" : "5",
+        "x" : 1699,
+        "y" : 1451
+      }, {
+        "id" : "6",
+        "x" : 574,
+        "y" : 851
+      } ],
+      "enterpriseBoundaryVisible" : true,
+      "key" : "SystemContext",
+      "order" : 1,
+      "relationships" : [ {
+        "id" : "31"
+      }, {
+        "id" : "56",
+        "vertices" : [ {
+          "x" : 484,
+          "y" : 1221
+        } ]
+      }, {
+        "id" : "59",
+        "vertices" : [ {
+          "x" : 738,
+          "y" : 1380
+        } ]
+      }, {
+        "id" : "64"
+      }, {
+        "id" : "69"
+      } ],
+      "softwareSystemId" : "6"
+    } ]
+  }
+}

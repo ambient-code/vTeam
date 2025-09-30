@@ -1,0 +1,40 @@
+@startuml
+set separator none
+title vTeam Platform - Containers
+
+top to bottom direction
+
+!include <C4/C4>
+!include <C4/C4_Context>
+!include <C4/C4_Container>
+
+Person(PlatformUser, "Platform User", $descr="Engineering team member who creates and manages AI-powered agentic sessions for automation tasks", $tags="", $link="")
+System(AnthropicAPI, "Anthropic API", $descr="Claude AI language model service providing intelligent code generation and analysis capabilities", $tags="", $link="")
+System(KubernetesOpenShiftCluster, "Kubernetes/OpenShift Cluster", $descr="Container orchestration platform providing compute, storage, and networking infrastructure", $tags="", $link="")
+System(GitHub, "GitHub", $descr="Source code repository and CI/CD platform for vTeam development", $tags="", $link="")
+
+System_Boundary("vTeamPlatform_boundary", "vTeam Platform", $tags="") {
+  Container(vTeamPlatform.BackendAPIService, "Backend API Service", $techn="Go, Gin Framework", $descr="REST API for managing Kubernetes Custom Resources", $tags="", $link="")
+  Container(vTeamPlatform.AgenticOperator, "Agentic Operator", $techn="Go, Kubebuilder, controller-runtime", $descr="Kubernetes operator watching Custom Resources and creating Jobs", $tags="", $link="")
+  Container(vTeamPlatform.ClaudeCodeRunner, "Claude Code Runner", $techn="Python, Claude Code CLI", $descr="Execution pod running Claude Code CLI with multi-agent capabilities", $tags="", $link="")
+  ContainerDb(vTeamPlatform.CustomResourcesetcd, "Custom Resources (etcd)", $techn="Kubernetes etcd", $descr="Kubernetes API storage for Custom Resource Definitions", $tags="", $link="")
+  ContainerDb(vTeamPlatform.KubernetesSecrets, "Kubernetes Secrets", $techn="Kubernetes Secrets", $descr="Encrypted secret storage for API keys and credentials", $tags="", $link="")
+  Container(vTeamPlatform.FrontendWebApplication, "Frontend Web Application", $techn="NextJS 14, TypeScript, Shadcn UI", $descr="User interface for creating and monitoring AI sessions", $tags="", $link="")
+}
+
+Rel(PlatformUser, vTeamPlatform.FrontendWebApplication, "Creates AI sessions, monitors progress via", $techn="HTTPS", $tags="", $link="")
+Rel(vTeamPlatform.FrontendWebApplication, vTeamPlatform.BackendAPIService, "Makes API calls to", $techn="HTTPS, REST", $tags="", $link="")
+Rel(vTeamPlatform.BackendAPIService, vTeamPlatform.CustomResourcesetcd, "Reads/writes Custom Resources via", $techn="Kubernetes API", $tags="", $link="")
+Rel(vTeamPlatform.BackendAPIService, vTeamPlatform.KubernetesSecrets, "Stores encrypted secrets via", $techn="Kubernetes API", $tags="", $link="")
+Rel(vTeamPlatform.AgenticOperator, vTeamPlatform.CustomResourcesetcd, "Watches Custom Resources via", $techn="Kubernetes API", $tags="", $link="")
+Rel(vTeamPlatform.AgenticOperator, KubernetesOpenShiftCluster, "Creates namespaces, quotas, RBAC", $techn="", $tags="", $link="")
+Rel(KubernetesOpenShiftCluster, vTeamPlatform.ClaudeCodeRunner, "Schedules pods for", $techn="", $tags="", $link="")
+Rel(vTeamPlatform.ClaudeCodeRunner, vTeamPlatform.CustomResourcesetcd, "Updates session status in", $techn="Kubernetes API", $tags="", $link="")
+Rel(vTeamPlatform.ClaudeCodeRunner, AnthropicAPI, "Calls Claude AI API via", $techn="HTTPS", $tags="", $link="")
+Rel(vTeamPlatform.ClaudeCodeRunner, vTeamPlatform.KubernetesSecrets, "Reads API keys from", $techn="Kubernetes API", $tags="", $link="")
+Rel(vTeamPlatform.FrontendWebApplication, GitHub, "Deploys via", $techn="GitHub Actions", $tags="", $link="")
+Rel(vTeamPlatform.BackendAPIService, GitHub, "Deploys via", $techn="GitHub Actions", $tags="", $link="")
+Rel(vTeamPlatform.AgenticOperator, GitHub, "Deploys via", $techn="GitHub Actions", $tags="", $link="")
+
+SHOW_LEGEND(true)
+@enduml

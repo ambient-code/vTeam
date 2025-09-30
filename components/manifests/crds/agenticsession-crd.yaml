@@ -1,0 +1,185 @@
+# AgenticSession Custom Resource Definition
+# C4 Architecture: Represents AI-powered automation sessions
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: agenticsessions.vteam.io
+spec:
+  group: vteam.io
+  versions:
+  - name: v1alpha1
+    served: true
+    storage: true
+    schema:
+      openAPIV3Schema:
+        type: object
+        properties:
+          spec:
+            type: object
+            required:
+              - description
+              - task
+              - agent
+              - runner
+            properties:
+              description:
+                type: string
+                description: Description of the session purpose
+              task:
+                type: string
+                description: Task to be executed by the AI agent
+              agent:
+                type: string
+                description: Type of agent to use
+                enum:
+                  - general-purpose
+                  - emma
+                  - olivia
+                  - diego
+                  - ryan
+                  - taylor
+                  - felix
+                  - phoenix
+                  - terry
+                  - uma
+                  - parker
+                  - jack
+                  - sam
+                  - archie
+                  - lee
+                  - casey
+                  - stella
+                  - sre-reliability-engineer
+                  - tdd-developer
+                  - spec-kit-implementer
+              parameters:
+                type: object
+                additionalProperties:
+                  type: string
+                description: Parameters for agent execution
+              secrets:
+                type: array
+                items:
+                  type: string
+                description: Names of secrets to mount
+              timeout:
+                type: integer
+                minimum: 60
+                maximum: 86400
+                default: 3600
+                description: Timeout in seconds
+              runner:
+                type: object
+                required:
+                  - image
+                properties:
+                  image:
+                    type: string
+                    description: Container image for the runner
+                  resources:
+                    type: object
+                    properties:
+                      requests:
+                        type: object
+                        properties:
+                          memory:
+                            type: string
+                          cpu:
+                            type: string
+                      limits:
+                        type: object
+                        properties:
+                          memory:
+                            type: string
+                          cpu:
+                            type: string
+                  env:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                        value:
+                          type: string
+                        valueFrom:
+                          type: object
+                  volumeMounts:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                        mountPath:
+                          type: string
+                        readOnly:
+                          type: boolean
+          status:
+            type: object
+            properties:
+              phase:
+                type: string
+                enum: ["Pending", "Running", "Succeeded", "Failed"]
+                description: Current phase of the session
+              message:
+                type: string
+                description: Human-readable status message
+              jobName:
+                type: string
+                description: Name of the Kubernetes Job created
+              startTime:
+                type: string
+                format: date-time
+                description: When the session started
+              endTime:
+                type: string
+                format: date-time
+                description: When the session ended
+              output:
+                type: string
+                description: Output from the AI execution
+              error:
+                type: string
+                description: Error message if session failed
+              conditions:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    type:
+                      type: string
+                    status:
+                      type: string
+                    lastTransitionTime:
+                      type: string
+                    reason:
+                      type: string
+                    message:
+                      type: string
+    subresources:
+      status: {}
+    additionalPrinterColumns:
+    - name: Agent
+      type: string
+      jsonPath: .spec.agent
+    - name: Phase
+      type: string
+      jsonPath: .status.phase
+    - name: Job
+      type: string
+      jsonPath: .status.jobName
+    - name: Age
+      type: date
+      jsonPath: .metadata.creationTimestamp
+  scope: Namespaced
+  names:
+    plural: agenticsessions
+    singular: agenticsession
+    kind: AgenticSession
+    shortNames:
+    - session
+    - sessions
+    categories:
+    - vteam
+    - all

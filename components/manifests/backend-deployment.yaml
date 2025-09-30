@@ -1,44 +1,50 @@
+# Backend API Service Deployment
+# C4 Architecture: REST API for managing Kubernetes Custom Resources
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: backend-api
+  name: vteam-backend
+  namespace: vteam-system
   labels:
-    app: backend-api
+    app: vteam
+    component: backend
 spec:
-  replicas: 1  # Single pod for RWO PVC
+  replicas: 2
   selector:
     matchLabels:
-      app: backend-api
+      app: vteam
+      component: backend
   template:
     metadata:
       labels:
-        app: backend-api
+        app: vteam
+        component: backend
     spec:
-      serviceAccountName: backend-api
+      serviceAccountName: vteam-backend
       containers:
-      - name: backend-api
-        image: quay.io/ambient_code/vteam_backend:latest
+      - name: backend
+        image: quay.io/ambient_code/vteam-backend:latest
         imagePullPolicy: Always
         ports:
         - containerPort: 8080
           name: http
+          protocol: TCP
         env:
+        - name: PORT
+          value: "8080"
+        - name: FRONTEND_URL
+          value: "https://vteam.apps.cluster.example.com"
         - name: NAMESPACE
           valueFrom:
             fieldRef:
               fieldPath: metadata.namespace
-        - name: PORT
-          value: "8080"
-        - name: AGENTS_DIR
-          value: "/app/agents"
-        
         resources:
           requests:
-            cpu: 100m
-            memory: 128Mi
+            memory: "256Mi"
+            cpu: "100m"
           limits:
-            cpu: 500m
-            memory: 512Mi
+            memory: "512Mi"
+            cpu: "500m"
         livenessProbe:
           httpGet:
             path: /health
@@ -51,21 +57,65 @@ spec:
             port: http
           initialDelaySeconds: 5
           periodSeconds: 5
-      volumes:
-      
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: backend-service
+  name: vteam-backend
+  namespace: vteam-system
   labels:
-    app: backend-api
+    app: vteam
+    component: backend
 spec:
-  selector:
-    app: backend-api
+  type: ClusterIP
   ports:
   - port: 8080
     targetPort: http
     protocol: TCP
     name: http
-  type: ClusterIP
+  selector:
+    app: vteam
+    component: backend
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: vteam-backend
+  namespace: vteam-system
+  labels:
+    app: vteam
+    component: backend
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: vteam-backend
+  labels:
+    app: vteam
+    component: backend
+rules:
+- apiGroups: [""]
+  resources: ["namespaces", "secrets", "configmaps"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["vteam.io"]
+  resources: ["projects", "agenticsessions"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["authorization.k8s.io"]
+  resources: ["tokenreviews", "subjectaccessreviews"]
+  verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: vteam-backend
+  labels:
+    app: vteam
+    component: backend
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: vteam-backend
+subjects:
+- kind: ServiceAccount
+  name: vteam-backend
+  namespace: vteam-system
