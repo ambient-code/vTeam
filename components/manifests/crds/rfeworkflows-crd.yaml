@@ -52,6 +52,19 @@ spec:
                         description: "Relative path where to clone the repository"
               workspacePath:
                 type: string
+              jiraLinks:
+                type: array
+                description: "Links between workspace files and Jira issues"
+                items:
+                  type: object
+                  required: [path, jiraKey]
+                  properties:
+                    path:
+                      type: string
+                      description: "Workspace-relative path to the document"
+                    jiraKey:
+                      type: string
+                      description: "Jira issue key (e.g., PROJ-123)"
           status:
             type: object
     subresources:

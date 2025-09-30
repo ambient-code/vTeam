@@ -161,14 +161,13 @@ export type CreateAgenticSessionRequest = {
 };
 
 // New types for RFE workflows
-export type WorkflowPhase = "pre" | "specify" | "plan" | "tasks" | "review" | "completed";
+export type WorkflowPhase = "pre" | "ideate" | "specify" | "plan" | "tasks" | "review" | "completed";
 
 export type AgentPersona = {
 	persona: string;
 	name: string;
 	role: string;
-	expertise: string[];
-	description?: string;
+	description: string;
 };
 
 export type ArtifactFile = {
@@ -205,6 +204,7 @@ export type RFEWorkflow = {
 	createdAt: string;
 	updatedAt: string;
   phaseResults?: { [phase: string]: PhaseResult };
+  jiraLinks?: Array<{ path: string; jiraKey: string }>;
 };
 
 export type CreateRFEWorkflowRequest = {

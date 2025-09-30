@@ -81,7 +81,7 @@ export default function ProjectNewRFEWorkflowPage() {
       const result = await response.json();
       router.push(`/projects/${encodeURIComponent(project)}/rfe/${encodeURIComponent(result.id)}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create RFE workflow");
+      setError(err instanceof Error ? err.message : "Failed to create RFE workspace");
     } finally {
       setIsSubmitting(false);
     }
@@ -92,10 +92,10 @@ export default function ProjectNewRFEWorkflowPage() {
       <div className="max-w-4xl mx-auto">
         <div className="flex items-center gap-4 mb-8">
           <Link href={`/projects/${encodeURIComponent(project)}/rfe`}>
-            <Button variant="ghost" size="sm"><ArrowLeft className="h-4 w-4 mr-2" />Back to RFE Workflows</Button>
+            <Button variant="ghost" size="sm"><ArrowLeft className="h-4 w-4 mr-2" />Back to RFE Workspaces</Button>
           </Link>
           <div>
-            <h1 className="text-3xl font-bold">Create RFE Workflow</h1>
+            <h1 className="text-3xl font-bold">Create RFE Workspace</h1>
             <p className="text-muted-foreground">Set up a new Request for Enhancement workflow with AI agents</p>
           </div>
         </div>
@@ -121,23 +121,6 @@ export default function ProjectNewRFEWorkflowPage() {
                     <FormLabel>Description</FormLabel>
                     <FormControl><Textarea placeholder="Describe the feature requirements, goals, and context..." rows={4} {...field} /></FormControl>
                     <FormDescription>Detailed description of what needs to be built and why</FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )} />
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Workspace</CardTitle>
-                <CardDescription>Optional shared directory path for workflow artifacts</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <FormField control={form.control} name="workspacePath" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Workspace Path</FormLabel>
-                    <FormControl><Input placeholder="e.g., /features/auth" {...field} /></FormControl>
-                    <FormDescription>Leave blank to use default path</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )} />
@@ -200,7 +183,7 @@ export default function ProjectNewRFEWorkflowPage() {
                 <Button variant="outline" disabled={isSubmitting}>Cancel</Button>
               </Link>
               <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" />Creating RFE Workflow...</>) : ("Create RFE Workflow")}
+                {isSubmitting ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" />Creating RFE Workspace...</>) : ("Create RFE Workspace")}
               </Button>
             </div>
           </form>

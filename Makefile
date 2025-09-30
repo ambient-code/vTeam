@@ -21,7 +21,7 @@ help: ## Show this help message
 
 # Container engine configuration
 CONTAINER_ENGINE ?= docker
-PLATFORM ?= 
+PLATFORM ?= linux/amd64
 BUILD_FLAGS ?= 
 
 

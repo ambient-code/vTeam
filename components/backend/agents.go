@@ -12,18 +12,16 @@ import (
 )
 
 type yamlAgent struct {
-	Name          string   `yaml:"name"`
-	Persona       string   `yaml:"persona"`
-	Role          string   `yaml:"role"`
-	Expertise     []string `yaml:"expertise"`
-	SystemMessage string   `yaml:"systemMessage"`
+	Name        string `yaml:"name"`
+	Description string `yaml:"description"`
+	Content     string `yaml:"content"`
 }
 
 type agentSummary struct {
-	Persona   string   `json:"persona"`
-	Name      string   `json:"name"`
-	Role      string   `json:"role"`
-	Expertise []string `json:"expertise"`
+	Persona     string `json:"persona"`
+	Name        string `json:"name"`
+	Role        string `json:"role"`
+	Description string `json:"description"`
 }
 
 func resolveAgentsDir() string {
@@ -61,7 +59,7 @@ func readAllAgentYAMLs(dir string) ([]yamlAgent, error) {
 		if err := yaml.Unmarshal(b, &a); err != nil {
 			continue
 		}
-		if a.Persona != "" {
+		if a.Name != "" {
 			out = append(out, a)
 		}
 	}
@@ -77,11 +75,16 @@ func listAgents(c *gin.Context) {
 	}
 	resp := make([]agentSummary, 0, len(agents))
 	for _, a := range agents {
+		// Extract persona from name (e.g., "Archie (Architect)" -> "archie-architect")
+		persona := extractPersonaFromName(a.Name)
+		// Extract role from name (e.g., "Archie (Architect)" -> "Architect")
+		role := extractRoleFromName(a.Name)
+
 		resp = append(resp, agentSummary{
-			Persona:   a.Persona,
-			Name:      a.Name,
-			Role:      a.Role,
-			Expertise: a.Expertise,
+			Persona:     persona,
+			Name:        a.Name,
+			Role:        role,
+			Description: a.Description,
 		})
 	}
 	c.JSON(http.StatusOK, resp)
@@ -93,36 +96,99 @@ func getAgentMarkdown(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "persona required"})
 		return
 	}
+	md, err := renderAgentMarkdownContent(persona)
+	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "not found") {
+			c.JSON(http.StatusNotFound, gin.H{"error": "persona not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to render agent markdown: %v", err)})
+		return
+	}
+	c.Data(http.StatusOK, "text/markdown; charset=utf-8", []byte(md))
+}
+
+// renderAgentMarkdownContent builds the markdown content for a given agent persona
+// by reading its YAML definition from the configured agents directory.
+func renderAgentMarkdownContent(persona string) (string, error) {
+	if strings.TrimSpace(persona) == "" {
+		return "", fmt.Errorf("persona required")
+	}
 	dir := resolveAgentsDir()
 	agents, err := readAllAgentYAMLs(dir)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to read agents: %v", err)})
-		return
+		return "", fmt.Errorf("failed to read agents: %w", err)
 	}
 	var found *yamlAgent
 	for i := range agents {
-		if strings.EqualFold(agents[i].Persona, persona) {
+		agentPersona := extractPersonaFromName(agents[i].Name)
+		if strings.EqualFold(agentPersona, persona) {
 			found = &agents[i]
 			break
 		}
 	}
 	if found == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "persona not found"})
-		return
+		return "", fmt.Errorf("persona not found")
 	}
 	var sb strings.Builder
-	fmt.Fprintf(&sb, "# %s (%s)\n\n", found.Name, found.Persona)
-	if found.Role != "" {
-		fmt.Fprintf(&sb, "- Role: %s\n", found.Role)
+
+	// --- YAML Front Matter ---
+	displayName := found.Name
+	description := found.Description
+
+	// Extract tools from description or use default
+	tools := "Read, Write, Edit, Bash, Glob, Grep"
+	if strings.Contains(strings.ToLower(description), "websearch") {
+		tools += ", WebSearch"
 	}
-	if len(found.Expertise) > 0 {
-		fmt.Fprintf(&sb, "- Expertise:\n")
-		for _, e := range found.Expertise {
-			fmt.Fprintf(&sb, "  - %s\n", e)
+	if strings.Contains(strings.ToLower(description), "webfetch") {
+		tools += ", WebFetch"
+	}
+
+	fmt.Fprintf(&sb, "---\n")
+	fmt.Fprintf(&sb, "name: %s\n", displayName)
+	fmt.Fprintf(&sb, "description: %s\n", description)
+	fmt.Fprintf(&sb, "tools: %s\n", tools)
+	fmt.Fprintf(&sb, "---\n\n")
+
+	// --- Agent Content ---
+	fmt.Fprintf(&sb, "%s\n", found.Content)
+	return sb.String(), nil
+}
+
+// extractPersonaFromName extracts persona from name format like "Archie Architect" -> "archie-architect"
+func extractPersonaFromName(name string) string {
+	// Extract first name and role from format like "Archie Architect"
+	parts := strings.Fields(name)
+	if len(parts) >= 2 {
+		firstName := strings.ToLower(parts[0])
+		role := strings.ToLower(strings.Join(parts[1:], "_"))
+		return firstName + "-" + role
+	}
+	// Fallback: just convert name to lowercase with dashes
+	return strings.ToLower(strings.ReplaceAll(name, " ", "-"))
+}
+
+// extractRoleFromName extracts role from name format like "Archie Architect" -> "Architect"
+func extractRoleFromName(name string) string {
+	parts := strings.Fields(name)
+	if len(parts) >= 2 {
+		return strings.Join(parts[1:], " ")
+	}
+	return ""
+}
+
+// titleCaseFromSnakeOrUpper converts strings like "ENGINEERING_MANAGER" or "engineering manager"
+// into "Engineering Manager".
+func titleCaseFromSnakeOrUpper(s string) string {
+	s = strings.ReplaceAll(strings.ToLower(strings.TrimSpace(s)), "_", " ")
+	parts := strings.Fields(s)
+	for i := range parts {
+		p := parts[i]
+		if len(p) == 0 {
+			continue
 		}
+		parts[i] = strings.ToUpper(p[:1]) + p[1:]
 	}
-	if found.SystemMessage != "" {
-		fmt.Fprintf(&sb, "\n## System message\n\n%s\n", found.SystemMessage)
-	}
-	c.Data(http.StatusOK, "text/markdown; charset=utf-8", []byte(sb.String()))
+	return strings.Join(parts, " ")
 }

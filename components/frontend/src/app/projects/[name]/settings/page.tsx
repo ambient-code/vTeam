@@ -30,6 +30,12 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ name
   const [secretList, setSecretList] = useState<Array<{ name: string }>>([]);
   const [mode, setMode] = useState<"existing" | "new">("existing");
   const [showValues, setShowValues] = useState<Record<number, boolean>>({});
+  const [jiraUrl, setJiraUrl] = useState<string>("");
+  const [jiraProject, setJiraProject] = useState<string>("");
+  const [jiraEmail, setJiraEmail] = useState<string>("");
+  const [jiraToken, setJiraToken] = useState<string>("");
+  const [showJiraToken, setShowJiraToken] = useState<boolean>(false);
+  const JIRA_KEYS = ["JIRA_URL","JIRA_PROJECT","JIRA_EMAIL","JIRA_API_TOKEN"] as const;
   const loadSecretValues = async (name: string) => {
     if (!name) return;
     try {
@@ -39,9 +45,18 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ name
       if (secRes.ok) {
         const data = await secRes.json();
         const items = Object.entries<string>(data.data || {}).map(([k, v]) => ({ key: k, value: v }));
-        setSecrets(items);
+        const byKey: Record<string, string> = Object.fromEntries(items.map(it => [it.key, it.value]));
+        setJiraUrl(byKey["JIRA_URL"] || "");
+        setJiraProject(byKey["JIRA_PROJECT"] || "");
+        setJiraEmail(byKey["JIRA_EMAIL"] || "");
+        setJiraToken(byKey["JIRA_API_TOKEN"] || "");
+        setSecrets(items.filter(it => !JIRA_KEYS.includes(it.key as typeof JIRA_KEYS[number])));
       } else {
         setSecrets([]);
+        setJiraUrl("");
+        setJiraProject("");
+        setJiraEmail("");
+        setJiraToken("");
       }
     } finally {
       setSecretsLoading(false);
@@ -189,8 +204,15 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ name
     try {
       const apiUrl = getApiUrl();
       const data: Record<string, string> = {};
+      // Persist Jira convenience fields into the secret under fixed keys
+      if (jiraUrl) data["JIRA_URL"] = jiraUrl;
+      if (jiraProject) data["JIRA_PROJECT"] = jiraProject;
+      if (jiraEmail) data["JIRA_EMAIL"] = jiraEmail;
+      if (jiraToken) data["JIRA_API_TOKEN"] = jiraToken;
+      // Add remaining dynamic keys (excluding Jira keys)
       for (const { key, value } of secrets) {
         if (!key) continue;
+        if (JIRA_KEYS.includes(key as typeof JIRA_KEYS[number])) continue;
         data[key] = value ?? "";
       }
       const res = await fetch(`${apiUrl}/projects/${encodeURIComponent(projectName)}/runner-secrets`, {
@@ -399,6 +421,33 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ name
                   ))}
                 </div>
               )}
+              <div className="pt-4 space-y-3">
+                <Label>Jira Integration (optional)</Label>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label htmlFor="jiraUrl">Jira Base URL</Label>
+                    <Input id="jiraUrl" placeholder="https://your-domain.atlassian.net" value={jiraUrl} onChange={(e) => setJiraUrl(e.target.value)} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="jiraProject">Jira Project Key</Label>
+                    <Input id="jiraProject" placeholder="ABC" value={jiraProject} onChange={(e) => setJiraProject(e.target.value)} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="jiraEmail">Jira Email/Username</Label>
+                    <Input id="jiraEmail" placeholder="you@example.com" value={jiraEmail} onChange={(e) => setJiraEmail(e.target.value)} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="jiraToken">Jira API Token</Label>
+                    <div className="flex items-center gap-2">
+                      <Input id="jiraToken" type={showJiraToken ? "text" : "password"} placeholder="token" value={jiraToken} onChange={(e) => setJiraToken(e.target.value)} />
+                      <Button type="button" variant="ghost" onClick={() => setShowJiraToken((v) => !v)} aria-label={showJiraToken ? "Hide token" : "Show token"}>
+                        {showJiraToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+                <div className="text-xs text-muted-foreground">These values will be saved into the configured runner Secret using fixed keys (JIRA_URL, JIRA_PROJECT, JIRA_EMAIL, JIRA_API_TOKEN).</div>
+              </div>
             </div>
           )}
 

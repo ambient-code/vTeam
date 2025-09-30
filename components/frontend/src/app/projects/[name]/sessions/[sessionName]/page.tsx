@@ -138,15 +138,28 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
   const [wsFileContent, setWsFileContent] = useState<string>("");
   const [wsLoading, setWsLoading] = useState<boolean>(false);
   const [usageExpanded, setUsageExpanded] = useState(false);
+  const [promptExpanded, setPromptExpanded] = useState(false);
 
   const [chatInput, setChatInput] = useState("")
+
+  // Optional back link support via URL search params: backLabel, backHref
+  const [backHref, setBackHref] = useState<string | null>(null);
+  const [backLabel, setBackLabel] = useState<string | null>(null);
 
   useEffect(() => {
     params.then(({ name, sessionName }) => {
       setProjectName(name);
       setSessionName(sessionName);
+      try {
+        const url = new URL(window.location.href);
+        const bh = url.searchParams.get("backHref");
+        const bl = url.searchParams.get("backLabel");
+        setBackHref(bh);
+        setBackLabel(bl);
+      } catch {}
     });
   }, [params]);
+
 
   const fetchSession = useCallback(async () => {
     if (!projectName || !sessionName) return;
@@ -172,15 +185,7 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
         if (Array.isArray(msgData)) setMessages(msgData);
       }
 
-      // Probe workspace existence via API proxy
-      try {
-        const wsResp = await fetch(
-          `${apiUrl}/projects/${encodeURIComponent(projectName)}${workspaceBasePath}`
-        );
-        setHasWorkspace(wsResp.ok);
-      } catch {
-        setHasWorkspace(false);
-      }
+
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
     } finally {
@@ -218,6 +223,30 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
       return () => clearInterval(interval);
     }
   }, [projectName, sessionName, session?.status?.phase, fetchSession]);
+
+
+  const workspaceBasePath = session?.spec?.paths?.workspace || `/agentic-sessions/${encodeURIComponent(sessionName)}/workspace`
+
+    
+  const probeWorkspace = useCallback(async () => {
+    // Probe workspace existence via API proxy
+    try {
+      const apiUrl = getApiUrl();
+      const wsResp = await fetch(
+        `${apiUrl}/projects/${encodeURIComponent(projectName)}${workspaceBasePath}`
+      );
+      setHasWorkspace(wsResp.ok);
+    } catch {
+      setHasWorkspace(false);
+    }
+  }, [projectName, workspaceBasePath]);
+
+  useEffect(() => {
+    if (projectName && sessionName) {
+      probeWorkspace();
+    }
+  }, [projectName, sessionName, probeWorkspace]);
+
 
  
   const handleStop = async () => {
@@ -263,21 +292,14 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
         throw new Error("Failed to delete session");
       }
       // Redirect back to project sessions after successful deletion
-      window.location.href = `/projects/${encodeURIComponent(projectName)}?tab=sessions`;
+      window.location.href = backHref || `/projects/${encodeURIComponent(projectName)}?tab=sessions`;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to delete session");
       setActionLoading(null);
     }
   };
 
-  const workspaceBasePath = useMemo(() => {
-    if (session?.spec?.paths?.workspace) {
-      return session.spec.paths.workspace
-    }
-    return  `/agentic-sessions/${encodeURIComponent(sessionName)}/workspace`
-  }, [session?.spec?.paths?.workspace]);
 
-  console.log(workspaceBasePath)
   
 
   const allMessages = useMemo(() => {
@@ -339,6 +361,38 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
     return start ? Math.max(0, end - start) : undefined;
   }, [session?.status?.startTime, session?.status?.completionTime]);
 
+  // Subagent aggregation from tool_use messages
+  const subagentStats = useMemo(() => {
+    const counts: Record<string, number> = {};
+    const orderedTypes: string[] = [];
+    for (const message of messages) {
+      if (message.type === "assistant_message") {
+        const content = message.content;
+        if (content && typeof content === "object" && (content as any).type === "tool_use_block") {
+          const block = content as ToolUseBlock;
+          const input = block.input as unknown as Record<string, unknown> | undefined;
+          const subagentType = (input?.subagent_type as string) || undefined;
+          if (block.name === "Task" && typeof subagentType === "string" && subagentType.trim().length > 0) {
+            counts[subagentType] = (counts[subagentType] || 0) + 1;
+            if (!orderedTypes.includes(subagentType)) orderedTypes.push(subagentType);
+          }
+        }
+      } else if (message.type === "user_message") {
+        const content = message.content;
+        if (content && typeof content === "object" && (content as any).type === "tool_use_block") {
+          const block = content as ToolUseBlock;
+          const input = block.input as unknown as Record<string, unknown> | undefined;
+          const subagentType = (input?.subagent_type as string) || undefined;
+          if (block.name === "Task" && typeof subagentType === "string" && subagentType.trim().length > 0) {
+            counts[subagentType] = (counts[subagentType] || 0) + 1;
+            if (!orderedTypes.includes(subagentType)) orderedTypes.push(subagentType);
+          }
+        }
+      }
+    }
+    return { uniqueCount: orderedTypes.length, orderedTypes, counts };
+  }, [messages]);
+
   // Workspace helpers (loaded when Workspace tab opens)
   type ListItem = { name: string; path: string; isDir: boolean; size: number; modifiedAt: string };
   const listWsPath = useCallback(async (relPath?: string) => {
@@ -349,14 +403,23 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
     const data = await resp.json();
     const items: ListItem[] = Array.isArray(data.items) ? data.items : [];
     return items;
-  }, [projectName, sessionName]);
+  }, [projectName, sessionName, workspaceBasePath]);
 
   const readWsFile = useCallback(async (rel: string) => {
     const resp = await fetch(`${getApiUrl()}/projects/${encodeURIComponent(projectName)}${workspaceBasePath}/${encodeURIComponent(rel)}`);
     if (!resp.ok) throw new Error("Failed to fetch file");
     const text = await resp.text();
     return text;
-  }, [projectName, sessionName]);
+  }, [projectName, sessionName, workspaceBasePath]);
+
+  const writeWsFile = useCallback(async (rel: string, content: string) => {
+    const resp = await fetch(`${getApiUrl()}/projects/${encodeURIComponent(projectName)}${workspaceBasePath}/${encodeURIComponent(rel)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "text/plain; charset=utf-8" },
+      body: content,
+    });
+    if (!resp.ok) throw new Error("Failed to save file");
+  }, [projectName, workspaceBasePath]);
 
   const buildWsRoot = useCallback(async () => {
     if (!hasWorkspace) return;
@@ -419,10 +482,10 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
     return (
       <div className="container mx-auto p-6">
         <div className="flex items-center mb-6">
-          <Link href={`/projects/${encodeURIComponent(projectName)}/sessions`}>
+          <Link href={backHref || `/projects/${encodeURIComponent(projectName)}/sessions`}>
             <Button variant="ghost" size="sm">
               <ArrowLeft className="w-4 h-4 mr-2" />
-              Back to Sessions
+              {backLabel || "Back to Sessions"}
             </Button>
           </Link>
         </div>
@@ -436,12 +499,12 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
   }
 
   return (
-    <div className="container mx-auto p-6 max-w-5xl">
+    <div className="container mx-auto p-6">
       <div className="flex items-center justify-start mb-6">
-        <Link href={`/projects/${encodeURIComponent(projectName)}/sessions`}>
+        <Link href={backHref || `/projects/${encodeURIComponent(projectName)}/sessions`}>
           <Button variant="ghost" size="sm">
             <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Sessions
+            {backLabel || "Back to Sessions"}
           </Button>
         </Link>
       </div>
@@ -494,7 +557,7 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
         </div>
 
         {/* Top compact stat cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
           <Card className="py-4">
             <CardContent>
               <div className="text-xs text-muted-foreground">Cost</div>
@@ -513,11 +576,20 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
               <div className="text-lg font-semibold">{allMessages.length}</div>
             </CardContent>
           </Card>
+          <Card className="py-4">
+            <CardContent>
+              <div className="text-xs text-muted-foreground">Agents</div>
+              <div className="text-lg font-semibold">{subagentStats.uniqueCount > 0 ? subagentStats.uniqueCount : "-"}</div>
+              {subagentStats.orderedTypes.length > 0 ? (
+                <div className="text-xs text-muted-foreground mt-1 truncate" title={subagentStats.orderedTypes.join(", ")}>{subagentStats.orderedTypes.join(", ")}</div>
+              ) : null}
+            </CardContent>
+          </Card>
         </div>
 
         {/* Tabbed content */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className={`grid ${hasWorkspace ? "grid-cols-4" : "grid-cols-3"} w-full`}>
+          <TabsList>
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="messages">Messages</TabsTrigger>
             {hasWorkspace ? <TabsTrigger value="workspace">Workspace</TabsTrigger> : null}
@@ -532,11 +604,39 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
                 <CardHeader>
                   <CardTitle className="flex items-center">
                     <Brain className="w-5 h-5 mr-2" />
-                    InitialPrompt
+                    Initial Prompt
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <p className="whitespace-pre-wrap text-sm">{session.spec.prompt}</p>
+                  {(() => {
+                    const promptText = session.spec.prompt || "";
+                    const promptIsLong = promptText.length > 400;
+                    return (
+                      <>
+                        <div
+                          className={cn(
+                            "relative",
+                            !promptExpanded && promptIsLong ? "max-h-40 overflow-hidden" : ""
+                          )}
+                        >
+                          <p className="whitespace-pre-wrap text-sm">{promptText}</p>
+                          {!promptExpanded && promptIsLong ? (
+                            <div className="absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-white to-transparent pointer-events-none" />
+                          ) : null}
+                        </div>
+                        {promptIsLong && (
+                          <button
+                            className="mt-2 text-xs text-blue-600 hover:underline"
+                            onClick={() => setPromptExpanded((e) => !e)}
+                            aria-expanded={promptExpanded}
+                            aria-controls="initial-prompt"
+                          >
+                            {promptExpanded ? "View less" : "View more"}
+                          </button>
+                        )}
+                      </>
+                    );
+                  })()}
                 </CardContent>
               </Card>
               {/* Latest Message */}
@@ -588,7 +688,12 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
                           {session.status.jobName && (
                             <div>
                               <p className="font-semibold">K8s Job</p>
-                              <p className="text-muted-foreground font-mono text-xs">{session.status.jobName}</p>
+                              <div className="flex items-center gap-2">
+                                <p className="text-muted-foreground font-mono text-xs">{session.status.jobName}</p>
+                                <Badge variant="outline" className={session.spec?.interactive ? "bg-green-50 text-green-700 border-green-200" : "bg-gray-50 text-gray-700 border-gray-200"}>
+                                  {session.spec?.interactive ? "Interactive" : "Headless"}
+                                </Badge>
+                              </div>
                             </div>
                           )}
                         </div>
@@ -732,8 +837,21 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
                                 <span className="font-medium">{wsSelectedPath.split('/').pop()}</span>
                                 <Badge variant="outline" className="ml-2">{wsSelectedPath}</Badge>
                               </div>
+                              <div className="flex items-center gap-2">
+                                <Button size="sm" onClick={async () => {
+                                  try {
+                                    await writeWsFile(wsSelectedPath, wsFileContent);
+                                  } catch {
+                                    // noop for now
+                                  }
+                                }}>Save</Button>
+                              </div>
                             </div>
-                            <pre className="bg-gray-900 text-gray-100 p-4 rounded overflow-auto text-sm">{wsFileContent}</pre>
+                            <textarea
+                              className="w-full h-[60vh] bg-gray-900 text-gray-100 p-4 rounded overflow-auto text-sm font-mono"
+                              value={wsFileContent}
+                              onChange={(e) => setWsFileContent(e.target.value)}
+                            />
                           </>
                         ) : (
                           <div className="text-sm text-muted-foreground p-4">Select a file to preview</div>

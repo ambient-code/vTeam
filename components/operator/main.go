@@ -652,20 +652,6 @@ func monitorJob(jobName, sessionName, sessionNamespace string) {
 			continue
 		}
 
-		// Check job status
-		if job.Status.Succeeded > 0 {
-			log.Printf("Job %s completed successfully", jobName)
-
-			// Update AgenticSession status to Completed
-			updateAgenticSessionStatus(sessionNamespace, sessionName, map[string]interface{}{
-				"phase":          "Completed",
-				"message":        "Job completed successfully",
-				"completionTime": time.Now().Format(time.RFC3339),
-			})
-			// OwnerReferences handle cleanup after successful completion
-			return
-		}
-
 		if job.Status.Failed >= *job.Spec.BackoffLimit {
 			log.Printf("Job %s failed after %d attempts", jobName, job.Status.Failed)
 

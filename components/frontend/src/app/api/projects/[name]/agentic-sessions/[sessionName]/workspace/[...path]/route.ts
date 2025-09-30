@@ -18,3 +18,21 @@ export async function GET(
 }
 
 
+export async function PUT(
+  request: Request,
+  { params }: { params: Promise<{ name: string; sessionName: string; path: string[] }> },
+) {
+  const { name, sessionName, path } = await params
+  const headers = await buildForwardHeadersAsync(request)
+  const rel = path.join('/')
+  const contentType = request.headers.get('content-type') || 'application/octet-stream'
+  const body = await request.arrayBuffer()
+  const resp = await fetch(
+    `${BACKEND_URL}/projects/${encodeURIComponent(name)}/agentic-sessions/${encodeURIComponent(sessionName)}/workspace/${encodeURIComponent(rel)}`,
+    { method: 'PUT', headers: { ...headers, 'Content-Type': contentType }, body }
+  )
+  const respBody = await resp.text()
+  return new Response(respBody, { status: resp.status, headers: { 'Content-Type': resp.headers.get('content-type') || 'application/json' } })
+}
+
+

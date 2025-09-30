@@ -3,112 +3,98 @@ import { AgentPersona } from "@/types/agentic-session";
 // Agent persona definitions based on the YAML files in claude-runner
 export const AVAILABLE_AGENTS: AgentPersona[] = [
   {
-    persona: "ENGINEERING_MANAGER",
-    name: "Emma (Engineering Manager)",
-    role: "Engineering Management",
-    expertise: ["team-leadership", "capacity-planning", "delivery-coordination", "technical-strategy"],
-    description: "Focuses on team wellbeing, sustainable delivery practices, and balancing technical excellence with business needs."
+    persona: "emma-engineering_manager",
+    name: "Emma Engineering Manager",
+    role: "Engineering Manager",
+    description: "Engineering Manager Agent focused on team wellbeing, strategic planning, and delivery coordination. Use PROACTIVELY for team management, capacity planning, and balancing technical excellence with business needs."
   },
   {
-    persona: "STAFF_ENGINEER",
-    name: "Stella (Staff Engineer)",
-    role: "Technical Leadership",
-    expertise: ["technical-leadership", "implementation-excellence", "code-quality", "performance-optimization"],
-    description: "Bridges architectural vision to practical implementation, champions code quality, and mentors teams through complex technical challenges."
+    persona: "stella-staff_engineer",
+    name: "Stella Staff Engineer",
+    role: "Staff Engineer",
+    description: "Staff Engineer Agent focused on technical leadership, implementation excellence, and mentoring. Use PROACTIVELY for complex technical problems, code review, and bridging architecture to implementation."
   },
   {
-    persona: "PRODUCT_MANAGER",
-    name: "Parker (Product Manager)",
-    role: "Product Strategy",
-    expertise: ["product-strategy", "market-analysis", "stakeholder-management", "feature-prioritization"],
-    description: "Drives product vision, manages stakeholder relationships, and ensures features align with business objectives."
+    persona: "parker-product_manager",
+    name: "Parker Product Manager",
+    role: "Product Manager",
+    description: "Product Manager Agent focused on market strategy, customer feedback, and business value delivery. Use PROACTIVELY for product roadmap decisions, competitive analysis, and translating business requirements to technical features."
   },
   {
-    persona: "TEAM_LEAD",
-    name: "Lee (Team Lead)",
-    role: "Team Coordination",
-    expertise: ["team-coordination", "sprint-planning", "technical-mentoring", "cross-functional-collaboration"],
-    description: "Coordinates team execution, facilitates technical discussions, and ensures smooth delivery of features."
+    persona: "lee-team_lead",
+    name: "Lee Team Lead",
+    role: "Team Lead",
+    description: "Team Lead Agent focused on team coordination, technical decision facilitation, and delivery execution. Use PROACTIVELY for sprint leadership, technical planning, and cross-team communication."
   },
   {
-    persona: "SCRUM_MASTER",
-    name: "Sam (Scrum Master)",
-    role: "Process Facilitation",
-    expertise: ["agile-methodologies", "process-improvement", "team-facilitation", "impediment-removal"],
-    description: "Facilitates agile processes, removes blockers, and helps teams continuously improve their delivery practices."
+    persona: "sam-scrum_master",
+    name: "Sam Scrum Master",
+    role: "Scrum Master",
+    description: "Scrum Master Agent focused on agile facilitation, impediment removal, and team process optimization. Use PROACTIVELY for sprint planning, retrospectives, and process improvement."
   },
   {
-    persona: "UX_ARCHITECT",
-    name: "Aria (UX Architect)",
-    role: "User Experience Design",
-    expertise: ["ux-architecture", "design-systems", "user-research", "accessibility"],
-    description: "Designs comprehensive user experiences, establishes design systems, and ensures accessibility standards."
+    persona: "aria-ux_architect",
+    name: "Aria UX Architect",
+    role: "UX Architect",
+    description: "UX Architect Agent focused on user experience strategy, journey mapping, and design system architecture. Use PROACTIVELY for holistic UX planning, ecosystem design, and user research strategy."
   },
   {
-    persona: "UX_TEAM_LEAD",
-    name: "Uma (UX Team Lead)",
-    role: "UX Team Leadership",
-    expertise: ["ux-leadership", "design-strategy", "team-mentoring", "stakeholder-communication"],
-    description: "Leads UX teams, coordinates design strategy, and ensures design quality across products."
+    persona: "uma-ux_team_lead",
+    name: "Uma UX Team Lead",
+    role: "UX Team Lead",
+    description: "UX Team Lead Agent focused on design quality, team coordination, and design system governance. Use PROACTIVELY for design process management, critique facilitation, and design team leadership."
   },
   {
-    persona: "UX_FEATURE_LEAD",
-    name: "Felix (UX Feature Lead)",
-    role: "Feature UX Leadership",
-    expertise: ["feature-design", "user-journey-mapping", "interaction-design", "usability-testing"],
-    description: "Leads UX design for specific features, maps user journeys, and validates design decisions through testing."
+    persona: "felix-ux_feature_lead",
+    name: "Felix UX Feature Lead",
+    role: "UX Feature Lead",
+    description: "UX Feature Lead Agent focused on component design, pattern reusability, and accessibility implementation. Use PROACTIVELY for detailed feature design, component specification, and accessibility compliance."
   },
   {
-    persona: "UX_RESEARCHER",
-    name: "Ryan (UX Researcher)",
-    role: "User Research",
-    expertise: ["user-research", "data-analysis", "usability-testing", "behavioral-insights"],
-    description: "Conducts user research, analyzes behavioral data, and provides insights to inform design decisions."
+    persona: "ryan-ux_researcher",
+    name: "Ryan UX Researcher",
+    role: "UX Researcher",
+    description: "UX Researcher Agent focused on user insights, data analysis, and evidence-based design decisions. Use PROACTIVELY for user research planning, usability testing, and translating insights to design recommendations."
   },
   {
-    persona: "CONTENT_STRATEGIST",
-    name: "Casey (Content Strategist)",
-    role: "Content Strategy",
-    expertise: ["content-strategy", "information-architecture", "content-planning", "editorial-guidelines"],
-    description: "Develops content strategies, organizes information architecture, and ensures consistent messaging."
+    persona: "casey-content_strategist",
+    name: "Casey Content Strategist",
+    role: "Content Strategist",
+    description: "Content Strategist Agent focused on information architecture, content standards, and strategic content planning. Use PROACTIVELY for content taxonomy, style guidelines, and content effectiveness measurement."
   },
   {
-    persona: "TECHNICAL_WRITER",
-    name: "Terry (Technical Writer)",
-    role: "Technical Documentation",
-    expertise: ["technical-writing", "documentation-strategy", "api-documentation", "user-guides"],
-    description: "Creates comprehensive technical documentation, API guides, and user-facing documentation."
+    persona: "terry-technical_writer",
+    name: "Terry Technical Writer",
+    role: "Technical Writer",
+    description: "Technical Writer Agent focused on user-centered documentation, procedure testing, and clear technical communication. Use PROACTIVELY for hands-on documentation creation and technical accuracy validation."
   },
   {
-    persona: "TECHNICAL_WRITING_MANAGER",
-    name: "Tessa (Technical Writing Manager)",
-    role: "Documentation Management",
-    expertise: ["documentation-management", "technical-communication", "content-governance", "team-leadership"],
-    description: "Manages technical writing teams, establishes documentation standards, and oversees content quality."
+    persona: "tessa-writing_manager",
+    name: "Tessa Writing Manager",
+    role: "Writing Manager",
+    description: "Technical Writing Manager Agent focused on documentation strategy, team coordination, and content quality. Use PROACTIVELY for documentation planning, writer management, and content standards."
   },
   {
-    persona: "DELIVERY_OWNER",
-    name: "Derek (Delivery Owner)",
-    role: "Release Coordination",
-    expertise: ["release-management", "delivery-coordination", "stakeholder-communication", "risk-management"],
-    description: "Coordinates feature delivery, manages release schedules, and ensures stakeholder alignment."
+    persona: "jack-delivery_owner",
+    name: "Jack Delivery Owner",
+    role: "Delivery Owner",
+    description: "Delivery Owner Agent focused on cross-team coordination, dependency tracking, and milestone management. Use PROACTIVELY for release planning, risk mitigation, and delivery status reporting."
   },
   {
-    persona: "PXE",
-    name: "Phoenix (PXE Specialist)",
-    role: "Platform Experience",
-    expertise: ["platform-experience", "developer-experience", "tooling", "infrastructure"],
-    description: "Focuses on platform and developer experience, tooling improvements, and infrastructure usability."
+    persona: "phoenix-pxe_specialist",
+    name: "Phoenix PXE Specialist",
+    role: "PXE Specialist",
+    description: "PXE (Product Experience Engineering) Agent focused on customer impact assessment, lifecycle management, and field experience insights. Use PROACTIVELY for upgrade planning, risk assessment, and customer telemetry analysis."
   }
 ];
 
 // Default agent selections for different workflow types
 export const DEFAULT_AGENT_SELECTIONS = {
-  BALANCED: ["ENGINEERING_MANAGER", "STAFF_ENGINEER", "PRODUCT_MANAGER", "TEAM_LEAD"],
-  TECHNICAL: ["STAFF_ENGINEER", "ENGINEERING_MANAGER", "UX_ARCHITECT", "TECHNICAL_WRITER"],
-  PRODUCT: ["PRODUCT_MANAGER", "UX_RESEARCHER", "CONTENT_STRATEGIST", "DELIVERY_OWNER"],
-  DESIGN: ["UX_ARCHITECT", "UX_FEATURE_LEAD", "UX_RESEARCHER", "CONTENT_STRATEGIST"],
-  PROCESS: ["SCRUM_MASTER", "ENGINEERING_MANAGER", "DELIVERY_OWNER", "TEAM_LEAD"]
+  BALANCED: ["emma-engineering_manager", "stella-staff_engineer", "parker-product_manager", "lee-team_lead"],
+  TECHNICAL: ["stella-staff_engineer", "emma-engineering_manager", "aria-ux_architect", "terry-technical_writer"],
+  PRODUCT: ["parker-product_manager", "ryan-ux_researcher", "casey-content_strategist", "jack-delivery_owner"],
+  DESIGN: ["aria-ux_architect", "felix-ux_feature_lead", "ryan-ux_researcher", "casey-content_strategist"],
+  PROCESS: ["sam-scrum_master", "emma-engineering_manager", "jack-delivery_owner", "lee-team_lead"]
 };
 
 // Utility functions
@@ -122,7 +108,8 @@ export function getDefaultAgents(type: keyof typeof DEFAULT_AGENT_SELECTIONS = "
 
 export function getAgentsByExpertise(expertise: string): AgentPersona[] {
   return AVAILABLE_AGENTS.filter(agent =>
-    agent.expertise.some(exp => exp.includes(expertise) || expertise.includes(exp))
+    agent.description.toLowerCase().includes(expertise.toLowerCase()) ||
+    agent.role.toLowerCase().includes(expertise.toLowerCase())
   );
 }
 
@@ -150,6 +137,7 @@ function getCategoryForRole(role: string): string {
 
 export const WORKFLOW_PHASE_LABELS = {
   pre: "⏳ Pre",
+  ideate: "💡 Ideate",
   specify: "📝 Specify",
   plan: "🗂️ Plan",
   tasks: "✅ Tasks",
@@ -158,6 +146,7 @@ export const WORKFLOW_PHASE_LABELS = {
 };
 
 export const WORKFLOW_PHASE_DESCRIPTIONS = {
+  ideate: "Collaboratively ideate and define the high-level RFE in rfe.md",
   specify: "Create comprehensive specifications from different perspectives",
   plan: "Generate detailed implementation plans with technical approach",
   tasks: "Break down features into actionable development tasks",

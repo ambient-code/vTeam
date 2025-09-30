@@ -62,22 +62,47 @@ const defaultComponents: Components = {
   ),
 };
 
-const LoadingDots = () => (
-  <div className="flex items-center mt-2">
-    <div className="flex space-x-1">
-      <div className="w-1 h-1 bg-blue-500 rounded-full animate-bounce"></div>
-      <div
-        className="w-1 h-1 bg-blue-500 rounded-full animate-bounce"
-        style={{ animationDelay: "0.1s" }}
-      ></div>
-      <div
-        className="w-1 h-1 bg-blue-500 rounded-full animate-bounce"
-        style={{ animationDelay: "0.2s" }}
-      ></div>
+const LOADING_MESSAGES = [
+  "Pretending to be productive",
+  "Downloading more RAM",
+  "Consulting the magic 8-ball",
+  "Teaching bugs to behave",
+  "Brewing digital coffee",
+  "Rolling for initiative",
+  "Surfing the data waves",
+  "Juggling bits and bytes",
+  "Tipping my fedora",
+];
+
+const LoadingDots = () => {
+  const [messageIndex, setMessageIndex] = React.useState(() =>
+    Math.floor(Math.random() * LOADING_MESSAGES.length)
+  );
+
+  React.useEffect(() => {
+    const intervalId = setInterval(() => {
+      setMessageIndex((prevIndex) => (prevIndex + 1) % LOADING_MESSAGES.length);
+    }, 8000);
+    return () => clearInterval(intervalId);
+  }, []);
+
+  return (
+    <div className="flex items-center mt-2">
+      <div className="flex space-x-1">
+        <div className="w-1 h-1 bg-blue-500 rounded-full animate-bounce"></div>
+        <div
+          className="w-1 h-1 bg-blue-500 rounded-full animate-bounce"
+          style={{ animationDelay: "0.1s" }}
+        ></div>
+        <div
+          className="w-1 h-1 bg-blue-500 rounded-full animate-bounce"
+          style={{ animationDelay: "0.2s" }}
+        ></div>
+      </div>
+      <span className="ml-2 text-xs text-gray-400">{LOADING_MESSAGES[messageIndex]}</span>
     </div>
-    <span className="ml-2 text-xs text-gray-400">Thinking...</span>
-  </div>
-);
+  );
+};
 
 export const Message = React.forwardRef<HTMLDivElement, MessageProps>(
   (

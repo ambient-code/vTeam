@@ -31,7 +31,7 @@ jobs:
             image: quay.io/ambient_code/vteam_claude_runner
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ github.event.pull_request.head.sha }}
 
@@ -84,7 +84,7 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install oc
         uses: redhat-actions/oc-installer@v1
@@ -95,6 +95,7 @@ jobs:
         run: |
           oc login ${{ secrets.OPENSHIFT_SERVER }} --token=${{ secrets.OPENSHIFT_TOKEN }} --insecure-skip-tls-verify
 
-      - name: Deploy updated components to OpenShift
+      - name: Deploy updated components to OpenShift and force reload the pods
         run: |
+          oc apply -k components/manifests
           oc delete po --all -n ambient-code

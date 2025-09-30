@@ -35,9 +35,6 @@ export function AgentSelection({
 }: AgentSelectionProps) {
   const [presetType, setPresetType] = useState<keyof typeof DEFAULT_AGENT_SELECTIONS>("BALANCED");
 
-  // Ensure selectedAgents is always an array to prevent filter errors
-  const safeSelectedAgents = selectedAgents || [];
-
   const getCategoryForRole = (role: string): string => {
     if (role.includes("Engineering") || role.includes("Technical")) return "Engineering";
     if (role.includes("UX") || role.includes("Design")) return "Design";
@@ -60,12 +57,12 @@ export function AgentSelection({
     if (disabled) return;
 
     try {
-      const isSelected = safeSelectedAgents.includes(persona);
+      const isSelected = selectedAgents.includes(persona);
 
       if (isSelected) {
-        onSelectionChange(safeSelectedAgents.filter(p => p !== persona));
-      } else if (safeSelectedAgents.length < maxAgents) {
-        onSelectionChange([...safeSelectedAgents, persona]);
+        onSelectionChange(selectedAgents.filter(p => p !== persona));
+      } else if (selectedAgents.length < maxAgents) {
+        onSelectionChange([...selectedAgents, persona]);
       }
     } catch (error) {
       console.error('Error toggling agent selection:', error);
@@ -131,7 +128,7 @@ export function AgentSelection({
         <div>
           <h3 className="text-lg font-semibold">Select Agents</h3>
           <p className="text-sm text-muted-foreground">
-            Choose agents to participate in this RFE workflow ({safeSelectedAgents.length}/{maxAgents} selected)
+            Choose agents to participate in this RFE workspace ({selectedAgents.length}/{maxAgents} selected)
           </p>
         </div>
         <div className="flex gap-2">
@@ -191,9 +188,9 @@ export function AgentSelection({
               <AgentCard
                 key={agent.persona}
                 agent={agent}
-                selected={safeSelectedAgents.includes(agent.persona)}
+                selected={selectedAgents.includes(agent.persona)}
                 onToggle={() => handleAgentToggle(agent.persona)}
-                disabled={disabled || (safeSelectedAgents.length >= maxAgents && !safeSelectedAgents.includes(agent.persona))}
+                disabled={disabled || (selectedAgents.length >= maxAgents && !selectedAgents.includes(agent.persona))}
               />
             ))}
           </div>
@@ -219,9 +216,9 @@ export function AgentSelection({
                 <AgentCard
                   key={agent.persona}
                   agent={agent}
-                  selected={safeSelectedAgents.includes(agent.persona)}
+                  selected={selectedAgents.includes(agent.persona)}
                   onToggle={() => handleAgentToggle(agent.persona)}
-                  disabled={disabled || (safeSelectedAgents.length >= maxAgents && !safeSelectedAgents.includes(agent.persona))}
+                  disabled={disabled || (selectedAgents.length >= maxAgents && !selectedAgents.includes(agent.persona))}
                 />
               ))}
             </div>
@@ -230,14 +227,14 @@ export function AgentSelection({
       </Tabs>
 
       {/* Selected Agents Summary */}
-      {safeSelectedAgents.length > 0 && (
+      {selectedAgents.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>Selected Agents ({safeSelectedAgents.length})</CardTitle>
+            <CardTitle>Selected Agents ({selectedAgents.length})</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="flex flex-wrap gap-2">
-              {safeSelectedAgents.map(persona => {
+              {selectedAgents.map(persona => {
                 const agent = (agents || []).find(a => a.persona === persona);
                 return agent ? (
                   <Badge
@@ -298,13 +295,6 @@ function AgentCard({ agent, selected, onToggle, disabled }: AgentCardProps) {
         <p className="text-xs text-muted-foreground mb-2 line-clamp-2">
           {agent.description}
         </p>
-        <div className="flex flex-wrap gap-1">
-          {agent.expertise.slice(0, 2).map(skill => (
-            <Badge key={skill} variant="outline" className="text-xs px-1 py-0">
-              {skill.replace(/-/g, ' ')}
-            </Badge>
-          ))}
-        </div>
       </CardContent>
     </Card>
   );

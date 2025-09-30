@@ -16,7 +16,7 @@ export default function HomeRedirect() {
       <div className="flex items-center justify-center h-64">
         <div className="text-center">
           <Loader2 className="mx-auto h-8 w-8 animate-spin mb-4" />
-          <p className="text-muted-foreground">Redirecting to RFE Workflows...</p>
+          <p className="text-muted-foreground">Redirecting to RFE Wokspaces...</p>
         </div>
       </div>
     </div>

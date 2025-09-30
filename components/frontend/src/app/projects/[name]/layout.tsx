@@ -14,7 +14,7 @@ export default function ProjectSectionLayout({ children, params }: { children: R
 
   const items = [
     { href: base, label: "Overview", icon: Home },
-    { href: `${base}/rfe`, label: "RFE Workflows", icon: GitBranch },
+    { href: `${base}/rfe`, label: "RFE Workspaces", icon: GitBranch },
     { href: `${base}/sessions`, label: "Sessions", icon: Sparkles },
     { href: `${base}/keys`, label: "Keys", icon: KeyRound },
     { href: `${base}/permissions`, label: "Permissions", icon: Users },

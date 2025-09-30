@@ -139,6 +139,7 @@ export default function ProjectSessionsListPage({ params }: { params: Promise<{ 
                   <TableRow>
                     <TableHead className="min-w-[180px]">Name</TableHead>
                     <TableHead>Status</TableHead>
+                    <TableHead>Mode</TableHead>
                         <TableHead className="hidden md:table-cell">Model</TableHead>
                     <TableHead className="hidden lg:table-cell">Created</TableHead>
                     <TableHead className="hidden xl:table-cell">Cost</TableHead>
@@ -166,6 +167,11 @@ export default function ProjectSessionsListPage({ params }: { params: Promise<{ 
                       </TableCell>
                       <TableCell>
                         <span className="text-sm">{session.status?.phase || "Pending"}</span>
+                      </TableCell>
+                      <TableCell>
+                        <span className="text-xs px-2 py-1 rounded border bg-gray-50">
+                          {session.spec?.interactive ? "Interactive" : "Headless"}
+                        </span>
                       </TableCell>
                       <TableCell className="hidden md:table-cell">
                         <span className="text-sm text-gray-600 truncate max-w-[120px] block">{session.spec.llmSettings.model}</span>

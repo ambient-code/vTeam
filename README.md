@@ -1,82 +1,39 @@
 # vTeam: Ambient Agentic Runner
 
-> AI-powered automation system to reduce engineering refinement time and improve ticket quality
+> Kubernetes-native AI automation platform for intelligent agentic sessions with multi-agent collaboration
 
 ## Overview
 
-**vTeam** is a comprehensive AI automation platform centered around the **Ambient Agentic Runner** - a production-ready Kubernetes system that revolutionizes how teams handle complex analysis and automation tasks. The platform enables users to create and manage intelligent agentic sessions through a modern web interface, leveraging AI with integrated browser automation capabilities.
+**vTeam** is an AI automation platform that combines Claude Code CLI with multi-agent collaboration capabilities. The platform enables teams to create and manage intelligent agentic sessions through a modern web interface.
 
 ### Key Capabilities
 
-The Refinement Agent Team system transforms Request for Enhancement (RFE) submissions into well-refined, implementation-ready tickets through intelligent AI agent collaboration, enabling engineering teams to start work immediately with comprehensive context and clear acceptance criteria.
-
-## Problem Statement
-
-Engineering teams currently spend excessive time in refinement meetings due to:
-- Poorly prepared tickets lacking necessary context
-- Missing detailed feature breakdowns  
-- Unclear acceptance criteria
-- Disconnected information across RFEs, code repositories, and architectural documents
-
-## Solution
-
-The Refinement Agent Team system addresses these challenges through intelligent AI automation:
-- **7-Agent Council Process** - Specialized AI agents (PM, Architect, Staff Engineer, PO, Team Lead, Team Member, Delivery Owner) handle different refinement aspects
-- **Conversational RFE Creation** - Natural language interface powered by Anthropic Claude for intuitive ticket creation
-- **Comprehensive Context Assembly** - Automatically enriches tickets with business justification, technical requirements, and success criteria
-- **Workflow Orchestration** - Guided progression through standardized refinement steps
-- **Integration Ready** - Built for seamless integration with existing Jira workflows
-
-## Success Metrics
-
-- 🎯 **90% ticket readiness** for immediate engineering execution
-- ⏱️ **50% reduction** in refinement meeting duration
-- 🚀 **25% improvement** in engineering velocity
-- 📊 **Measurable time savings** in refinement hours per ticket
+- **Intelligent Agentic Sessions**: AI-powered automation for analysis, research, content creation, and development tasks
+- **Multi-Agent Workflows**: Specialized AI agents model realistic software team dynamics
+- **Kubernetes Native**: Built with Custom Resources, Operators, and proper RBAC for enterprise deployment
+- **Real-time Monitoring**: Live status updates and job execution tracking
 
 ## Architecture
 
-The platform consists of multiple containerized services orchestrated via Kubernetes:
-
-### Agent Council Workflow
-The system implements a 7-step refinement process with specialized AI agents:
-
-1. **Parker (PM)** - RFE Prioritization
-2. **Archie (Architect)** - Technical Review
-3. **Stella (Staff Engineer)** - Completeness Check
-4. **Archie (Architect)** - Acceptance Criteria Validation
-5. **Stella (Staff Engineer)** - Accept/Reject Decision
-6. **Parker (PM)** - Assessment Communication
-7. **Derek (Delivery Owner)** - Feature Ticket Creation
-
-### Integration Points
-- **Jira integration (optional)** - Bot accounts/webhook patterns available; not enabled by default
-- **Anthropic Claude** - Conversational AI and agent assistance
-- **Google Vertex AI** - Alternative AI provider support
-- **Git Repositories** - Future integration for code context
-
-## Key Features
-
-- **Conversational RFE Creation**: Natural language interface with real-time structured data extraction
-- **Multi-Agent Workflow**: Specialized AI agents model realistic software team dynamics
-- **Visual Workflow Tracking**: Progress visualization with step-by-step status updates
-- **Cost Management**: Built-in API usage tracking and response caching
-- **Optional Jira Automation**: Bot/webhook-driven session creation (no default Epic sync)
-- **Agent Dashboard**: Role-specific views for different team members
-
-### Components
+The platform consists of containerized microservices orchestrated via Kubernetes:
 
 | Component | Technology | Description |
 |-----------|------------|-------------|
 | **Frontend** | NextJS + Shadcn | User interface for managing agentic sessions |
-| **Backend API** | Go + Gin | REST API for managing Kubernetes Custom Resources (multi-tenant: projects, agentic-sessions, groups, keys) |
+| **Backend API** | Go + Gin | REST API for managing Kubernetes Custom Resources (multi-tenant: projects, sessions, access control) |
 | **Agentic Operator** | Go | Kubernetes operator that watches CRs and creates Jobs |
-| **Ambient Runner** | Python + AI CLI | Pod that executes AI with Playwright MCP server |
-| **Playwright MCP** | MCP Server | Provides browser automation capabilities to AI |
+| **Claude Code Runner** | Python + Claude Code CLI | Pod that executes AI with multi-agent collaboration capabilities |
+
+### Agentic Session Flow
+
+1. **Create Session**: User creates agentic session via web UI with task description
+2. **API Processing**: Backend creates `AgenticSession` Custom Resource in Kubernetes
+3. **Job Scheduling**: Operator detects CR and creates Kubernetes Job with runner pod
+4. **AI Execution**: Pod runs Claude Code CLI with multi-agent collaboration for intelligent analysis
+5. **Result Storage**: Analysis results stored back in Custom Resource status
+6. **UI Updates**: Frontend displays real-time progress and completed results
 
 ## Prerequisites
-
-Before deploying the Ambient Agentic Runner, ensure you have:
 
 ### Required Tools
 - **OpenShift Local (CRC)** for local development or OpenShift cluster for production
@@ -86,202 +43,155 @@ Before deploying the Ambient Agentic Runner, ensure you have:
 - **Go 1.24+** for building backend services (if building from source)
 - **Node.js 20+** and **npm** for the frontend (if building from source)
 
-### Required Accounts & API Keys
-- **Anthropic API Key** - Get one from [Anthropic Console](https://console.anthropic.com/)
-  - Provide keys via the app UI after deployment (Settings → Runner Secrets)
-
-### OpenShift OAuth (Recommended)
-- For cluster login and auth in front of the UI, follow [OpenShift OAuth Setup](docs/OPENSHIFT_OAUTH.md)
-
+### Required API Keys
+- **Anthropic API Key** - Get from [Anthropic Console](https://console.anthropic.com/)
+  - Configure via web UI: Settings → Runner Secrets after deployment
 
 ## Quick Start
 
-### 1. Verify Prerequisites
+### 1. Deploy to OpenShift
+
+Deploy using the default images from `quay.io/ambient_code`:
 
 ```bash
-# Check required tools
-kubectl version --client
-docker --version  # or podman --version
-git --version
+# Deploy to ambient-code namespace (default)
+make deploy
 
-# Verify cluster access
-kubectl cluster-info
-kubectl get nodes
+# Or deploy to custom namespace
+make deploy NAMESPACE=my-namespace
 ```
 
-### 2. Clone and Setup
+### 2. Verify Deployment
 
 ```bash
-# Clone the repository
-git clone https://github.com/your-org/vTeam.git
-cd vTeam
-```
-
-### 3. Configure Container Registry
-
-```bash
-# Set your container registry (replace with your registry)
-export REGISTRY="your-registry.com"  # e.g., "quay.io/your-username"
-
-# Login to your container registry
-docker login $REGISTRY
-```
-
-### 4. Build and Push Images
-
-```bash
-# Build all container images
-make build-all REGISTRY=$REGISTRY
-
-# Push images to registry
-make push-all REGISTRY=$REGISTRY
-```
-
-### 5. Configure Environment (optional overrides)
-
-```bash
-# Navigate to deployment folder
-cd components/manifests
-
-# Create optional environment file for overrides (namespace, images)
-cp env.example .env
-
-# Edit .env to set NAMESPACE, CONTAINER_REGISTRY, IMAGE_TAG if desired
-nano .env  # or your preferred editor
-```
-
-Notes:
-- Secrets (e.g., Anthropic API keys) are configured in the UI after deployment: Settings → Runner Secrets
-- For OAuth-protected access on OpenShift, complete [OpenShift OAuth Setup](../../docs/OPENSHIFT_OAUTH.md)
-
-### 6. (Optional) Override Images
-
-The deploy script supports image overrides without editing YAML. You can set these via environment or `.env`:
-
-```bash
-# Example (one-off):
-CONTAINER_REGISTRY="quay.io/your-username" IMAGE_TAG="latest" ./deploy.sh
-
-# Or in .env (preferred):
-# CONTAINER_REGISTRY=quay.io/your-username
-# IMAGE_TAG=latest
-# DEFAULT_BACKEND_IMAGE=
-# DEFAULT_FRONTEND_IMAGE=
-# DEFAULT_OPERATOR_IMAGE=
-# DEFAULT_RUNNER_IMAGE=
-```
-
-### 7. Deploy to OpenShift/Kubernetes
-
-```bash
-# From components/manifests
-./deploy.sh
-```
-
-### 8. Verify Deployment
-
-```bash
-# Check all pods are running
+# Check pod status
 oc get pods -n ambient-code
 
-# Check services are available
-oc get services -n ambient-code
+# Check services and routes
+oc get services,routes -n ambient-code
 ```
 
-### 9. Access the Application
+### 3. Access the Web Interface
 
 ```bash
-# On OpenShift (recommended): use the Route
-oc -n ambient-code get route frontend -o jsonpath='{.spec.host}' | sed 's#^#https://#'
+# Get the route URL
+oc get route frontend-route -n ambient-code
 
-# Fallback (testing): Port forward locally
-kubectl -n ambient-code port-forward svc/frontend-service 3000:3000
-# Open: http://localhost:3000
+# Or use port forwarding as fallback
+kubectl port-forward svc/frontend-service 3000:3000 -n ambient-code
 ```
 
-For configuring cluster login for the UI, see [OpenShift OAuth Setup](docs/OPENSHIFT_OAUTH.md).
+### 4. Configure API Keys
+
+1. Access the web interface
+2. Navigate to Settings → Runner Secrets
+3. Add your Anthropic API key
 
 ## Usage
 
-Once deployed, you can create and manage agentic sessions through the web interface:
+### Creating an Agentic Session
 
-### Creating an Agentic Session (project-scoped)
-
-1. **Access the Web Interface**
-   - Navigate to `http://localhost:3000` (if using port forwarding)
-   - Or your configured domain/ingress endpoint
-
-2. **Create New Session**
-   - Click "New Agentic Session"
-   - Fill out the form with:
-     - **Prompt**: Task description for the AI (e.g., "Analyze this website's user experience")
-     - **Website URL**: Target website to analyze
-   - **Model**: Choose AI model (e.g., Claude Sonnet/Haiku)
-     - **Settings**: Adjust temperature, token limits as needed
-
-3. **Monitor Progress**
-   - View real-time status updates
-   - Monitor job execution logs
-   - Track completion status
-
-4. **Review Results**
-   - Download analysis results
-   - View structured output
-   - Export findings
+1. **Access Web Interface**: Navigate to your deployed route URL
+2. **Create New Session**:
+   - **Prompt**: Task description (e.g., "Review this codebase for security vulnerabilities and suggest improvements")
+   - **Model**: Choose AI model (Claude Sonnet/Haiku)
+   - **Settings**: Adjust temperature, token limits, timeout (default: 300s)
+3. **Monitor Progress**: View real-time status updates and execution logs
+4. **Review Results**: Download analysis results and structured output
 
 ### Example Use Cases
 
-- **Website Analysis**: Analyze user experience, accessibility, performance
-- **Competitive Research**: Compare features across competitor websites  
-- **Content Auditing**: Review content quality and SEO optimization
-- **Automation Testing**: Verify functionality across different scenarios
+- **Code Analysis**: Security reviews, code quality assessments, architecture analysis
+- **Technical Documentation**: API documentation, user guides, technical specifications
+- **Project Planning**: Feature specifications, implementation plans, task breakdowns
+- **Research & Analysis**: Technology research, competitive analysis, requirement gathering
+- **Development Workflows**: Code reviews, testing strategies, deployment planning
+
+## Advanced Configuration
+
+### Building Custom Images
+
+To build and deploy your own container images:
+
+```bash
+# Set your container registry
+export REGISTRY="quay.io/your-username"
+
+# Build all images
+make build-all
+
+# Push to registry (requires authentication)
+make push-all REGISTRY=$REGISTRY
+
+# Deploy with custom images
+cd components/manifests
+REGISTRY=$REGISTRY ./deploy.sh
+```
+
+### Container Engine Options
+
+```bash
+# Use Podman instead of Docker
+make build-all CONTAINER_ENGINE=podman
+
+# Build for specific platform
+# Default is linux/amd64
+make build-all PLATFORM=linux/arm64
+
+# Build with additional flags
+make build-all BUILD_FLAGS="--no-cache --pull"
+```
+
+### OpenShift OAuth Integration
+
+For cluster-based authentication and authorization:
+
+```bash
+# Enable OAuth integration during deployment
+cd components/manifests
+ENABLE_OAUTH=true ./deploy.sh
+```
+
+See [docs/OPENSHIFT_OAUTH.md](docs/OPENSHIFT_OAUTH.md) for detailed OAuth configuration.
+
+## Configuration & Secrets
+
+### Session Timeout Configuration
+
+Sessions have a configurable timeout (default: 300 seconds):
+
+- **Environment Variable**: Set `TIMEOUT=1800` for 30-minute sessions
+- **CRD Default**: Modify `components/manifests/crds/agenticsessions-crd.yaml`
+- **Interactive Mode**: Set `interactive: true` for unlimited chat-based sessions
+
+### Runner Secrets Management
+
+Configure AI API keys and integrations via the web interface:
+
+- **Settings → Runner Secrets**: Add Anthropic API keys
+- **Project-scoped**: Each project namespace has isolated secret management
+- **Security**: All secrets stored as Kubernetes Secrets with proper RBAC
 
 ## Troubleshooting
 
 ### Common Issues
 
-#### Pods Not Starting
+**Pods Not Starting:**
 ```bash
-# Check pod status and events
-kubectl describe pod <pod-name> -n ambient-code
-
-# Check logs
-kubectl logs <pod-name> -n ambient-code
-
-# Check resource constraints
-kubectl top pods -n ambient-code
+oc describe pod <pod-name> -n ambient-code
+oc logs <pod-name> -n ambient-code
 ```
 
-#### API Connection Issues
+**API Connection Issues:**
 ```bash
-# Check service endpoints
 oc get endpoints -n ambient-code
-
-# Test API connectivity
-oc exec -it <pod-name> -n ambient-code -- curl http://backend-service:8080/health
+oc exec -it <pod-name> -- curl http://backend-service:8080/health
 ```
 
-#### Image Pull Errors
+**Job Failures:**
 ```bash
-# Verify registry access
-docker pull $REGISTRY/backend:latest
-
-# Check image references in manifests
-grep "image:" manifests/*.yaml
-
-# Update registry references if needed
-sed -i "s|old-registry|new-registry|g" manifests/*.yaml
-```
-
-#### Job Failures
-```bash
-# List jobs
 oc get jobs -n ambient-code
-
-# Check job details
 oc describe job <job-name> -n ambient-code
-
-# Check failed pod logs
 oc logs <failed-pod-name> -n ambient-code
 ```
 
@@ -289,10 +199,10 @@ oc logs <failed-pod-name> -n ambient-code
 
 ```bash
 # Check all resources
-kubectl get all -l app=ambient-code -n ambient-code
+oc get all -l app=ambient-code -n ambient-code
 
 # View recent events
-kubectl get events --sort-by='.lastTimestamp' -n ambient-code
+oc get events --sort-by='.lastTimestamp' -n ambient-code
 
 # Test frontend access
 curl -f http://localhost:3000 || echo "Frontend not accessible"
@@ -382,84 +292,59 @@ make build-runner
 
 ```
 vTeam/
-├── components/                     # 🚀 Ambient Agentic Runner (Main Platform)
+├── components/                     # 🚀 Ambient Agentic Runner Platform
 │   ├── frontend/                   # NextJS web interface
 │   ├── backend/                    # Go API service
 │   ├── operator/                   # Kubernetes operator
 │   ├── runners/                   # AI runner services
 │   │   └── claude-code-runner/    # Python Claude Code CLI service
-│   ├── manifests/                  # Kubernetes deployment files
-│   └── README.md                   # Detailed setup documentation
-├── docs/                           # Documentation (MkDocs)
-│   └── ambient-runner/             # Platform-specific documentation
-├── diagrams/                       # Architecture diagrams
+│   └── manifests/                  # Kubernetes deployment manifests
+├── docs/                           # Documentation
+│   ├── OPENSHIFT_DEPLOY.md        # Detailed deployment guide
+│   └── OPENSHIFT_OAUTH.md         # OAuth configuration
+├── tools/                          # Supporting development tools
+│   ├── vteam_shared_configs/       # Team configuration management
+│   └── mcp_client_integration/     # MCP client library
 └── Makefile                        # Build and deployment automation
 ```
 
-## Other vTeam Components
+## Production Considerations
 
-This repository also contains additional tools and demonstrations that complement the main Ambient Agentic Runner platform:
+### Security
+- **RBAC**: Comprehensive role-based access controls
+- **Network Policies**: Component isolation and secure communication
+- **Secret Management**: Kubernetes-native secret storage with encryption
+- **Image Scanning**: Vulnerability scanning for all container images
 
-### 📊 RFE Builder Demo
-A Streamlit-based demonstration of multi-agent RFE (Request for Enhancement) analysis system.
+### Monitoring & Observability
+- **Health Checks**: Comprehensive health endpoints for all services
+- **Metrics**: Prometheus-compatible metrics collection
+- **Logging**: Structured logging with OpenShift logging integration
+- **Alerting**: Integration with OpenShift monitoring and alerting
 
-- **Location**: `demos/rfe-builder/`
-- **Technology**: Python, Streamlit, LlamaIndex, LlamaDeploy
-- **Purpose**: Showcase AI-powered feature analysis with 7 specialized agent roles
-
-**Quick Start:**
-```bash
-cd demos/rfe-builder
-uv sync && uv run generate
-uv run -m llama_deploy.apiserver
-# See demos/rfe-builder/README.md for complete setup
-```
-
-[📖 View RFE Builder Documentation](demos/rfe-builder/README.md)
-
-### 🔧 vTeam Shared Configurations
-Automated team configuration management for development standards.
-
-- **Location**: `tools/vteam_shared_configs/`
-- **Technology**: Python CLI, Git hooks
-- **Purpose**: Enforce consistent development workflows and Claude Code configurations
-
-**Quick Start:**
-```bash
-cd tools/vteam_shared_configs
-uv pip install -e .
-vteam-config install
-```
-
-**Available Commands:**
-- `vteam-config status` - Show current configuration
-- `vteam-config update` - Update to latest version  
-- `vteam-config uninstall` - Remove configuration
-
-### 🔌 MCP Client Integration
-Library for integrating with Model Context Protocol servers.
-
-- **Location**: `tools/mcp_client_integration/`
-- **Technology**: Python, asyncio
-- **Purpose**: Simplify MCP server communication in AI applications
-
-[📖 View MCP Client Documentation](tools/mcp_client_integration/README.md)
-
----
+### Scaling & Performance
+- **Horizontal Pod Autoscaling**: Auto-scaling based on CPU/memory metrics
+- **Resource Management**: Proper requests/limits for optimal resource usage
+- **Job Queuing**: Intelligent job scheduling and resource allocation
+- **Multi-tenancy**: Project-based isolation with shared infrastructure
 
 ## Contributing
 
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Make your changes
+3. Make your changes following the existing patterns
 4. Add tests if applicable
-5. Commit your changes (`git commit -m 'Add amazing feature'`)
+5. Commit with conventional commit messages
 6. Push to the branch (`git push origin feature/amazing-feature`)
 7. Open a Pull Request
+
+## Support & Documentation
+
+- **Deployment Guide**: [docs/OPENSHIFT_DEPLOY.md](docs/OPENSHIFT_DEPLOY.md)
+- **OAuth Setup**: [docs/OPENSHIFT_OAUTH.md](docs/OPENSHIFT_OAUTH.md)
+- **Architecture Details**: [diagrams/](diagrams/)
+- **API Documentation**: Available in web interface after deployment
 
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-
-

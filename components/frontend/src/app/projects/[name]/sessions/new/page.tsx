@@ -17,22 +17,34 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { getApiUrl } from "@/lib/config";
 import type { CreateAgenticSessionRequest, AgentPersona as AgentSummary } from "@/types/agentic-session";
 import { Checkbox } from "@/components/ui/checkbox";
-import { AgentSelection } from "@/components/agent-selection";
+import MultiAgentSelection from "@/components/multi-agent-selection";
 
-const formSchema = z.object({
-  prompt: z.string().min(10, "Prompt must be at least 10 characters long"),
-  model: z.string().min(1, "Please select a model"),
-  temperature: z.number().min(0).max(2),
-  maxTokens: z.number().min(100).max(8000),
-  timeout: z.number().min(60).max(1800),
-  interactive: z.boolean().default(false),
-  // Git configuration fields
-  gitUserName: z.string().optional(),
-  gitUserEmail: z.string().email().optional().or(z.literal("")),
-  gitRepoUrl: z.string().url().optional().or(z.literal("")),
-  // storage paths are not user-configurable anymore
-  agentPersona: z.string().optional(),
-});
+const formSchema = z
+  .object({
+    prompt: z.string(),
+    model: z.string().min(1, "Please select a model"),
+    temperature: z.number().min(0).max(2),
+    maxTokens: z.number().min(100).max(8000),
+    timeout: z.number().min(60).max(1800),
+    interactive: z.boolean().default(false),
+    // Git configuration fields
+    gitUserName: z.string().optional(),
+    gitUserEmail: z.string().email().optional().or(z.literal("")),
+    gitRepoUrl: z.string().url().optional().or(z.literal("")),
+    // storage paths are not user-configurable anymore
+    agentPersona: z.string().optional(),
+  })
+  .superRefine((data, ctx) => {
+    const isInteractive = Boolean(data.interactive);
+    const promptLength = (data.prompt || "").trim().length;
+    if (!isInteractive && promptLength < 10) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["prompt"],
+        message: "Prompt must be at least 10 characters long",
+      });
+    }
+  });
 
 type FormValues = z.input<typeof formSchema>;
 const models = [
@@ -82,6 +94,9 @@ export default function NewProjectSessionPage({ params }: { params: Promise<{ na
     },
   });
 
+  // Watch interactive to adjust prompt field hints
+  const isInteractive = form.watch("interactive");
+
   useEffect(() => {
     const loadAgents = async () => {
       if (!projectName) return;
@@ -105,8 +120,11 @@ export default function NewProjectSessionPage({ params }: { params: Promise<{ na
     setError(null);
 
     try {
+      const promptToSend = values.interactive && !values.prompt.trim()
+        ? "Running in interactive mode"
+        : values.prompt;
       const request: CreateAgenticSessionRequest = {
-        prompt: values.prompt,
+        prompt: promptToSend,
         llmSettings: {
           model: values.model,
           temperature: values.temperature,
@@ -211,18 +229,39 @@ export default function NewProjectSessionPage({ params }: { params: Promise<{ na
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
               <FormField
                 control={form.control}
-                name="prompt"
+                name="interactive"
                 render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Agentic Prompt</FormLabel>
+                  <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-3">
                     <FormControl>
-                      <Textarea placeholder="Describe what you want Claude to analyze on the website..." className="min-h-[100px]" {...field} />
+                      <Checkbox checked={field.value} onCheckedChange={(v) => field.onChange(Boolean(v))} />
                     </FormControl>
-                    <FormDescription>Provide a detailed prompt about what you want Claude to analyze on the website</FormDescription>
+                    <div className="space-y-1 leading-none">
+                      <FormLabel>Interactive chat</FormLabel>
+                      <FormDescription>
+                        When enabled, the session runs in chat mode. You can send messages and receive streamed responses.
+                      </FormDescription>
+                    </div>
                     <FormMessage />
                   </FormItem>
                 )}
               />
+
+              {!isInteractive && (
+                <FormField
+                  control={form.control}
+                  name="prompt"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Agentic Prompt</FormLabel>
+                      <FormControl>
+                        <Textarea placeholder="Describe what you want Claude to analyze on the website..." className="min-h-[100px]" {...field} />
+                      </FormControl>
+                      <FormDescription>Provide a detailed prompt about what you want Claude to analyze on the website</FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
 
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -273,10 +312,10 @@ export default function NewProjectSessionPage({ params }: { params: Promise<{ na
                 <FormDescription>
                   Choose one or more agents to inject their knowledge into the session at start.
                 </FormDescription>
-                <AgentSelection
+                <MultiAgentSelection
                   agents={agents}
                   selectedAgents={selectedAgents}
-                  onSelectionChange={setSelectedAgents}
+                  onChange={setSelectedAgents}
                   maxAgents={8}
                   disabled={isSubmitting}
                 />
@@ -315,24 +354,7 @@ export default function NewProjectSessionPage({ params }: { params: Promise<{ na
                 />
               </div>
 
-              <FormField
-                control={form.control}
-                name="interactive"
-                render={({ field }) => (
-                  <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-3">
-                    <FormControl>
-                      <Checkbox checked={field.value} onCheckedChange={(v) => field.onChange(Boolean(v))} />
-                    </FormControl>
-                    <div className="space-y-1 leading-none">
-                      <FormLabel>Interactive chat</FormLabel>
-                      <FormDescription>
-                        When enabled, the session runs in chat mode. You can send messages and receive streamed responses.
-                      </FormDescription>
-                    </div>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              
 
               {/* Git Configuration Section */}
               <div className="space-y-4">

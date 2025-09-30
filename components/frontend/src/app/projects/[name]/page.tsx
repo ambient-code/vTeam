@@ -286,17 +286,7 @@ export default function ProjectDetailsPage({ params }: { params: Promise<{ name:
               </CardContent>
             </Card>
 
-            {/* Current Usage */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Current Usage</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground">[TBD] No usage data available</p>
-              </CardContent>
-            </Card>
-
-
+          
             {/* Status Conditions removed */}
           </div>
 
