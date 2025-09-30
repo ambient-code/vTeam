@@ -23,6 +23,7 @@ jobs:
       contents: read
       pull-requests: write
       issues: read
+      id-token: write
 
     steps:
       - name: Checkout PR head
