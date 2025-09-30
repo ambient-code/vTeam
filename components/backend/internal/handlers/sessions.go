@@ -677,11 +677,8 @@ func UpdateSessionStatus(c *gin.Context) {
 	reqK8s, reqDyn := middleware.GetK8sClientsForRequest(c)
 	_ = reqK8s
 
-	var req struct {
-		Phase   string `json:"phase" binding:"required"`
-		Message string `json:"message,omitempty"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil {
+	var statusUpdate map[string]interface{}
+	if err := c.ShouldBindJSON(&statusUpdate); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -698,15 +695,30 @@ func UpdateSessionStatus(c *gin.Context) {
 		return
 	}
 
-	// Update status
-	status := obj.Object["status"].(map[string]interface{})
-	status["phase"] = req.Phase
-	if req.Message != "" {
-		status["message"] = req.Message
+	// Ensure status map exists
+	if obj.Object["status"] == nil {
+		obj.Object["status"] = make(map[string]interface{})
 	}
-	status["lastUpdateTime"] = time.Now().UTC().Format(time.RFC3339)
+	status := obj.Object["status"].(map[string]interface{})
 
-	_, err = reqDyn.Resource(gvr).Namespace(project).Update(context.TODO(), obj, v1.UpdateOptions{})
+	// Accept standard fields and result summary fields from runner
+	allowed := map[string]struct{}{
+		"phase": {}, "completionTime": {}, "cost": {}, "message": {},
+		"subtype": {}, "duration_ms": {}, "duration_api_ms": {}, "is_error": {},
+		"num_turns": {}, "session_id": {}, "total_cost_usd": {}, "usage": {}, "result": {},
+	}
+	for k := range statusUpdate {
+		if _, ok := allowed[k]; !ok {
+			delete(statusUpdate, k)
+		}
+	}
+
+	// Merge remaining fields into status
+	for k, v := range statusUpdate {
+		status[k] = v
+	}
+
+	_, err = reqDyn.Resource(gvr).Namespace(project).UpdateStatus(context.TODO(), obj, v1.UpdateOptions{})
 	if err != nil {
 		log.Printf("Failed to update status of agentic session %s in project %s: %v", sessionName, project, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update session status"})
