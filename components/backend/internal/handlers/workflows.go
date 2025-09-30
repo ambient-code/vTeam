@@ -170,7 +170,7 @@ func DeleteProjectRFEWorkflow(c *gin.Context) {
 		}
 	}
 
-	c.Status(http.StatusNoContent)
+	c.JSON(http.StatusOK, gin.H{"message": "RFE workflow deleted successfully"})
 }
 
 // ListProjectRFEWorkflowSessions lists all sessions linked to an RFE workflow by label selector
