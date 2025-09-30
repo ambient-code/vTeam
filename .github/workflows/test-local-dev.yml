@@ -2,17 +2,10 @@ name: Test Local Development Environment
 
 on:
   pull_request:
-    branches: [ main, develop ]
-    paths:
-      - 'components/**'
-      - 'Makefile'
-      - 'components/scripts/local-dev/**'
-      - '.github/workflows/test-local-dev.yml'
 
 jobs:
   test-local-dev-simulation:
     runs-on: ubuntu-latest
-    if: github.event.pull_request.draft == true
     timeout-minutes: 10
     
     steps:
