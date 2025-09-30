@@ -1,0 +1,44 @@
+name: Test Local Development Environment
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'components/**'
+      - 'Makefile'
+      - 'components/scripts/local-dev/**'
+      - '.github/workflows/test-local-dev.yml'
+
+jobs:
+  test-local-dev-simulation:
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == true
+    timeout-minutes: 10
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Validate local dev scripts
+      run: |
+        echo "Validating local development scripts..."
+        # Check if scripts exist and are executable
+        test -f components/scripts/local-dev/crc-start.sh
+        test -f components/scripts/local-dev/crc-test.sh
+        test -f components/scripts/local-dev/crc-stop.sh
+        
+        # Validate script syntax
+        bash -n components/scripts/local-dev/crc-start.sh
+        bash -n components/scripts/local-dev/crc-test.sh
+        bash -n components/scripts/local-dev/crc-stop.sh
+        
+        echo "All local development scripts are valid"
+        
+    - name: Test Makefile targets
+      run: |
+        echo "Testing Makefile targets..."
+        # Test that the targets exist (dry run)
+        make -n dev-start
+        make -n dev-test
+        make -n dev-stop
+        echo "All Makefile targets are valid"
