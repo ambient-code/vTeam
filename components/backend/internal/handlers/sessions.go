@@ -626,7 +626,7 @@ func StartSession(c *gin.Context) {
 	status["phase"] = "Running"
 	status["startedAt"] = time.Now().UTC().Format(time.RFC3339)
 
-	_, err = reqDyn.Resource(gvr).Namespace(project).Update(context.TODO(), obj, v1.UpdateOptions{})
+	_, err = reqDyn.Resource(gvr).Namespace(project).UpdateStatus(context.TODO(), obj, v1.UpdateOptions{})
 	if err != nil {
 		log.Printf("Failed to start agentic session %s in project %s: %v", sessionName, project, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to start agentic session"})
@@ -660,7 +660,7 @@ func StopSession(c *gin.Context) {
 	status["phase"] = "Stopped"
 	status["stoppedAt"] = time.Now().UTC().Format(time.RFC3339)
 
-	_, err = reqDyn.Resource(gvr).Namespace(project).Update(context.TODO(), obj, v1.UpdateOptions{})
+	_, err = reqDyn.Resource(gvr).Namespace(project).UpdateStatus(context.TODO(), obj, v1.UpdateOptions{})
 	if err != nil {
 		log.Printf("Failed to stop agentic session %s in project %s: %v", sessionName, project, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to stop agentic session"})

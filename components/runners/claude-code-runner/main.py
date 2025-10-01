@@ -399,7 +399,7 @@ class SimpleClaudeRunner:
                     logger.debug(f"async push workspace failed: {e}")
 
 
-            client.connect()
+            await client.connect()
 
             while True:
                 inbox, new_offset = await self._read_inbox_lines(last_offset)
