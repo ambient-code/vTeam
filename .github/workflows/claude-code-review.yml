@@ -7,8 +7,8 @@ name: Claude Code Review (DISABLED)
 
 on:
   # Disabled due to fork PR failures - see issue link above
-  # pull_request_target:
-  #   types: [opened, synchronize]
+  pull_request_target:
+    types: [opened, synchronize]
 
 jobs:
   claude-review:
