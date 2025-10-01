@@ -1,4 +1,4 @@
-.PHONY: help setup-env build-all build-frontend build-backend build-operator build-runner deploy clean dev-frontend dev-backend lint test registry-login push-all dev-start dev-stop dev-test
+.PHONY: help setup-env build-all build-frontend build-backend build-operator build-runner deploy clean dev-frontend dev-backend lint test registry-login push-all dev-start dev-stop dev-test dev-logs-operator dev-restart-operator dev-operator-status dev-test-operator
 
 # Default target
 help: ## Show this help message
@@ -124,3 +124,25 @@ dev-logs-backend: ## Show backend logs with Air output
 
 dev-logs-frontend: ## Show frontend logs with Next.js output
 	@oc logs -f deployment/vteam-frontend -n vteam-dev
+
+dev-logs-operator: ## Show operator logs
+	@oc logs -f deployment/vteam-operator -n vteam-dev
+
+dev-restart-operator: ## Restart operator deployment
+	@echo "Restarting operator..."
+	@oc rollout restart deployment/vteam-operator -n vteam-dev
+	@oc rollout status deployment/vteam-operator -n vteam-dev --timeout=60s
+
+dev-operator-status: ## Show operator status and recent events
+	@echo "Operator Deployment Status:"
+	@oc get deployment vteam-operator -n vteam-dev
+	@echo ""
+	@echo "Operator Pod Status:"
+	@oc get pods -n vteam-dev -l app=vteam-operator
+	@echo ""
+	@echo "Recent Operator Events:"
+	@oc get events -n vteam-dev --field-selector involvedObject.kind=Deployment,involvedObject.name=vteam-operator --sort-by='.lastTimestamp' | tail -10
+
+dev-test-operator: ## Run only operator tests
+	@echo "Running operator-specific tests..."
+	@bash components/scripts/local-dev/crc-test.sh 2>&1 | grep -A 1 "Operator"

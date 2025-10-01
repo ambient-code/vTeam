@@ -197,6 +197,129 @@ test_openshift_console_access() {
   curl -fsS --max-time 5 --connect-timeout 5 "$console_url" >/dev/null 2>&1
 }
 
+# Operator Tests
+#########################
+# Operator Tests
+#########################
+
+test_operator_deployment_exists() {
+  oc get deployment vteam-operator -n "$PROJECT_NAME" >/dev/null 2>&1
+}
+
+test_operator_pod_running() {
+  local operator_ready
+  operator_ready=$(oc get deployment vteam-operator -n "$PROJECT_NAME" -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "0")
+  [[ "$operator_ready" -gt 0 ]]
+}
+
+test_operator_service_account() {
+  oc get serviceaccount agentic-operator -n "$PROJECT_NAME" >/dev/null 2>&1
+}
+
+test_operator_rbac_configured() {
+  oc get clusterrole agentic-operator-local >/dev/null 2>&1 &&
+  oc get clusterrolebinding agentic-operator-local >/dev/null 2>&1
+}
+
+test_operator_watching_sessions() {
+  local operator_pod
+  operator_pod=$(oc get pods -n "$PROJECT_NAME" -l app=vteam-operator -o name 2>/dev/null | head -n 1)
+  [[ -n "$operator_pod" ]] || return 1
+  oc logs "$operator_pod" -n "$PROJECT_NAME" --tail=100 2>/dev/null | \
+    grep -q "Watching for AgenticSession events"
+}
+
+test_operator_workspace_pvc_created() {
+  oc get pvc ambient-workspace -n "$PROJECT_NAME" >/dev/null 2>&1
+}
+
+test_operator_content_service_deployed() {
+  oc get service ambient-content -n "$PROJECT_NAME" >/dev/null 2>&1 &&
+  oc get deployment ambient-content -n "$PROJECT_NAME" >/dev/null 2>&1
+}
+
+test_operator_projectsettings_created() {
+  oc get projectsettings projectsettings -n "$PROJECT_NAME" >/dev/null 2>&1
+}
+
+test_operator_can_create_session_job() {
+  local test_session="test-session-$$"
+  cat <<EOF | oc apply -f - >/dev/null 2>&1
+apiVersion: vteam.ambient-code/v1alpha1
+kind: AgenticSession
+metadata:
+  name: ${test_session}
+  namespace: ${PROJECT_NAME}
+spec:
+  prompt: "echo 'test session'"
+  timeout: 300
+  interactive: false
+  llmSettings:
+    model: "claude-sonnet-4-20250514"
+    temperature: 0.7
+    maxTokens: 4096
+EOF
+  local timeout=30 elapsed=0 job_created=false
+  while [[ $elapsed -lt $timeout ]]; do
+    if oc get job "${test_session}-job" -n "$PROJECT_NAME" >/dev/null 2>&1; then
+      job_created=true
+      break
+    fi
+    sleep 2; elapsed=$((elapsed + 2))
+  done
+  oc delete agenticsession "$test_session" -n "$PROJECT_NAME" >/dev/null 2>&1 || true
+  [[ "$job_created" == "true" ]]
+}
+
+test_operator_updates_session_status() {
+  local test_session="test-status-$$"
+  cat <<EOF | oc apply -f - >/dev/null 2>&1
+apiVersion: vteam.ambient-code/v1alpha1
+kind: AgenticSession
+metadata:
+  name: ${test_session}
+  namespace: ${PROJECT_NAME}
+spec:
+  prompt: "echo 'test'"
+  timeout: 300
+  interactive: false
+  llmSettings:
+    model: "claude-sonnet-4-20250514"
+    temperature: 0.7
+    maxTokens: 4096
+EOF
+  local timeout=30 elapsed=0 status_updated=false phase
+  while [[ $elapsed -lt $timeout ]]; do
+    phase=$(oc get agenticsession "$test_session" -n "$PROJECT_NAME" -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+    if [[ -n "$phase" ]] && [[ "$phase" != "null" ]]; then
+      status_updated=true
+      break
+    fi
+    sleep 2; elapsed=$((elapsed + 2))
+  done
+  oc delete agenticsession "$test_session" -n "$PROJECT_NAME" >/dev/null 2>&1 || true
+  [[ "$status_updated" == "true" ]]
+}
+
+test_operator_handles_managed_namespace_label() {
+  local label
+  label=$(oc get namespace "$PROJECT_NAME" -o jsonpath='{.metadata.labels.ambient-code\.io/managed}' 2>/dev/null || echo "")
+  [[ "$label" == "true" ]]
+}
+
+test_operator_logs_no_errors() {
+  local operator_pod
+  operator_pod=$(oc get pods -n "$PROJECT_NAME" -l app=vteam-operator -o name 2>/dev/null | head -n 1)
+  [[ -n "$operator_pod" ]] || return 1
+  local error_count
+  error_count=$(oc logs "$operator_pod" -n "$PROJECT_NAME" --tail=200 2>/dev/null | \
+    grep -iE "error|fatal|panic" | \
+    grep -viE "watching for.*error|watch.*error.*restarting" | wc -l 2>/dev/null || echo "0")
+  # Trim whitespace from error_count
+  error_count=$(echo "$error_count" | tr -d '[:space:]')
+  [[ "$error_count" -eq 0 ]]
+}
+
 #########################
 # Load environment
 #########################
@@ -210,6 +333,7 @@ load_environment() {
 #########################
 # Execution
 #########################
+
 echo "Running CRC-based local development tests..."
 echo ""
 
@@ -224,11 +348,35 @@ run_test "Project '$PROJECT_NAME' exists" test_project_exists
 # Resource tests
 run_test "CRDs are applied" test_crds_applied
 run_test "Service accounts exist" test_service_accounts
+run_test "Namespace has managed label" test_operator_handles_managed_namespace_label
 
 # Deployment tests
 run_test "Deployments are ready" test_deployments_ready
 run_test "Services exist" test_services_exist
 run_test "Routes are configured" test_routes_exist
+
+# Operator Infrastructure Tests
+echo ""
+log "Running Operator Infrastructure Tests..."
+run_test "Operator deployment exists" test_operator_deployment_exists
+run_test "Operator pod is running" test_operator_pod_running
+run_test "Operator service account exists" test_operator_service_account
+run_test "Operator RBAC configured" test_operator_rbac_configured
+
+# Operator Functionality Tests
+echo ""
+log "Running Operator Functionality Tests..."
+run_test "Operator watching AgenticSessions" test_operator_watching_sessions
+run_test "Operator created workspace PVC" test_operator_workspace_pvc_created
+run_test "Operator deployed content service" test_operator_content_service_deployed
+run_test "Operator created ProjectSettings" test_operator_projectsettings_created
+run_test "Operator logs show no critical errors" test_operator_logs_no_errors
+
+# Operator End-to-End Tests
+echo ""
+log "Running Operator End-to-End Tests..."
+run_test "Operator creates Job from AgenticSession" test_operator_can_create_session_job
+run_test "Operator updates AgenticSession status" test_operator_updates_session_status
 
 # Health tests  
 run_test "Backend health endpoint" test_backend_health
@@ -238,12 +386,6 @@ run_test "Frontend is reachable" test_frontend_reachable
 run_test "Backend API with OpenShift token" test_backend_api_with_token
 
 # Security tests
-# TODO: RBAC test skipped - needs refinement for CRC environment
-# The test expects specific project creation permissions that work differently in CRC
-# vs production OpenShift. Admin can create projects (correct) and view cannot create
-# deployments (correct), but the specific permission checks need adjustment for CRC.
-# For future development: Refine permission checks to match CRC's default RBAC model.
-# run_test "RBAC permissions work correctly" test_rbac_permissions
 log "Skipping RBAC test - known issue with CRC permission model (admin/view permissions work correctly)"
 
 # Optional console test (might be slow) - NOT counted in pass/fail
@@ -254,6 +396,8 @@ else
   warn "OpenShift Console test failed (this is usually not critical in local dev)"
 fi
 
+# Results summary
+
 echo ""
 echo "========================================="
 echo "Test Results: $TESTS_PASSED/$TESTS_RUN passed"
@@ -262,24 +406,19 @@ echo "========================================="
 if [[ "$TESTS_PASSED" -eq "$TESTS_RUN" ]]; then
   success "All tests passed! vTeam local development environment is healthy."
   echo ""
-  
-  # Show access information
   if [[ -n "${BACKEND_URL:-}" ]]; then
     echo "Backend:   $BACKEND_URL/health"
   fi
   if [[ -n "${FRONTEND_URL:-}" ]]; then
     echo "Frontend:  $FRONTEND_URL"
   fi
-  
   console_url=$(crc console --url 2>/dev/null || echo "")
   if [[ -n "$console_url" ]]; then
     echo "Console:   $console_url"
   fi
-  
   echo ""
   echo "OpenShift project: $PROJECT_NAME"
   echo "Use 'oc project $PROJECT_NAME' to manage resources"
-  
   exit 0
 else
   failed=$((TESTS_RUN - TESTS_PASSED))
@@ -291,6 +430,5 @@ else
   echo "3. Check routes: 'oc get routes -n $PROJECT_NAME'"
   echo "4. View logs: 'oc logs deployment/vteam-backend -n $PROJECT_NAME'"
   echo "5. Restart environment: 'make dev-stop && make dev-start'"
-  
   exit 1
 fi

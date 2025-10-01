@@ -28,6 +28,7 @@ DEV_MODE="${DEV_MODE:-false}"
 # Component directories
 BACKEND_DIR="${REPO_ROOT}/components/backend"
 FRONTEND_DIR="${REPO_ROOT}/components/frontend"
+OPERATOR_DIR="${REPO_ROOT}/components/operator"
 CRDS_DIR="${REPO_ROOT}/components/manifests/crds"
 
 ###############
@@ -254,8 +255,9 @@ ensure_project() {
     oc project "$PROJECT_NAME"
   fi
   
-  # Apply ambient-code labels like production
-  oc label project "$PROJECT_NAME" ambient-code.io/managed=true --overwrite >/dev/null 2>&1 || true
+  # Apply ambient-code labels for operator to recognize managed namespace
+  oc label namespace "$PROJECT_NAME" ambient-code.io/managed=true --overwrite
+  log "Namespace labeled as managed for operator"
 }
 
 apply_crds() {
@@ -278,12 +280,18 @@ apply_rbac() {
   oc wait --for=condition=complete secret/frontend-auth-token --timeout=60s -n "$PROJECT_NAME" || true
 }
 
+apply_operator_rbac() {
+  log "Applying operator RBAC (service account and permissions)..."
+  oc apply -f "${MANIFESTS_DIR}/operator-rbac.yaml" -n "$PROJECT_NAME"
+}
+
 #########################
 # Build and Deploy
 #########################
 build_and_deploy() {
   log "Creating BuildConfigs..."
   oc apply -f "${MANIFESTS_DIR}/build-configs.yaml" -n "$PROJECT_NAME"
+  oc apply -f "${MANIFESTS_DIR}/operator-build-config.yaml" -n "$PROJECT_NAME"
   
   # Start builds
   log "Building backend image..."
@@ -292,18 +300,25 @@ build_and_deploy() {
   log "Building frontend image..."  
   oc start-build vteam-frontend --from-dir="$FRONTEND_DIR" --wait -n "$PROJECT_NAME"
   
+  log "Building operator image..."
+  oc start-build vteam-operator --from-dir="$OPERATOR_DIR" --wait -n "$PROJECT_NAME"
+  
   # Deploy services
   log "Deploying backend..."
   oc apply -f "${MANIFESTS_DIR}/backend-deployment.yaml" -n "$PROJECT_NAME"
   
   log "Deploying frontend..."
   oc apply -f "${MANIFESTS_DIR}/frontend-deployment.yaml" -n "$PROJECT_NAME"
+  
+  log "Deploying operator..."
+  oc apply -f "${MANIFESTS_DIR}/operator-deployment.yaml" -n "$PROJECT_NAME"
 }
 
 wait_for_ready() {
   log "Waiting for deployments to be ready..."
   oc rollout status deployment/vteam-backend --timeout=300s -n "$PROJECT_NAME"
   oc rollout status deployment/vteam-frontend --timeout=300s -n "$PROJECT_NAME"
+  oc rollout status deployment/vteam-operator --timeout=300s -n "$PROJECT_NAME"
 }
 
 show_results() {
@@ -351,6 +366,7 @@ configure_oc_context
 ensure_project
 apply_crds
 apply_rbac
+apply_operator_rbac
 build_and_deploy
 wait_for_ready
 show_results
