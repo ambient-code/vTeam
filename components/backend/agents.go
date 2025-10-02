@@ -1,4 +1,4 @@
-package handlers
+package main
 
 import (
 	"fmt"
@@ -66,7 +66,7 @@ func readAllAgentYAMLs(dir string) ([]yamlAgent, error) {
 	return out, nil
 }
 
-func ListAgents(c *gin.Context) {
+func listAgents(c *gin.Context) {
 	dir := resolveAgentsDir()
 	agents, err := readAllAgentYAMLs(dir)
 	if err != nil {
@@ -90,7 +90,7 @@ func ListAgents(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
-func GetAgentMarkdown(c *gin.Context) {
+func getAgentMarkdown(c *gin.Context) {
 	persona := c.Param("persona")
 	if persona == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "persona required"})

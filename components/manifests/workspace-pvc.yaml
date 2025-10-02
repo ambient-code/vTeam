@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: vteam-workspace-pvc
+  labels:
+    app: vteam
+    component: workspace-storage
+spec:
+  accessModes:
+    - ReadWriteMany  # RWX needed for shared access between backend and claude-code-runner jobs
+  resources:
+    requests:
+      storage: 20Gi  # Larger than state storage for RFE workspaces
