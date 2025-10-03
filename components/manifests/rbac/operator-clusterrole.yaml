@@ -24,22 +24,22 @@ rules:
 # Jobs (create and monitor for session execution)
 - apiGroups: ["batch"]
   resources: ["jobs"]
-  verbs: ["get", "create"]
+  verbs: ["get", "list", "watch", "create", "delete"]
 # Pods (for getting logs from failed jobs)
 - apiGroups: [""]
   resources: ["pods"]
-  verbs: ["list"]
+  verbs: ["get", "list", "watch", "delete"]
 - apiGroups: [""]
   resources: ["pods/log"]
   verbs: ["get"]
 # PersistentVolumeClaims (create workspace PVCs)
 - apiGroups: [""]
   resources: ["persistentvolumeclaims"]
-  verbs: ["get", "create"]
+  verbs: ["get", "list", "create", "delete"]
 # Services (create per-namespace content services)
 - apiGroups: [""]
   resources: ["services"]
-  verbs: ["get", "list", "watch", "create"]
+  verbs: ["get", "list", "watch", "create", "delete"]
 # Deployments (create per-namespace content services)
 - apiGroups: ["apps"]
   resources: ["deployments"]
