@@ -226,7 +226,7 @@ class ClaudeCodeAdapter:
                                     },
                                 )
                                 if interactive:
-                                    await self._send_message(MessageType.WAITING_FOR_INPUT)
+                                    await self.shell._send_message(MessageType.WAITING_FOR_INPUT, {})
                                 self._turn_count += 1
                             elif isinstance(block, ThinkingBlock):
                                 await self._send_log({"level": "debug", "message": "Model is reasoning..."})
@@ -258,7 +258,7 @@ class ClaudeCodeAdapter:
 
             async with ClaudeSDKClient(options=options) as client:
                 async def process_one_prompt(text: str):
-                    await self.shell._send_message(MessageType.AGENT_RUNNING)
+                    await self.shell._send_message(MessageType.AGENT_RUNNING, {})
                     await client.query(text)
                     await process_response_stream(client)
 

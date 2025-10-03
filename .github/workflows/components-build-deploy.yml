@@ -27,8 +27,9 @@ jobs:
             context: ./components/operator
             image: quay.io/ambient_code/vteam_operator
           - name: claude-code-runner
-            context: ./components/runners/claude-code-runner
+            context: ./components/runners
             image: quay.io/ambient_code/vteam_claude_runner
+            dockerfile: claude-code-runner/Dockerfile
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
@@ -58,6 +59,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: ${{ matrix.component.context }}
+          file: ${{ matrix.component.dockerfile }}
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
@@ -71,6 +73,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: ${{ matrix.component.context }}
+          file: ${{ matrix.component.dockerfile }}
           platforms: linux/amd64,linux/arm64
           push: false
           tags: ${{ matrix.component.image }}:pr-${{ github.event.pull_request.number }}
