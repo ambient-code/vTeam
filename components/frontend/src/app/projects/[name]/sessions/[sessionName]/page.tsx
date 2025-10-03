@@ -302,12 +302,14 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
             type: "agent_running",
             timestamp: innerTs,
           });
+          break;
         }
         case "agent.waiting": {
           agenticMessages.push({
             type: "agent_waiting",
             timestamp: innerTs,
           });
+          break;
         }
       
         default: {
@@ -922,7 +924,7 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
           <TabsContent value="messages">
             <div className="flex flex-col gap-2 max-h-[60vh] overflow-y-auto pr-1">
               {streamMessages.map((m, idx) => (
-                <StreamMessage key={`sm-${idx}`} message={m} />
+                <StreamMessage key={`sm-${idx}`} message={m} isNewest={idx === streamMessages.length - 1} />
               ))}
 
              

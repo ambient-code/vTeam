@@ -123,7 +123,17 @@ class ClaudeCodeAdapter:
             cwd_path = self.context.workspace_path
             add_dirs = []
             if repos_cfg:
-                main_name = (os.getenv('MAIN_REPO_NAME') or '').strip() or repos_cfg[0].get('name')
+                # Prefer explicit MAIN_REPO_NAME, else use MAIN_REPO_INDEX, else default to 0
+                main_name = (os.getenv('MAIN_REPO_NAME') or '').strip()
+                if not main_name:
+                    idx_raw = (os.getenv('MAIN_REPO_INDEX') or '').strip()
+                    try:
+                        idx_val = int(idx_raw) if idx_raw else 0
+                    except Exception:
+                        idx_val = 0
+                    if idx_val < 0 or idx_val >= len(repos_cfg):
+                        idx_val = 0
+                    main_name = (repos_cfg[idx_val].get('name') or '').strip()
                 # CWD becomes main repo folder under workspace
                 if main_name:
                     cwd_path = str(Path(self.context.workspace_path) / main_name)
@@ -723,7 +733,23 @@ class ClaudeCodeAdapter:
                     name = str(it.get('name') or '').strip()
                     input_obj = it.get('input') or {}
                     output_obj = it.get('output') or None
-                    if name and isinstance(input_obj, dict) and str(input_obj.get('url') or '').strip():
+                    url = str((input_obj or {}).get('url') or '').strip()
+                    if not name and url:
+                        # Derive repo folder name from URL if not provided
+                        try:
+                            owner, repo, _ = self._parse_owner_repo(url)
+                            derived = repo or ''
+                            if not derived:
+                                # Fallback: last path segment without .git
+                                from urllib.parse import urlparse as _urlparse
+                                p = _urlparse(url)
+                                parts = [p for p in (p.path or '').split('/') if p]
+                                if parts:
+                                    derived = parts[-1]
+                            name = (derived or '').removesuffix('.git').strip()
+                        except Exception:
+                            name = ''
+                    if name and isinstance(input_obj, dict) and url:
                         out.append({'name': name, 'input': input_obj, 'output': output_obj})
                 return out
         except Exception:

@@ -10,10 +10,11 @@ export type StreamMessageProps = {
   message: MessageObject | ToolUseMessages;
   onGoToResults?: () => void;
   plainCard?: boolean;
+  isNewest?: boolean;
 };
 
 
-export const StreamMessage: React.FC<StreamMessageProps> = ({ message, onGoToResults, plainCard=false }) => {
+export const StreamMessage: React.FC<StreamMessageProps> = ({ message, onGoToResults, plainCard=false, isNewest=false }) => {
   const isToolUsePair = (m: MessageObject | ToolUseMessages): m is ToolUseMessages =>
     m != null && typeof m === "object" && "toolUseBlock" in m && "resultBlock" in m;
 
@@ -24,9 +25,11 @@ export const StreamMessage: React.FC<StreamMessageProps> = ({ message, onGoToRes
   const m = message as MessageObject;
   switch (m.type) {
     case "agent_running": {
+      if (!isNewest) return null;
       return <LoadingDots />;
     }
     case "agent_waiting": {
+      if (!isNewest) return null;
       return (
         <span className="text-xs text-gray-500">Waiting for input...</span>
       )

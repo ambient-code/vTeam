@@ -439,6 +439,23 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 									if mrn, ok := spec["mainRepoName"].(string); ok && strings.TrimSpace(mrn) != "" {
 										base = append(base, corev1.EnvVar{Name: "MAIN_REPO_NAME", Value: mrn})
 									}
+									// Inject MAIN_REPO_INDEX if provided
+									if mriRaw, ok := spec["mainRepoIndex"]; ok {
+										switch v := mriRaw.(type) {
+										case int64:
+											base = append(base, corev1.EnvVar{Name: "MAIN_REPO_INDEX", Value: fmt.Sprintf("%d", v)})
+										case int32:
+											base = append(base, corev1.EnvVar{Name: "MAIN_REPO_INDEX", Value: fmt.Sprintf("%d", v)})
+										case int:
+											base = append(base, corev1.EnvVar{Name: "MAIN_REPO_INDEX", Value: fmt.Sprintf("%d", v)})
+										case float64:
+											base = append(base, corev1.EnvVar{Name: "MAIN_REPO_INDEX", Value: fmt.Sprintf("%d", int64(v))})
+										case string:
+											if strings.TrimSpace(v) != "" {
+												base = append(base, corev1.EnvVar{Name: "MAIN_REPO_INDEX", Value: v})
+											}
+										}
+									}
 									if envMap, ok := spec["environmentVariables"].(map[string]interface{}); ok {
 										for k, v := range envMap {
 											if vs, ok := v.(string); ok {
