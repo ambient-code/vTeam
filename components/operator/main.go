@@ -831,6 +831,12 @@ func deleteJobAndPerJobService(namespace, jobName, sessionName string) error {
 		log.Printf("Failed to delete job %s/%s: %v", namespace, jobName, err)
 		return err
 	}
+
+	// Delete the per-session workspace PVC
+	pvcName := fmt.Sprintf("ambient-workspace-%s", sessionName)
+	if err := k8sClient.CoreV1().PersistentVolumeClaims(namespace).Delete(context.TODO(), pvcName, v1.DeleteOptions{}); err != nil && !errors.IsNotFound(err) {
+		log.Printf("Failed to delete per-session PVC %s/%s: %v", namespace, pvcName, err)
+	}
 	return nil
 }
 
