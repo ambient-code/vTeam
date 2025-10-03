@@ -832,6 +832,18 @@ func deleteJobAndPerJobService(namespace, jobName, sessionName string) error {
 		return err
 	}
 
+	// Proactively delete Pods for this Job before removing PVC
+	if pods, err := k8sClient.CoreV1().Pods(namespace).List(context.TODO(), v1.ListOptions{LabelSelector: fmt.Sprintf("job-name=%s", jobName)}); err == nil {
+		for i := range pods.Items {
+			p := pods.Items[i]
+			if err := k8sClient.CoreV1().Pods(namespace).Delete(context.TODO(), p.Name, v1.DeleteOptions{}); err != nil && !errors.IsNotFound(err) {
+				log.Printf("Failed to delete pod %s/%s for job %s: %v", namespace, p.Name, jobName, err)
+			}
+		}
+	} else if err != nil && !errors.IsNotFound(err) {
+		log.Printf("Failed to list pods for job %s/%s: %v", namespace, jobName, err)
+	}
+
 	// Delete the per-session workspace PVC
 	pvcName := fmt.Sprintf("ambient-workspace-%s", sessionName)
 	if err := k8sClient.CoreV1().PersistentVolumeClaims(namespace).Delete(context.TODO(), pvcName, v1.DeleteOptions{}); err != nil && !errors.IsNotFound(err) {
