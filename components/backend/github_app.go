@@ -395,26 +395,40 @@ func listUserForks(c *gin.Context) {
 		return
 	}
 	api := githubAPIBaseURL(installation.Host)
-	url := fmt.Sprintf("%s/repos/%s/%s/forks?per_page=100", api, owner, repoName)
-	resp, err := doGitHubRequest(c.Request.Context(), http.MethodGet, url, "Bearer "+token, "", nil)
-	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("GitHub request failed: %v", err)})
-		return
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		b, _ := io.ReadAll(resp.Body)
-		c.JSON(resp.StatusCode, gin.H{"error": string(b)})
-		return
-	}
-	var forksResp []map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&forksResp); err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("failed to parse GitHub response: %v", err)})
-		return
+	// Fetch all pages of forks (public + any accessible private). Cap pages for safety.
+	allForksResp := make([]map[string]interface{}, 0, 100)
+	const perPage = 100
+	for page := 1; page <= 10; page++ { // safety cap: up to 1000 forks
+		url := fmt.Sprintf("%s/repos/%s/%s/forks?per_page=%d&page=%d", api, owner, repoName, perPage, page)
+		resp, err := doGitHubRequest(c.Request.Context(), http.MethodGet, url, "Bearer "+token, "", nil)
+		if err != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("GitHub request failed: %v", err)})
+			return
+		}
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			b, _ := io.ReadAll(resp.Body)
+			_ = resp.Body.Close()
+			c.JSON(resp.StatusCode, gin.H{"error": string(b)})
+			return
+		}
+		var pageForks []map[string]interface{}
+		decErr := json.NewDecoder(resp.Body).Decode(&pageForks)
+		_ = resp.Body.Close()
+		if decErr != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("failed to parse GitHub response: %v", decErr)})
+			return
+		}
+		if len(pageForks) == 0 {
+			break
+		}
+		allForksResp = append(allForksResp, pageForks...)
+		if len(pageForks) < perPage {
+			break
+		}
 	}
 	// Map all forks
-	all := make([]map[string]interface{}, 0, len(forksResp))
-	for _, f := range forksResp {
+	all := make([]map[string]interface{}, 0, len(allForksResp))
+	for _, f := range allForksResp {
 		name, _ := f["name"].(string)
 		full, _ := f["full_name"].(string)
 		html, _ := f["html_url"].(string)
@@ -424,27 +438,12 @@ func listUserForks(c *gin.Context) {
 			"url":      html,
 		})
 	}
-	fmt.Printf("forksResp: %+v\n", forksResp)
+	fmt.Printf("forksResp: %+v\n", allForksResp)
 	fmt.Printf("installation: %+v\n", installation)
 	fmt.Printf("all: %+v\n", all)
-	// Best-effort filter by installation account; if that removes everything, fall back to all
-	filtered := make([]map[string]interface{}, 0, len(all))
-	if installation.GitHubUserID != "" {
-		for i, f := range forksResp {
-			ownerLogin := ""
-			if o, ok := f["owner"].(map[string]interface{}); ok {
-				ownerLogin, _ = o["login"].(string)
-			}
-			if ownerLogin != "" && strings.EqualFold(ownerLogin, installation.GitHubUserID) {
-				filtered = append(filtered, all[i])
-			}
-		}
-	}
-	if len(filtered) == 0 {
-		filtered = all
-	}
+	// Return all forks without filtering
 	c.JSON(http.StatusOK, gin.H{
-		"forks": filtered,
+		"forks": all,
 	})
 }
 
