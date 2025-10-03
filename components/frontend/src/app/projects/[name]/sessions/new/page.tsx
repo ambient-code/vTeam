@@ -38,9 +38,8 @@ const formSchema = z
       .optional()
       .default([]),
     mainRepoIndex: z.number().optional().default(0),
-    // PR options
-    createPR: z.boolean().default(false),
-    prTargetBranch: z.string().optional().or(z.literal("")),
+    // Runner behavior
+    autoPushOnComplete: z.boolean().default(false),
     // storage paths are not user-configurable anymore
     agentPersona: z.string().optional(),
   })
@@ -101,8 +100,7 @@ export default function NewProjectSessionPage({ params }: { params: Promise<{ na
       maxTokens: 4000,
       timeout: 300,
       interactive: false,
-      createPR: false,
-      prTargetBranch: "",
+      autoPushOnComplete: false,
       agentPersona: "",
       repos: [],
       mainRepoIndex: 0,
@@ -222,6 +220,14 @@ export default function NewProjectSessionPage({ params }: { params: Promise<{ na
         };
       }
 
+      // Auto-push toggle
+      if (values.autoPushOnComplete) {
+        request.environmentVariables = {
+          ...(request.environmentVariables || {}),
+          AUTO_PUSH_ON_COMPLETE: "true",
+        };
+      }
+
       // Multi-repo configuration
       const repos = (values as any).repos as Array<{ input: { url: string; branch?: string }; output?: { url: string; branch?: string } }> || [];
       if (Array.isArray(repos) && repos.length > 0) {
@@ -235,18 +241,6 @@ export default function NewProjectSessionPage({ params }: { params: Promise<{ na
           REPOS_JSON: JSON.stringify(filteredRepos),
           MAIN_REPO_INDEX: String(values.mainRepoIndex || 0),
         };
-      }
-
-      // Pass PR creation intent as env vars
-      if (values.createPR) {
-        request.environmentVariables = {
-          ...(request.environmentVariables || {}),
-          CREATE_PR: "true",
-        };
-        const target = (values.prTargetBranch || "").trim();
-        if (target) {
-          request.environmentVariables.PR_TARGET_BRANCH = target;
-        }
       }
 
       const apiUrl = getApiUrl();
@@ -629,34 +623,25 @@ export default function NewProjectSessionPage({ params }: { params: Promise<{ na
                 </DialogContent>
               </Dialog>
 
-              {/* PR creation option */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-medium">Pull Request (Optional)</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="createPR"
-                    render={({ field }) => (
-                      <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-3">
-                        <FormControl>
-                          <input
-                            type="checkbox"
-                            checked={field.value}
-                            onChange={(e) => field.onChange(e.target.checked)}
-                          />
-                        </FormControl>
-                        <div className="space-y-1 leading-none">
-                          <FormLabel>Create PR after run</FormLabel>
-                          <FormDescription>
-                            When enabled, a PR will be created if output branch differs from input branch.
-                          </FormDescription>
-                        </div>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-              </div>
+              {/* Runner behavior */}
+              <FormField
+                control={form.control}
+                name="autoPushOnComplete"
+                render={({ field }) => (
+                  <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-3">
+                    <FormControl>
+                      <Checkbox checked={field.value} onCheckedChange={(v) => field.onChange(Boolean(v))} />
+                    </FormControl>
+                    <div className="space-y-1 leading-none">
+                      <FormLabel>Auto-push to Git on completion</FormLabel>
+                      <FormDescription>
+                        When enabled, the runner will commit and push changes automatically after it finishes.
+                      </FormDescription>
+                    </div>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
               {/* Storage paths are managed automatically by the backend/operator */}
 

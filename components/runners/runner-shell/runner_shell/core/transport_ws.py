@@ -31,7 +31,7 @@ class WebSocketTransport:
         try:
             # Forward Authorization header if BOT_TOKEN (runner SA token) is present
             headers: Dict[str, str] = {}
-            token = (os.getenv("BOT_TOKEN") or os.getenv("RUNNER_TOKEN") or "").strip()
+            token = (os.getenv("BOT_TOKEN") or "").strip()
             if token:
                 headers["Authorization"] = f"Bearer {token}"
 
@@ -57,7 +57,7 @@ class WebSocketTransport:
             )
             # Surface a clearer hint when auth is likely missing
             if status == 401:
-                has_token = bool((os.getenv("BOT_TOKEN") or os.getenv("RUNNER_TOKEN") or "").strip())
+                has_token = bool((os.getenv("BOT_TOKEN") or "").strip())
                 if not has_token:
                     logger.error(
                         "No BOT_TOKEN present; backend project routes require Authorization."

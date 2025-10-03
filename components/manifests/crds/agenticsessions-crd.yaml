@@ -51,6 +51,14 @@ spec:
                           type: string
                           description: "Output branch to push to"
                           default: "main"
+                    status:
+                      type: string
+                      description: "Per-repo state: no-diff, has-diff, pushed, abandoned"
+                      enum:
+                      - "no-diff"
+                      - "has-diff"
+                      - "pushed"
+                      - "abandoned"
               mainRepoIndex:
                 type: integer
                 description: "Index of the repo in repos array treated as the main repo (Claude working dir). Defaults to 0 (first repo)."
@@ -64,6 +72,21 @@ spec:
               displayName:
                 type: string
                 description: "A descriptive display name for the agentic session generated from prompt and website"
+              userContext:
+                type: object
+                description: "Authenticated caller identity captured at creation time"
+                properties:
+                  userId:
+                    type: string
+                    description: "Stable user identifier (from SSO)"
+                  displayName:
+                    type: string
+                    description: "Human-readable display name"
+                  groups:
+                    type: array
+                    items:
+                      type: string
+                    description: "Group memberships of the user"
               llmSettings:
                 type: object
                 properties:

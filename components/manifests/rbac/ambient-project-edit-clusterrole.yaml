@@ -3,13 +3,13 @@ kind: ClusterRole
 metadata:
   name: ambient-project-edit
 rules:
-# AgenticSessions (full CRUD)
+# AgenticSessions (read-only)
 - apiGroups: ["vteam.ambient-code"]
   resources: ["agenticsessions"]
-  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  verbs: ["get", "list", "watch"]
 - apiGroups: ["vteam.ambient-code"]
   resources: ["agenticsessions/status"]
-  verbs: ["get", "update", "patch"]
+  verbs: ["get"]
 # RFEWorkflows (full CRUD)
 - apiGroups: ["vteam.ambient-code"]
   resources: ["rfeworkflows"]

@@ -13,6 +13,7 @@ spec:
     metadata:
       labels:
         app: backend-api
+        role: backend
     spec:
       serviceAccountName: backend-api
       containers:
@@ -83,6 +84,7 @@ spec:
               key: GIT_TOKEN
               optional: true
 
+        
         resources:
           requests:
             cpu: 100m

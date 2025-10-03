@@ -16,7 +16,11 @@ metadata:
     kubernetes.io/service-account.name: deployer
 type: kubernetes.io/service-account-token
 ---
+<<<<<<< HEAD
 # ClusterRole with minimal deployment permissions based on components/manifests
+=======
+# ClusterRole with common deployment permissions
+>>>>>>> c5a1b2c (git upgrade (#139))
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -25,6 +29,7 @@ rules:
   # Core resources
   - apiGroups: [""]
     resources:
+<<<<<<< HEAD
       - namespaces
       - services
       - serviceaccounts
@@ -65,6 +70,55 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   name: ambient-code-deployer-binding
+=======
+      - pods
+      - pods/log
+      - pods/status
+      - services
+      - endpoints
+      - configmaps
+      - secrets
+      - serviceaccounts
+      - persistentvolumeclaims
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["apps"]
+    resources:
+      - deployments
+      - daemonsets
+      - replicasets
+      - statefulsets
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["batch"]
+    resources:
+      - jobs
+      - cronjobs
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["networking.k8s.io"]
+    resources:
+      - ingresses
+      - networkpolicies
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources:
+      - roles
+      - rolebindings
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["autoscaling"]
+    resources:
+      - horizontalpodautoscalers
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["policy"]
+    resources:
+      - poddisruptionbudgets
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+# RoleBinding to bind the ClusterRole to the service account in ambient-code namespace
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ambient-code-deployer-binding
+  namespace: ambient-code
+>>>>>>> c5a1b2c (git upgrade (#139))
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole

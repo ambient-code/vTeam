@@ -1,4 +1,5 @@
 import { buildForwardHeadersAsync } from '@/lib/auth'
+import { BACKEND_URL } from '@/lib/config';
 
 export async function GET(
   request: Request,
@@ -6,10 +7,8 @@ export async function GET(
 ) {
   const { name, sessionName, path } = await params
   const headers = await buildForwardHeadersAsync(request)
-  const contentBase = `http://ambient-content-${encodeURIComponent(sessionName)}.${encodeURIComponent(name)}.svc.cluster.local:8080`
   const rel = path.join('/')
-  const fsPath = `/sessions/${encodeURIComponent(sessionName)}/workspace/${rel}`
-  const resp = await fetch(`${contentBase}/content/file?path=${encodeURIComponent(fsPath)}`, { headers })
+  const resp = await fetch(`${BACKEND_URL}/projects/${encodeURIComponent(name)}/agentic-sessions/${encodeURIComponent(sessionName)}/workspace/${encodeURIComponent(rel)}`, { headers })
   const contentType = resp.headers.get('content-type') || 'application/octet-stream'
   const buf = await resp.arrayBuffer()
   return new Response(buf, { status: resp.status, headers: { 'Content-Type': contentType } })
@@ -23,14 +22,12 @@ export async function PUT(
   const { name, sessionName, path } = await params
   const headers = await buildForwardHeadersAsync(request)
   const rel = path.join('/')
-  const contentBase = `http://ambient-content-${encodeURIComponent(sessionName)}.${encodeURIComponent(name)}.svc.cluster.local:8080`
-  const fsPath = `/sessions/${encodeURIComponent(sessionName)}/workspace/${rel}`
   const contentType = request.headers.get('content-type') || 'text/plain; charset=utf-8'
   const textBody = await request.text()
-  const resp = await fetch(`${contentBase}/content/write`, {
-    method: 'POST',
-    headers: { ...headers, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ path: fsPath, content: textBody, encoding: 'utf8' }),
+  const resp = await fetch(`${BACKEND_URL}/projects/${encodeURIComponent(name)}/agentic-sessions/${encodeURIComponent(sessionName)}/workspace/${encodeURIComponent(rel)}`, {
+    method: 'PUT',
+    headers: { ...headers, 'Content-Type': contentType },
+    body: textBody,
   })
   const respBody = await resp.text()
   return new Response(respBody, { status: resp.status, headers: { 'Content-Type': 'application/json' } })

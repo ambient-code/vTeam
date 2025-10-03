@@ -59,6 +59,18 @@ class ClaudeCodeAdapter:
             except Exception as _:
                 logging.debug("CR status update (Running) skipped")
 
+
+            # Append token to websocket URL if available (to pass SA token to backend)
+            try:
+                if self.shell and getattr(self.shell, 'transport', None):
+                    ws = getattr(self.shell.transport, 'url', '') or ''
+                    bot = (os.getenv('BOT_TOKEN') or '').strip()
+                    if bot and ws and '?' not in ws:
+                        # Safe to append token as query for backend to map into Authorization
+                        setattr(self.shell.transport, 'url', ws + f"?token={bot}")
+            except Exception:
+                pass
+
             # Execute Claude Code CLI (interactive or one-shot based on env)
             result = await self._run_claude_agent_sdk(prompt)
 
@@ -66,8 +78,13 @@ class ClaudeCodeAdapter:
             await self._send_log("Claude Code session completed")
             
 
-            # Push results to output if configured
-            await self._push_results_if_any()
+            # Optional auto-push on completion (default: disabled)
+            try:
+                auto_push = str(self.context.get_env('AUTO_PUSH_ON_COMPLETE', 'false')).strip().lower() in ('1','true','yes')
+            except Exception:
+                auto_push = False
+            if auto_push:
+                await self._push_results_if_any()
 
             # Best-effort CR completion update if succeeded
             try:
@@ -113,12 +130,12 @@ class ClaudeCodeAdapter:
             }
 
     async def _run_claude_agent_sdk(self, prompt: str):
-        """Execute the Claude Code SDK with the given prompt."""
+        """Execute the Claude Agent SDK with the given prompt."""
         try:
-            from claude_code_sdk import ClaudeSDKClient, ClaudeCodeOptions
+            from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
             api_key = self.context.get_env('ANTHROPIC_API_KEY', '')
             if not api_key:
-                raise RuntimeError("ANTHROPIC_API_KEY is required for Claude Code SDK")
+                raise RuntimeError("ANTHROPIC_API_KEY is required for Claude Agent SDK")
 
             # Determine cwd and additional dirs from multi-repo config
             repos_cfg = self._get_repos_config()
@@ -148,7 +165,7 @@ class ClaudeCodeAdapter:
                     if p != cwd_path:
                         add_dirs.append(p)
 
-            options = ClaudeCodeOptions(cwd=cwd_path, permission_mode="acceptEdits", allowed_tools=["Read","Write","Bash","Glob","Grep","Edit","MultiEdit","WebSearch","WebFetch"])
+            options = ClaudeAgentOptions(cwd=cwd_path, permission_mode="acceptEdits", allowed_tools=["Read","Write","Bash","Glob","Grep","Edit","MultiEdit","WebSearch","WebFetch"])
             # Best-effort set add_dirs if supported by SDK version
             try:
                 if add_dirs:
@@ -187,7 +204,7 @@ class ClaudeCodeAdapter:
             result_payload = None
             self._turn_count = 0
             # Import SDK message and content types for accurate mapping
-            from claude_code_sdk import (
+            from claude_agent_sdk import (
                 AssistantMessage,
                 UserMessage,
                 SystemMessage,
@@ -313,7 +330,7 @@ class ClaudeCodeAdapter:
                 "stderr": ""
             }
         except Exception as e:
-            logging.error(f"Failed to run Claude Code SDK: {e}")
+            logging.error(f"Failed to run Claude Agent SDK: {e}")
             return {
                 "success": False,
                 "error": str(e)
@@ -321,8 +338,7 @@ class ClaudeCodeAdapter:
 
     async def _prepare_workspace(self):
         """Clone input repo/branch into workspace and configure git remotes."""
-        # Prefer GIT_TOKEN (project-level secret) over GITHUB_TOKEN (app-level)
-        token = os.getenv("GIT_TOKEN") or os.getenv("GITHUB_TOKEN") or os.getenv("BOT_TOKEN") or ""
+        token = os.getenv("GITHUB_TOKEN") or await self._fetch_github_token()
         workspace = Path(self.context.workspace_path)
         workspace.mkdir(parents=True, exist_ok=True)
 
@@ -454,6 +470,7 @@ class ClaudeCodeAdapter:
 
                 break  # Only check the first matching command
 
+
     async def _push_results_if_any(self):
         """Commit and push changes to output repo/branch if configured."""
         repos_cfg = self._get_repos_config()
@@ -533,8 +550,8 @@ class ClaudeCodeAdapter:
 
         Returns the PR HTML URL on success, or None.
         """
-        # Prefer GIT_TOKEN (project-level secret) over GITHUB_TOKEN (app-level)
-        token = (os.getenv("GIT_TOKEN") or os.getenv("GITHUB_TOKEN") or os.getenv("BOT_TOKEN") or "").strip()
+
+        token = (os.getenv("GITHUB_TOKEN") or await self._fetch_github_token() or "").strip()
         if not token:
             raise RuntimeError("Missing token for PR creation")
 
@@ -667,7 +684,7 @@ class ClaudeCodeAdapter:
         data = _json.dumps(fields).encode('utf-8')
         req = _urllib_request.Request(url, data=data, headers={'Content-Type': 'application/json'}, method='PUT')
         # Propagate runner token if present
-        token = (os.getenv('BOT_TOKEN') or os.getenv('RUNNER_TOKEN') or '').strip()
+        token = (os.getenv('BOT_TOKEN') or '').strip()
         if token:
             req.add_header('Authorization', f'Bearer {token}')
         loop = asyncio.get_event_loop()
@@ -726,6 +743,48 @@ class ClaudeCodeAdapter:
             return urlunparse((parsed.scheme, new_netloc, parsed.path, parsed.params, parsed.query, parsed.fragment))
         except Exception:
             return url
+
+    async def _fetch_github_token(self) -> str:
+        # Try cached value from env first
+        cached = os.getenv("GITHUB_TOKEN", "").strip()
+        if cached:
+            return cached
+        # Build mint URL from status URL if available
+        status_url = self._compute_status_url()
+        if not status_url:
+            return ""
+        try:
+            from urllib.parse import urlparse as _up, urlunparse as _uu
+            p = _up(status_url)
+            new_path = p.path.rstrip("/")
+            if new_path.endswith("/status"):
+                new_path = new_path[:-7] + "/github/token"
+            else:
+                new_path = new_path + "/github/token"
+            url = _uu((p.scheme, p.netloc, new_path, '', '', ''))
+        except Exception:
+            return ""
+        req = _urllib_request.Request(url, data=b"{}", headers={'Content-Type': 'application/json'}, method='POST')
+        bot = (os.getenv('BOT_TOKEN') or '').strip()
+        if bot:
+            req.add_header('Authorization', f'Bearer {bot}')
+        loop = asyncio.get_event_loop()
+        def _do_req():
+            try:
+                with _urllib_request.urlopen(req, timeout=10) as resp:
+                    return resp.read().decode('utf-8', errors='replace')
+            except Exception as e:
+                logging.debug(f"mint token failed: {e}")
+                return ''
+        resp_text = await loop.run_in_executor(None, _do_req)
+        if not resp_text:
+            return ""
+        try:
+            data = _json.loads(resp_text)
+            token = str(data.get('token') or '')
+            return token
+        except Exception:
+            return ""
 
     async def _send_partial_output(self, output_chunk: str, *, stream_id: str, index: int):
         """Send partial assistant output using MESSAGE_PARTIAL with PartialInfo."""

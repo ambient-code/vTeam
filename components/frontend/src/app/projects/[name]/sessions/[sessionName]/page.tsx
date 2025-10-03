@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import Link from "next/link";
 import { formatDistanceToNow, format } from "date-fns";
 import {
@@ -14,7 +14,6 @@ import {
 } from "lucide-react";
 
 // Custom components
-import { Message } from "@/components/ui/message";
 import { StreamMessage } from "@/components/ui/stream-message";
 
 // Markdown rendering
@@ -371,7 +370,16 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
         throw new Error("Failed to fetch agentic session");
       }
       const data = await response.json();
-      setSession(data);
+      // Only update if content changed to avoid rerender flicker
+      setSession((prev) => {
+        try {
+          const a = JSON.stringify(prev);
+          const b = JSON.stringify(data);
+          return a === b ? prev : data;
+        } catch {
+          return data;
+        }
+      });
 
 
     } catch (err) {
@@ -398,7 +406,15 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
         const resp = await fetch(`${apiUrl}/projects/${encodeURIComponent(projectName)}/agentic-sessions/${encodeURIComponent(sessionName)}/messages`)
         if (resp.ok) {
           const data = await resp.json()
-          setLiveMessages(Array.isArray(data.messages) ? data.messages : [])
+          const newMsgs = Array.isArray(data.messages) ? data.messages : []
+          // Avoid list flicker by checking shallow equality on tail items length+timestamps
+          setLiveMessages((prev) => {
+            if (prev.length === newMsgs.length) {
+              const sameTail = prev.length === 0 || (prev[prev.length-1]?.timestamp === newMsgs[newMsgs.length-1]?.timestamp)
+              if (sameTail) return prev
+            }
+            return newMsgs
+          })
         }
       } catch {}
     } catch {}
@@ -431,7 +447,14 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
               const resp = await fetch(`${apiUrl}/projects/${encodeURIComponent(projectName)}/agentic-sessions/${encodeURIComponent(sessionName)}/messages`)
               if (resp.ok) {
                 const data = await resp.json()
-                setLiveMessages(Array.isArray(data.messages) ? data.messages : [])
+                const newMsgs = Array.isArray(data.messages) ? data.messages : []
+                setLiveMessages((prev) => {
+                  if (prev.length === newMsgs.length) {
+                    const sameTail = prev.length === 0 || (prev[prev.length-1]?.timestamp === newMsgs[newMsgs.length-1]?.timestamp)
+                    if (sameTail) return prev
+                  }
+                  return newMsgs
+                })
               }
             } catch {}
           })()
@@ -449,9 +472,16 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
   const [wsFileContent, setWsFileContent] = useState<string>("");
   const [wsLoading, setWsLoading] = useState<boolean>(false);
   const [wsUnavailable, setWsUnavailable] = useState<boolean>(false);
+  // Simple exponential backoff for workspace polling when content service is not reachable
+  const wsErrCountRef = useRef<number>(0);
+  const wsBackoffUntilRef = useRef<number>(0);
 
   type ListItem = { name: string; path: string; isDir: boolean; size: number; modifiedAt: string };
   const listWsPath = useCallback(async (relPath?: string) => {
+    const now = Date.now();
+    if (wsBackoffUntilRef.current && now < wsBackoffUntilRef.current) {
+      return [] as ListItem[];
+    }
     try {
       const url = new URL(`${getApiUrl()}/projects/${encodeURIComponent(projectName)}/agentic-sessions/${encodeURIComponent(sessionName)}/workspace`, window.location.origin);
       if (relPath) url.searchParams.set("path", relPath);
@@ -459,14 +489,24 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
       if (!resp.ok) {
         // Treat service errors as unavailable; caller will render empty state
         setWsUnavailable(true);
+        // Backoff on errors
+        wsErrCountRef.current = Math.min(wsErrCountRef.current + 1, 8);
+        const delayMs = Math.min(60000, Math.pow(2, Math.max(0, wsErrCountRef.current - 1)) * 2000);
+        wsBackoffUntilRef.current = Date.now() + delayMs;
         return [] as ListItem[];
       }
       const data = await resp.json();
       const items: ListItem[] = Array.isArray(data.items) ? data.items : [];
       setWsUnavailable(false);
+      // Reset backoff on success
+      wsErrCountRef.current = 0;
+      wsBackoffUntilRef.current = 0;
       return items;
     } catch {
       setWsUnavailable(true);
+      wsErrCountRef.current = Math.min(wsErrCountRef.current + 1, 8);
+      const delayMs = Math.min(60000, Math.pow(2, Math.max(0, wsErrCountRef.current - 1)) * 2000);
+      wsBackoffUntilRef.current = Date.now() + delayMs;
       return [] as ListItem[];
     }
   }, [projectName, sessionName]);
@@ -487,24 +527,48 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
     if (!resp.ok) throw new Error("Failed to save file");
   }, [projectName, sessionName]);
 
-  const buildWsRoot = useCallback(async () => {
-    setWsLoading(true);
+  // Preserve expansion state across refreshes to avoid flicker
+  const collectExpanded = (nodes: FileTreeNode[], base = ""): Record<string, boolean> => {
+    const map: Record<string, boolean> = {};
+    for (const n of nodes) {
+      const p = base ? `${base}/${n.name}` : n.path || n.name;
+      if (n.type === 'folder') {
+        map[p] = !!n.expanded;
+        if (n.children && n.children.length) {
+          Object.assign(map, collectExpanded(n.children, p));
+        }
+      }
+    }
+    return map;
+  };
+
+  const buildWsRoot = useCallback(async (background = false) => {
+    if (!background) setWsLoading(true);
     try {
+      const prevExpanded = collectExpanded(wsTree);
       const items = await listWsPath();
       // Strip the backend's /sessions/<sessionName>/workspace/ prefix from paths
       const prefix = `/sessions/${sessionName}/workspace/`;
-      const children: FileTreeNode[] = items.map((it) => ({
-        name: it.name,
-        path: it.path.startsWith(prefix) ? it.path.slice(prefix.length) : it.name,
-        type: it.isDir ? "folder" : "file",
-        expanded: it.isDir,
-        sizeKb: it.isDir ? undefined : it.size / 1024,
-      }));
-      setWsTree(children);
+      const children: FileTreeNode[] = items.map((it) => {
+        const displayPath = it.path.startsWith(prefix) ? it.path.slice(prefix.length) : it.name;
+        const nodePathKey = displayPath;
+        return {
+          name: it.name,
+          path: displayPath,
+          type: it.isDir ? "folder" : "file",
+          // Keep previous expansion state if present
+          expanded: it.isDir ? (prevExpanded[nodePathKey] ?? false) : false,
+          sizeKb: it.isDir ? undefined : it.size / 1024,
+        } as FileTreeNode;
+      });
+      // Only update state if changed length or names differ to avoid unnecessary re-renders
+      const sameLength = wsTree.length === children.length;
+      const sameNames = sameLength && wsTree.every((n, i) => n.name === children[i].name && n.type === children[i].type);
+      if (!sameLength || !sameNames) setWsTree(children);
     } finally {
-      setWsLoading(false);
+      if (!background) setWsLoading(false);
     }
-  }, [listWsPath, sessionName]);
+  }, [listWsPath, sessionName, wsTree, collectExpanded]);
 
   const onWsToggle = useCallback(async (node: FileTreeNode) => {
     if (node.type !== "folder") return;
@@ -539,7 +603,7 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
   useEffect(() => {
     if (activeTab === "workspace" && projectName && sessionName && session?.status?.phase === "Running") {
       const interval = setInterval(() => {
-        buildWsRoot();
+        buildWsRoot(true); // background refresh: no spinner, preserve expansion
       }, 5000); // Poll every 5 seconds
       return () => clearInterval(interval);
     }
@@ -617,6 +681,82 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
 
   // Subagent aggregation not available without structured tool messages; show empty
   const subagentStats = useMemo(() => ({ uniqueCount: 0, orderedTypes: [], counts: {} as Record<string, number> }), []);
+
+  // Derive repo folder name in workspace from a Git URL (last path segment, no .git)
+  const deriveRepoFolderFromUrl = useCallback((url: string): string => {
+    try {
+      // Handle SSH urls like git@github.com:owner/repo.git and https
+      const cleaned = url.replace(/^git@([^:]+):/, "https://$1/")
+      const u = new URL(cleaned)
+      const segs = u.pathname.split('/').filter(Boolean)
+      const last = segs[segs.length - 1] || "repo"
+      return last.replace(/\.git$/i, "")
+    } catch {
+      const parts = url.split('/')
+      const last = parts[parts.length - 1] || "repo"
+      return last.replace(/\.git$/i, "")
+    }
+  }, [])
+
+  // Small client component to show diff counts for a repo
+  const RepoDiffBadge = ({ project, session, repoIndex, repoPath, onUpdate }: { project: string; session: string; repoIndex: number; repoPath: string; onUpdate?: (total: number) => void }) => {
+    const [counts, setCounts] = useState<{ added: number; modified: number; deleted: number; renamed: number; untracked: number } | null>(null)
+    const apiUrl = getApiUrl()
+    useEffect(() => {
+      let mounted = true
+      const fetchDiff = async () => {
+        try {
+          const qs = new URLSearchParams({ repoIndex: String(repoIndex), repoPath })
+          const resp = await fetch(`${apiUrl}/projects/${encodeURIComponent(project)}/agentic-sessions/${encodeURIComponent(session)}/github/diff?${qs.toString()}`)
+          if (!resp.ok) return
+          const data = await resp.json()
+          const next = { added: data.added || 0, modified: data.modified || 0, deleted: data.deleted || 0, renamed: data.renamed || 0, untracked: data.untracked || 0 }
+          if (mounted) {
+            setCounts(next)
+            const total = next.added + next.modified + next.deleted + next.renamed + next.untracked
+            onUpdate && onUpdate(total)
+          }
+        } finally {}
+      }
+      fetchDiff()
+      const id = setInterval(fetchDiff, 8000)
+      return () => { mounted = false; clearInterval(id) }
+    }, [apiUrl, project, session, repoIndex, repoPath])
+
+    const total = (counts?.added || 0) + (counts?.modified || 0) + (counts?.deleted || 0) + (counts?.renamed || 0) + (counts?.untracked || 0)
+    if (!counts || total === 0) return <span className="text-xs text-muted-foreground">clean</span>
+    return (
+      <span className="text-xs px-2 py-0.5 rounded font-sans border border-muted-foreground/20">
+        +{counts.added} ~{counts.modified} -{counts.deleted}{counts.untracked ? ` ?${counts.untracked}` : ""}
+      </span>
+    )
+  }
+
+  // Track per-repo diff totals and action states
+  const [diffTotals, setDiffTotals] = useState<Record<number, number>>({})
+  const [busyRepo, setBusyRepo] = useState<Record<number, 'push' | 'abandon' | null>>({})
+
+  const buildGithubCompareUrl = useCallback((inputUrl: string, inputBranch?: string, outputUrl?: string, outputBranch?: string): string | null => {
+    if (!inputUrl || !outputUrl) return null
+    const inName = deriveRepoFolderFromUrl(inputUrl)
+    const outName = deriveRepoFolderFromUrl(outputUrl)
+    const parseOwner = (url: string): { owner: string; repo: string } | null => {
+      try {
+        const cleaned = url.replace(/^git@([^:]+):/, "https://$1/")
+        const u = new URL(cleaned)
+        const segs = u.pathname.split('/').filter(Boolean)
+        if (segs.length >= 2) return { owner: segs[segs.length-2], repo: segs[segs.length-1].replace(/\.git$/i, "") }
+        return null
+      } catch { return null }
+    }
+    const inOrg = parseOwner(inputUrl)
+    const outOrg = parseOwner(outputUrl)
+    if (!inOrg || !outOrg) return null
+    const base = inputBranch && inputBranch.trim() ? inputBranch : 'main'
+    const head = outputBranch && outputBranch.trim() && outputBranch !== 'auto' ? outputBranch : null
+    if (!head) return null
+    return `https://github.com/${inOrg.owner}/${inOrg.repo}/compare/${encodeURIComponent(base)}...${encodeURIComponent(outOrg.owner + ':' + head)}`
+  }, [deriveRepoFolderFromUrl])
 
 
   if (loading) {
@@ -883,6 +1023,7 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
                           <div className="space-y-2">
                             {session.spec.repos.map((repo, idx) => {
                               const isMain = session.spec.mainRepoIndex === idx;
+                              const folder = deriveRepoFolderFromUrl(repo.input.url)
                               return (
                                 <div key={idx} className="flex items-center gap-2 text-sm font-mono">
                                   {isMain && <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded font-sans">MAIN</span>}
@@ -892,6 +1033,102 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
                                   <span className="text-muted-foreground break-all">{repo.output?.url || "(no push)"}</span>
                                   {repo.output?.url && (
                                     <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded font-sans">{repo.output?.branch || "auto"}</span>
+                                  )}
+                                  {repo.status && (
+                                    <span className="text-xs px-2 py-0.5 rounded font-sans border border-muted-foreground/20">
+                                      {repo.status}
+                                    </span>
+                                  )}
+                                  <span className="flex-1" />
+                                  {/* Diff counts + control rendering */}
+                                  <RepoDiffBadge
+                                    project={projectName}
+                                    session={sessionName}
+                                    repoIndex={idx}
+                                    repoPath={`/sessions/${sessionName}/workspace/${folder}`}
+                                    onUpdate={(total) => setDiffTotals((m) => ({ ...m, [idx]: total }))}
+                                  />
+                                  {(() => {
+                                    const outBranch = repo.output?.branch || 'auto'
+                                    const compareUrl = buildGithubCompareUrl(repo.input.url, repo.input.branch || 'main', repo.output?.url, outBranch)
+                                    const total = diffTotals[idx] || 0
+                                    if (total <= 0) {
+                                      return <span className="text-xs text-muted-foreground">no diff</span>
+                                    }
+                                    if (compareUrl) {
+                                      return (
+                                        <a href={compareUrl} target="_blank" rel="noreferrer" className="text-xs text-blue-600 underline">Compare PR</a>
+                                      )
+                                    }
+                                    if (!repo.output?.url) return null
+                                    return (
+                                      <></>
+                                    )
+                                  })()}
+
+                                  {repo.output?.url && (diffTotals[idx] || 0) > 0 ? (
+                                    <div className="flex items-center gap-2">
+                                      <Button
+                                        size="sm"
+                                        variant="secondary"
+                                        onClick={async () => {
+                                          try {
+                                            setBusyRepo((b) => ({ ...b, [idx]: 'push' }))
+                                            const apiUrl = getApiUrl();
+                                            const resp = await fetch(`${apiUrl}/projects/${encodeURIComponent(projectName)}/agentic-sessions/${encodeURIComponent(sessionName)}/github/push`, {
+                                              method: 'POST',
+                                              headers: { 'Content-Type': 'application/json' },
+                                              body: JSON.stringify({ repoIndex: idx, repoPath: `/sessions/${sessionName}/workspace/${folder}` })
+                                            });
+                                            if (resp.ok) {
+                                              setDiffTotals((m) => ({ ...m, [idx]: 0 }))
+                                            }
+                                            await fetchSession();
+                                          } catch {} finally { setBusyRepo((b) => ({ ...b, [idx]: null })) }
+                                        }}
+                                      >
+                                        {busyRepo[idx] === 'push' ? 'Pushing…' : 'Push'}
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={async () => {
+                                          try {
+                                            setBusyRepo((b) => ({ ...b, [idx]: 'abandon' }))
+                                            const apiUrl = getApiUrl();
+                                            const resp = await fetch(`${apiUrl}/projects/${encodeURIComponent(projectName)}/agentic-sessions/${encodeURIComponent(sessionName)}/github/abandon`, {
+                                              method: 'POST',
+                                              headers: { 'Content-Type': 'application/json' },
+                                              body: JSON.stringify({ repoIndex: idx, repoPath: `/sessions/${sessionName}/workspace/${folder}` })
+                                            });
+                                            if (resp.ok) setDiffTotals((m) => ({ ...m, [idx]: 0 }))
+                                            await fetchSession();
+                                          } catch {} finally { setBusyRepo((b) => ({ ...b, [idx]: null })) }
+                                        }}
+                                      >
+                                        {busyRepo[idx] === 'abandon' ? 'Abandoning…' : 'Abandon'}
+                                      </Button>
+                                    </div>
+                                  ) : (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={async () => {
+                                        try {
+                                          setBusyRepo((b) => ({ ...b, [idx]: 'abandon' }))
+                                          const apiUrl = getApiUrl();
+                                          const resp = await fetch(`${apiUrl}/projects/${encodeURIComponent(projectName)}/agentic-sessions/${encodeURIComponent(sessionName)}/github/abandon`, {
+                                            method: 'POST',
+                                            headers: { 'Content-Type': 'application/json' },
+                                            body: JSON.stringify({ repoIndex: idx, repoPath: `/sessions/${sessionName}/workspace/${folder}` })
+                                          });
+                                          if (resp.ok) setDiffTotals((m) => ({ ...m, [idx]: 0 }))
+                                          await fetchSession();
+                                        } catch {} finally { setBusyRepo((b) => ({ ...b, [idx]: null })) }
+                                      }}
+                                    >
+                                      {busyRepo[idx] === 'abandon' ? 'Abandoning…' : 'Abandon changes'}
+                                    </Button>
                                   )}
                                 </div>
                               );
@@ -1033,7 +1270,7 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
                     <Button 
                       size="sm" 
                       variant="outline" 
-                      onClick={buildWsRoot}
+                      onClick={() => void buildWsRoot(false)}
                       disabled={wsLoading}
                       className="h-8"
                     >
