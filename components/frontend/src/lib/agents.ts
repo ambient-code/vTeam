@@ -85,6 +85,12 @@ export const AVAILABLE_AGENTS: AgentPersona[] = [
     name: "Phoenix PXE Specialist",
     role: "PXE Specialist",
     description: "PXE (Product Experience Engineering) Agent focused on customer impact assessment, lifecycle management, and field experience insights. Use PROACTIVELY for upgrade planning, risk assessment, and customer telemetry analysis."
+  },
+  {
+    persona: "phoenix-pxe_specialist",
+    name: "Neil Test Engineer",
+    role: "Test Engineer/Architect",
+    description: "Test engineer Agent focused on, the testing requirements i.e. whether the changes are testable, implementation matches product/customer requirements, cross component impact, automation testing, performance & security impact"
   }
 ];
 
@@ -108,8 +114,8 @@ export function getDefaultAgents(type: keyof typeof DEFAULT_AGENT_SELECTIONS = "
 
 export function getAgentsByExpertise(expertise: string): AgentPersona[] {
   return AVAILABLE_AGENTS.filter(agent =>
-    agent.description.toLowerCase().includes(expertise.toLowerCase()) ||
-    agent.role.toLowerCase().includes(expertise.toLowerCase())
+      agent.description.toLowerCase().includes(expertise.toLowerCase()) ||
+      agent.role.toLowerCase().includes(expertise.toLowerCase())
   );
 }
 
