@@ -319,7 +319,8 @@ class ClaudeCodeAdapter:
 
     async def _prepare_workspace(self):
         """Clone input repo/branch into workspace and configure git remotes."""
-        token = os.getenv("GITHUB_TOKEN") or os.getenv("BOT_TOKEN") or ""
+        # Prefer GIT_TOKEN (project-level secret) over GITHUB_TOKEN (app-level)
+        token = os.getenv("GIT_TOKEN") or os.getenv("GITHUB_TOKEN") or os.getenv("BOT_TOKEN") or ""
         workspace = Path(self.context.workspace_path)
         workspace.mkdir(parents=True, exist_ok=True)
 
@@ -479,7 +480,8 @@ class ClaudeCodeAdapter:
 
         Returns the PR HTML URL on success, or None.
         """
-        token = (os.getenv("GITHUB_TOKEN") or os.getenv("BOT_TOKEN") or "").strip()
+        # Prefer GIT_TOKEN (project-level secret) over GITHUB_TOKEN (app-level)
+        token = (os.getenv("GIT_TOKEN") or os.getenv("GITHUB_TOKEN") or os.getenv("BOT_TOKEN") or "").strip()
         if not token:
             raise RuntimeError("Missing token for PR creation")
 

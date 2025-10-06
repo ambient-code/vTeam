@@ -14,7 +14,6 @@ resources:
 - crds
 - rbac
 - route.yaml
-- git-configmap.yaml
 - github-app-secret.yaml
 - backend-deployment.yaml
 - backend-route.yaml

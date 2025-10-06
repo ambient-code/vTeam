@@ -30,12 +30,18 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ name
   const [secretList, setSecretList] = useState<Array<{ name: string }>>([]);
   const [mode, setMode] = useState<"existing" | "new">("existing");
   const [showValues, setShowValues] = useState<Record<number, boolean>>({});
+  const [anthropicApiKey, setAnthropicApiKey] = useState<string>("");
+  const [showAnthropicKey, setShowAnthropicKey] = useState<boolean>(false);
+  const [gitUserName, setGitUserName] = useState<string>("");
+  const [gitUserEmail, setGitUserEmail] = useState<string>("");
+  const [gitToken, setGitToken] = useState<string>("");
+  const [showGitToken, setShowGitToken] = useState<boolean>(false);
   const [jiraUrl, setJiraUrl] = useState<string>("");
   const [jiraProject, setJiraProject] = useState<string>("");
   const [jiraEmail, setJiraEmail] = useState<string>("");
   const [jiraToken, setJiraToken] = useState<string>("");
   const [showJiraToken, setShowJiraToken] = useState<boolean>(false);
-  const JIRA_KEYS = ["JIRA_URL","JIRA_PROJECT","JIRA_EMAIL","JIRA_API_TOKEN"] as const;
+  const FIXED_KEYS = ["ANTHROPIC_API_KEY","GIT_USER_NAME","GIT_USER_EMAIL","GIT_TOKEN","JIRA_URL","JIRA_PROJECT","JIRA_EMAIL","JIRA_API_TOKEN"] as const;
   const loadSecretValues = async (name: string) => {
     if (!name) return;
     try {
@@ -46,13 +52,21 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ name
         const data = await secRes.json();
         const items = Object.entries<string>(data.data || {}).map(([k, v]) => ({ key: k, value: v }));
         const byKey: Record<string, string> = Object.fromEntries(items.map(it => [it.key, it.value]));
+        setAnthropicApiKey(byKey["ANTHROPIC_API_KEY"] || "");
+        setGitUserName(byKey["GIT_USER_NAME"] || "");
+        setGitUserEmail(byKey["GIT_USER_EMAIL"] || "");
+        setGitToken(byKey["GIT_TOKEN"] || "");
         setJiraUrl(byKey["JIRA_URL"] || "");
         setJiraProject(byKey["JIRA_PROJECT"] || "");
         setJiraEmail(byKey["JIRA_EMAIL"] || "");
         setJiraToken(byKey["JIRA_API_TOKEN"] || "");
-        setSecrets(items.filter(it => !JIRA_KEYS.includes(it.key as typeof JIRA_KEYS[number])));
+        setSecrets(items.filter(it => !FIXED_KEYS.includes(it.key as typeof FIXED_KEYS[number])));
       } else {
         setSecrets([]);
+        setAnthropicApiKey("");
+        setGitUserName("");
+        setGitUserEmail("");
+        setGitToken("");
         setJiraUrl("");
         setJiraProject("");
         setJiraEmail("");
@@ -204,15 +218,21 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ name
     try {
       const apiUrl = getApiUrl();
       const data: Record<string, string> = {};
+      // Persist Anthropic API key (required)
+      if (anthropicApiKey) data["ANTHROPIC_API_KEY"] = anthropicApiKey;
+      // Persist Git convenience fields into the secret under fixed keys
+      if (gitUserName) data["GIT_USER_NAME"] = gitUserName;
+      if (gitUserEmail) data["GIT_USER_EMAIL"] = gitUserEmail;
+      if (gitToken) data["GIT_TOKEN"] = gitToken;
       // Persist Jira convenience fields into the secret under fixed keys
       if (jiraUrl) data["JIRA_URL"] = jiraUrl;
       if (jiraProject) data["JIRA_PROJECT"] = jiraProject;
       if (jiraEmail) data["JIRA_EMAIL"] = jiraEmail;
       if (jiraToken) data["JIRA_API_TOKEN"] = jiraToken;
-      // Add remaining dynamic keys (excluding Jira keys)
+      // Add remaining dynamic keys (excluding fixed keys)
       for (const { key, value } of secrets) {
         if (!key) continue;
-        if (JIRA_KEYS.includes(key as typeof JIRA_KEYS[number])) continue;
+        if (FIXED_KEYS.includes(key as typeof FIXED_KEYS[number])) continue;
         data[key] = value ?? "";
       }
       const res = await fetch(`${apiUrl}/projects/${encodeURIComponent(projectName)}/runner-secrets`, {
@@ -421,8 +441,64 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ name
                   ))}
                 </div>
               )}
-              <div className="pt-4 space-y-3">
-                <Label>Jira Integration (optional)</Label>
+              <div className="pt-4 space-y-3 border-t">
+                <div className="pt-3">
+                  <Label className="text-base font-semibold">Anthropic API Key (Required)</Label>
+                  <div className="text-xs text-muted-foreground mb-3">Your Anthropic API key for Claude Code runner</div>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="anthropicApiKey"
+                      type={showAnthropicKey ? "text" : "password"}
+                      placeholder="sk-ant-..."
+                      value={anthropicApiKey}
+                      onChange={(e) => setAnthropicApiKey(e.target.value)}
+                      className="flex-1"
+                    />
+                    <Button type="button" variant="ghost" onClick={() => setShowAnthropicKey((v) => !v)} aria-label={showAnthropicKey ? "Hide key" : "Show key"}>
+                      {showAnthropicKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+              <div className="pt-4 space-y-3 border-t">
+                <div className="pt-3">
+                  <Label className="text-base font-semibold">Git Integration (Optional)</Label>
+                  <div className="text-xs text-muted-foreground mb-3">Configure Git credentials for repository operations (clone, commit, push)</div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label htmlFor="gitUserName">Git User Name</Label>
+                    <Input id="gitUserName" placeholder="Your Name" value={gitUserName} onChange={(e) => setGitUserName(e.target.value)} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="gitUserEmail">Git User Email</Label>
+                    <Input id="gitUserEmail" placeholder="you@example.com" value={gitUserEmail} onChange={(e) => setGitUserEmail(e.target.value)} />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="gitToken">GitHub API Token</Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="gitToken"
+                      type={showGitToken ? "text" : "password"}
+                      placeholder="ghp_... or glpat-..."
+                      value={gitToken}
+                      onChange={(e) => setGitToken(e.target.value)}
+                      className="flex-1"
+                    />
+                    <Button type="button" variant="ghost" onClick={() => setShowGitToken((v) => !v)} aria-label={showGitToken ? "Hide token" : "Show token"}>
+                      {showGitToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </Button>
+                  </div>
+                  <div className="text-xs text-muted-foreground">GitHub personal access token or fine-grained token for git operations and API access</div>
+                </div>
+                <div className="text-xs text-muted-foreground">Git credentials will be saved with keys: GIT_USER_NAME, GIT_USER_EMAIL, GIT_TOKEN</div>
+              </div>
+              <div className="pt-4 space-y-3 border-t">
+                <div className="pt-3">
+                  <Label className="text-base font-semibold">Jira Integration (Optional)</Label>
+                  <div className="text-xs text-muted-foreground mb-3">Configure Jira integration for issue management</div>
+                </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div className="space-y-1">
                     <Label htmlFor="jiraUrl">Jira Base URL</Label>
@@ -446,7 +522,7 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ name
                     </div>
                   </div>
                 </div>
-                <div className="text-xs text-muted-foreground">These values will be saved into the configured runner Secret using fixed keys (JIRA_URL, JIRA_PROJECT, JIRA_EMAIL, JIRA_API_TOKEN).</div>
+                <div className="text-xs text-muted-foreground">Jira credentials will be saved with keys: JIRA_URL, JIRA_PROJECT, JIRA_EMAIL, JIRA_API_TOKEN</div>
               </div>
             </div>
           )}

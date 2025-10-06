@@ -28,7 +28,7 @@ spec:
         - name: NODE_ENV
           value: "production"
         - name: GITHUB_APP_SLUG
-          value: "ambient-code
+          value: "ambient-code"
         resources:
           requests:
             cpu: 100m
@@ -61,7 +61,7 @@ spec:
         - --cookie-expire=23h0m0s
         - --pass-access-token
         - --scope=user:full
-        - '--openshift-delegate-urls={"/": {"resource": "projects", "verb": "list"}}'
+        - --openshift-delegate-urls={"/":{"resource":"projects","verb":"list"}}
         - --skip-auth-regex=^/metrics
         ports:
         - containerPort: 8443

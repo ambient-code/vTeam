@@ -31,32 +31,58 @@ spec:
           value: "8080"
         - name: STATE_BASE_DIR
           value: "/data/state"
+        # GitHub App authentication (optional - use this OR git-secret)
         - name: GITHUB_APP_ID
           valueFrom:
             secretKeyRef:
               name: github-app-secret
               key: GITHUB_APP_ID
+              optional: true
         - name: GITHUB_PRIVATE_KEY
           valueFrom:
             secretKeyRef:
               name: github-app-secret
               key: GITHUB_PRIVATE_KEY
+              optional: true
         - name: GITHUB_CLIENT_ID
           valueFrom:
             secretKeyRef:
               name: github-app-secret
               key: GITHUB_CLIENT_ID
+              optional: true
         - name: GITHUB_CLIENT_SECRET
           valueFrom:
             secretKeyRef:
               name: github-app-secret
               key: GITHUB_CLIENT_SECRET
+              optional: true
         - name: GITHUB_STATE_SECRET
           valueFrom:
             secretKeyRef:
               name: github-app-secret
               key: GITHUB_STATE_SECRET
-        
+              optional: true
+
+        # Git secret authentication (optional - use this OR github-app-secret)
+        - name: GIT_USER_NAME
+          valueFrom:
+            secretKeyRef:
+              name: git-secret
+              key: GIT_USER_NAME
+              optional: true
+        - name: GIT_USER_EMAIL
+          valueFrom:
+            secretKeyRef:
+              name: git-secret
+              key: GIT_USER_EMAIL
+              optional: true
+        - name: GIT_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: git-secret
+              key: GIT_TOKEN
+              optional: true
+
         resources:
           requests:
             cpu: 100m
