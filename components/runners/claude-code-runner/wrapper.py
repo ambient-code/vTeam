@@ -111,12 +111,12 @@ class ClaudeCodeAdapter:
             }
 
     async def _run_claude_agent_sdk(self, prompt: str):
-        """Execute the Claude Agent SDK with the given prompt."""
+        """Execute the Claude Code SDK with the given prompt."""
         try:
-            from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
+            from claude_code_sdk import ClaudeSDKClient, ClaudeCodeOptions
             api_key = self.context.get_env('ANTHROPIC_API_KEY', '')
             if not api_key:
-                raise RuntimeError("ANTHROPIC_API_KEY is required for Claude Agent SDK")
+                raise RuntimeError("ANTHROPIC_API_KEY is required for Claude Code SDK")
 
             # Determine cwd and additional dirs from multi-repo config
             repos_cfg = self._get_repos_config()
@@ -146,7 +146,7 @@ class ClaudeCodeAdapter:
                     if p != cwd_path:
                         add_dirs.append(p)
 
-            options = ClaudeAgentOptions(cwd=cwd_path, permission_mode="acceptEdits", allowed_tools=["Read","Write","Bash","Glob","Grep","Edit","MultiEdit","WebSearch","WebFetch"])
+            options = ClaudeCodeOptions(cwd=cwd_path, permission_mode="acceptEdits", allowed_tools=["Read","Write","Bash","Glob","Grep","Edit","MultiEdit","WebSearch","WebFetch"])
             # Best-effort set add_dirs if supported by SDK version
             try:
                 if add_dirs:
@@ -185,7 +185,7 @@ class ClaudeCodeAdapter:
             result_payload = None
             self._turn_count = 0
             # Import SDK message and content types for accurate mapping
-            from claude_agent_sdk import (
+            from claude_code_sdk import (
                 AssistantMessage,
                 UserMessage,
                 SystemMessage,
@@ -311,7 +311,7 @@ class ClaudeCodeAdapter:
                 "stderr": ""
             }
         except Exception as e:
-            logging.error(f"Failed to run Claude Agent SDK: {e}")
+            logging.error(f"Failed to run Claude Code SDK: {e}")
             return {
                 "success": False,
                 "error": str(e)
