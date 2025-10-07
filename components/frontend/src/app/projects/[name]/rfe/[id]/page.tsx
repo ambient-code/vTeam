@@ -338,16 +338,6 @@ export default function ProjectRFEDetailPage() {
                         ? ((workflow as unknown as { jiraLinks?: Array<{ path: string; jiraKey: string }> }).jiraLinks || []).find(l => l.path === expected)?.jiraKey
                         : undefined;
                       const sessionForPhase = rfeSessions.find(s => (s.metadata.labels)?.["rfe-phase"] === phase);
-                     
-                      const prerequisitesMet = phase === "ideate"
-                        ? true
-                        : phase === "specify"
-                        ? true
-                        : phase === "plan"
-                        ? specKitDir.spec.exists
-                        : phase === "tasks"
-                        ? (specKitDir.spec.exists && specKitDir.plan.exists)
-                        : (specKitDir.spec.exists && specKitDir.plan.exists && specKitDir.tasks.exists);
                       const sessionDisplay = (sessionForPhase && typeof (sessionForPhase as AgenticSession).spec?.displayName === 'string')
                         ? String((sessionForPhase as AgenticSession).spec.displayName)
                         : sessionForPhase?.metadata.name;
@@ -380,7 +370,11 @@ export default function ProjectRFEDetailPage() {
                                 <span className="text-sm font-medium">Ready</span>
                               </div>
                             ) : (
-                              <Badge variant="secondary">{prerequisitesMet ? "Missing" : "Blocked"}</Badge>
+                              <span className="text-xs text-muted-foreground italic">
+                                {phase === "plan" ? "requires spec.md" :
+                                 phase === "tasks" ? "requires plan.md" :
+                                 phase === "implement" ? "requires tasks.md" : ""}
+                              </span>
                             )}
                             {!exists && (
                               phase === "ideate"
@@ -456,7 +450,7 @@ export default function ProjectRFEDetailPage() {
                                         } finally {
                                           setStartingPhase(null);
                                         }
-                                      }} disabled={startingPhase === phase || !prerequisitesMet || !isSeeded}>
+                                      }} disabled={startingPhase === phase || !isSeeded}>
                                         {startingPhase === phase ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" />Starting…</>) : (<><Play className="mr-2 h-4 w-4" />Start Chat</>)}
                                       </Button>
                                     )
@@ -523,7 +517,7 @@ export default function ProjectRFEDetailPage() {
                                       } finally {
                                         setStartingPhase(null);
                                       }
-                                    }} disabled={startingPhase === phase || !prerequisitesMet || !isSeeded}>
+                                    }} disabled={startingPhase === phase || !isSeeded}>
                                       {startingPhase === phase ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" />Starting…</>) : (<><Play className="mr-2 h-4 w-4" />Generate</>)}
                                     </Button>
                                 )

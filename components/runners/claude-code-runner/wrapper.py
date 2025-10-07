@@ -36,6 +36,8 @@ class ClaudeCodeAdapter:
         logging.info(f"Initialized Claude Code adapter for session {context.session_id}")
         # Prepare workspace from input repo if provided
         await self._prepare_workspace()
+        # Validate prerequisite files exist for phase-based commands
+        await self._validate_prerequisites()
 
     async def run(self):
         """Run the Claude Code CLI session."""
@@ -400,6 +402,57 @@ class ClaudeCodeAdapter:
         except Exception as e:
             logging.error(f"Failed to prepare workspace: {e}")
             await self._send_log(f"Workspace preparation failed: {e}")
+
+    async def _validate_prerequisites(self):
+        """Validate prerequisite files exist for phase-based slash commands."""
+        prompt = self.context.get_env("PROMPT", "")
+        if not prompt:
+            return
+
+        # Extract slash command from prompt (e.g., "/plan", "/tasks", "/implement")
+        prompt_lower = prompt.strip().lower()
+
+        # Define prerequisite requirements
+        prerequisites = {
+            "/plan": ("spec.md", "Specification file (spec.md) not found. Please run /specify first to generate the specification."),
+            "/tasks": ("plan.md", "Planning file (plan.md) not found. Please run /plan first to generate the implementation plan."),
+            "/implement": ("tasks.md", "Tasks file (tasks.md) not found. Please run /tasks first to generate the task breakdown.")
+        }
+
+        # Check if prompt starts with a slash command that requires prerequisites
+        for cmd, (required_file, error_msg) in prerequisites.items():
+            if prompt_lower.startswith(cmd):
+                # Search for the required file in workspace
+                workspace = Path(self.context.workspace_path)
+                found = False
+
+                # Check in main workspace
+                if (workspace / required_file).exists():
+                    found = True
+                    break
+
+                # Check in multi-repo subdirectories (specs/XXX-feature-name/)
+                for subdir in workspace.rglob("specs/*/"):
+                    if (subdir / required_file).exists():
+                        found = True
+                        break
+
+                if not found:
+                    error_message = f"❌ {error_msg}"
+                    await self._send_log(error_message)
+                    # Mark session as failed
+                    try:
+                        await self._update_cr_status({
+                            "phase": "Failed",
+                            "completionTime": self._utc_iso(),
+                            "message": error_msg,
+                            "is_error": True,
+                        })
+                    except Exception:
+                        logging.debug("CR status update (Failed) skipped")
+                    raise RuntimeError(error_msg)
+
+                break  # Only check the first matching command
 
     async def _push_results_if_any(self):
         """Commit and push changes to output repo/branch if configured."""
