@@ -733,7 +733,12 @@ func monitorJob(jobName, sessionName, sessionNamespace string) {
 				"message":        "Job completed successfully",
 				"completionTime": time.Now().Format(time.RFC3339),
 			})
-			_ = deleteJobAndPerJobService(sessionNamespace, jobName, sessionName)
+// DEBUG: Temporarily commented for debugging
+			if os.Getenv("DEBUG_KEEP_PODS") != "true" {
+				_ = deleteJobAndPerJobService(sessionNamespace, jobName, sessionName)
+			} else {
+				log.Printf("DEBUG_KEEP_PODS=true: Skipping cleanup of job %s", jobName)
+			}
 			return
 		}
 
@@ -787,7 +792,12 @@ func monitorJob(jobName, sessionName, sessionNamespace string) {
 						"message":        "Job completed successfully",
 						"completionTime": time.Now().Format(time.RFC3339),
 					})
+// DEBUG: Temporarily commented for debugging
+				if os.Getenv("DEBUG_KEEP_PODS") != "true" {
 					_ = deleteJobAndPerJobService(sessionNamespace, jobName, sessionName)
+				} else {
+					log.Printf("DEBUG_KEEP_PODS=true: Skipping cleanup of job %s", jobName)
+				}
 					return
 				}
 				// Non-zero exit = failure
