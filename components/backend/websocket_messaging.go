@@ -128,15 +128,13 @@ func (h *SessionWebSocketHub) run() {
 // handleSessionWebSocket handles WebSocket connections for sessions
 // Route: /projects/:projectName/sessions/:sessionId/ws
 func handleSessionWebSocket(c *gin.Context) {
-	log.Printf("handleSessionWebSocket: %v", c)
-	log.Printf("c.Param: %v", c.Param("sessionId"))
 	sessionID := c.Param("sessionId")
+	log.Printf("handleSessionWebSocket for session: %s", sessionID)
 
 	// Access enforced by RBAC on downstream resources
 
 	// Best-effort user identity: prefer forwarded user, else extract ServiceAccount from bearer token
 	var userIDStr string
-	log.Printf("c: %v", c)
 	if v, ok := c.Get("userID"); ok {
 		if s, ok2 := v.(string); ok2 {
 			userIDStr = s
