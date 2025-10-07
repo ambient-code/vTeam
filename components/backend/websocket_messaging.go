@@ -25,8 +25,8 @@ var upgrader = websocket.Upgrader{
 
 // SessionWebSocketHub manages WebSocket connections for sessions
 type SessionWebSocketHub struct {
-	// Map of sessionID -> WebSocket connections
-	sessions map[string]map[*websocket.Conn]bool
+	// Map of sessionID -> SessionConnection pointers
+	sessions map[string]map[*SessionConnection]bool
 	// Register new connections
 	register chan *SessionConnection
 	// Unregister connections
@@ -41,6 +41,7 @@ type SessionConnection struct {
 	SessionID string
 	Conn      *websocket.Conn
 	UserID    string
+	writeMu   sync.Mutex // Protects concurrent writes to Conn
 }
 
 // SessionMessage represents a message in a session
@@ -62,7 +63,7 @@ type PartialMessageInfo struct {
 }
 
 var wsHub = &SessionWebSocketHub{
-	sessions:   make(map[string]map[*websocket.Conn]bool),
+	sessions:   make(map[string]map[*SessionConnection]bool),
 	register:   make(chan *SessionConnection),
 	unregister: make(chan *SessionConnection),
 	broadcast:  make(chan *SessionMessage),
@@ -80,17 +81,17 @@ func (h *SessionWebSocketHub) run() {
 		case conn := <-h.register:
 			h.mu.Lock()
 			if h.sessions[conn.SessionID] == nil {
-				h.sessions[conn.SessionID] = make(map[*websocket.Conn]bool)
+				h.sessions[conn.SessionID] = make(map[*SessionConnection]bool)
 			}
-			h.sessions[conn.SessionID][conn.Conn] = true
+			h.sessions[conn.SessionID][conn] = true
 			h.mu.Unlock()
 			log.Printf("WebSocket connection registered for session %s", conn.SessionID)
 
 		case conn := <-h.unregister:
 			h.mu.Lock()
 			if connections, exists := h.sessions[conn.SessionID]; exists {
-				if _, exists := connections[conn.Conn]; exists {
-					delete(connections, conn.Conn)
+				if _, exists := connections[conn]; exists {
+					delete(connections, conn)
 					conn.Conn.Close()
 					if len(connections) == 0 {
 						delete(h.sessions, conn.SessionID)
@@ -107,13 +108,13 @@ func (h *SessionWebSocketHub) run() {
 
 			if connections != nil {
 				messageData, _ := json.Marshal(message)
-				for conn := range connections {
-					err := conn.WriteMessage(websocket.TextMessage, messageData)
+				for sessionConn := range connections {
+					// Lock write mutex before writing
+					sessionConn.writeMu.Lock()
+					err := sessionConn.Conn.WriteMessage(websocket.TextMessage, messageData)
+					sessionConn.writeMu.Unlock()
 					if err != nil {
-						h.unregister <- &SessionConnection{
-							SessionID: message.SessionID,
-							Conn:      conn,
-						}
+						h.unregister <- sessionConn
 					}
 				}
 			}
@@ -203,7 +204,10 @@ func handleWebSocketMessages(conn *SessionConnection) {
 						"timestamp": time.Now().UTC().Format(time.RFC3339),
 					}
 					pongData, _ := json.Marshal(pong)
+					// Lock write mutex before writing pong
+					conn.writeMu.Lock()
 					_ = conn.Conn.WriteMessage(websocket.TextMessage, pongData)
+					conn.writeMu.Unlock()
 					continue
 				}
 				// Broadcast all other messages to session listeners (UI and others)
@@ -227,7 +231,11 @@ func handleWebSocketPing(conn *SessionConnection) {
 	for {
 		select {
 		case <-ticker.C:
-			if err := conn.Conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+			// Lock write mutex before writing ping
+			conn.writeMu.Lock()
+			err := conn.Conn.WriteMessage(websocket.PingMessage, nil)
+			conn.writeMu.Unlock()
+			if err != nil {
 				return
 			}
 		}
