@@ -33,7 +33,7 @@ jobs:
             operator:
               - 'components/operator/**'
             claude-runner:
-              - 'components/runners/claude-code-runner/**'
+              - 'components/runners/**'
 
   build-and-push:
     runs-on: ubuntu-latest
