@@ -25,6 +25,7 @@ rules:
   # Core resources
   - apiGroups: [""]
     resources:
+      - namespaces
       - services
       - serviceaccounts
       - secrets
@@ -59,12 +60,11 @@ rules:
       - routes
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 ---
-# RoleBinding to bind the ClusterRole to the service account in ambient-code namespace
+# ClusterRoleBinding to bind the ClusterRole to the service account for cluster-scoped resources
 apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
+kind: ClusterRoleBinding
 metadata:
   name: ambient-code-deployer-binding
-  namespace: ambient-code
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
