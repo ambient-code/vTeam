@@ -16,7 +16,7 @@ metadata:
     kubernetes.io/service-account.name: deployer
 type: kubernetes.io/service-account-token
 ---
-# ClusterRole with common deployment permissions
+# ClusterRole with minimal deployment permissions based on components/manifests
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -25,45 +25,38 @@ rules:
   # Core resources
   - apiGroups: [""]
     resources:
-      - pods
-      - pods/log
-      - pods/status
       - services
-      - endpoints
-      - configmaps
-      - secrets
       - serviceaccounts
+      - secrets
+      - configmaps
       - persistentvolumeclaims
+      - pods
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  # Apps
   - apiGroups: ["apps"]
     resources:
       - deployments
-      - daemonsets
-      - replicasets
-      - statefulsets
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-  - apiGroups: ["batch"]
-    resources:
-      - jobs
-      - cronjobs
-    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-  - apiGroups: ["networking.k8s.io"]
-    resources:
-      - ingresses
-      - networkpolicies
-    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  # RBAC
   - apiGroups: ["rbac.authorization.k8s.io"]
     resources:
-      - roles
+      - clusterroles
+      - clusterrolebindings
       - rolebindings
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-  - apiGroups: ["autoscaling"]
+
+  # Custom Resource Definitions
+  - apiGroups: ["apiextensions.k8s.io"]
     resources:
-      - horizontalpodautoscalers
+      - customresourcedefinitions
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-  - apiGroups: ["policy"]
+
+  # OpenShift Routes
+  - apiGroups: ["route.openshift.io"]
     resources:
-      - poddisruptionbudgets
+      - routes
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 ---
 # RoleBinding to bind the ClusterRole to the service account in ambient-code namespace
