@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,8 @@ export default function ProjectSessionsListPage({ params }: { params: Promise<{ 
   const [loading, setLoading] = useState<boolean>(true);
   const [actionLoading, setActionLoading] = useState<Record<string, string>>({});
   const [changesMap, setChangesMap] = useState<Record<string, { label: string; count: number }>>({});
+  // Keep a signature of sessions to avoid redundant diff calls on re-renders
+  const lastDiffSignatureRef = useRef<string>("");
 
   const fetchSessions = async () => {
     if (!projectName) return;
@@ -47,13 +49,24 @@ export default function ProjectSessionsListPage({ params }: { params: Promise<{ 
 
   // Compute changes summary per session (sum across repos via diff API)
   useEffect(() => {
+    if (!sessions || sessions.length === 0 || !projectName) return;
+    // Build a stable signature of sessions that affects diffs
+    const signature = JSON.stringify(
+      sessions.map((s) => ({
+        n: s.metadata?.name,
+        rs: Array.isArray(s.spec?.repos) ? (s.spec!.repos as any[]).map((r: any) => r?.status || "") : [],
+      }))
+    );
+    if (signature === lastDiffSignatureRef.current) return; // No meaningful change
+    lastDiffSignatureRef.current = signature;
+
     const run = async () => {
       const apiUrl = getApiUrl();
       const next: Record<string, { label: string; count: number }> = {};
       await Promise.all((sessions || []).map(async (s) => {
         try {
           const sessionName = s.metadata.name;
-          const repos = Array.isArray(s.spec?.repos) ? s.spec!.repos! : [] as any[];
+          const repos = Array.isArray(s.spec?.repos) ? (s.spec!.repos as any[]) : ([] as any[]);
           const counts = await Promise.all(repos.map(async (r, idx) => {
             const url = (r?.input?.url as string) || "";
             if (!url) return 0;
@@ -88,7 +101,8 @@ export default function ProjectSessionsListPage({ params }: { params: Promise<{ 
       }));
       setChangesMap(next);
     };
-    if (sessions && sessions.length) run();
+
+    run();
   }, [sessions, projectName]);
 
   const handleStop = async (sessionName: string) => {

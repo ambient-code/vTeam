@@ -475,6 +475,9 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
   // Simple exponential backoff for workspace polling when content service is not reachable
   const wsErrCountRef = useRef<number>(0);
   const wsBackoffUntilRef = useRef<number>(0);
+  // Keep a ref of the latest tree to avoid including wsTree in callback deps (prevents effect thrash)
+  const wsTreeRef = useRef<FileTreeNode[]>([]);
+  useEffect(() => { wsTreeRef.current = wsTree; }, [wsTree]);
 
   type ListItem = { name: string; path: string; isDir: boolean; size: number; modifiedAt: string };
   const listWsPath = useCallback(async (relPath?: string) => {
@@ -528,7 +531,7 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
   }, [projectName, sessionName]);
 
   // Preserve expansion state across refreshes to avoid flicker
-  const collectExpanded = (nodes: FileTreeNode[], base = ""): Record<string, boolean> => {
+  const collectExpanded = useCallback((nodes: FileTreeNode[], base = ""): Record<string, boolean> => {
     const map: Record<string, boolean> = {};
     for (const n of nodes) {
       const p = base ? `${base}/${n.name}` : n.path || n.name;
@@ -540,12 +543,12 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
       }
     }
     return map;
-  };
+  }, []);
 
   const buildWsRoot = useCallback(async (background = false) => {
     if (!background) setWsLoading(true);
     try {
-      const prevExpanded = collectExpanded(wsTree);
+      const prevExpanded = collectExpanded(wsTreeRef.current);
       const items = await listWsPath();
       // Strip the backend's /sessions/<sessionName>/workspace/ prefix from paths
       const prefix = `/sessions/${sessionName}/workspace/`;
@@ -568,7 +571,7 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
     } finally {
       if (!background) setWsLoading(false);
     }
-  }, [listWsPath, sessionName, wsTree, collectExpanded]);
+  }, [listWsPath, sessionName, collectExpanded]);
 
   const onWsToggle = useCallback(async (node: FileTreeNode) => {
     if (node.type !== "folder") return;
