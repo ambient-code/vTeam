@@ -1713,6 +1713,12 @@ func contentGitPush(c *gin.Context) {
 
 	// We push directly to URL; remote existence check not required
 
+	// Validate repoDir exists; if not, return error to surface mis-derived paths
+	if fi, err := os.Stat(repoDir); err != nil || !fi.IsDir() {
+		log.Printf("contentGitPush: repoDir not found: %s", repoDir)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "repo directory not found", "repoDir": repoDir})
+		return
+	}
 	// If no changes, short-circuit for clarity
 	log.Printf("contentGitPush: checking worktree status ...")
 	if out, _, _ := run("git", "status", "--porcelain"); strings.TrimSpace(out) == "" {
@@ -2030,72 +2036,47 @@ func pushSessionRepo(c *gin.Context) {
 	}
 	endpoint := fmt.Sprintf(base, session, project)
 
-	// Resolve output repo URL, branch, and repoPath from the session spec
+	// Simplified: 1) get session; 2) compute repoPath from index; 3) get output url/branch; 4) proxy
+	resolvedRepoPath := func() string {
+		if body.RepoIndex >= 0 {
+			return fmt.Sprintf("/sessions/%s/workspace/%d", session, body.RepoIndex)
+		}
+		return fmt.Sprintf("/sessions/%s/workspace", session)
+	}()
+	// default branch when not defined on output
+	resolvedBranch := fmt.Sprintf("sessions/%s", session)
 	resolvedOutputURL := ""
-	resolvedBranch := "auto"
-	resolvedRepoPath := ""
 	if _, reqDyn := getK8sClientsForRequest(c); reqDyn != nil {
 		gvr := getAgenticSessionV1Alpha1Resource()
 		obj, err := reqDyn.Resource(gvr).Namespace(project).Get(c.Request.Context(), session, v1.GetOptions{})
-		if err == nil {
-			if spec, ok := obj.Object["spec"].(map[string]interface{}); ok {
-				if repos, ok := spec["repos"].([]interface{}); ok {
-					if body.RepoIndex >= 0 && body.RepoIndex < len(repos) {
-						if rm, ok := repos[body.RepoIndex].(map[string]interface{}); ok {
-							if out, ok := rm["output"].(map[string]interface{}); ok {
-								if urlv, ok := out["url"].(string); ok && strings.TrimSpace(urlv) != "" {
-									resolvedOutputURL = strings.TrimSpace(urlv)
-								}
-								if bv, ok := out["branch"].(*string); ok && bv != nil && strings.TrimSpace(*bv) != "" {
-									resolvedBranch = strings.TrimSpace(*bv)
-								} else if bs, ok := out["branch"].(string); ok && strings.TrimSpace(bs) != "" { // tolerate string
-									resolvedBranch = strings.TrimSpace(bs)
-								}
-							}
-							if resolvedOutputURL == "" {
-								if in, ok := rm["input"].(map[string]interface{}); ok {
-									inURL := ""
-									if urlv, ok := in["url"].(string); ok && strings.TrimSpace(urlv) != "" {
-										inURL = strings.TrimSpace(urlv)
-										if resolvedOutputURL == "" {
-											resolvedOutputURL = inURL
-										}
-									}
-									if bv, ok := in["branch"].(*string); ok && bv != nil && strings.TrimSpace(*bv) != "" {
-										resolvedBranch = strings.TrimSpace(*bv)
-									} else if bs, ok := in["branch"].(string); ok && strings.TrimSpace(bs) != "" {
-										resolvedBranch = strings.TrimSpace(bs)
-									}
-									// Derive repo folder from input URL
-									if inURL != "" {
-										folder := deriveRepoFolderFromURLFallback(inURL)
-										if folder != "" {
-											resolvedRepoPath = fmt.Sprintf("/sessions/%s/workspace/%s", session, folder)
-										}
-									}
-								}
-							}
-						}
-					}
-				}
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "failed to read session"})
+			return
+		}
+		spec, _ := obj.Object["spec"].(map[string]interface{})
+		repos, _ := spec["repos"].([]interface{})
+		if body.RepoIndex < 0 || body.RepoIndex >= len(repos) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid repo index"})
+			return
+		}
+		rm, _ := repos[body.RepoIndex].(map[string]interface{})
+		if out, ok := rm["output"].(map[string]interface{}); ok {
+			if urlv, ok2 := out["url"].(string); ok2 && strings.TrimSpace(urlv) != "" {
+				resolvedOutputURL = strings.TrimSpace(urlv)
 			}
-		} else {
-			log.Printf("pushSessionRepo: failed to read session for output URL resolve: %v", err)
+			if bs, ok2 := out["branch"].(string); ok2 && strings.TrimSpace(bs) != "" {
+				resolvedBranch = strings.TrimSpace(bs)
+			} else if bv, ok2 := out["branch"].(*string); ok2 && bv != nil && strings.TrimSpace(*bv) != "" {
+				resolvedBranch = strings.TrimSpace(*bv)
+			}
 		}
 	} else {
-		log.Printf("pushSessionRepo: no dynamic client to resolve output URL; cannot proceed")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "no dynamic client"})
+		return
 	}
 	if strings.TrimSpace(resolvedOutputURL) == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "missing output repo url"})
 		return
-	}
-	if strings.TrimSpace(resolvedRepoPath) == "" {
-		// Fallback to index-based path
-		if body.RepoIndex >= 0 {
-			resolvedRepoPath = fmt.Sprintf("/sessions/%s/workspace/%d", session, body.RepoIndex)
-		} else {
-			resolvedRepoPath = fmt.Sprintf("/sessions/%s/workspace", session)
-		}
 	}
 	log.Printf("pushSessionRepo: resolved repoPath=%q outputUrl=%q branch=%q", resolvedRepoPath, resolvedOutputURL, resolvedBranch)
 

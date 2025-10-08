@@ -300,23 +300,46 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
 
   // Derive the most recent final result text from live messages (fallback for interactive sessions)
   const latestResultText = useMemo(() => {
+    const unwrapPayload = (obj: any): any => {
+      let cur = obj;
+      let guard = 0;
+      while (cur && typeof cur === 'object' && 'payload' in cur && (cur as any).payload && guard < 5) {
+        cur = (cur as any).payload;
+        guard++;
+      }
+      return cur;
+    };
+
     for (let i = liveMessages.length - 1; i >= 0; i--) {
       const raw: any = liveMessages[i] as any;
       const envelope: any = (raw?.payload ?? raw) || {};
       const innerType: string = envelope?.type || (raw as any)?.type || "";
-      const payloadAny: any = envelope?.payload;
-      const innerPayload: any = (payloadAny && typeof payloadAny === "object") ? payloadAny : (typeof envelope === "object" ? envelope : {});
-      if (innerType === "agent.message" && innerPayload && (innerPayload as any).type === "result.message") {
-        let rp: any = (innerPayload as any).payload || {};
-        if (rp && typeof rp === 'object' && 'payload' in rp && (rp as any).payload) {
-          rp = (rp as any).payload;
+      const innerPayload: any = (envelope && typeof envelope === 'object' && 'payload' in envelope) ? (envelope as any).payload : null;
+
+      if (innerType === 'agent.message') {
+        const unwrapped = unwrapPayload(innerPayload);
+        const isResultMessage = (innerPayload && (innerPayload as any).type === 'result.message') || (unwrapped && typeof (unwrapped as any).result === 'string');
+        if (isResultMessage) {
+          const result = typeof (unwrapped as any)?.result === 'string' ? (unwrapped as any).result : null;
+          if (result && result.trim()) return result;
         }
-        const res = typeof (rp as any).result === 'string' ? (rp as any).result : null;
-        if (res && res.trim()) return res as string;
+      }
+
+      if (innerType === 'result.message') {
+        const unwrapped = unwrapPayload(innerPayload ?? envelope);
+        const result = typeof (unwrapped as any)?.result === 'string' ? (unwrapped as any).result : null;
+        if (result && result.trim()) return result;
       }
     }
     return null as string | null;
   }, [liveMessages]);
+
+  // Prefer status.result if it is a non-empty string; otherwise use the latest result.message text
+  const resultForResultsTab = useMemo(() => {
+    const s = session?.status?.result;
+    if (typeof s === 'string' && s.trim()) return s;
+    return latestResultText || null;
+  }, [session?.status?.result, latestResultText]);
 
 
 
@@ -912,7 +935,7 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
 
           {/* Results */}
           <TabsContent value="results">
-            <ResultsTab result={session.status?.result ?? latestResultText} />
+            <ResultsTab result={resultForResultsTab} />
           </TabsContent>
         </Tabs>
       </div>
