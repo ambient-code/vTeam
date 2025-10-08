@@ -1665,15 +1665,18 @@ func contentGitPush(c *gin.Context) {
 		Branch        string `json:"branch"`
 	}
 	_ = c.BindJSON(&body)
+	log.Printf("contentGitPush: request received repoPath=%q remote=%q branch=%q commitLen=%d", body.RepoPath, body.Remote, body.Branch, len(strings.TrimSpace(body.CommitMessage)))
 	repoDir := filepath.Clean(filepath.Join(stateBaseDir, body.RepoPath))
 	if body.RepoPath == "" {
 		repoDir = stateBaseDir
 	}
 	// Basic safety: repoDir must be under stateBaseDir
 	if !strings.HasPrefix(repoDir+string(os.PathSeparator), stateBaseDir+string(os.PathSeparator)) && repoDir != stateBaseDir {
+		log.Printf("contentGitPush: invalid repoPath resolved=%q stateBaseDir=%q", repoDir, stateBaseDir)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid repoPath"})
 		return
 	}
+	log.Printf("contentGitPush: using repoDir=%q (stateBaseDir=%q)", repoDir, stateBaseDir)
 	cm := body.CommitMessage
 	if strings.TrimSpace(cm) == "" {
 		cm = "Update from Ambient session"
@@ -1686,33 +1689,69 @@ func contentGitPush(c *gin.Context) {
 	if branch == "" {
 		branch = "auto"
 	}
+
+	// Optional GitHub token provided by backend via internal header
+	// Used for one-shot authenticated push without persisting credentials
+	gitHubToken := strings.TrimSpace(c.GetHeader("X-GitHub-Token"))
+	log.Printf("contentGitPush: tokenHeaderPresent=%t remote=%q branch=%q", gitHubToken != "", remote, branch)
 	// Execute git commands
 	run := func(args ...string) (string, string, error) {
+		start := time.Now()
 		cmd := exec.Command(args[0], args[1:]...)
 		cmd.Dir = repoDir
 		var stdout, stderr bytes.Buffer
 		cmd.Stdout = &stdout
 		cmd.Stderr = &stderr
 		err := cmd.Run()
+		dur := time.Since(start)
+		log.Printf("contentGitPush: exec dur=%s cmd=%q stderr.len=%d stdout.len=%d err=%v", dur, strings.Join(args, " "), len(stderr.Bytes()), len(stdout.Bytes()), err)
 		return stdout.String(), stderr.String(), err
 	}
+
+	// If no changes, short-circuit for clarity
+	log.Printf("contentGitPush: checking worktree status ...")
+	if out, _, _ := run("git", "status", "--porcelain"); strings.TrimSpace(out) == "" {
+		c.JSON(http.StatusOK, gin.H{"ok": true, "message": "no changes"})
+		return
+	}
+	log.Printf("contentGitPush: staging changes ...")
 	_, _, _ = run("git", "add", "-A")
+	log.Printf("contentGitPush: committing changes ...")
 	_, _, _ = run("git", "commit", "-m", cm)
 	// Determine target branch: if "auto", push HEAD to remote HEAD
-	var pushArgs []string
-	if branch == "auto" {
-		pushArgs = []string{"git", "push", remote, "HEAD"}
-	} else {
-		pushArgs = []string{"git", "push", remote, "HEAD:" + branch}
+	ref := "HEAD"
+	if branch != "auto" {
+		ref = "HEAD:" + branch
 	}
-	log.Printf("contentGitPush: running %v in %s", pushArgs, repoDir)
+	var pushArgs []string
+	if gitHubToken != "" {
+		// One-shot URL rewrite to inject token for https github.com pushes
+		cfg := fmt.Sprintf("url.https://x-access-token:%s@github.com/.insteadOf=https://github.com/", gitHubToken)
+		pushArgs = []string{"git", "-c", cfg, "push", remote, ref}
+		// Redact token in logs
+		log.Printf("contentGitPush: running git -c url.https://x-access-token:****@github.com/.insteadOf=https://github.com/ push %s %s in %s", remote, ref, repoDir)
+	} else {
+		pushArgs = []string{"git", "push", remote, ref}
+		log.Printf("contentGitPush: running git push %s %s in %s", remote, ref, repoDir)
+	}
 	out, errOut, err := run(pushArgs...)
 	if err != nil {
-		log.Printf("contentGitPush: failed stderr=%s stdout=%s err=%v", errOut, out, err)
+		serr := errOut
+		if len(serr) > 2000 {
+			serr = serr[:2000] + "..."
+		}
+		sout := out
+		if len(sout) > 2000 {
+			sout = sout[:2000] + "..."
+		}
+		log.Printf("contentGitPush: push failed remote=%q ref=%q err=%v stderr.snip=%q stdout.snip=%q", remote, ref, err, serr, sout)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "push failed", "stderr": errOut, "stdout": out})
 		return
 	}
-	log.Printf("contentGitPush: ok stdout=%s", out)
+	if len(out) > 2000 {
+		out = out[:2000] + "..."
+	}
+	log.Printf("contentGitPush: push ok remote=%q ref=%q stdout.snip=%q", remote, ref, out)
 	c.JSON(http.StatusOK, gin.H{"ok": true, "stdout": out})
 }
 
@@ -1723,14 +1762,17 @@ func contentGitAbandon(c *gin.Context) {
 		RepoPath string `json:"repoPath"`
 	}
 	_ = c.BindJSON(&body)
+	log.Printf("contentGitAbandon: request repoPath=%q", body.RepoPath)
 	repoDir := filepath.Clean(filepath.Join(stateBaseDir, body.RepoPath))
 	if body.RepoPath == "" {
 		repoDir = stateBaseDir
 	}
 	if !strings.HasPrefix(repoDir+string(os.PathSeparator), stateBaseDir+string(os.PathSeparator)) && repoDir != stateBaseDir {
+		log.Printf("contentGitAbandon: invalid repoPath resolved=%q base=%q", repoDir, stateBaseDir)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid repoPath"})
 		return
 	}
+	log.Printf("contentGitAbandon: using repoDir=%q", repoDir)
 	run := func(args ...string) (string, string, error) {
 		cmd := exec.Command(args[0], args[1:]...)
 		cmd.Dir = repoDir
@@ -1741,7 +1783,9 @@ func contentGitAbandon(c *gin.Context) {
 		return stdout.String(), stderr.String(), err
 	}
 	// Hard reset and clean untracked files
+	log.Printf("contentGitAbandon: git reset --hard")
 	_, _, _ = run("git", "reset", "--hard")
+	log.Printf("contentGitAbandon: git clean -fd")
 	_, _, _ = run("git", "clean", "-fd")
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
@@ -1759,6 +1803,7 @@ func contentGitDiff(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid repoPath"})
 		return
 	}
+	log.Printf("contentGitDiff: repoPath=%q repoDir=%q", repoPath, repoDir)
 	run := func(args ...string) (string, error) {
 		cmd := exec.Command(args[0], args[1:]...)
 		cmd.Dir = repoDir
@@ -1797,6 +1842,7 @@ func contentGitDiff(c *gin.Context) {
 			untracked++
 		}
 	}
+	log.Printf("contentGitDiff: summary added=%d modified=%d deleted=%d renamed=%d untracked=%d", added, modified, deleted, renamed, untracked)
 	c.JSON(http.StatusOK, gin.H{"added": added, "modified": modified, "deleted": deleted, "renamed": renamed, "untracked": untracked})
 }
 
@@ -1919,11 +1965,13 @@ func pushSessionRepo(c *gin.Context) {
 		CommitMessage string `json:"commitMessage"`
 		Branch        string `json:"branch"`
 		RepoPath      string `json:"repoPath"`
+		Remote        string `json:"remote"`
 	}
 	if err := c.BindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON body"})
 		return
 	}
+	log.Printf("pushSessionRepo: request project=%s session=%s repoIndex=%d repoPath=%q branch=%q remote=%q commitLen=%d", project, session, body.RepoIndex, body.RepoPath, body.Branch, body.Remote, len(strings.TrimSpace(body.CommitMessage)))
 
 	base := os.Getenv("SESSION_CONTENT_SERVICE_BASE")
 	if base == "" {
@@ -1944,10 +1992,12 @@ func pushSessionRepo(c *gin.Context) {
 			repoPath = fmt.Sprintf("/sessions/%s/workspace", session)
 		}
 	}
+	log.Printf("pushSessionRepo: resolved repoPath=%q", repoPath)
 	payload := map[string]interface{}{
 		"repoPath":      repoPath,
 		"commitMessage": body.CommitMessage,
 		"branch":        body.Branch,
+		"remote":        strings.TrimSpace(body.Remote),
 	}
 	b, _ := json.Marshal(payload)
 	req, _ := http.NewRequestWithContext(c.Request.Context(), http.MethodPost, endpoint+"/content/github/push", strings.NewReader(string(b)))
@@ -1958,7 +2008,38 @@ func pushSessionRepo(c *gin.Context) {
 		req.Header.Set("X-Forwarded-Access-Token", v)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	log.Printf("pushSessionRepo: proxy push project=%s session=%s repoIndex=%d repoPath=%s", project, session, body.RepoIndex, repoPath)
+
+	// Attach short-lived GitHub token for one-shot authenticated push
+	if reqK8s, reqDyn := getK8sClientsForRequest(c); reqK8s != nil {
+		// Load session to get authoritative userId
+		gvr := getAgenticSessionV1Alpha1Resource()
+		obj, err := reqDyn.Resource(gvr).Namespace(project).Get(c.Request.Context(), session, v1.GetOptions{})
+		if err == nil {
+			spec, _ := obj.Object["spec"].(map[string]interface{})
+			userId := ""
+			if spec != nil {
+				if uc, ok := spec["userContext"].(map[string]interface{}); ok {
+					if v, ok := uc["userId"].(string); ok {
+						userId = strings.TrimSpace(v)
+					}
+				}
+			}
+			if userId != "" {
+				if tokenStr, err := getGitHubToken(c.Request.Context(), reqK8s, reqDyn, project, userId); err == nil && strings.TrimSpace(tokenStr) != "" {
+					req.Header.Set("X-GitHub-Token", tokenStr)
+					log.Printf("pushSessionRepo: attached short-lived GitHub token for project=%s session=%s", project, session)
+				} else if err != nil {
+					log.Printf("pushSessionRepo: failed to resolve GitHub token: %v", err)
+				}
+			} else {
+				log.Printf("pushSessionRepo: session %s/%s missing userContext.userId; proceeding without token", project, session)
+			}
+		} else {
+			log.Printf("pushSessionRepo: failed to read session for token attach: %v", err)
+		}
+	}
+
+	log.Printf("pushSessionRepo: proxy push project=%s session=%s repoIndex=%d repoPath=%s endpoint=%s", project, session, body.RepoIndex, repoPath, endpoint+"/content/github/push")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
@@ -1967,17 +2048,25 @@ func pushSessionRepo(c *gin.Context) {
 	defer resp.Body.Close()
 	bodyBytes, _ := ioutil.ReadAll(resp.Body)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		log.Printf("pushSessionRepo: content returned status=%d body=%s", resp.StatusCode, string(bodyBytes))
+		log.Printf("pushSessionRepo: content returned status=%d body.snip=%q", resp.StatusCode, func() string {
+			s := string(bodyBytes)
+			if len(s) > 1500 {
+				return s[:1500] + "..."
+			}
+			return s
+		}())
 		c.Data(resp.StatusCode, "application/json", bodyBytes)
 		return
 	}
 	if _, reqDyn := getK8sClientsForRequest(c); reqDyn != nil {
+		log.Printf("pushSessionRepo: setting repo status to 'pushed' for repoIndex=%d", body.RepoIndex)
 		if err := setRepoStatus(reqDyn, project, session, body.RepoIndex, "pushed"); err != nil {
 			log.Printf("pushSessionRepo: setRepoStatus failed project=%s session=%s repoIndex=%d err=%v", project, session, body.RepoIndex, err)
 		}
 	} else {
 		log.Printf("pushSessionRepo: no dynamic client; cannot set repo status project=%s session=%s", project, session)
 	}
+	log.Printf("pushSessionRepo: content push succeeded status=%d body.len=%d", resp.StatusCode, len(bodyBytes))
 	c.Data(http.StatusOK, "application/json", bodyBytes)
 }
 

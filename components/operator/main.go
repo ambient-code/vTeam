@@ -700,7 +700,7 @@ func monitorJob(jobName, sessionName, sessionNamespace string) {
 			continue
 		}
 
-		// If K8s already marked the Job as succeeded, finalize
+		// If K8s already marked the Job as succeeded, mark session Completed but defer cleanup
 		if job.Status.Succeeded > 0 {
 			log.Printf("Job %s marked succeeded by Kubernetes", jobName)
 			_ = updateAgenticSessionStatus(sessionNamespace, sessionName, map[string]interface{}{
@@ -708,13 +708,7 @@ func monitorJob(jobName, sessionName, sessionNamespace string) {
 				"message":        "Job completed successfully",
 				"completionTime": time.Now().Format(time.RFC3339),
 			})
-			// DEBUG: Temporarily commented for debugging
-			if os.Getenv("DEBUG_KEEP_PODS") != "true" {
-				_ = deleteJobAndPerJobService(sessionNamespace, jobName, sessionName)
-			} else {
-				log.Printf("DEBUG_KEEP_PODS=true: Skipping cleanup of job %s", jobName)
-			}
-			return
+			// Do not delete here; defer cleanup until all repos are finalized
 		}
 
 		// If Job has failed according to backoff policy, mark failed
@@ -761,9 +755,14 @@ func monitorJob(jobName, sessionName, sessionNamespace string) {
 			if cs.State.Terminated != nil {
 				term := cs.State.Terminated
 				if term.ExitCode == 0 {
-					// Do not immediately finalize; wait for explicit completion when repo states are settled
+					// Mark Completed, but defer cleanup until repo states are finalized
+					_ = updateAgenticSessionStatus(sessionNamespace, sessionName, map[string]interface{}{
+						"phase":          "Completed",
+						"message":        "Content service completed",
+						"completionTime": time.Now().Format(time.RFC3339),
+					})
 					log.Printf("Content container exited for job %s; deferring cleanup until repo states finalized", jobName)
-					// Keep monitoring; external controller (backend/UI) will mark session Completed/Failed and cleanup
+					// Keep monitoring until all repos are finalized
 					continue
 				}
 				// Non-zero exit = failure
