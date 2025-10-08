@@ -361,7 +361,17 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 								{Name: "CONTENT_SERVICE_MODE", Value: "true"},
 								{Name: "STATE_BASE_DIR", Value: "/data/state"},
 							},
-							Ports:        []corev1.ContainerPort{{ContainerPort: 8080, Name: "http"}},
+							Ports: []corev1.ContainerPort{{ContainerPort: 8080, Name: "http"}},
+							ReadinessProbe: &corev1.Probe{
+								ProbeHandler: corev1.ProbeHandler{
+									HTTPGet: &corev1.HTTPGetAction{
+										Path: "/health",
+										Port: intstr.FromString("http"),
+									},
+								},
+								InitialDelaySeconds: 5,
+								PeriodSeconds:       5,
+							},
 							VolumeMounts: []corev1.VolumeMount{{Name: "workspace", MountPath: "/data/state"}},
 						},
 						{
