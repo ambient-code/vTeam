@@ -279,6 +279,7 @@ func getSessionMessagesWS(c *gin.Context) {
 
 	messages, err := retrieveMessagesFromS3(sessionID)
 	if err != nil {
+		log.Printf("getSessionMessagesWS: retrieve failed: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": fmt.Sprintf("failed to retrieve messages: %v", err),
 		})
@@ -321,6 +322,7 @@ func persistMessageToS3(message *SessionMessage) {
 	// Write messages to per-project content service path as JSONL append for now
 	// Backend does not have project in this scope; persist to local state dir for durability
 	path := fmt.Sprintf("%s/sessions/%s/messages.jsonl", stateBaseDir, message.SessionID)
+	log.Printf("persistMessageToS3: path: %s", path)
 	b, _ := json.Marshal(message)
 	// Ensure dir
 	_ = os.MkdirAll(fmt.Sprintf("%s/sessions/%s", stateBaseDir, message.SessionID), 0o755)
@@ -343,6 +345,7 @@ func postSessionMessageWS(c *gin.Context) {
 
 	var body map[string]interface{}
 	if err := c.BindJSON(&body); err != nil {
+		log.Printf("postSessionMessageWS: bind failed: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON body"})
 		return
 	}
@@ -372,6 +375,7 @@ func retrieveMessagesFromS3(sessionID string) ([]SessionMessage, error) {
 	path := fmt.Sprintf("%s/sessions/%s/messages.jsonl", stateBaseDir, sessionID)
 	data, err := os.ReadFile(path)
 	if err != nil {
+		log.Printf("retrieveMessagesFromS3: read failed: %v", err)
 		if os.IsNotExist(err) {
 			return []SessionMessage{}, nil
 		}
