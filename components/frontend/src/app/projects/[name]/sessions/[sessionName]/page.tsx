@@ -452,83 +452,6 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
     }
   }, [projectName, sessionName]);
 
-  const sendChat = useCallback(async () => {
-    if (!chatInput.trim() || !projectName || !sessionName) return
-    try {
-      const apiUrl = getApiUrl()
-      await fetch(`${apiUrl}/projects/${encodeURIComponent(projectName)}/agentic-sessions/${encodeURIComponent(sessionName)}/messages`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: chatInput.trim() })
-      })
-      setChatInput("")
-      await fetchSession()
-      setActiveTab('messages')
-      // Refresh live messages after sending
-      try {
-        const resp = await fetch(`${apiUrl}/projects/${encodeURIComponent(projectName)}/agentic-sessions/${encodeURIComponent(sessionName)}/messages`)
-        if (resp.ok) {
-          const data = await resp.json()
-          const newMsgs = Array.isArray(data.messages) ? data.messages : []
-          // Avoid list flicker by checking shallow equality on tail items length+timestamps
-          setLiveMessages((prev) => {
-            if (prev.length === newMsgs.length) {
-              const sameTail = prev.length === 0 || (prev[prev.length-1]?.timestamp === newMsgs[newMsgs.length-1]?.timestamp)
-              if (sameTail) return prev
-            }
-            return newMsgs
-          })
-        }
-      } catch {}
-    } catch {}
-  }, [chatInput, projectName, sessionName, fetchSession])
-
-  useEffect(() => {
-    if (projectName && sessionName) {
-      fetchSession();
-      // Initial load of live messages
-      const apiUrl = getApiUrl()
-      ;(async () => {
-        try {
-          const resp = await fetch(`${apiUrl}/projects/${encodeURIComponent(projectName)}/agentic-sessions/${encodeURIComponent(sessionName)}/messages`)
-          if (resp.ok) {
-            const data = await resp.json()
-            setLiveMessages(Array.isArray(data.messages) ? data.messages : [])
-          }
-        } catch {}
-      })()
-      // Poll for updates every 3 seconds while session is active
-      const interval = setInterval(() => {
-        if (
-          session?.status?.phase === "Pending" ||
-          session?.status?.phase === "Running" ||
-          session?.status?.phase === "Creating"
-        ) {
-          fetchSession();
-          ;(async () => {
-            try {
-              const resp = await fetch(`${apiUrl}/projects/${encodeURIComponent(projectName)}/agentic-sessions/${encodeURIComponent(sessionName)}/messages`)
-              if (resp.ok) {
-                const data = await resp.json()
-                const newMsgs = Array.isArray(data.messages) ? data.messages : []
-                setLiveMessages((prev) => {
-                  if (prev.length === newMsgs.length) {
-                    const sameTail = prev.length === 0 || (prev[prev.length-1]?.timestamp === newMsgs[newMsgs.length-1]?.timestamp)
-                    if (sameTail) return prev
-                  }
-                  return newMsgs
-                })
-              }
-            } catch {}
-          })()
-        }
-      }, 3000);
-      return () => clearInterval(interval);
-    }
-  }, [projectName, sessionName, session?.status?.phase, fetchSession]);
-
-
-
   // Workspace (PVC) browser state
   const [wsTree, setWsTree] = useState<FileTreeNode[]>([]);
   const [wsSelectedPath, setWsSelectedPath] = useState<string | undefined>(undefined);
@@ -675,49 +598,94 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
     }
   }, [])
 
-  // Piggyback workspace refresh and throttled repo diffs on the same 3s cadence
+  // Fetch functions for polling
+  const fetchMessages = useCallback(async () => {
+    if (!projectName || !sessionName) return;
+    try {
+      const apiUrl = getApiUrl();
+      const resp = await fetch(`${apiUrl}/projects/${encodeURIComponent(projectName)}/agentic-sessions/${encodeURIComponent(sessionName)}/messages`);
+      if (resp.ok) {
+        const data = await resp.json();
+        const newMsgs = Array.isArray(data.messages) ? data.messages : [];
+        setLiveMessages((prev) => {
+          if (prev.length === newMsgs.length) {
+            const sameTail = prev.length === 0 || (prev[prev.length-1]?.timestamp === newMsgs[newMsgs.length-1]?.timestamp);
+            if (sameTail) return prev;
+          }
+          return newMsgs;
+        });
+      }
+    } catch {}
+  }, [projectName, sessionName]);
+
+  const fetchWorkspace = useCallback(async () => {
+    if (!projectName || !sessionName || activeTab !== 'workspace') return;
+    await buildWsRoot(true);
+  }, [projectName, sessionName, activeTab, buildWsRoot]);
+
+  const fetchRepoDiffs = useCallback(async () => {
+    if (!projectName || !sessionName || !session?.spec?.repos || !Array.isArray(session.spec.repos)) return;
+    try {
+      const apiUrl = getApiUrl();
+      const repos = session.spec.repos as any[];
+      const counts = await Promise.all(repos.map(async (r: any, idx: number) => {
+        const url = (r?.input?.url as string) || "";
+        if (!url) return { added: 0, modified: 0, deleted: 0, renamed: 0, untracked: 0 };
+        const folder = deriveRepoFolderFromUrl(url);
+        const qs = new URLSearchParams({ repoIndex: String(idx), repoPath: `/sessions/${sessionName}/workspace/${folder}` });
+        const resp = await fetch(`${apiUrl}/projects/${encodeURIComponent(projectName)}/agentic-sessions/${encodeURIComponent(sessionName)}/github/diff?${qs.toString()}`);
+        if (!resp.ok) return { added: 0, modified: 0, deleted: 0, renamed: 0, untracked: 0 };
+        const data = await resp.json();
+        return { added: Number(data.added||0), modified: Number(data.modified||0), deleted: Number(data.deleted||0), renamed: Number(data.renamed||0), untracked: Number(data.untracked||0) };
+      }));
+      const nextTotals: Record<number, { added: number; modified: number; deleted: number; renamed: number; untracked: number }> = {};
+      counts.forEach((t, i) => { nextTotals[i] = t as any });
+      setDiffTotals(nextTotals);
+    } catch {}
+  }, [projectName, sessionName, session?.spec?.repos, deriveRepoFolderFromUrl]);
+
+  const sendChat = useCallback(async () => {
+    if (!chatInput.trim() || !projectName || !sessionName) return;
+    try {
+      const apiUrl = getApiUrl();
+      await fetch(`${apiUrl}/projects/${encodeURIComponent(projectName)}/agentic-sessions/${encodeURIComponent(sessionName)}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: chatInput.trim() })
+      });
+      setChatInput("");
+      await fetchSession();
+      await fetchMessages();
+      setActiveTab('messages');
+    } catch {}
+  }, [chatInput, projectName, sessionName, fetchSession, fetchMessages]);
+
+  // Single unified polling effect
   useEffect(() => {
     if (!projectName || !sessionName) return;
-    const apiUrl = getApiUrl();
-    const diffInFlightRef = { current: false } as { current: boolean };
-    const lastDiffAtRef = { current: 0 } as { current: number };
-    const refreshRepoDiffs = async () => {
-      if (!session?.spec?.repos || !Array.isArray(session.spec.repos)) return;
-      const now = Date.now();
-      if (now - lastDiffAtRef.current < 9000 || diffInFlightRef.current) return;
-      diffInFlightRef.current = true;
-      try {
-        const repos = session.spec.repos as any[];
-        const counts = await Promise.all(repos.map(async (r: any, idx: number) => {
-          const url = (r?.input?.url as string) || "";
-          if (!url) return { added: 0, modified: 0, deleted: 0, renamed: 0, untracked: 0 };
-          const folder = deriveRepoFolderFromUrl(url);
-          const qs = new URLSearchParams({ repoIndex: String(idx), repoPath: `/sessions/${sessionName}/workspace/${folder}` });
-          const resp = await fetch(`${apiUrl}/projects/${encodeURIComponent(projectName)}/agentic-sessions/${encodeURIComponent(sessionName)}/github/diff?${qs.toString()}`);
-          if (!resp.ok) return { added: 0, modified: 0, deleted: 0, renamed: 0, untracked: 0 };
-          const data = await resp.json();
-          return { added: Number(data.added||0), modified: Number(data.modified||0), deleted: Number(data.deleted||0), renamed: Number(data.renamed||0), untracked: Number(data.untracked||0) };
-        }))
-        const nextTotals: Record<number, { added: number; modified: number; deleted: number; renamed: number; untracked: number }> = {};
-        counts.forEach((t, i) => { nextTotals[i] = t as any });
-        setDiffTotals(nextTotals);
-      } catch {}
-      finally { lastDiffAtRef.current = Date.now(); diffInFlightRef.current = false; }
-    }
-    const id = setInterval(() => {
-      if (
-        session?.status?.phase === "Pending" ||
-        session?.status?.phase === "Running" ||
-        session?.status?.phase === "Creating"
-      ) {
-        if (activeTab === 'workspace') {
-          void buildWsRoot(true);
-        }
-        void refreshRepoDiffs();
+    
+    // Initial fetch
+    fetchSession();
+    fetchMessages();
+    fetchWorkspace();
+    fetchRepoDiffs();
+
+    // Poll for updates every 3 seconds while session is active
+    const interval = setInterval(() => {
+      const isActive = session?.status?.phase === "Pending" ||
+                       session?.status?.phase === "Running" ||
+                       session?.status?.phase === "Creating";
+      
+      if (isActive) {
+        fetchSession();
+        fetchMessages();
+        fetchWorkspace();
+        fetchRepoDiffs();
       }
     }, 3000);
-    return () => clearInterval(id);
-  }, [projectName, sessionName, session?.status?.phase, activeTab, buildWsRoot, deriveRepoFolderFromUrl, session?.spec?.repos]);
+
+    return () => clearInterval(interval);
+  }, [projectName, sessionName, session?.status?.phase, fetchSession, fetchMessages, fetchWorkspace, fetchRepoDiffs]);
 
  
   const handleStop = async () => {
