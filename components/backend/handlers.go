@@ -455,6 +455,10 @@ func parseSpec(spec map[string]interface{}) AgenticSessionSpec {
 				}
 				r.Output = og
 			}
+			// Include per-repo status if present
+			if st, ok := m["status"].(string); ok {
+				r.Status = stringPtr(st)
+			}
 			if strings.TrimSpace(r.Input.URL) != "" {
 				repos = append(repos, r)
 			}
