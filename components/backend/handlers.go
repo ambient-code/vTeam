@@ -624,8 +624,8 @@ func createSession(c *gin.Context) {
 					}
 					m["output"] = out
 				}
-				// Initialize repo status on create
-				m["status"] = "no-diff"
+				// Remove default repo status; status will be set explicitly when pushed/abandoned
+				// m["status"] intentionally unset at creation time
 				arr = append(arr, m)
 			}
 			spec["repos"] = arr
@@ -2036,13 +2036,8 @@ func pushSessionRepo(c *gin.Context) {
 	}
 	endpoint := fmt.Sprintf(base, session, project)
 
-	// Simplified: 1) get session; 2) compute repoPath from index; 3) get output url/branch; 4) proxy
-	resolvedRepoPath := func() string {
-		if body.RepoIndex >= 0 {
-			return fmt.Sprintf("/sessions/%s/workspace/%d", session, body.RepoIndex)
-		}
-		return fmt.Sprintf("/sessions/%s/workspace", session)
-	}()
+	// Simplified: 1) get session; 2) compute repoPath from INPUT repo folder; 3) get output url/branch; 4) proxy
+	resolvedRepoPath := ""
 	// default branch when not defined on output
 	resolvedBranch := fmt.Sprintf("sessions/%s", session)
 	resolvedOutputURL := ""
@@ -2060,6 +2055,15 @@ func pushSessionRepo(c *gin.Context) {
 			return
 		}
 		rm, _ := repos[body.RepoIndex].(map[string]interface{})
+		// Derive repoPath from input URL folder name
+		if in, ok := rm["input"].(map[string]interface{}); ok {
+			if urlv, ok2 := in["url"].(string); ok2 && strings.TrimSpace(urlv) != "" {
+				folder := deriveRepoFolderFromURLFallback(strings.TrimSpace(urlv))
+				if folder != "" {
+					resolvedRepoPath = fmt.Sprintf("/sessions/%s/workspace/%s", session, folder)
+				}
+			}
+		}
 		if out, ok := rm["output"].(map[string]interface{}); ok {
 			if urlv, ok2 := out["url"].(string); ok2 && strings.TrimSpace(urlv) != "" {
 				resolvedOutputURL = strings.TrimSpace(urlv)
@@ -2073,6 +2077,14 @@ func pushSessionRepo(c *gin.Context) {
 	} else {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "no dynamic client"})
 		return
+	}
+	// If input URL missing or unparsable, fall back to numeric index path (last resort)
+	if strings.TrimSpace(resolvedRepoPath) == "" {
+		if body.RepoIndex >= 0 {
+			resolvedRepoPath = fmt.Sprintf("/sessions/%s/workspace/%d", session, body.RepoIndex)
+		} else {
+			resolvedRepoPath = fmt.Sprintf("/sessions/%s/workspace", session)
+		}
 	}
 	if strings.TrimSpace(resolvedOutputURL) == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "missing output repo url"})

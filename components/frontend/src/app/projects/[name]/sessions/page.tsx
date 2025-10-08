@@ -76,7 +76,7 @@ export default function ProjectSessionsListPage({ params }: { params: Promise<{ 
           const sessionName = s.metadata.name;
           const repos = Array.isArray(s.spec?.repos) ? (s.spec!.repos as any[]) : ([] as any[]);
           const statuses = repos.map((r:any)=> (r?.status as string)||"");
-          const allPushed = statuses.length>0 && statuses.every((st:string)=> st==='pushed' || st==='no-diff');
+          const allPushed = statuses.length>0 && statuses.every((st:string)=> st==='pushed');
           if (allPushed) {
             next[sessionName] = statuses.some((st:string)=> st==='pushed') ? { label: 'pushed', count: 0 } : { label: 'no changes', count: 0 };
             return;
@@ -85,7 +85,8 @@ export default function ProjectSessionsListPage({ params }: { params: Promise<{ 
             const url = (r?.input?.url as string) || "";
             const status = (r?.status as string) || '';
             if (!url) return 0;
-            if (status && status !== 'has-diff') return 0;
+            // Only compute diffs for repos without a final status; 'pushed'/'abandoned' are final
+            if (status === 'pushed' || status === 'abandoned') return 0;
             const folder = (() => {
               try {
                 const cleaned = url.replace(/^git@([^:]+):/, "https://$1/");

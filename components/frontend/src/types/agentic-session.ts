@@ -24,7 +24,7 @@ export type SessionRepoOutput = {
 export type SessionRepo = {
     input: SessionRepoInput;
     output?: SessionRepoOutput;
-    status?: "no-diff" | "has-diff" | "pushed" | "abandoned";
+    status?: "pushed" | "abandoned";
 };
 
 export type AgenticSessionSpec = {

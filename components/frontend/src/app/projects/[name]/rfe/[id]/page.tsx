@@ -626,9 +626,10 @@ export default function ProjectRFEDetailPage() {
                                 {(() => {
                                   const repos = Array.isArray(s.spec?.repos) ? s.spec!.repos! : [] as any[]
                                   const statuses = repos.map((r:any)=> (r?.status as string)||'')
-                                  const allPushed = statuses.length>0 && statuses.every((st:string)=> st==='pushed' || st==='no-diff')
-                                  const anyDiff = statuses.some((st:string)=> st==='has-diff')
-                                  if (anyDiff) return <span className="text-xs px-2 py-0.5 rounded border">diff</span>
+                                  const allPushed = statuses.length>0 && statuses.every((st:string)=> st==='pushed')
+                                  // If not all pushed, show 'diff' only when some repos are still undecided (neither pushed nor abandoned)
+                                  const anyUndecided = statuses.some((st:string)=> st !== 'pushed' && st !== 'abandoned')
+                                  if (anyUndecided) return <span className="text-xs px-2 py-0.5 rounded border">diff</span>
                                   if (allPushed && statuses.some((st:string)=> st==='pushed')) return <span className="text-xs px-2 py-0.5 rounded border bg-green-50 text-green-700">pushed</span>
                                   return <span className="text-xs text-muted-foreground">no changes</span>
                                 })()}

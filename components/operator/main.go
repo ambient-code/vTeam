@@ -747,10 +747,30 @@ func monitorJob(jobName, sessionName, sessionNamespace string) {
 		// If main container is running and phase hasn't been set to Running yet, update
 		if cs := getContainerStatusByName(&pod, mainContainerName); cs != nil {
 			if cs.State.Running != nil {
-				_ = updateAgenticSessionStatus(sessionNamespace, sessionName, map[string]interface{}{
-					"phase":   "Running",
-					"message": "Agent is running",
-				})
+				// Avoid downgrading terminal phases; only set Running when not already terminal
+				func() {
+					gvr := getAgenticSessionResource()
+					obj, err := dynamicClient.Resource(gvr).Namespace(sessionNamespace).Get(context.TODO(), sessionName, v1.GetOptions{})
+					if err != nil || obj == nil {
+						// Best-effort: still try to set Running
+						_ = updateAgenticSessionStatus(sessionNamespace, sessionName, map[string]interface{}{
+							"phase":   "Running",
+							"message": "Agent is running",
+						})
+						return
+					}
+					status, _, _ := unstructured.NestedMap(obj.Object, "status")
+					current := ""
+					if v, ok := status["phase"].(string); ok {
+						current = v
+					}
+					if current != "Completed" && current != "Stopped" && current != "Failed" && current != "Running" {
+						_ = updateAgenticSessionStatus(sessionNamespace, sessionName, map[string]interface{}{
+							"phase":   "Running",
+							"message": "Agent is running",
+						})
+					}
+				}()
 			}
 			if cs.State.Terminated != nil {
 				term := cs.State.Terminated
@@ -799,7 +819,7 @@ func monitorJob(jobName, sessionName, sessionNamespace string) {
 							}
 							st, _ := m["status"].(string)
 							st = strings.ToLower(strings.TrimSpace(st))
-							if !(st == "no-diff" || st == "pushed" || st == "abandoned") {
+							if !(st == "pushed" || st == "abandoned") {
 								allFinal = false
 								break
 							}

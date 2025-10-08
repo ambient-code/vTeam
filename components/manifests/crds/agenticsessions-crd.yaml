@@ -53,10 +53,8 @@ spec:
                           default: "main"
                     status:
                       type: string
-                      description: "Per-repo state: no-diff, has-diff, pushed, abandoned"
+                      description: "Per-repo state: pushed, abandoned"
                       enum:
-                      - "no-diff"
-                      - "has-diff"
                       - "pushed"
                       - "abandoned"
               mainRepoIndex:
