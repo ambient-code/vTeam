@@ -20,6 +20,8 @@ export default function ProjectSessionsListPage({ params }: { params: Promise<{ 
   const [changesMap, setChangesMap] = useState<Record<string, { label: string; count: number }>>({});
   // Keep a signature of sessions to avoid redundant diff calls on re-renders
   const lastDiffSignatureRef = useRef<string>("");
+  const diffInFlightRef = useRef<boolean>(false);
+  const lastDiffRunAtRef = useRef<number>(0);
 
   const fetchSessions = async () => {
     if (!projectName) return;
@@ -50,6 +52,7 @@ export default function ProjectSessionsListPage({ params }: { params: Promise<{ 
   // Compute changes summary per session (sum across repos via diff API)
   useEffect(() => {
     if (!sessions || sessions.length === 0 || !projectName) return;
+    if (typeof document !== 'undefined' && document.hidden) return;
     // Build a stable signature of sessions that affects diffs
     const signature = JSON.stringify(
       sessions.map((s) => ({
@@ -58,18 +61,31 @@ export default function ProjectSessionsListPage({ params }: { params: Promise<{ 
       }))
     );
     if (signature === lastDiffSignatureRef.current) return; // No meaningful change
+    // Throttle to at most once every 30s
+    const now = Date.now();
+    if (now - lastDiffRunAtRef.current < 30000) return;
+    if (diffInFlightRef.current) return;
     lastDiffSignatureRef.current = signature;
 
     const run = async () => {
+      diffInFlightRef.current = true;
       const apiUrl = getApiUrl();
       const next: Record<string, { label: string; count: number }> = {};
       await Promise.all((sessions || []).map(async (s) => {
         try {
           const sessionName = s.metadata.name;
           const repos = Array.isArray(s.spec?.repos) ? (s.spec!.repos as any[]) : ([] as any[]);
+          const statuses = repos.map((r:any)=> (r?.status as string)||"");
+          const allPushed = statuses.length>0 && statuses.every((st:string)=> st==='pushed' || st==='no-diff');
+          if (allPushed) {
+            next[sessionName] = statuses.some((st:string)=> st==='pushed') ? { label: 'pushed', count: 0 } : { label: 'no changes', count: 0 };
+            return;
+          }
           const counts = await Promise.all(repos.map(async (r, idx) => {
             const url = (r?.input?.url as string) || "";
+            const status = (r?.status as string) || '';
             if (!url) return 0;
+            if (status && status !== 'has-diff') return 0;
             const folder = (() => {
               try {
                 const cleaned = url.replace(/^git@([^:]+):/, "https://$1/");
@@ -91,15 +107,14 @@ export default function ProjectSessionsListPage({ params }: { params: Promise<{ 
             return total;
           }));
           const total = counts.reduce((a,b)=>a+b,0);
-          // Derive label from totals and repo statuses
-          const statuses = repos.map((r:any)=> (r?.status as string)||"");
-          const allPushed = statuses.length>0 && statuses.every((st:string)=> st==='pushed' || st==='no-diff');
           if (total > 0) next[s.metadata.name] = { label: `diff ${total}`, count: total };
           else if (allPushed && statuses.some((st:string)=> st==='pushed')) next[s.metadata.name] = { label: "pushed", count: 0 };
           else next[s.metadata.name] = { label: "no changes", count: 0 };
         } catch { /* ignore per-row errors */ }
       }));
       setChangesMap(next);
+      lastDiffRunAtRef.current = Date.now();
+      diffInFlightRef.current = false;
     };
 
     run();

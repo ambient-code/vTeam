@@ -435,32 +435,6 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
         } catch {}
       })()
       // Poll for updates every 3 seconds while session is active
-      const interval = setInterval(() => {
-        if (
-          session?.status?.phase === "Pending" ||
-          session?.status?.phase === "Running" ||
-          session?.status?.phase === "Creating"
-        ) {
-          fetchSession();
-          ;(async () => {
-            try {
-              const resp = await fetch(`${apiUrl}/projects/${encodeURIComponent(projectName)}/agentic-sessions/${encodeURIComponent(sessionName)}/messages`)
-              if (resp.ok) {
-                const data = await resp.json()
-                const newMsgs = Array.isArray(data.messages) ? data.messages : []
-                setLiveMessages((prev) => {
-                  if (prev.length === newMsgs.length) {
-                    const sameTail = prev.length === 0 || (prev[prev.length-1]?.timestamp === newMsgs[newMsgs.length-1]?.timestamp)
-                    if (sameTail) return prev
-                  }
-                  return newMsgs
-                })
-              }
-            } catch {}
-          })()
-        }
-      }, 3000);
-      return () => clearInterval(interval);
     }
   }, [projectName, sessionName, session?.status?.phase, fetchSession]);
 
@@ -565,8 +539,9 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
         } as FileTreeNode;
       });
       // Only update state if changed length or names differ to avoid unnecessary re-renders
-      const sameLength = wsTree.length === children.length;
-      const sameNames = sameLength && wsTree.every((n, i) => n.name === children[i].name && n.type === children[i].type);
+      const currentTree = wsTreeRef.current;
+      const sameLength = currentTree.length === children.length;
+      const sameNames = sameLength && currentTree.every((n, i) => n.name === children[i].name && n.type === children[i].type);
       if (!sameLength || !sameNames) setWsTree(children);
     } finally {
       if (!background) setWsLoading(false);
@@ -595,22 +570,7 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
     setWsFileContent(text);
   }, [readWsFile]);
 
-  // Initial load when switching to workspace tab
-  useEffect(() => {
-    if (activeTab === "workspace" && wsTree.length === 0 && projectName && sessionName) {
-      buildWsRoot();
-    }
-  }, [activeTab, wsTree.length, projectName, sessionName, buildWsRoot]);
-
-  // Poll workspace while tab is active and session is running
-  useEffect(() => {
-    if (activeTab === "workspace" && projectName && sessionName && session?.status?.phase === "Running") {
-      const interval = setInterval(() => {
-        buildWsRoot(true); // background refresh: no spinner, preserve expansion
-      }, 5000); // Poll every 5 seconds
-      return () => clearInterval(interval);
-    }
-  }, [activeTab, projectName, sessionName, session?.status?.phase, buildWsRoot]);
+  // Workspace refresh is driven by the main poll; no tab switch fetch or separate polling
 
  
   const handleStop = async () => {
@@ -702,37 +662,9 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
   }, [])
 
   // Small client component to show diff counts for a repo
-  const RepoDiffBadge = ({ project, session, repoIndex, repoPath, onUpdate }: { project: string; session: string; repoIndex: number; repoPath: string; onUpdate?: (total: number) => void }) => {
-    const [counts, setCounts] = useState<{ added: number; modified: number; deleted: number; renamed: number; untracked: number } | null>(null)
-    const apiUrl = getApiUrl()
-    useEffect(() => {
-      let mounted = true
-      const fetchDiff = async () => {
-        try {
-          const qs = new URLSearchParams({ repoIndex: String(repoIndex), repoPath })
-          const resp = await fetch(`${apiUrl}/projects/${encodeURIComponent(project)}/agentic-sessions/${encodeURIComponent(session)}/github/diff?${qs.toString()}`)
-          if (!resp.ok) return
-          const data = await resp.json()
-          const next = { added: data.added || 0, modified: data.modified || 0, deleted: data.deleted || 0, renamed: data.renamed || 0, untracked: data.untracked || 0 }
-          if (mounted) {
-            setCounts(next)
-            const total = next.added + next.modified + next.deleted + next.renamed + next.untracked
-            onUpdate && onUpdate(total)
-          }
-        } finally {}
-      }
-      fetchDiff()
-      const id = setInterval(fetchDiff, 8000)
-      return () => { mounted = false; clearInterval(id) }
-    }, [apiUrl, project, session, repoIndex, repoPath])
-
-    const total = (counts?.added || 0) + (counts?.modified || 0) + (counts?.deleted || 0) + (counts?.renamed || 0) + (counts?.untracked || 0)
-    if (!counts || total === 0) return <span className="text-xs text-muted-foreground">clean</span>
-    return (
-      <span className="text-xs px-2 py-0.5 rounded font-sans border border-muted-foreground/20">
-        +{counts.added} ~{counts.modified} -{counts.deleted}{counts.untracked ? ` ?${counts.untracked}` : ""}
-      </span>
-    )
+  const RepoDiffBadge = ({ total }: { total: number }) => {
+    if (!total || total === 0) return <span className="text-xs text-muted-foreground">clean</span>
+    return <span className="text-xs px-2 py-0.5 rounded font-sans border border-muted-foreground/20">{`diff ${total}`}</span>
   }
 
   // Track per-repo diff totals and action states
@@ -741,8 +673,6 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
 
   const buildGithubCompareUrl = useCallback((inputUrl: string, inputBranch?: string, outputUrl?: string, outputBranch?: string): string | null => {
     if (!inputUrl || !outputUrl) return null
-    const inName = deriveRepoFolderFromUrl(inputUrl)
-    const outName = deriveRepoFolderFromUrl(outputUrl)
     const parseOwner = (url: string): { owner: string; repo: string } | null => {
       try {
         const cleaned = url.replace(/^git@([^:]+):/, "https://$1/")
@@ -759,7 +689,7 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
     const head = outputBranch && outputBranch.trim() && outputBranch !== 'auto' ? outputBranch : null
     if (!head) return null
     return `https://github.com/${inOrg.owner}/${inOrg.repo}/compare/${encodeURIComponent(base)}...${encodeURIComponent(outOrg.owner + ':' + head)}`
-  }, [deriveRepoFolderFromUrl])
+  }, [])
 
 
   if (loading) {
@@ -1045,11 +975,7 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
                                   <span className="flex-1" />
                                   {/* Diff counts + control rendering */}
                                   <RepoDiffBadge
-                                    project={projectName}
-                                    session={sessionName}
-                                    repoIndex={idx}
-                                    repoPath={`/sessions/${sessionName}/workspace/${folder}`}
-                                    onUpdate={(total) => setDiffTotals((m) => ({ ...m, [idx]: total }))}
+                                    total={diffTotals[idx] || 0}
                                   />
                                   {(() => {
                                     const outBranch = repo.output?.branch || 'auto'

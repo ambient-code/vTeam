@@ -521,17 +521,6 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 
 							Resources: corev1.ResourceRequirements{},
 						},
-						{
-							Name:            "ambient-content",
-							Image:           contentServiceImage,
-							ImagePullPolicy: imagePullPolicy,
-							Env: []corev1.EnvVar{
-								{Name: "CONTENT_SERVICE_MODE", Value: "true"},
-								{Name: "STATE_BASE_DIR", Value: "/data/state"},
-							},
-							Ports:        []corev1.ContainerPort{{ContainerPort: 8080, Name: "http"}},
-							VolumeMounts: []corev1.VolumeMount{{Name: "workspace", MountPath: "/data/state"}},
-						},
 					},
 				},
 			},
