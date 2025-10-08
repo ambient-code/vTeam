@@ -25,7 +25,7 @@ export default function RootLayout({
       </head>
       <body className={`${inter.className} min-h-screen flex flex-col overflow-hidden`}>
         <Navigation />
-        <main className="flex-1 bg-background overflow-hidden">{children}</main>
+        <main className="flex-1 bg-background overflow-y-auto">{children}</main>
       </body>
     </html>
   );

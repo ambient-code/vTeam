@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Home, KeyRound, Settings, Users, Sparkles, ArrowLeft, GitBranch } from "lucide-react";
+import { Home, KeyRound, Settings, Users, Sparkles, ArrowLeft, GitBranch, Bot } from "lucide-react";
 
 export default function ProjectSectionLayout({ children, params }: { children: React.ReactNode; params: Promise<{ name: string }> }) {
   const pathname = usePathname();
@@ -16,6 +16,7 @@ export default function ProjectSectionLayout({ children, params }: { children: R
     { href: base, label: "Overview", icon: Home },
     { href: `${base}/rfe`, label: "RFE Workspaces", icon: GitBranch },
     { href: `${base}/sessions`, label: "Sessions", icon: Sparkles },
+    { href: `${base}/agents`, label: "Agents", icon: Bot },
     { href: `${base}/keys`, label: "Keys", icon: KeyRound },
     { href: `${base}/permissions`, label: "Permissions", icon: Users },
     { href: `${base}/settings`, label: "Settings", icon: Settings },
