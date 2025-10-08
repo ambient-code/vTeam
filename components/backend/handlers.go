@@ -1661,11 +1661,20 @@ func contentGitPush(c *gin.Context) {
 	var body struct {
 		RepoPath      string `json:"repoPath"`
 		CommitMessage string `json:"commitMessage"`
-		Remote        string `json:"remote"`
+		OutputRepoURL string `json:"outputRepoUrl"`
 		Branch        string `json:"branch"`
 	}
 	_ = c.BindJSON(&body)
-	log.Printf("contentGitPush: request received repoPath=%q remote=%q branch=%q commitLen=%d", body.RepoPath, body.Remote, body.Branch, len(strings.TrimSpace(body.CommitMessage)))
+	log.Printf("contentGitPush: request received repoPath=%q outputRepoUrl=%q branch=%q commitLen=%d", body.RepoPath, body.OutputRepoURL, body.Branch, len(strings.TrimSpace(body.CommitMessage)))
+	// Require explicit output repo URL and branch from caller (backend should set defaults if UI omits)
+	if strings.TrimSpace(body.OutputRepoURL) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "missing outputRepoUrl"})
+		return
+	}
+	if strings.TrimSpace(body.Branch) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "missing branch"})
+		return
+	}
 	repoDir := filepath.Clean(filepath.Join(stateBaseDir, body.RepoPath))
 	if body.RepoPath == "" {
 		repoDir = stateBaseDir
@@ -1681,19 +1690,13 @@ func contentGitPush(c *gin.Context) {
 	if strings.TrimSpace(cm) == "" {
 		cm = "Update from Ambient session"
 	}
-	remote := body.Remote
-	if remote == "" {
-		remote = "output"
-	}
-	branch := body.Branch
-	if branch == "" {
-		branch = "auto"
-	}
+	outputRepoURL := strings.TrimSpace(body.OutputRepoURL)
+	branch := strings.TrimSpace(body.Branch)
 
 	// Optional GitHub token provided by backend via internal header
 	// Used for one-shot authenticated push without persisting credentials
 	gitHubToken := strings.TrimSpace(c.GetHeader("X-GitHub-Token"))
-	log.Printf("contentGitPush: tokenHeaderPresent=%t remote=%q branch=%q", gitHubToken != "", remote, branch)
+	log.Printf("contentGitPush: tokenHeaderPresent=%t url.host.redacted=%t branch=%q", gitHubToken != "", strings.HasPrefix(outputRepoURL, "https://"), branch)
 	// Execute git commands
 	run := func(args ...string) (string, string, error) {
 		start := time.Now()
@@ -1708,6 +1711,8 @@ func contentGitPush(c *gin.Context) {
 		return stdout.String(), stderr.String(), err
 	}
 
+	// We push directly to URL; remote existence check not required
+
 	// If no changes, short-circuit for clarity
 	log.Printf("contentGitPush: checking worktree status ...")
 	if out, _, _ := run("git", "status", "--porcelain"); strings.TrimSpace(out) == "" {
@@ -1718,8 +1723,27 @@ func contentGitPush(c *gin.Context) {
 	_, _, _ = run("git", "add", "-A")
 	log.Printf("contentGitPush: committing changes ...")
 	_, _, _ = run("git", "commit", "-m", cm)
-	// Determine target branch: if "auto", push HEAD to remote HEAD
+	// Determine target refspec; when auto, use current branch name or derive one from session
 	ref := "HEAD"
+	if branch == "auto" {
+		cur, _, _ := run("git", "rev-parse", "--abbrev-ref", "HEAD")
+		br := strings.TrimSpace(cur)
+		if br == "" || br == "HEAD" {
+			// derive session from repoPath: /sessions/<session>/workspace/...
+			sess := "session"
+			p := strings.TrimSpace(body.RepoPath)
+			if i := strings.Index(p, "/sessions/"); i >= 0 {
+				rest := p[i+len("/sessions/"):]
+				if j := strings.Index(rest, "/workspace/"); j > 0 {
+					sess = rest[:j]
+				}
+			}
+			branch = "ambient-" + sess
+			log.Printf("contentGitPush: auto branch resolved to %q", branch)
+		} else {
+			branch = br
+		}
+	}
 	if branch != "auto" {
 		ref = "HEAD:" + branch
 	}
@@ -1727,12 +1751,12 @@ func contentGitPush(c *gin.Context) {
 	if gitHubToken != "" {
 		// One-shot URL rewrite to inject token for https github.com pushes
 		cfg := fmt.Sprintf("url.https://x-access-token:%s@github.com/.insteadOf=https://github.com/", gitHubToken)
-		pushArgs = []string{"git", "-c", cfg, "push", remote, ref}
+		pushArgs = []string{"git", "-c", cfg, "push", "-u", outputRepoURL, ref}
 		// Redact token in logs
-		log.Printf("contentGitPush: running git -c url.https://x-access-token:****@github.com/.insteadOf=https://github.com/ push %s %s in %s", remote, ref, repoDir)
+		log.Printf("contentGitPush: running git -c url.https://x-access-token:****@github.com/.insteadOf=https://github.com/ push %s %s in %s", outputRepoURL, ref, repoDir)
 	} else {
-		pushArgs = []string{"git", "push", remote, ref}
-		log.Printf("contentGitPush: running git push %s %s in %s", remote, ref, repoDir)
+		pushArgs = []string{"git", "push", "-u", outputRepoURL, ref}
+		log.Printf("contentGitPush: running git push %s %s in %s", outputRepoURL, ref, repoDir)
 	}
 	out, errOut, err := run(pushArgs...)
 	if err != nil {
@@ -1744,15 +1768,44 @@ func contentGitPush(c *gin.Context) {
 		if len(sout) > 2000 {
 			sout = sout[:2000] + "..."
 		}
-		log.Printf("contentGitPush: push failed remote=%q ref=%q err=%v stderr.snip=%q stdout.snip=%q", remote, ref, err, serr, sout)
+		log.Printf("contentGitPush: push failed url=%q ref=%q err=%v stderr.snip=%q stdout.snip=%q", outputRepoURL, ref, err, serr, sout)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "push failed", "stderr": errOut, "stdout": out})
 		return
 	}
 	if len(out) > 2000 {
 		out = out[:2000] + "..."
 	}
-	log.Printf("contentGitPush: push ok remote=%q ref=%q stdout.snip=%q", remote, ref, out)
+	log.Printf("contentGitPush: push ok url=%q ref=%q stdout.snip=%q", outputRepoURL, ref, out)
 	c.JSON(http.StatusOK, gin.H{"ok": true, "stdout": out})
+}
+
+// deriveRepoFolderFromURLFallback extracts the repo folder from a Git URL (supports https and ssh forms)
+func deriveRepoFolderFromURLFallback(u string) string {
+	s := strings.TrimSpace(u)
+	if s == "" {
+		return ""
+	}
+	// Normalize SSH form git@github.com:owner/repo.git -> https://github.com/owner/repo.git
+	if strings.HasPrefix(s, "git@") && strings.Contains(s, ":") {
+		parts := strings.SplitN(s, ":", 2)
+		host := strings.TrimPrefix(parts[0], "git@")
+		s = "https://" + host + "/" + parts[1]
+	}
+	// Trim protocol
+	if i := strings.Index(s, "://"); i >= 0 {
+		s = s[i+3:]
+	}
+	// Remove host portion if present
+	if i := strings.Index(s, "/"); i >= 0 {
+		s = s[i+1:]
+	}
+	segs := strings.Split(s, "/")
+	if len(segs) == 0 {
+		return ""
+	}
+	last := segs[len(segs)-1]
+	last = strings.TrimSuffix(last, ".git")
+	return strings.TrimSpace(last)
 }
 
 // contentGitAbandon marks a repo as abandoned by removing uncommitted changes.
@@ -1963,15 +2016,12 @@ func pushSessionRepo(c *gin.Context) {
 	var body struct {
 		RepoIndex     int    `json:"repoIndex"`
 		CommitMessage string `json:"commitMessage"`
-		Branch        string `json:"branch"`
-		RepoPath      string `json:"repoPath"`
-		Remote        string `json:"remote"`
 	}
 	if err := c.BindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON body"})
 		return
 	}
-	log.Printf("pushSessionRepo: request project=%s session=%s repoIndex=%d repoPath=%q branch=%q remote=%q commitLen=%d", project, session, body.RepoIndex, body.RepoPath, body.Branch, body.Remote, len(strings.TrimSpace(body.CommitMessage)))
+	log.Printf("pushSessionRepo: request project=%s session=%s repoIndex=%d commitLen=%d", project, session, body.RepoIndex, len(strings.TrimSpace(body.CommitMessage)))
 
 	base := os.Getenv("SESSION_CONTENT_SERVICE_BASE")
 	if base == "" {
@@ -1980,24 +2030,80 @@ func pushSessionRepo(c *gin.Context) {
 	}
 	endpoint := fmt.Sprintf(base, session, project)
 
-	repoPath := strings.TrimSpace(body.RepoPath)
-	if repoPath == "" {
-		// Derive path to the repo folder under workspace; when multiple repos are cloned,
-		// they are typically placed under workspace/<idx>.
-		// Fallback to workspace root if index invalid.
-		if body.RepoIndex >= 0 {
-			candidate := fmt.Sprintf("/sessions/%s/workspace/%d", session, body.RepoIndex)
-			repoPath = candidate
+	// Resolve output repo URL, branch, and repoPath from the session spec
+	resolvedOutputURL := ""
+	resolvedBranch := "auto"
+	resolvedRepoPath := ""
+	if _, reqDyn := getK8sClientsForRequest(c); reqDyn != nil {
+		gvr := getAgenticSessionV1Alpha1Resource()
+		obj, err := reqDyn.Resource(gvr).Namespace(project).Get(c.Request.Context(), session, v1.GetOptions{})
+		if err == nil {
+			if spec, ok := obj.Object["spec"].(map[string]interface{}); ok {
+				if repos, ok := spec["repos"].([]interface{}); ok {
+					if body.RepoIndex >= 0 && body.RepoIndex < len(repos) {
+						if rm, ok := repos[body.RepoIndex].(map[string]interface{}); ok {
+							if out, ok := rm["output"].(map[string]interface{}); ok {
+								if urlv, ok := out["url"].(string); ok && strings.TrimSpace(urlv) != "" {
+									resolvedOutputURL = strings.TrimSpace(urlv)
+								}
+								if bv, ok := out["branch"].(*string); ok && bv != nil && strings.TrimSpace(*bv) != "" {
+									resolvedBranch = strings.TrimSpace(*bv)
+								} else if bs, ok := out["branch"].(string); ok && strings.TrimSpace(bs) != "" { // tolerate string
+									resolvedBranch = strings.TrimSpace(bs)
+								}
+							}
+							if resolvedOutputURL == "" {
+								if in, ok := rm["input"].(map[string]interface{}); ok {
+									inURL := ""
+									if urlv, ok := in["url"].(string); ok && strings.TrimSpace(urlv) != "" {
+										inURL = strings.TrimSpace(urlv)
+										if resolvedOutputURL == "" {
+											resolvedOutputURL = inURL
+										}
+									}
+									if bv, ok := in["branch"].(*string); ok && bv != nil && strings.TrimSpace(*bv) != "" {
+										resolvedBranch = strings.TrimSpace(*bv)
+									} else if bs, ok := in["branch"].(string); ok && strings.TrimSpace(bs) != "" {
+										resolvedBranch = strings.TrimSpace(bs)
+									}
+									// Derive repo folder from input URL
+									if inURL != "" {
+										folder := deriveRepoFolderFromURLFallback(inURL)
+										if folder != "" {
+											resolvedRepoPath = fmt.Sprintf("/sessions/%s/workspace/%s", session, folder)
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
 		} else {
-			repoPath = fmt.Sprintf("/sessions/%s/workspace", session)
+			log.Printf("pushSessionRepo: failed to read session for output URL resolve: %v", err)
+		}
+	} else {
+		log.Printf("pushSessionRepo: no dynamic client to resolve output URL; cannot proceed")
+	}
+	if strings.TrimSpace(resolvedOutputURL) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "missing output repo url"})
+		return
+	}
+	if strings.TrimSpace(resolvedRepoPath) == "" {
+		// Fallback to index-based path
+		if body.RepoIndex >= 0 {
+			resolvedRepoPath = fmt.Sprintf("/sessions/%s/workspace/%d", session, body.RepoIndex)
+		} else {
+			resolvedRepoPath = fmt.Sprintf("/sessions/%s/workspace", session)
 		}
 	}
-	log.Printf("pushSessionRepo: resolved repoPath=%q", repoPath)
+	log.Printf("pushSessionRepo: resolved repoPath=%q outputUrl=%q branch=%q", resolvedRepoPath, resolvedOutputURL, resolvedBranch)
+
 	payload := map[string]interface{}{
-		"repoPath":      repoPath,
+		"repoPath":      resolvedRepoPath,
 		"commitMessage": body.CommitMessage,
-		"branch":        body.Branch,
-		"remote":        strings.TrimSpace(body.Remote),
+		"branch":        resolvedBranch,
+		"outputRepoUrl": resolvedOutputURL,
 	}
 	b, _ := json.Marshal(payload)
 	req, _ := http.NewRequestWithContext(c.Request.Context(), http.MethodPost, endpoint+"/content/github/push", strings.NewReader(string(b)))
@@ -2039,7 +2145,7 @@ func pushSessionRepo(c *gin.Context) {
 		}
 	}
 
-	log.Printf("pushSessionRepo: proxy push project=%s session=%s repoIndex=%d repoPath=%s endpoint=%s", project, session, body.RepoIndex, repoPath, endpoint+"/content/github/push")
+	log.Printf("pushSessionRepo: proxy push project=%s session=%s repoIndex=%d repoPath=%s endpoint=%s", project, session, body.RepoIndex, resolvedRepoPath, endpoint+"/content/github/push")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})

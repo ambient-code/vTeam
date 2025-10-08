@@ -298,6 +298,26 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
     return session?.spec?.interactive ? sorted.filter((m) => m.type !== "result_message") : sorted;
   }, [liveMessages, session?.spec?.interactive]);
 
+  // Derive the most recent final result text from live messages (fallback for interactive sessions)
+  const latestResultText = useMemo(() => {
+    for (let i = liveMessages.length - 1; i >= 0; i--) {
+      const raw: any = liveMessages[i] as any;
+      const envelope: any = (raw?.payload ?? raw) || {};
+      const innerType: string = envelope?.type || (raw as any)?.type || "";
+      const payloadAny: any = envelope?.payload;
+      const innerPayload: any = (payloadAny && typeof payloadAny === "object") ? payloadAny : (typeof envelope === "object" ? envelope : {});
+      if (innerType === "agent.message" && innerPayload && (innerPayload as any).type === "result.message") {
+        let rp: any = (innerPayload as any).payload || {};
+        if (rp && typeof rp === 'object' && 'payload' in rp && (rp as any).payload) {
+          rp = (rp as any).payload;
+        }
+        const res = typeof (rp as any).result === 'string' ? (rp as any).result : null;
+        if (res && res.trim()) return res as string;
+      }
+    }
+    return null as string | null;
+  }, [liveMessages]);
+
 
 
   const fetchSession = useCallback(async () => {
@@ -818,7 +838,7 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="messages">Messages</TabsTrigger>
             <TabsTrigger value="workspace">Workspace</TabsTrigger>
-            {!session.spec.interactive ? <TabsTrigger value="results">Results</TabsTrigger> : null}
+            <TabsTrigger value="results">Results</TabsTrigger>
           </TabsList>
 
           {/* Overview */}
@@ -869,6 +889,7 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
               onSendChat={sendChat}
               onInterrupt={async () => { try { const apiUrl = getApiUrl(); await fetch(`${apiUrl}/projects/${encodeURIComponent(projectName)}/agentic-sessions/${encodeURIComponent(sessionName)}/messages`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'interrupt' }) }) } catch {} }}
               onEndSession={async () => { try { const apiUrl = getApiUrl(); await fetch(`${apiUrl}/projects/${encodeURIComponent(projectName)}/agentic-sessions/${encodeURIComponent(sessionName)}/messages`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'end_session' }) }) } catch {} }}
+              onGoToResults={() => setActiveTab('results')}
             />
           </TabsContent>
 
@@ -891,7 +912,7 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
 
           {/* Results */}
           <TabsContent value="results">
-            <ResultsTab result={session.status?.result} />
+            <ResultsTab result={session.status?.result ?? latestResultText} />
           </TabsContent>
         </Tabs>
       </div>

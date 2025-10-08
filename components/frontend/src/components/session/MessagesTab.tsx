@@ -14,13 +14,14 @@ export type MessagesTabProps = {
   onSendChat: () => Promise<void>;
   onInterrupt: () => Promise<void>;
   onEndSession: () => Promise<void>;
+  onGoToResults?: () => void;
 };
 
-const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chatInput, setChatInput, onSendChat, onInterrupt, onEndSession }) => {
+const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chatInput, setChatInput, onSendChat, onInterrupt, onEndSession, onGoToResults }) => {
   return (
     <div className="flex flex-col gap-2 max-h-[60vh] overflow-y-auto pr-1">
       {streamMessages.map((m, idx) => (
-        <StreamMessage key={`sm-${idx}`} message={m} isNewest={idx === streamMessages.length - 1} />
+        <StreamMessage key={`sm-${idx}`} message={m} isNewest={idx === streamMessages.length - 1} onGoToResults={onGoToResults} />
       ))}
 
       {streamMessages.length === 0 && (
