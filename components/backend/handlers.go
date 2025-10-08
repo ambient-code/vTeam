@@ -1732,32 +1732,37 @@ func contentGitPush(c *gin.Context) {
 
 	if gitHubToken != "" {
 		// Fetch user info from GitHub API
+		// Note: This requires 'read:user' scope, but tokens with only 'repo' scope will return 403
 		req, _ := http.NewRequest("GET", "https://api.github.com/user", nil)
-		req.Header.Set("Authorization", "Bearer "+gitHubToken)
+		req.Header.Set("Authorization", "token "+gitHubToken)
 		req.Header.Set("Accept", "application/vnd.github+json")
 		resp, err := http.DefaultClient.Do(req)
-		if err == nil && resp.StatusCode == 200 {
+		if err == nil {
 			defer resp.Body.Close()
-			var ghUser struct {
-				Login string `json:"login"`
-				Name  string `json:"name"`
-				Email string `json:"email"`
-			}
-			if json.NewDecoder(resp.Body).Decode(&ghUser) == nil {
-				if gitUserName == "" && ghUser.Name != "" {
-					gitUserName = ghUser.Name
-				} else if gitUserName == "" && ghUser.Login != "" {
-					gitUserName = ghUser.Login
+			if resp.StatusCode == 200 {
+				var ghUser struct {
+					Login string `json:"login"`
+					Name  string `json:"name"`
+					Email string `json:"email"`
 				}
-				if gitUserEmail == "" && ghUser.Email != "" {
-					gitUserEmail = ghUser.Email
+				if json.NewDecoder(resp.Body).Decode(&ghUser) == nil {
+					if gitUserName == "" && ghUser.Name != "" {
+						gitUserName = ghUser.Name
+					} else if gitUserName == "" && ghUser.Login != "" {
+						gitUserName = ghUser.Login
+					}
+					if gitUserEmail == "" && ghUser.Email != "" {
+						gitUserEmail = ghUser.Email
+					}
+					log.Printf("contentGitPush: fetched GitHub user name=%q email=%q", gitUserName, gitUserEmail)
 				}
-				log.Printf("contentGitPush: fetched GitHub user name=%q email=%q", gitUserName, gitUserEmail)
+			} else if resp.StatusCode == 403 {
+				log.Printf("contentGitPush: GitHub API /user returned 403 (token lacks 'read:user' scope, using fallback identity)")
+			} else {
+				log.Printf("contentGitPush: GitHub API /user returned status %d", resp.StatusCode)
 			}
-		} else if err != nil {
-			log.Printf("contentGitPush: failed to fetch GitHub user: %v", err)
 		} else {
-			log.Printf("contentGitPush: GitHub API returned status %d", resp.StatusCode)
+			log.Printf("contentGitPush: failed to fetch GitHub user: %v", err)
 		}
 	}
 

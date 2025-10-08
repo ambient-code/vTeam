@@ -4,7 +4,7 @@ import React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Brain, Clock, RefreshCw, Sparkle } from "lucide-react";
+import { Brain, Clock, RefreshCw, Sparkle, ExternalLink } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
 import type { AgenticSession } from "@/types/agentic-session";
@@ -184,7 +184,19 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                             )}
                             <span className="flex-1" />
                             {total === 0 ? (
-                              <span className="text-xs text-muted-foreground">no diff</span>
+                              repo.status === 'pushed' && compareUrl ? (
+                                <a 
+                                  href={compareUrl} 
+                                  target="_blank" 
+                                  rel="noreferrer" 
+                                  className="flex items-center gap-1 text-xs text-blue-600 hover:underline"
+                                >
+                                  Compare
+                                  <ExternalLink className="h-3 w-3" />
+                                </a>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">no diff</span>
+                              )
                             ) : (
                               <span className="flex items-center gap-1">
                                 {br.added > 0 && <span className="text-xs px-1 py-0.5 rounded border bg-green-50 text-green-700">+ {br.added}</span>}
@@ -193,7 +205,15 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                               </span>
                             )}
                             {total > 0 && compareUrl ? (
-                              <a href={compareUrl} target="_blank" rel="noreferrer" className="text-xs text-blue-600 underline">Compare PR</a>
+                              <a 
+                                href={compareUrl} 
+                                target="_blank" 
+                                rel="noreferrer" 
+                                className="flex items-center gap-1 text-xs text-blue-600 hover:underline"
+                              >
+                                Compare
+                                <ExternalLink className="h-3 w-3" />
+                              </a>
                             ) : null}
                             {total > 0 && (
                               repo.output?.url ? (
