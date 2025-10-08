@@ -1663,11 +1663,9 @@ func contentGitPush(c *gin.Context) {
 		CommitMessage string `json:"commitMessage"`
 		OutputRepoURL string `json:"outputRepoUrl"`
 		Branch        string `json:"branch"`
-		GitUserName   string `json:"gitUserName"`
-		GitUserEmail  string `json:"gitUserEmail"`
 	}
 	_ = c.BindJSON(&body)
-	log.Printf("contentGitPush: request received repoPath=%q outputRepoUrl=%q branch=%q commitLen=%d userName=%q userEmail=%q", body.RepoPath, body.OutputRepoURL, body.Branch, len(strings.TrimSpace(body.CommitMessage)), body.GitUserName, body.GitUserEmail)
+	log.Printf("contentGitPush: request received repoPath=%q outputRepoUrl=%q branch=%q commitLen=%d", body.RepoPath, body.OutputRepoURL, body.Branch, len(strings.TrimSpace(body.CommitMessage)))
 	// Require explicit output repo URL and branch from caller (backend should set defaults if UI omits)
 	if strings.TrimSpace(body.OutputRepoURL) == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "missing outputRepoUrl"})
@@ -1728,11 +1726,11 @@ func contentGitPush(c *gin.Context) {
 		return
 	}
 	// Ensure git user identity is configured for commits
-	// Try to fetch from GitHub API using the token if available
-	gitUserName := strings.TrimSpace(body.GitUserName)
-	gitUserEmail := strings.TrimSpace(body.GitUserEmail)
+	// Fetch user identity from GitHub API using the token
+	gitUserName := ""
+	gitUserEmail := ""
 
-	if gitHubToken != "" && (gitUserName == "" || gitUserEmail == "") {
+	if gitHubToken != "" {
 		// Fetch user info from GitHub API
 		req, _ := http.NewRequest("GET", "https://api.github.com/user", nil)
 		req.Header.Set("Authorization", "Bearer "+gitHubToken)
@@ -2145,35 +2143,11 @@ func pushSessionRepo(c *gin.Context) {
 	}
 	log.Printf("pushSessionRepo: resolved repoPath=%q outputUrl=%q branch=%q", resolvedRepoPath, resolvedOutputURL, resolvedBranch)
 
-	// Extract user's git identity from session userContext
-	userName := "Ambient Code Bot"
-	userEmail := "bot@ambient-code.local"
-	if reqK8s, reqDyn := getK8sClientsForRequest(c); reqK8s != nil {
-		gvr := getAgenticSessionV1Alpha1Resource()
-		obj, err := reqDyn.Resource(gvr).Namespace(project).Get(c.Request.Context(), session, v1.GetOptions{})
-		if err == nil {
-			spec, _ := obj.Object["spec"].(map[string]interface{})
-			if spec != nil {
-				if uc, ok := spec["userContext"].(map[string]interface{}); ok {
-					if v, ok := uc["userName"].(string); ok && strings.TrimSpace(v) != "" {
-						userName = strings.TrimSpace(v)
-					}
-					if v, ok := uc["userEmail"].(string); ok && strings.TrimSpace(v) != "" {
-						userEmail = strings.TrimSpace(v)
-					}
-				}
-			}
-		}
-	}
-	log.Printf("pushSessionRepo: using git identity name=%q email=%q", userName, userEmail)
-
 	payload := map[string]interface{}{
 		"repoPath":      resolvedRepoPath,
 		"commitMessage": body.CommitMessage,
 		"branch":        resolvedBranch,
 		"outputRepoUrl": resolvedOutputURL,
-		"gitUserName":   userName,
-		"gitUserEmail":  userEmail,
 	}
 	b, _ := json.Marshal(payload)
 	req, _ := http.NewRequestWithContext(c.Request.Context(), http.MethodPost, endpoint+"/content/github/push", strings.NewReader(string(b)))
