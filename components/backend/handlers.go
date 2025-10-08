@@ -1663,9 +1663,11 @@ func contentGitPush(c *gin.Context) {
 		CommitMessage string `json:"commitMessage"`
 		OutputRepoURL string `json:"outputRepoUrl"`
 		Branch        string `json:"branch"`
+		GitUserName   string `json:"gitUserName"`
+		GitUserEmail  string `json:"gitUserEmail"`
 	}
 	_ = c.BindJSON(&body)
-	log.Printf("contentGitPush: request received repoPath=%q outputRepoUrl=%q branch=%q commitLen=%d", body.RepoPath, body.OutputRepoURL, body.Branch, len(strings.TrimSpace(body.CommitMessage)))
+	log.Printf("contentGitPush: request received repoPath=%q outputRepoUrl=%q branch=%q commitLen=%d userName=%q userEmail=%q", body.RepoPath, body.OutputRepoURL, body.Branch, len(strings.TrimSpace(body.CommitMessage)), body.GitUserName, body.GitUserEmail)
 	// Require explicit output repo URL and branch from caller (backend should set defaults if UI omits)
 	if strings.TrimSpace(body.OutputRepoURL) == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "missing outputRepoUrl"})
@@ -1725,10 +1727,61 @@ func contentGitPush(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"ok": true, "message": "no changes"})
 		return
 	}
+	// Ensure git user identity is configured for commits
+	// Try to fetch from GitHub API using the token if available
+	gitUserName := strings.TrimSpace(body.GitUserName)
+	gitUserEmail := strings.TrimSpace(body.GitUserEmail)
+
+	if gitHubToken != "" && (gitUserName == "" || gitUserEmail == "") {
+		// Fetch user info from GitHub API
+		req, _ := http.NewRequest("GET", "https://api.github.com/user", nil)
+		req.Header.Set("Authorization", "Bearer "+gitHubToken)
+		req.Header.Set("Accept", "application/vnd.github+json")
+		resp, err := http.DefaultClient.Do(req)
+		if err == nil && resp.StatusCode == 200 {
+			defer resp.Body.Close()
+			var ghUser struct {
+				Login string `json:"login"`
+				Name  string `json:"name"`
+				Email string `json:"email"`
+			}
+			if json.NewDecoder(resp.Body).Decode(&ghUser) == nil {
+				if gitUserName == "" && ghUser.Name != "" {
+					gitUserName = ghUser.Name
+				} else if gitUserName == "" && ghUser.Login != "" {
+					gitUserName = ghUser.Login
+				}
+				if gitUserEmail == "" && ghUser.Email != "" {
+					gitUserEmail = ghUser.Email
+				}
+				log.Printf("contentGitPush: fetched GitHub user name=%q email=%q", gitUserName, gitUserEmail)
+			}
+		} else if err != nil {
+			log.Printf("contentGitPush: failed to fetch GitHub user: %v", err)
+		} else {
+			log.Printf("contentGitPush: GitHub API returned status %d", resp.StatusCode)
+		}
+	}
+
+	// Fallback to defaults if still empty
+	if gitUserName == "" {
+		gitUserName = "Ambient Code Bot"
+	}
+	if gitUserEmail == "" {
+		gitUserEmail = "bot@ambient-code.local"
+	}
+	run("git", "config", "user.name", gitUserName)
+	run("git", "config", "user.email", gitUserEmail)
+	log.Printf("contentGitPush: configured git identity name=%q email=%q", gitUserName, gitUserEmail)
+
 	log.Printf("contentGitPush: staging changes ...")
 	_, _, _ = run("git", "add", "-A")
 	log.Printf("contentGitPush: committing changes ...")
-	_, _, _ = run("git", "commit", "-m", cm)
+	commitOut, commitErr, commitErrCode := run("git", "commit", "-m", cm)
+	if commitErrCode != nil {
+		// Log but don't fail - commit might fail if nothing staged or already committed
+		log.Printf("contentGitPush: commit failed (continuing): err=%v stderr=%q stdout=%q", commitErrCode, commitErr, commitOut)
+	}
 	// Determine target refspec; when auto, use current branch name or derive one from session
 	ref := "HEAD"
 	if branch == "auto" {
@@ -2092,11 +2145,35 @@ func pushSessionRepo(c *gin.Context) {
 	}
 	log.Printf("pushSessionRepo: resolved repoPath=%q outputUrl=%q branch=%q", resolvedRepoPath, resolvedOutputURL, resolvedBranch)
 
+	// Extract user's git identity from session userContext
+	userName := "Ambient Code Bot"
+	userEmail := "bot@ambient-code.local"
+	if reqK8s, reqDyn := getK8sClientsForRequest(c); reqK8s != nil {
+		gvr := getAgenticSessionV1Alpha1Resource()
+		obj, err := reqDyn.Resource(gvr).Namespace(project).Get(c.Request.Context(), session, v1.GetOptions{})
+		if err == nil {
+			spec, _ := obj.Object["spec"].(map[string]interface{})
+			if spec != nil {
+				if uc, ok := spec["userContext"].(map[string]interface{}); ok {
+					if v, ok := uc["userName"].(string); ok && strings.TrimSpace(v) != "" {
+						userName = strings.TrimSpace(v)
+					}
+					if v, ok := uc["userEmail"].(string); ok && strings.TrimSpace(v) != "" {
+						userEmail = strings.TrimSpace(v)
+					}
+				}
+			}
+		}
+	}
+	log.Printf("pushSessionRepo: using git identity name=%q email=%q", userName, userEmail)
+
 	payload := map[string]interface{}{
 		"repoPath":      resolvedRepoPath,
 		"commitMessage": body.CommitMessage,
 		"branch":        resolvedBranch,
 		"outputRepoUrl": resolvedOutputURL,
+		"gitUserName":   userName,
+		"gitUserEmail":  userEmail,
 	}
 	b, _ := json.Marshal(payload)
 	req, _ := http.NewRequestWithContext(c.Request.Context(), http.MethodPost, endpoint+"/content/github/push", strings.NewReader(string(b)))
