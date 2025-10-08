@@ -2,32 +2,26 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import Link from "next/link";
-import { formatDistanceToNow, format } from "date-fns";
+import { formatDistanceToNow } from "date-fns";
 import {
   ArrowLeft,
   RefreshCw,
-  Clock,
-  Brain,
+  
   Square,
   Trash2,
   Copy,
 } from "lucide-react";
 
 // Custom components
-import { StreamMessage } from "@/components/ui/stream-message";
-
-// Markdown rendering
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import rehypeHighlight from "rehype-highlight";
-import type { Components } from "react-markdown";
+import OverviewTab from "@/components/session/OverviewTab";
+import MessagesTab from "@/components/session/MessagesTab";
+import WorkspaceTab from "@/components/session/WorkspaceTab";
+import ResultsTab from "@/components/session/ResultsTab";
 
 import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
-  CardHeader,
-  CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -36,10 +30,9 @@ import {
   AgenticSessionPhase,
 } from "@/types/agentic-session";
 import { CloneSessionDialog } from "@/components/clone-session-dialog";
-import { FileTree, type FileTreeNode } from "@/components/file-tree";
+import type { FileTreeNode } from "@/components/file-tree";
 
 import { getApiUrl } from "@/lib/config";
-import { cn } from "@/lib/utils";
 import type { SessionMessage } from "@/types";
 import type { MessageObject, ToolUseMessages, ToolUseBlock, ToolResultBlock } from "@/types/agentic-session";
 
@@ -64,56 +57,7 @@ const getPhaseColor = (phase: AgenticSessionPhase) => {
   }
 };
 
-type CodeBlockProps = React.HTMLAttributes<HTMLElement> & {
-  inline?: boolean;
-  className?: string;
-  children?: React.ReactNode;
-};
-
-// Markdown components for final output
-const CodeBlock = ({ inline, className, children, ...props }: CodeBlockProps) => {
-  const match = /language-(\w+)/.exec(className || "");
-  return !inline && match ? (
-    <pre className="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto">
-      <code className={className} {...(props as React.HTMLAttributes<HTMLElement>)}>
-        {children}
-      </code>
-    </pre>
-  ) : (
-    <code className="bg-gray-100 px-1 py-0.5 rounded text-sm" {...(props as React.HTMLAttributes<HTMLElement>)}>
-      {children}
-    </code>
-  );
-};
-
-const outputComponents: Components = {
-  code: CodeBlock,
-  h1: ({ children }) => (
-    <h1 className="text-2xl font-bold text-gray-900 mb-4 mt-6 border-b pb-2">
-      {children}
-    </h1>
-  ),
-  h2: ({ children }) => (
-    <h2 className="text-xl font-semibold text-gray-800 mb-3 mt-5">{children}</h2>
-  ),
-  h3: ({ children }) => (
-    <h3 className="text-lg font-medium text-gray-800 mb-2 mt-4">{children}</h3>
-  ),
-  blockquote: ({ children }) => (
-    <blockquote className="border-l-4 border-blue-500 pl-4 py-2 bg-blue-50 italic text-gray-700 my-4">
-      {children}
-    </blockquote>
-  ),
-  ul: ({ children }) => (
-    <ul className="list-disc list-inside space-y-1 my-3 text-gray-700">{children}</ul>
-  ),
-  ol: ({ children }) => (
-    <ol className="list-decimal list-inside space-y-1 my-3 text-gray-700">{children}</ol>
-  ),
-  p: ({ children }) => (
-    <p className="text-gray-700 leading-relaxed mb-3">{children}</p>
-  ),
-};
+ 
 
 export default function ProjectSessionDetailPage({ params }: { params: Promise<{ name: string; sessionName: string }>}) {
   const [projectName, setProjectName] = useState<string>("");
@@ -435,6 +379,32 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
         } catch {}
       })()
       // Poll for updates every 3 seconds while session is active
+      const interval = setInterval(() => {
+        if (
+          session?.status?.phase === "Pending" ||
+          session?.status?.phase === "Running" ||
+          session?.status?.phase === "Creating"
+        ) {
+          fetchSession();
+          ;(async () => {
+            try {
+              const resp = await fetch(`${apiUrl}/projects/${encodeURIComponent(projectName)}/agentic-sessions/${encodeURIComponent(sessionName)}/messages`)
+              if (resp.ok) {
+                const data = await resp.json()
+                const newMsgs = Array.isArray(data.messages) ? data.messages : []
+                setLiveMessages((prev) => {
+                  if (prev.length === newMsgs.length) {
+                    const sameTail = prev.length === 0 || (prev[prev.length-1]?.timestamp === newMsgs[newMsgs.length-1]?.timestamp)
+                    if (sameTail) return prev
+                  }
+                  return newMsgs
+                })
+              }
+            } catch {}
+          })()
+        }
+      }, 3000);
+      return () => clearInterval(interval);
     }
   }, [projectName, sessionName, session?.status?.phase, fetchSession]);
 
@@ -570,7 +540,68 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
     setWsFileContent(text);
   }, [readWsFile]);
 
-  // Workspace refresh is driven by the main poll; no tab switch fetch or separate polling
+  // Derive repo folder name in workspace from a Git URL (last path segment, no .git)
+  const deriveRepoFolderFromUrl = useCallback((url: string): string => {
+    try {
+      // Handle SSH urls like git@github.com:owner/repo.git and https
+      const cleaned = url.replace(/^git@([^:]+):/, "https://$1/")
+      const u = new URL(cleaned)
+      const segs = u.pathname.split('/').filter(Boolean)
+      const last = segs[segs.length - 1] || "repo"
+      return last.replace(/\.git$/i, "")
+    } catch {
+      const parts = url.split('/')
+      const last = parts[parts.length - 1] || "repo"
+      return last.replace(/\.git$/i, "")
+    }
+  }, [])
+
+  // Piggyback workspace refresh and throttled repo diffs on the same 3s cadence
+  useEffect(() => {
+    if (!projectName || !sessionName) return;
+    const apiUrl = getApiUrl();
+    const diffInFlightRef = { current: false } as { current: boolean };
+    const lastDiffAtRef = { current: 0 } as { current: number };
+    const refreshRepoDiffs = async () => {
+      if (!session?.spec?.repos || !Array.isArray(session.spec.repos)) return;
+      const now = Date.now();
+      if (now - lastDiffAtRef.current < 9000 || diffInFlightRef.current) return;
+      diffInFlightRef.current = true;
+      try {
+        const repos = session.spec.repos as any[];
+        const counts = await Promise.all(repos.map(async (r: any, idx: number) => {
+          const url = (r?.input?.url as string) || "";
+          const status = (r?.status as string) || "";
+          if (!url) return 0;
+          if (status && status !== 'has-diff') return 0;
+          const folder = deriveRepoFolderFromUrl(url);
+          const qs = new URLSearchParams({ repoIndex: String(idx), repoPath: `/sessions/${sessionName}/workspace/${folder}` });
+          const resp = await fetch(`${apiUrl}/projects/${encodeURIComponent(projectName)}/agentic-sessions/${encodeURIComponent(sessionName)}/github/diff?${qs.toString()}`);
+          if (!resp.ok) return 0;
+          const data = await resp.json();
+          const total = Number(data.added||0)+Number(data.modified||0)+Number(data.deleted||0)+Number(data.renamed||0)+Number(data.untracked||0);
+          return total;
+        }))
+        const nextTotals: Record<number, number> = {};
+        counts.forEach((t, i) => { nextTotals[i] = t });
+        setDiffTotals(nextTotals);
+      } catch {}
+      finally { lastDiffAtRef.current = Date.now(); diffInFlightRef.current = false; }
+    }
+    const id = setInterval(() => {
+      if (
+        session?.status?.phase === "Pending" ||
+        session?.status?.phase === "Running" ||
+        session?.status?.phase === "Creating"
+      ) {
+        if (activeTab === 'workspace') {
+          void buildWsRoot(true);
+        }
+        void refreshRepoDiffs();
+      }
+    }, 3000);
+    return () => clearInterval(id);
+  }, [projectName, sessionName, session?.status?.phase, activeTab, buildWsRoot, deriveRepoFolderFromUrl, session?.spec?.repos]);
 
  
   const handleStop = async () => {
@@ -644,28 +675,6 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
 
   // Subagent aggregation not available without structured tool messages; show empty
   const subagentStats = useMemo(() => ({ uniqueCount: 0, orderedTypes: [], counts: {} as Record<string, number> }), []);
-
-  // Derive repo folder name in workspace from a Git URL (last path segment, no .git)
-  const deriveRepoFolderFromUrl = useCallback((url: string): string => {
-    try {
-      // Handle SSH urls like git@github.com:owner/repo.git and https
-      const cleaned = url.replace(/^git@([^:]+):/, "https://$1/")
-      const u = new URL(cleaned)
-      const segs = u.pathname.split('/').filter(Boolean)
-      const last = segs[segs.length - 1] || "repo"
-      return last.replace(/\.git$/i, "")
-    } catch {
-      const parts = url.split('/')
-      const last = parts[parts.length - 1] || "repo"
-      return last.replace(/\.git$/i, "")
-    }
-  }, [])
-
-  // Small client component to show diff counts for a repo
-  const RepoDiffBadge = ({ total }: { total: number }) => {
-    if (!total || total === 0) return <span className="text-xs text-muted-foreground">clean</span>
-    return <span className="text-xs px-2 py-0.5 rounded font-sans border border-muted-foreground/20">{`diff ${total}`}</span>
-  }
 
   // Track per-repo diff totals and action states
   const [diffTotals, setDiffTotals] = useState<Record<number, number>>({})
@@ -817,449 +826,75 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
 
           {/* Overview */}
           <TabsContent value="overview" className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Prompt */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center">
-                    <Brain className="w-5 h-5 mr-2" />
-                    Initial Prompt
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {(() => {
-                    const promptText = session.spec.prompt || "";
-                    const promptIsLong = promptText.length > 400;
-                    return (
-                      <>
-                        <div
-                          className={cn(
-                            "relative",
-                            !promptExpanded && promptIsLong ? "max-h-40 overflow-hidden" : ""
-                          )}
-                        >
-                          <p className="whitespace-pre-wrap text-sm">{promptText}</p>
-                          {!promptExpanded && promptIsLong ? (
-                            <div className="absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-white to-transparent pointer-events-none" />
-                          ) : null}
-                        </div>
-                        {promptIsLong && (
-                          <button
-                            className="mt-2 text-xs text-blue-600 hover:underline"
-                            onClick={() => setPromptExpanded((e) => !e)}
-                            aria-expanded={promptExpanded}
-                            aria-controls="initial-prompt"
-                          >
-                            {promptExpanded ? "View less" : "View more"}
-                          </button>
-                        )}
-                      </>
-                    );
-                  })()}
-                </CardContent>
-              </Card>
-              {/* Latest Message */}
-              <Card>
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <CardTitle>Latest Message</CardTitle>
-                    <button className="text-xs text-blue-600 hover:underline" onClick={() => setActiveTab("messages")}>Go to messages</button>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  {latestLiveMessage ? (
-                    <div className="space-y-2 text-sm">
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline" className="text-xs">{latestLiveMessage.type}</Badge>
-                        <span className="text-xs text-gray-500">{new Date(latestLiveMessage.timestamp).toLocaleTimeString()}</span>
-                      </div>
-                      <pre className="whitespace-pre-wrap break-words bg-gray-50 rounded p-2 text-xs text-gray-800">{JSON.stringify(latestLiveMessage.payload, null, 2)}</pre>
-                    </div>
-                  ) : (
-                    <div className="text-sm text-gray-500">No messages yet</div>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
-            <div className="grid grid-cols-1 gap-6">
-              {/* System Status + Configuration (merged) */}
-              {session.status && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center">
-                      <Clock className="w-5 h-5 mr-2" />
-                      System Status & Configuration
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-4 text-sm">
-                      <div>
-                        <div className="text-xs font-semibold text-muted-foreground mb-2">Runtime</div>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        {session.status.message && (
-                            <div>
-                              <p className="font-semibold">Status</p>
-                              <p className="text-muted-foreground">{session.status.message}</p>
-                            </div>
-                          )}
-                          {session.status.startTime && (
-                            <div>
-                              <p className="font-semibold">Started</p>
-                              <p className="text-muted-foreground">{format(new Date(session.status.startTime), "PPp")}</p>
-                            </div>
-                          )}
-                          {session.status.completionTime && (
-                            <div>
-                              <p className="font-semibold">Completed</p>
-                              <p className="text-muted-foreground">{format(new Date(session.status.completionTime), "PPp")}</p>
-                            </div>
-                          )}
-                          {session.status.jobName && (
-                            <div>
-                              <p className="font-semibold">K8s Job</p>
-                              <div className="flex items-center gap-2">
-                                <p className="text-muted-foreground font-mono text-xs">{session.status.jobName}</p>
-                                <Badge variant="outline" className={session.spec?.interactive ? "bg-green-50 text-green-700 border-green-200" : "bg-gray-50 text-gray-700 border-gray-200"}>
-                                  {session.spec?.interactive ? "Interactive" : "Headless"}
-                                </Badge>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      <div>
-                        <div className="text-xs font-semibold text-muted-foreground mb-2">LLM Config</div>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                          <div>
-                            <p className="font-semibold">Model</p>
-                            <p className="text-muted-foreground">{session.spec.llmSettings.model}</p>
-                          </div>
-                          <div>
-                            <p className="font-semibold">Temperature</p>
-                            <p className="text-muted-foreground">{session.spec.llmSettings.temperature}</p>
-                          </div>
-                          <div>
-                            <p className="font-semibold">Max Tokens</p>
-                            <p className="text-muted-foreground">{session.spec.llmSettings.maxTokens}</p>
-                          </div>
-                          <div>
-                            <p className="font-semibold">Timeout</p>
-                            <p className="text-muted-foreground">{session.spec.timeout}s</p>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div>
-                        <div className="text-xs font-semibold text-muted-foreground mb-2">Repositories</div>
-                        {session.spec.repos && session.spec.repos.length > 0 ? (
-                          <div className="space-y-2">
-                            {session.spec.repos.map((repo, idx) => {
-                              const isMain = session.spec.mainRepoIndex === idx;
-                              const folder = deriveRepoFolderFromUrl(repo.input.url)
-                              return (
-                                <div key={idx} className="flex items-center gap-2 text-sm font-mono">
-                                  {isMain && <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded font-sans">MAIN</span>}
-                                  <span className="text-muted-foreground break-all">{repo.input.url}</span>
-                                  <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded font-sans">{repo.input.branch || "main"}</span>
-                                  <span className="text-muted-foreground">→</span>
-                                  <span className="text-muted-foreground break-all">{repo.output?.url || "(no push)"}</span>
-                                  {repo.output?.url && (
-                                    <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded font-sans">{repo.output?.branch || "auto"}</span>
-                                  )}
-                                  {repo.status && (
-                                    <span className="text-xs px-2 py-0.5 rounded font-sans border border-muted-foreground/20">
-                                      {repo.status}
-                                    </span>
-                                  )}
-                                  <span className="flex-1" />
-                                  {/* Diff counts + control rendering */}
-                                  <RepoDiffBadge
-                                    total={diffTotals[idx] || 0}
-                                  />
-                                  {(() => {
-                                    const outBranch = repo.output?.branch || 'auto'
-                                    const compareUrl = buildGithubCompareUrl(repo.input.url, repo.input.branch || 'main', repo.output?.url, outBranch)
-                                    const total = diffTotals[idx] || 0
-                                    if (total <= 0) {
-                                      return <span className="text-xs text-muted-foreground">no diff</span>
-                                    }
-                                    if (compareUrl) {
-                                      return (
-                                        <a href={compareUrl} target="_blank" rel="noreferrer" className="text-xs text-blue-600 underline">Compare PR</a>
-                                      )
-                                    }
-                                    if (!repo.output?.url) return null
-                                    return (
-                                      <></>
-                                    )
-                                  })()}
-
-                                  {repo.output?.url && (diffTotals[idx] || 0) > 0 ? (
-                                    <div className="flex items-center gap-2">
-                                      <Button
-                                        size="sm"
-                                        variant="secondary"
-                                        onClick={async () => {
-                                          try {
-                                            setBusyRepo((b) => ({ ...b, [idx]: 'push' }))
+            <OverviewTab
+              session={session}
+              promptExpanded={promptExpanded}
+              setPromptExpanded={setPromptExpanded}
+              latestLiveMessage={latestLiveMessage}
+              subagentStats={{ uniqueCount: 0, orderedTypes: [] }}
+              diffTotals={diffTotals}
+              onPush={async (idx) => {
+                try {
+                  setBusyRepo((b) => ({ ...b, [idx]: 'push' }));
                                             const apiUrl = getApiUrl();
-                                            const resp = await fetch(`${apiUrl}/projects/${encodeURIComponent(projectName)}/agentic-sessions/${encodeURIComponent(sessionName)}/github/push`, {
-                                              method: 'POST',
-                                              headers: { 'Content-Type': 'application/json' },
-                                              body: JSON.stringify({ repoIndex: idx, repoPath: `/sessions/${sessionName}/workspace/${folder}` })
-                                            });
-                                            if (resp.ok) {
-                                              setDiffTotals((m) => ({ ...m, [idx]: 0 }))
-                                            }
+                  const repo = session.spec.repos?.[idx];
+                  if (!repo) return;
+                  const folder = deriveRepoFolderFromUrl(repo.input.url);
+                  const resp = await fetch(`${apiUrl}/projects/${encodeURIComponent(projectName)}/agentic-sessions/${encodeURIComponent(sessionName)}/github/push`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ repoIndex: idx, repoPath: `/sessions/${sessionName}/workspace/${folder}` }) });
+                  if (resp.ok) setDiffTotals((m) => ({ ...m, [idx]: 0 }));
                                             await fetchSession();
-                                          } catch {} finally { setBusyRepo((b) => ({ ...b, [idx]: null })) }
-                                        }}
-                                      >
-                                        {busyRepo[idx] === 'push' ? 'Pushing…' : 'Push'}
-                                      </Button>
-                                      <Button
-                                        size="sm"
-                                        variant="outline"
-                                        onClick={async () => {
-                                          try {
-                                            setBusyRepo((b) => ({ ...b, [idx]: 'abandon' }))
+                } catch {} finally { setBusyRepo((b) => ({ ...b, [idx]: null })); }
+              }}
+              onAbandon={async (idx) => {
+                try {
+                  setBusyRepo((b) => ({ ...b, [idx]: 'abandon' }));
                                             const apiUrl = getApiUrl();
-                                            const resp = await fetch(`${apiUrl}/projects/${encodeURIComponent(projectName)}/agentic-sessions/${encodeURIComponent(sessionName)}/github/abandon`, {
-                                              method: 'POST',
-                                              headers: { 'Content-Type': 'application/json' },
-                                              body: JSON.stringify({ repoIndex: idx, repoPath: `/sessions/${sessionName}/workspace/${folder}` })
-                                            });
-                                            if (resp.ok) setDiffTotals((m) => ({ ...m, [idx]: 0 }))
+                  const repo = session.spec.repos?.[idx];
+                  if (!repo) return;
+                  const folder = deriveRepoFolderFromUrl(repo.input.url);
+                  const resp = await fetch(`${apiUrl}/projects/${encodeURIComponent(projectName)}/agentic-sessions/${encodeURIComponent(sessionName)}/github/abandon`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ repoIndex: idx, repoPath: `/sessions/${sessionName}/workspace/${folder}` }) });
+                  if (resp.ok) setDiffTotals((m) => ({ ...m, [idx]: 0 }));
                                             await fetchSession();
-                                          } catch {} finally { setBusyRepo((b) => ({ ...b, [idx]: null })) }
-                                        }}
-                                      >
-                                        {busyRepo[idx] === 'abandon' ? 'Abandoning…' : 'Abandon'}
-                                      </Button>
-                                    </div>
-                                  ) : (
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={async () => {
-                                        try {
-                                          setBusyRepo((b) => ({ ...b, [idx]: 'abandon' }))
-                                          const apiUrl = getApiUrl();
-                                          const resp = await fetch(`${apiUrl}/projects/${encodeURIComponent(projectName)}/agentic-sessions/${encodeURIComponent(sessionName)}/github/abandon`, {
-                                            method: 'POST',
-                                            headers: { 'Content-Type': 'application/json' },
-                                            body: JSON.stringify({ repoIndex: idx, repoPath: `/sessions/${sessionName}/workspace/${folder}` })
-                                          });
-                                          if (resp.ok) setDiffTotals((m) => ({ ...m, [idx]: 0 }))
-                                          await fetchSession();
-                                        } catch {} finally { setBusyRepo((b) => ({ ...b, [idx]: null })) }
-                                      }}
-                                    >
-                                      {busyRepo[idx] === 'abandon' ? 'Abandoning…' : 'Abandon changes'}
-                                    </Button>
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        ) : (
-                          <p className="text-muted-foreground">No repositories configured</p>
-                        )}
-                        {Array.isArray((session.spec as any)?.inputRepos) && ((session.spec as any)?.inputRepos?.length > 0) ? (
-                          <div className="mt-3">
-                            <div className="text-xs font-semibold text-muted-foreground mb-2">Additional Input Repos</div>
-                            <div className="space-y-1 text-sm">
-                              {((session.spec as any).inputRepos as Array<{ name?: string; url?: string; branch?: string }>).map((r, i) => (
-                                <div key={`inrepo-${i}`} className="text-muted-foreground break-all">
-                                  <span className="font-medium">{r.name || `repo-${i+1}`}:</span> {r.url || "—"}{r.branch ? <span className="text-gray-500"> @{r.branch}</span> : null}
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        ) : null}
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-            </div>
+                } catch {} finally { setBusyRepo((b) => ({ ...b, [idx]: null })); }
+              }}
+              busyRepo={busyRepo}
+              buildGithubCompareUrl={buildGithubCompareUrl}
+            />
           </TabsContent>
 
           {/* Messages */}
           <TabsContent value="messages">
-            <div className="flex flex-col gap-2 max-h-[60vh] overflow-y-auto pr-1">
-              {streamMessages.map((m, idx) => (
-                <StreamMessage key={`sm-${idx}`} message={m} isNewest={idx === streamMessages.length - 1} />
-              ))}
-
-             
-
-              {(liveMessages.length === 0) &&
-                session.status?.phase !== "Running" &&
-                session.status?.phase !== "Pending" &&
-                session.status?.phase !== "Creating" && (
-                  <div className="text-center py-8 text-gray-500">
-                    <Brain className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                    <p>No messages yet</p>
-                  </div>
-                )}
-
-                {/* Chat composer (shown only when interactive) */}
-              {session.spec?.interactive && (
-                <div className="sticky bottom-0 border-t bg-white">
-                  <div className="p-3">
-                    <div className="border rounded-md p-3 space-y-2 bg-white">
-                      <textarea
-                        className="w-full border rounded p-2 text-sm"
-                        placeholder="Type a message to the agent..."
-                        value={chatInput}
-                        onChange={(e) => setChatInput(e.target.value)}
-                        rows={3}
-                      />
-                      <div className="flex items-center justify-between">
-                        <div className="text-xs text-muted-foreground">Interactive session</div>
-                        <div className="flex gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={async () => {
-                              // Interrupt current agent activity
-                              try {
-                                const apiUrl = getApiUrl();
-                                await fetch(`${apiUrl}/projects/${encodeURIComponent(projectName)}/agentic-sessions/${encodeURIComponent(sessionName)}/messages`, {
-                                  method: 'POST',
-                                  headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify({ type: 'interrupt' })
-                                })
-                              } catch {}
-                            }}
-                          >
-                            Interrupt agent
-                          </Button>
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            onClick={async () => {
-                              // End interactive session
-                              try {
-                                const apiUrl = getApiUrl();
-                                await fetch(`${apiUrl}/projects/${encodeURIComponent(projectName)}/agentic-sessions/${encodeURIComponent(sessionName)}/messages`, {
-                                  method: 'POST',
-                                  headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify({ type: 'end_session' })
-                                })
-                              } catch {}
-                            }}
-                          >
-                            End session
-                          </Button>
-                          <Button size="sm" onClick={sendChat} disabled={!chatInput.trim()}>
-                            Send
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
+            <MessagesTab
+              session={session}
+              streamMessages={streamMessages}
+              chatInput={chatInput}
+              setChatInput={setChatInput}
+              onSendChat={sendChat}
+              onInterrupt={async () => { try { const apiUrl = getApiUrl(); await fetch(`${apiUrl}/projects/${encodeURIComponent(projectName)}/agentic-sessions/${encodeURIComponent(sessionName)}/messages`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'interrupt' }) }) } catch {} }}
+              onEndSession={async () => { try { const apiUrl = getApiUrl(); await fetch(`${apiUrl}/projects/${encodeURIComponent(projectName)}/agentic-sessions/${encodeURIComponent(sessionName)}/messages`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'end_session' }) }) } catch {} }}
+            />
           </TabsContent>
 
           {/* Workspace (PVC) */}
           <TabsContent value="workspace">
-            {wsLoading && (
-              <div className="flex items-center justify-center h-32 text-sm text-muted-foreground">
-                <RefreshCw className="animate-spin h-4 w-4 mr-2" /> Loading workspace...
-              </div>
-            )}
-            {!wsLoading && wsUnavailable && (
-              <div className="flex items-center justify-center h-32 text-sm text-muted-foreground text-center">
-                {session.status?.phase === "Pending" || session.status?.phase === "Creating" ? (
-                  <div>
-                    <div className="flex items-center justify-center"><RefreshCw className="animate-spin h-4 w-4 mr-2" /> Service not ready</div>
-                    <div className="mt-2">{session.status?.message || "Preparing session workspace..."}</div>
-                  </div>
-                ) : (
-                  <div>
-                    <div className="font-medium">Workspace unavailable</div>
-                    <div className="mt-1">Access to the PVC is not available when the session is {session.status?.phase || "Unavailable"}.</div>
-                  </div>
-                )}
-              </div>
-            )}
-            {!wsLoading && !wsUnavailable && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-0">
-                <div className="border rounded-md overflow-hidden">
-                  <div className="p-3 border-b flex items-center justify-between">
-                    <div>
-                      <h3 className="font-medium text-sm">Files</h3>
-                      <p className="text-xs text-muted-foreground">{wsTree.length} items</p>
-                    </div>
-                    <Button 
-                      size="sm" 
-                      variant="outline" 
-                      onClick={() => void buildWsRoot(false)}
-                      disabled={wsLoading}
-                      className="h-8"
-                    >
-                      <RefreshCw className="h-4 w-4" />
-                    </Button>
-                  </div>
-                  <div className="p-2">
-                    <FileTree nodes={wsTree} selectedPath={wsSelectedPath} onSelect={onWsSelect} onToggle={onWsToggle} />
-                  </div>
-                </div>
-                <div className="overflow-auto">
-                  <Card className="m-3">
-                    <CardContent className="p-4">
-                      {wsSelectedPath ? (
-                        <>
-                          <div className="flex items-center justify-between mb-2">
-                            <div className="text-sm">
-                              <span className="font-medium">{wsSelectedPath.split('/').pop()}</span>
-                              <Badge variant="outline" className="ml-2">{wsSelectedPath}</Badge>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Button size="sm" onClick={async () => {
-                                try { await writeWsFile(wsSelectedPath, wsFileContent); } catch {}
-                              }}>Save</Button>
-                            </div>
-                          </div>
-                          <textarea
-                            className="w-full h-[60vh] bg-gray-900 text-gray-100 p-4 rounded overflow-auto text-sm font-mono"
-                            value={wsFileContent}
-                            onChange={(e) => setWsFileContent(e.target.value)}
-                          />
-                        </>
-                      ) : (
-                        <div className="text-sm text-muted-foreground p-4">Select a file to preview</div>
-                      )}
-                    </CardContent>
-                  </Card>
-                </div>
-              </div>
-            )}
+            <WorkspaceTab
+              session={session}
+              wsLoading={wsLoading}
+              wsUnavailable={wsUnavailable}
+              wsTree={wsTree}
+              wsSelectedPath={wsSelectedPath}
+              wsFileContent={wsFileContent}
+              onRefresh={(bg) => void buildWsRoot(Boolean(bg))}
+              onSelect={onWsSelect}
+              onToggle={onWsToggle}
+              onSave={writeWsFile}
+              setWsFileContent={setWsFileContent}
+            />
           </TabsContent>
 
           {/* Results */}
           <TabsContent value="results">
-            {session.status?.result ? (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Agent Results</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="bg-white rounded-lg prose prose-sm max-w-none prose-headings:text-gray-900 prose-p:text-gray-700 prose-strong:text-gray-900 prose-code:bg-gray-100 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-pre:bg-gray-900 prose-pre:text-gray-100">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]} components={outputComponents}>
-                      {session.status.result}
-                    </ReactMarkdown>
-                  </div>
-                </CardContent>
-              </Card>
-            ) : (
-              <div className="text-sm text-muted-foreground">No results yet</div>
-            )}
+            <ResultsTab result={session.status?.result} />
           </TabsContent>
         </Tabs>
       </div>

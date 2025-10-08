@@ -478,24 +478,12 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 								// If a runner secret is configured via ProjectSettings, map its 'token' to GITHUB_TOKEN/BOT_TOKEN
 								if runnerSecretsName != "" {
 									// avoid duplicates if already set via annotation
-									hasGitHubToken := false
 									hasBotToken := false
 									for i := range base {
-										if base[i].Name == "GITHUB_TOKEN" {
-											hasGitHubToken = true
-										}
+
 										if base[i].Name == "BOT_TOKEN" {
 											hasBotToken = true
 										}
-									}
-									if !hasGitHubToken {
-										base = append(base, corev1.EnvVar{
-											Name: "GITHUB_TOKEN",
-											ValueFrom: &corev1.EnvVarSource{SecretKeyRef: &corev1.SecretKeySelector{
-												LocalObjectReference: corev1.LocalObjectReference{Name: runnerSecretsName},
-												Key:                  "token",
-											}},
-										})
 									}
 									if !hasBotToken {
 										base = append(base, corev1.EnvVar{
