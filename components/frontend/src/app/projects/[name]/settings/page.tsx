@@ -7,7 +7,8 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, Save, Loader2 } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { RefreshCw, Save, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
 import { getApiUrl } from "@/lib/config";
 import type { Project } from "@/types/project";
 import { Plus, Trash2, Eye, EyeOff } from "lucide-react";
@@ -27,6 +28,7 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ name
   const [secretsSaving, setSecretsSaving] = useState<boolean>(false);
   const [configSaving, setConfigSaving] = useState<boolean>(false);
   const [warnNoSecret, setWarnNoSecret] = useState<boolean>(false);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [secretList, setSecretList] = useState<Array<{ name: string }>>([]);
   const [mode, setMode] = useState<"existing" | "new">("existing");
   const [showValues, setShowValues] = useState<Record<number, boolean>>({});
@@ -205,6 +207,7 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ name
       setWarnNoSecret(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to save secret config");
+      throw e; // Re-throw to prevent handleSaveSecrets from continuing
     } finally {
       setConfigSaving(false);
     }
@@ -212,10 +215,14 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ name
 
   const handleSaveSecrets = async () => {
     if (!projectName) return;
-    // Always persist config first (auto default name when creating new)
-    await handleSaveConfig();
+    setError(null);
+    setSuccessMessage(null);
     setSecretsSaving(true);
+
     try {
+      // Always persist config first (auto default name when creating new)
+      await handleSaveConfig();
+
       const apiUrl = getApiUrl();
       const data: Record<string, string> = {};
       // Persist Anthropic API key (required)
@@ -244,6 +251,8 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ name
         const err = await res.json().catch(() => ({ error: "Unknown error" }));
         throw new Error(err.message || err.error || "Failed to save secrets");
       }
+      setSuccessMessage("Secrets saved successfully!");
+      setTimeout(() => setSuccessMessage(null), 5000);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to save secrets");
     } finally {
@@ -334,9 +343,6 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ name
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {error && (
-            <div className="p-2 rounded border border-red-200 bg-red-50 text-sm text-red-700">{error}</div>
-          )}
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-3">
               <div>
@@ -528,6 +534,7 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ name
           )}
 
           <div className="pt-2">
+            <div className="flex items-center gap-3">
               <Button onClick={async () => {
                 await handleSaveSecrets();
                 setWarnNoSecret(false);
@@ -544,6 +551,23 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ name
                   </>
                 )}
               </Button>
+              {successMessage && (
+                <Alert className="border-green-500 bg-green-50 text-green-700">
+                  <CheckCircle2 className="h-4 w-4" />
+                  <AlertDescription className="text-green-700 font-medium">
+                    {successMessage}
+                  </AlertDescription>
+                </Alert>
+              )}
+              {error && (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription className="font-medium">
+                    {error}
+                  </AlertDescription>
+                </Alert>
+              )}
+            </div>
           </div>
         </CardContent>
       </Card>
