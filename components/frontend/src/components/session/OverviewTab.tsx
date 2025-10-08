@@ -156,7 +156,10 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                     <div className="space-y-2">
                       {session.spec.repos.map((repo, idx) => {
                         const isMain = session.spec.mainRepoIndex === idx;
-                        const outBranch = repo.output?.branch || 'auto';
+                        // Use the actual output branch, or default to sessions/{sessionName}
+                        const outBranch = repo.output?.branch && repo.output.branch.trim() && repo.output.branch !== 'auto' 
+                          ? repo.output.branch 
+                          : `sessions/${session.metadata.name}`;
                         const compareUrl = buildGithubCompareUrl(repo.input.url, repo.input.branch || 'main', repo.output?.url, outBranch);
                         const br = diffTotals[idx] || { added: 0, modified: 0, deleted: 0, renamed: 0, untracked: 0 };
                         const total = br.added + br.modified + br.deleted + br.renamed + br.untracked;

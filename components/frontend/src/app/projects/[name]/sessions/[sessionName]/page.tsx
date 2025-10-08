@@ -779,7 +779,7 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
     const outOrg = parseOwner(outputUrl)
     if (!inOrg || !outOrg) return null
     const base = inputBranch && inputBranch.trim() ? inputBranch : 'main'
-    const head = outputBranch && outputBranch.trim() && outputBranch !== 'auto' ? outputBranch : null
+    const head = outputBranch && outputBranch.trim() ? outputBranch : null
     if (!head) return null
     return `https://github.com/${inOrg.owner}/${inOrg.repo}/compare/${encodeURIComponent(base)}...${encodeURIComponent(outOrg.owner + ':' + head)}`
   }, [])
