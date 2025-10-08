@@ -15,7 +15,7 @@ type Props = {
   setPromptExpanded: (v: boolean) => void;
   latestLiveMessage: any;
   subagentStats: { uniqueCount: number; orderedTypes: string[] };
-  diffTotals: Record<number, number>;
+  diffTotals: Record<number, { added: number; modified: number; deleted: number; renamed: number; untracked: number }>;
   onPush: (repoIndex: number) => Promise<void>;
   onAbandon: (repoIndex: number) => Promise<void>;
   busyRepo: Record<number, 'push' | 'abandon' | null>;
@@ -158,7 +158,8 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                         const isMain = session.spec.mainRepoIndex === idx;
                         const outBranch = repo.output?.branch || 'auto';
                         const compareUrl = buildGithubCompareUrl(repo.input.url, repo.input.branch || 'main', repo.output?.url, outBranch);
-                        const total = diffTotals[idx] || 0;
+                        const br = diffTotals[idx] || { added: 0, modified: 0, deleted: 0, renamed: 0, untracked: 0 };
+                        const total = br.added + br.modified + br.deleted + br.renamed + br.untracked;
                         return (
                           <div key={idx} className="flex items-center gap-2 text-sm font-mono">
                             {isMain && <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded font-sans">MAIN</span>}
@@ -178,7 +179,11 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                             {total === 0 ? (
                               <span className="text-xs text-muted-foreground">no diff</span>
                             ) : (
-                              <span className="text-xs px-2 py-0.5 rounded font-sans border border-muted-foreground/20">{`diff ${total}`}</span>
+                              <span className="flex items-center gap-1">
+                                {br.added > 0 && <span className="text-xs px-1 py-0.5 rounded border bg-green-50 text-green-700">+ {br.added}</span>}
+                                {br.modified > 0 && <span className="text-xs px-1 py-0.5 rounded border bg-yellow-50 text-yellow-700">~ {br.modified}</span>}
+                                {br.deleted > 0 && <span className="text-xs px-1 py-0.5 rounded border bg-red-50 text-red-700">- {br.deleted}</span>}
+                              </span>
                             )}
                             {total > 0 && compareUrl ? (
                               <a href={compareUrl} target="_blank" rel="noreferrer" className="text-xs text-blue-600 underline">Compare PR</a>

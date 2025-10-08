@@ -1523,83 +1523,15 @@ func setRepoStatus(dyn dynamic.Interface, project, sessionName string, repoIndex
 	repos[repoIndex] = rm
 	spec["repos"] = repos
 	item.Object["spec"] = spec
-	_, err = dyn.Resource(gvr).Namespace(project).Update(context.TODO(), item, v1.UpdateOptions{})
-	return err
-}
-
-// writeProjectContentFile writes arbitrary file content to the per-namespace content service
-// using the caller's Authorization token. The path must be absolute (starts with "/").
-func writeProjectContentFile(c *gin.Context, project string, absPath string, data []byte) error {
-	token := c.GetHeader("Authorization")
-	if strings.TrimSpace(token) == "" {
-		// Fallback to X-Forwarded-Access-Token if present
-		token = c.GetHeader("X-Forwarded-Access-Token")
-	}
-	if !strings.HasPrefix(absPath, "/") {
-		absPath = "/" + absPath
-	}
-	base := os.Getenv("CONTENT_SERVICE_BASE")
-	if base == "" {
-		base = "http://ambient-content.%s.svc:8080"
-	}
-	endpoint := fmt.Sprintf(base, project)
-	type writeReq struct {
-		Path     string `json:"path"`
-		Content  string `json:"content"`
-		Encoding string `json:"encoding"`
-	}
-	reqBody := writeReq{Path: absPath, Content: string(data), Encoding: "utf8"}
-	b, _ := json.Marshal(reqBody)
-	httpReq, _ := http.NewRequestWithContext(c.Request.Context(), http.MethodPost, endpoint+"/content/write", strings.NewReader(string(b)))
-	if strings.TrimSpace(token) != "" {
-		httpReq.Header.Set("Authorization", token)
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(httpReq)
+	updated, err := dyn.Resource(gvr).Namespace(project).Update(context.TODO(), item, v1.UpdateOptions{})
 	if err != nil {
+		log.Printf("setRepoStatus: update failed project=%s session=%s repoIndex=%d status=%s err=%v", project, sessionName, repoIndex, newStatus, err)
 		return err
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("content write failed: status %d", resp.StatusCode)
+	if updated != nil {
+		log.Printf("setRepoStatus: update ok project=%s session=%s repoIndex=%d status=%s", project, sessionName, repoIndex, newStatus)
 	}
 	return nil
-}
-
-// readProjectContentFile reads file content from the per-namespace content service
-// using the caller's Authorization token. The path must be absolute (starts with "/").
-func readProjectContentFile(c *gin.Context, project string, absPath string) ([]byte, error) {
-	token := c.GetHeader("Authorization")
-	if strings.TrimSpace(token) == "" {
-		// Fallback to X-Forwarded-Access-Token if present
-		token = c.GetHeader("X-Forwarded-Access-Token")
-	}
-	if !strings.HasPrefix(absPath, "/") {
-		absPath = "/" + absPath
-	}
-	base := os.Getenv("CONTENT_SERVICE_BASE")
-	if base == "" {
-		base = "http://ambient-content.%s.svc:8080"
-	}
-	endpoint := fmt.Sprintf(base, project)
-	// Normalize any accidental double slashes in path parameter
-	cleanedPath := "/" + strings.TrimLeft(absPath, "/")
-	u := fmt.Sprintf("%s/content/file?path=%s", endpoint, url.QueryEscape(cleanedPath))
-	httpReq, _ := http.NewRequestWithContext(c.Request.Context(), http.MethodGet, u, nil)
-	if strings.TrimSpace(token) != "" {
-		httpReq.Header.Set("Authorization", token)
-	}
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(httpReq)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("content read failed: status %d", resp.StatusCode)
-	}
-	return ioutil.ReadAll(resp.Body)
 }
 
 type contentListItem struct {
@@ -1608,40 +1540,6 @@ type contentListItem struct {
 	IsDir      bool   `json:"isDir"`
 	Size       int64  `json:"size"`
 	ModifiedAt string `json:"modifiedAt"`
-}
-
-// listProjectContent lists directory entries from the per-namespace content service
-func listProjectContent(c *gin.Context, project string, absPath string) ([]contentListItem, error) {
-	token := c.GetHeader("Authorization")
-	if !strings.HasPrefix(absPath, "/") {
-		absPath = "/" + absPath
-	}
-	base := os.Getenv("CONTENT_SERVICE_BASE")
-	if base == "" {
-		base = "http://ambient-content.%s.svc:8080"
-	}
-	endpoint := fmt.Sprintf(base, project)
-	u := fmt.Sprintf("%s/content/list?path=%s", endpoint, url.QueryEscape(absPath))
-	req, _ := http.NewRequestWithContext(c.Request.Context(), http.MethodGet, u, nil)
-	if strings.TrimSpace(token) != "" {
-		req.Header.Set("Authorization", token)
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("list failed: status %d", resp.StatusCode)
-	}
-	var out struct {
-		Items []contentListItem `json:"items"`
-	}
-	b, _ := ioutil.ReadAll(resp.Body)
-	if err := json.Unmarshal(b, &out); err != nil {
-		return nil, err
-	}
-	return out.Items, nil
 }
 
 // listSessionWorkspace proxies to per-job content service for directory listing
@@ -1803,11 +1701,14 @@ func contentGitPush(c *gin.Context) {
 	} else {
 		pushArgs = []string{"git", "push", remote, "HEAD:" + branch}
 	}
+	log.Printf("contentGitPush: running %v in %s", pushArgs, repoDir)
 	out, errOut, err := run(pushArgs...)
 	if err != nil {
+		log.Printf("contentGitPush: failed stderr=%s stdout=%s err=%v", errOut, out, err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "push failed", "stderr": errOut, "stdout": out})
 		return
 	}
+	log.Printf("contentGitPush: ok stdout=%s", out)
 	c.JSON(http.StatusOK, gin.H{"ok": true, "stdout": out})
 }
 
@@ -2053,6 +1954,7 @@ func pushSessionRepo(c *gin.Context) {
 		req.Header.Set("X-Forwarded-Access-Token", v)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	log.Printf("pushSessionRepo: proxy push project=%s session=%s repoIndex=%d repoPath=%s", project, session, body.RepoIndex, repoPath)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
@@ -2061,11 +1963,16 @@ func pushSessionRepo(c *gin.Context) {
 	defer resp.Body.Close()
 	bodyBytes, _ := ioutil.ReadAll(resp.Body)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		log.Printf("pushSessionRepo: content returned status=%d body=%s", resp.StatusCode, string(bodyBytes))
 		c.Data(resp.StatusCode, "application/json", bodyBytes)
 		return
 	}
 	if _, reqDyn := getK8sClientsForRequest(c); reqDyn != nil {
-		_ = setRepoStatus(reqDyn, project, session, body.RepoIndex, "pushed")
+		if err := setRepoStatus(reqDyn, project, session, body.RepoIndex, "pushed"); err != nil {
+			log.Printf("pushSessionRepo: setRepoStatus failed project=%s session=%s repoIndex=%d err=%v", project, session, body.RepoIndex, err)
+		}
+	} else {
+		log.Printf("pushSessionRepo: no dynamic client; cannot set repo status project=%s session=%s", project, session)
 	}
 	c.Data(http.StatusOK, "application/json", bodyBytes)
 }
@@ -2107,6 +2014,7 @@ func abandonSessionRepo(c *gin.Context) {
 		req.Header.Set("X-Forwarded-Access-Token", v)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	log.Printf("abandonSessionRepo: proxy abandon project=%s session=%s repoIndex=%d repoPath=%s", project, session, body.RepoIndex, repoPath)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
@@ -2115,11 +2023,16 @@ func abandonSessionRepo(c *gin.Context) {
 	defer resp.Body.Close()
 	bodyBytes, _ := ioutil.ReadAll(resp.Body)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		log.Printf("abandonSessionRepo: content returned status=%d body=%s", resp.StatusCode, string(bodyBytes))
 		c.Data(resp.StatusCode, "application/json", bodyBytes)
 		return
 	}
 	if _, reqDyn := getK8sClientsForRequest(c); reqDyn != nil {
-		_ = setRepoStatus(reqDyn, project, session, body.RepoIndex, "abandoned")
+		if err := setRepoStatus(reqDyn, project, session, body.RepoIndex, "abandoned"); err != nil {
+			log.Printf("abandonSessionRepo: setRepoStatus failed project=%s session=%s repoIndex=%d err=%v", project, session, body.RepoIndex, err)
+		}
+	} else {
+		log.Printf("abandonSessionRepo: no dynamic client; cannot set repo status project=%s session=%s", project, session)
 	}
 	c.Data(http.StatusOK, "application/json", bodyBytes)
 }

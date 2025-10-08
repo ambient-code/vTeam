@@ -571,19 +571,16 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
         const repos = session.spec.repos as any[];
         const counts = await Promise.all(repos.map(async (r: any, idx: number) => {
           const url = (r?.input?.url as string) || "";
-          const status = (r?.status as string) || "";
-          if (!url) return 0;
-          if (status && status !== 'has-diff') return 0;
+          if (!url) return { added: 0, modified: 0, deleted: 0, renamed: 0, untracked: 0 };
           const folder = deriveRepoFolderFromUrl(url);
           const qs = new URLSearchParams({ repoIndex: String(idx), repoPath: `/sessions/${sessionName}/workspace/${folder}` });
           const resp = await fetch(`${apiUrl}/projects/${encodeURIComponent(projectName)}/agentic-sessions/${encodeURIComponent(sessionName)}/github/diff?${qs.toString()}`);
-          if (!resp.ok) return 0;
+          if (!resp.ok) return { added: 0, modified: 0, deleted: 0, renamed: 0, untracked: 0 };
           const data = await resp.json();
-          const total = Number(data.added||0)+Number(data.modified||0)+Number(data.deleted||0)+Number(data.renamed||0)+Number(data.untracked||0);
-          return total;
+          return { added: Number(data.added||0), modified: Number(data.modified||0), deleted: Number(data.deleted||0), renamed: Number(data.renamed||0), untracked: Number(data.untracked||0) };
         }))
-        const nextTotals: Record<number, number> = {};
-        counts.forEach((t, i) => { nextTotals[i] = t });
+        const nextTotals: Record<number, { added: number; modified: number; deleted: number; renamed: number; untracked: number }> = {};
+        counts.forEach((t, i) => { nextTotals[i] = t as any });
         setDiffTotals(nextTotals);
       } catch {}
       finally { lastDiffAtRef.current = Date.now(); diffInFlightRef.current = false; }
@@ -676,8 +673,8 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
   // Subagent aggregation not available without structured tool messages; show empty
   const subagentStats = useMemo(() => ({ uniqueCount: 0, orderedTypes: [], counts: {} as Record<string, number> }), []);
 
-  // Track per-repo diff totals and action states
-  const [diffTotals, setDiffTotals] = useState<Record<number, number>>({})
+  // Track per-repo diff breakdown and action states
+  const [diffTotals, setDiffTotals] = useState<Record<number, { added: number; modified: number; deleted: number; renamed: number; untracked: number }>>({})
   const [busyRepo, setBusyRepo] = useState<Record<number, 'push' | 'abandon' | null>>({})
 
   const buildGithubCompareUrl = useCallback((inputUrl: string, inputBranch?: string, outputUrl?: string, outputBranch?: string): string | null => {
@@ -841,7 +838,7 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
                   if (!repo) return;
                   const folder = deriveRepoFolderFromUrl(repo.input.url);
                   const resp = await fetch(`${apiUrl}/projects/${encodeURIComponent(projectName)}/agentic-sessions/${encodeURIComponent(sessionName)}/github/push`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ repoIndex: idx, repoPath: `/sessions/${sessionName}/workspace/${folder}` }) });
-                  if (resp.ok) setDiffTotals((m) => ({ ...m, [idx]: 0 }));
+                  if (resp.ok) setDiffTotals((m) => ({ ...m, [idx]: { added: 0, modified: 0, deleted: 0, renamed: 0, untracked: 0 } }));
                                             await fetchSession();
                 } catch {} finally { setBusyRepo((b) => ({ ...b, [idx]: null })); }
               }}
@@ -853,7 +850,7 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
                   if (!repo) return;
                   const folder = deriveRepoFolderFromUrl(repo.input.url);
                   const resp = await fetch(`${apiUrl}/projects/${encodeURIComponent(projectName)}/agentic-sessions/${encodeURIComponent(sessionName)}/github/abandon`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ repoIndex: idx, repoPath: `/sessions/${sessionName}/workspace/${folder}` }) });
-                  if (resp.ok) setDiffTotals((m) => ({ ...m, [idx]: 0 }));
+                  if (resp.ok) setDiffTotals((m) => ({ ...m, [idx]: { added: 0, modified: 0, deleted: 0, renamed: 0, untracked: 0 } }));
                                             await fetchSession();
                 } catch {} finally { setBusyRepo((b) => ({ ...b, [idx]: null })); }
               }}
