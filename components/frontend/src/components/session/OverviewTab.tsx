@@ -4,7 +4,7 @@ import React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Brain, Clock, RefreshCw } from "lucide-react";
+import { Brain, Clock, RefreshCw, Sparkle } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
 import type { AgenticSession } from "@/types/agentic-session";
@@ -168,7 +168,14 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                             <span className="text-muted-foreground">→</span>
                             <span className="text-muted-foreground break-all">{repo.output?.url || "(no push)"}</span>
                             {repo.output?.url && (
-                              <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded font-sans">{repo.output?.branch || "auto"}</span>
+                              <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded font-sans">{repo.output?.branch || (
+                                <div className="flex items-center gap-1">
+                                <Sparkle
+                                className="h-3 w-3 text-muted-foreground"
+                                />
+                                auto
+                                </div>
+                               )}</span>
                             )}
                             {repo.status && (
                               <span className="text-xs px-2 py-0.5 rounded font-sans border border-muted-foreground/20">

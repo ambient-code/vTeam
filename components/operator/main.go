@@ -810,8 +810,10 @@ func monitorJob(jobName, sessionName, sessionNamespace string) {
 					}
 					spec, _, _ := unstructured.NestedMap(obj.Object, "spec")
 					repos, _, _ := unstructured.NestedSlice(spec, "repos")
-					allFinal := true
+					// Only finalize when there is at least one repo and ALL are in a final state
+					allFinal := false
 					if len(repos) > 0 {
+						allFinal = true
 						for _, r := range repos {
 							m, ok := r.(map[string]interface{})
 							if !ok {

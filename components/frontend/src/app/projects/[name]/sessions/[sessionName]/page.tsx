@@ -341,6 +341,82 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
     return latestResultText || null;
   }, [session?.status?.result, latestResultText]);
 
+  type ResultMeta = {
+    subtype?: string;
+    duration_ms?: number;
+    duration_api_ms?: number;
+    is_error?: boolean;
+    num_turns?: number;
+    session_id?: string;
+    total_cost_usd?: number | null;
+    usage?: Record<string, unknown> | null;
+  };
+
+  const latestResultMeta: ResultMeta | null = useMemo(() => {
+    const unwrapPayload = (obj: any): any => {
+      let cur = obj;
+      let guard = 0;
+      while (cur && typeof cur === 'object' && 'payload' in cur && (cur as any).payload && guard < 5) {
+        cur = (cur as any).payload;
+        guard++;
+      }
+      return cur;
+    };
+    for (let i = liveMessages.length - 1; i >= 0; i--) {
+      const raw: any = liveMessages[i] as any;
+      const envelope: any = (raw?.payload ?? raw) || {};
+      const innerType: string = envelope?.type || (raw as any)?.type || "";
+      const innerPayload: any = (envelope && typeof envelope === 'object' && 'payload' in envelope) ? (envelope as any).payload : null;
+      if (innerType === 'agent.message') {
+        const unwrapped = unwrapPayload(innerPayload);
+        const data = (typeof unwrapped === 'object' && unwrapped) ? unwrapped as any : null;
+        if (data && typeof data.result === 'string') {
+          return {
+            subtype: typeof data.subtype === 'string' ? data.subtype : undefined,
+            duration_ms: typeof data.duration_ms === 'number' ? data.duration_ms : undefined,
+            duration_api_ms: typeof data.duration_api_ms === 'number' ? data.duration_api_ms : undefined,
+            is_error: Boolean(data.is_error),
+            num_turns: typeof data.num_turns === 'number' ? data.num_turns : undefined,
+            session_id: typeof data.session_id === 'string' ? data.session_id : undefined,
+            total_cost_usd: typeof data.total_cost_usd === 'number' ? data.total_cost_usd : null,
+            usage: (typeof data.usage === 'object' && data.usage) ? data.usage as Record<string, unknown> : null,
+          } as ResultMeta;
+        }
+      }
+      if (innerType === 'result.message') {
+        const data = unwrapPayload(innerPayload ?? envelope);
+        if (data && typeof (data as any).result === 'string') {
+          const d: any = data;
+          return {
+            subtype: typeof d.subtype === 'string' ? d.subtype : undefined,
+            duration_ms: typeof d.duration_ms === 'number' ? d.duration_ms : undefined,
+            duration_api_ms: typeof d.duration_api_ms === 'number' ? d.duration_api_ms : undefined,
+            is_error: Boolean(d.is_error),
+            num_turns: typeof d.num_turns === 'number' ? d.num_turns : undefined,
+            session_id: typeof d.session_id === 'string' ? d.session_id : undefined,
+            total_cost_usd: typeof d.total_cost_usd === 'number' ? d.total_cost_usd : null,
+            usage: (typeof d.usage === 'object' && d.usage) ? d.usage as Record<string, unknown> : null,
+          } as ResultMeta;
+        }
+      }
+    }
+    // Fallback to status fields if present
+    const st = session?.status;
+    if (st) {
+      return {
+        subtype: st.subtype,
+        duration_ms: undefined,
+        duration_api_ms: undefined,
+        is_error: st.is_error,
+        num_turns: st.num_turns,
+        session_id: st.session_id,
+        total_cost_usd: st.total_cost_usd ?? null,
+        usage: st.usage ?? null,
+      } as ResultMeta;
+    }
+    return null;
+  }, [liveMessages, session?.status]);
+
 
 
   const fetchSession = useCallback(async () => {
@@ -935,7 +1011,7 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
 
           {/* Results */}
           <TabsContent value="results">
-            <ResultsTab result={resultForResultsTab} />
+            <ResultsTab result={resultForResultsTab} meta={latestResultMeta} />
           </TabsContent>
         </Tabs>
       </div>
