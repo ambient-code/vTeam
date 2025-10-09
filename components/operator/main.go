@@ -485,27 +485,6 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 									}
 								}
 
-								// If a runner secret is configured via ProjectSettings, map its 'token' to GITHUB_TOKEN/BOT_TOKEN
-								if runnerSecretsName != "" {
-									// avoid duplicates if already set via annotation
-									hasBotToken := false
-									for i := range base {
-
-										if base[i].Name == "BOT_TOKEN" {
-											hasBotToken = true
-										}
-									}
-									if !hasBotToken {
-										base = append(base, corev1.EnvVar{
-											Name: "BOT_TOKEN",
-											ValueFrom: &corev1.EnvVarSource{SecretKeyRef: &corev1.SecretKeySelector{
-												LocalObjectReference: corev1.LocalObjectReference{Name: runnerSecretsName},
-												Key:                  "token",
-											}},
-										})
-									}
-								}
-
 								return base
 							}(),
 
@@ -783,33 +762,60 @@ func monitorJob(jobName, sessionName, sessionNamespace string) {
 				}()
 			}
 			if cs.State.Terminated != nil {
-				term := cs.State.Terminated
-				if term.ExitCode == 0 {
-					// Mark Completed, but defer cleanup until repo states are finalized
-					_ = updateAgenticSessionStatus(sessionNamespace, sessionName, map[string]interface{}{
-						"phase":          "Completed",
-						"message":        "Content service completed",
-						"completionTime": time.Now().Format(time.RFC3339),
-					})
-					log.Printf("Content container exited for job %s; deferring cleanup until repo states finalized", jobName)
-					// Keep monitoring until all repos are finalized
-					continue
+				log.Printf("Content container terminated for job %s; checking runner container status instead", jobName)
+				// Don't use content container exit code - check runner instead below
+			}
+		}
+
+		// Check runner container status (the actual work is done here, not in content container)
+		runnerContainerName := "ambient-code-runner"
+		runnerStatus := getContainerStatusByName(&pod, runnerContainerName)
+		if runnerStatus != nil && runnerStatus.State.Terminated != nil {
+			term := runnerStatus.State.Terminated
+
+			// Get current CR status to check if wrapper already set it
+			gvr := getAgenticSessionResource()
+			obj, err := dynamicClient.Resource(gvr).Namespace(sessionNamespace).Get(context.TODO(), sessionName, v1.GetOptions{})
+			currentPhase := ""
+			if err == nil && obj != nil {
+				status, _, _ := unstructured.NestedMap(obj.Object, "status")
+				if v, ok := status["phase"].(string); ok {
+					currentPhase = v
 				}
-				// Non-zero exit = failure
-				msg := term.Message
-				if msg == "" {
-					msg = fmt.Sprintf("Main container exited with code %d", term.ExitCode)
-				}
-				_ = updateAgenticSessionStatus(sessionNamespace, sessionName, map[string]interface{}{
-					"phase":   "Failed",
-					"message": msg,
-				})
-				// Defer deletion; allow log retrieval and manual push/abandon
+			}
+
+			// If wrapper already set status to Completed, respect that (don't override)
+			if currentPhase == "Completed" {
+				log.Printf("Runner exited for job %s; status already set to Completed by wrapper", jobName)
 				continue
 			}
 
-			// Check CR repo statuses; if session marked Completed/Stopped and all repos are finalized, cleanup
-			{
+			// Runner exit code 0 = success
+			if term.ExitCode == 0 {
+				_ = updateAgenticSessionStatus(sessionNamespace, sessionName, map[string]interface{}{
+					"phase":          "Completed",
+					"message":        "Runner completed successfully",
+					"completionTime": time.Now().Format(time.RFC3339),
+				})
+				log.Printf("Runner container exited successfully for job %s", jobName)
+				continue
+			}
+
+			// Runner non-zero exit = failure (only if not already Completed)
+			msg := term.Message
+			if msg == "" {
+				msg = fmt.Sprintf("Runner container exited with code %d", term.ExitCode)
+			}
+			_ = updateAgenticSessionStatus(sessionNamespace, sessionName, map[string]interface{}{
+				"phase":   "Failed",
+				"message": msg,
+			})
+			log.Printf("Runner container failed for job %s: %s", jobName, msg)
+			continue
+		}
+
+		// Check CR repo statuses; if session marked Completed/Stopped and all repos are finalized, cleanup
+		{
 				gvr := getAgenticSessionResource()
 				obj, err := dynamicClient.Resource(gvr).Namespace(sessionNamespace).Get(context.TODO(), sessionName, v1.GetOptions{})
 				if err == nil && obj != nil {
@@ -846,7 +852,6 @@ func monitorJob(jobName, sessionName, sessionNamespace string) {
 			}
 		}
 	}
-}
 
 // getContainerStatusByName returns the ContainerStatus for a given container name
 func getContainerStatusByName(pod *corev1.Pod, name string) *corev1.ContainerStatus {
