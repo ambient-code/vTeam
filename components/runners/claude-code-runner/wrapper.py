@@ -86,7 +86,7 @@ class ClaudeCodeAdapter:
             if auto_push:
                 await self._push_results_if_any()
 
-            # Best-effort CR completion update if succeeded
+            # Best-effort CR status update based on result
             try:
                 if isinstance(result, dict) and result.get("success"):
                     result_summary = ""
@@ -106,8 +106,19 @@ class ClaudeCodeAdapter:
                         "session_id": self.context.session_id,
                         "result": stdout_text[:10000],
                     })
+                elif isinstance(result, dict) and not result.get("success"):
+                    # Handle failure case (e.g., SDK crashed without ResultMessage)
+                    error_msg = result.get("error", "Unknown error")
+                    await self._update_cr_status({
+                        "phase": "Failed",
+                        "completionTime": self._utc_iso(),
+                        "message": error_msg,
+                        "is_error": True,
+                        "num_turns": getattr(self, "_turn_count", 0),
+                        "session_id": self.context.session_id,
+                    })
             except Exception:
-                logging.debug("CR status update (Completed) skipped")
+                logging.debug("CR status update skipped")
 
             return result
 
@@ -200,7 +211,6 @@ class ClaudeCodeAdapter:
 
             os.environ['ANTHROPIC_API_KEY'] = api_key
 
-            logs = []
             result_payload = None
             self._turn_count = 0
             # Import SDK message and content types for accurate mapping
@@ -320,13 +330,25 @@ class ClaudeCodeAdapter:
                         else:
                             await self._send_log({"level": "debug", "message": f"ignored.message: {mtype_raw}"})
 
-            stdout_text = "\n".join(logs)
-            await self._check_pr_intent(stdout_text)
+            # Note: All output is streamed via WebSocket, not collected here
+            await self._check_pr_intent("")
+
+            # Check if we received a valid result from the SDK
+            if result_payload is None:
+                # SDK exited without producing a ResultMessage - this indicates failure
+                return {
+                    "success": False,
+                    "error": "Claude SDK exited without producing a result. Session may have crashed or hung.",
+                    "returnCode": 1,
+                    "stdout": "",
+                    "stderr": "No ResultMessage received from SDK"
+                }
+
             return {
                 "success": True,
-                "result": result_payload or {"output": stdout_text, "format": "text"},
+                "result": result_payload,
                 "returnCode": 0,
-                "stdout": stdout_text,
+                "stdout": "",
                 "stderr": ""
             }
         except Exception as e:
