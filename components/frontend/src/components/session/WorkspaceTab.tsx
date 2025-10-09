@@ -41,7 +41,6 @@ const WorkspaceTab: React.FC<WorkspaceTabProps> = ({ session, wsLoading, wsUnava
         ) : (
           <div>
             <div className="font-medium">Workspace unavailable</div>
-            <div className="mt-1">Access to the PVC is not available when the session is {session.status?.phase || "Unavailable"}.</div>
           </div>
         )}
       </div>
