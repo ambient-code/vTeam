@@ -608,9 +608,19 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
         const data = await resp.json();
         const newMsgs = Array.isArray(data.messages) ? data.messages : [];
         setLiveMessages((prev) => {
-          if (prev.length === newMsgs.length) {
-            const sameTail = prev.length === 0 || (prev[prev.length-1]?.timestamp === newMsgs[newMsgs.length-1]?.timestamp);
-            if (sameTail) return prev;
+          // Skip update only if messages are actually identical
+          // (timestamps alone are insufficient since backend uses second-precision RFC3339)
+          if (prev.length === newMsgs.length && prev.length > 0) {
+            try {
+              // Deep comparison of message content to catch same-second updates
+              const prevJson = JSON.stringify(prev);
+              const newJson = JSON.stringify(newMsgs);
+              if (prevJson === newJson) {
+                return prev;  // Truly identical, skip update
+              }
+            } catch {
+              // JSON.stringify failed, update to be safe
+            }
           }
           return newMsgs;
         });
