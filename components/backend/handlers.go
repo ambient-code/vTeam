@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -12,7 +11,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -996,13 +994,15 @@ func mintSessionGitHubToken(c *gin.Context) {
 		return
 	}
 
-	// Mint short-lived GitHub App installation token
-	tokenStr, exp, err := MintSessionToken(c.Request.Context(), userId)
+	// Get GitHub token (GitHub App or PAT fallback via project runner secret)
+	tokenStr, err := getGitHubToken(c.Request.Context(), k8sClient, dynamicClient, project, userId)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"token": tokenStr, "expiresAt": exp.Format(time.RFC3339)})
+	// Note: PATs don't have expiration, so we omit expiresAt for simplicity
+	// Runners should treat all tokens as short-lived and request new ones as needed
+	c.JSON(http.StatusOK, gin.H{"token": tokenStr})
 }
 
 // --- Git helpers (project-scoped) ---
@@ -1666,7 +1666,8 @@ func contentGitPush(c *gin.Context) {
 	}
 	_ = c.BindJSON(&body)
 	log.Printf("contentGitPush: request received repoPath=%q outputRepoUrl=%q branch=%q commitLen=%d", body.RepoPath, body.OutputRepoURL, body.Branch, len(strings.TrimSpace(body.CommitMessage)))
-	// Require explicit output repo URL and branch from caller (backend should set defaults if UI omits)
+
+	// Require explicit output repo URL and branch from caller
 	if strings.TrimSpace(body.OutputRepoURL) == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "missing outputRepoUrl"})
 		return
@@ -1675,290 +1676,96 @@ func contentGitPush(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "missing branch"})
 		return
 	}
+
 	repoDir := filepath.Clean(filepath.Join(stateBaseDir, body.RepoPath))
 	if body.RepoPath == "" {
 		repoDir = stateBaseDir
 	}
+
 	// Basic safety: repoDir must be under stateBaseDir
 	if !strings.HasPrefix(repoDir+string(os.PathSeparator), stateBaseDir+string(os.PathSeparator)) && repoDir != stateBaseDir {
 		log.Printf("contentGitPush: invalid repoPath resolved=%q stateBaseDir=%q", repoDir, stateBaseDir)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid repoPath"})
 		return
 	}
+
 	log.Printf("contentGitPush: using repoDir=%q (stateBaseDir=%q)", repoDir, stateBaseDir)
-	cm := body.CommitMessage
-	if strings.TrimSpace(cm) == "" {
-		cm = "Update from Ambient session"
-	}
-	outputRepoURL := strings.TrimSpace(body.OutputRepoURL)
-	branch := strings.TrimSpace(body.Branch)
 
 	// Optional GitHub token provided by backend via internal header
-	// Used for one-shot authenticated push without persisting credentials
 	gitHubToken := strings.TrimSpace(c.GetHeader("X-GitHub-Token"))
-	log.Printf("contentGitPush: tokenHeaderPresent=%t url.host.redacted=%t branch=%q", gitHubToken != "", strings.HasPrefix(outputRepoURL, "https://"), branch)
-	// Execute git commands
-	run := func(args ...string) (string, string, error) {
-		start := time.Now()
-		cmd := exec.Command(args[0], args[1:]...)
-		cmd.Dir = repoDir
-		var stdout, stderr bytes.Buffer
-		cmd.Stdout = &stdout
-		cmd.Stderr = &stderr
-		err := cmd.Run()
-		dur := time.Since(start)
-		log.Printf("contentGitPush: exec dur=%s cmd=%q stderr.len=%d stdout.len=%d err=%v", dur, strings.Join(args, " "), len(stderr.Bytes()), len(stdout.Bytes()), err)
-		return stdout.String(), stderr.String(), err
-	}
+	log.Printf("contentGitPush: tokenHeaderPresent=%t url.host.redacted=%t branch=%q", gitHubToken != "", strings.HasPrefix(body.OutputRepoURL, "https://"), body.Branch)
 
-	// We push directly to URL; remote existence check not required
-
-	// Validate repoDir exists; if not, return error to surface mis-derived paths
-	if fi, err := os.Stat(repoDir); err != nil || !fi.IsDir() {
-		log.Printf("contentGitPush: repoDir not found: %s", repoDir)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "repo directory not found", "repoDir": repoDir})
-		return
-	}
-	// If no changes, short-circuit for clarity
-	log.Printf("contentGitPush: checking worktree status ...")
-	if out, _, _ := run("git", "status", "--porcelain"); strings.TrimSpace(out) == "" {
-		c.JSON(http.StatusOK, gin.H{"ok": true, "message": "no changes"})
-		return
-	}
-	// Ensure git user identity is configured for commits
-	// Fetch user identity from GitHub API using the token
-	gitUserName := ""
-	gitUserEmail := ""
-
-	if gitHubToken != "" {
-		// Fetch user info from GitHub API
-		// Note: This requires 'read:user' scope, but tokens with only 'repo' scope will return 403
-		req, _ := http.NewRequest("GET", "https://api.github.com/user", nil)
-		req.Header.Set("Authorization", "token "+gitHubToken)
-		req.Header.Set("Accept", "application/vnd.github+json")
-		resp, err := http.DefaultClient.Do(req)
-		if err == nil {
-			defer resp.Body.Close()
-			if resp.StatusCode == 200 {
-				var ghUser struct {
-					Login string `json:"login"`
-					Name  string `json:"name"`
-					Email string `json:"email"`
-				}
-				if json.NewDecoder(resp.Body).Decode(&ghUser) == nil {
-					if gitUserName == "" && ghUser.Name != "" {
-						gitUserName = ghUser.Name
-					} else if gitUserName == "" && ghUser.Login != "" {
-						gitUserName = ghUser.Login
-					}
-					if gitUserEmail == "" && ghUser.Email != "" {
-						gitUserEmail = ghUser.Email
-					}
-					log.Printf("contentGitPush: fetched GitHub user name=%q email=%q", gitUserName, gitUserEmail)
-				}
-			} else if resp.StatusCode == 403 {
-				log.Printf("contentGitPush: GitHub API /user returned 403 (token lacks 'read:user' scope, using fallback identity)")
-			} else {
-				log.Printf("contentGitPush: GitHub API /user returned status %d", resp.StatusCode)
-			}
-		} else {
-			log.Printf("contentGitPush: failed to fetch GitHub user: %v", err)
-		}
-	}
-
-	// Fallback to defaults if still empty
-	if gitUserName == "" {
-		gitUserName = "Ambient Code Bot"
-	}
-	if gitUserEmail == "" {
-		gitUserEmail = "bot@ambient-code.local"
-	}
-	run("git", "config", "user.name", gitUserName)
-	run("git", "config", "user.email", gitUserEmail)
-	log.Printf("contentGitPush: configured git identity name=%q email=%q", gitUserName, gitUserEmail)
-
-	log.Printf("contentGitPush: staging changes ...")
-	_, _, _ = run("git", "add", "-A")
-	log.Printf("contentGitPush: committing changes ...")
-	commitOut, commitErr, commitErrCode := run("git", "commit", "-m", cm)
-	if commitErrCode != nil {
-		// Log but don't fail - commit might fail if nothing staged or already committed
-		log.Printf("contentGitPush: commit failed (continuing): err=%v stderr=%q stdout=%q", commitErrCode, commitErr, commitOut)
-	}
-	// Determine target refspec; when auto, use current branch name or derive one from session
-	ref := "HEAD"
-	if branch == "auto" {
-		cur, _, _ := run("git", "rev-parse", "--abbrev-ref", "HEAD")
-		br := strings.TrimSpace(cur)
-		if br == "" || br == "HEAD" {
-			// derive session from repoPath: /sessions/<session>/workspace/...
-			sess := "session"
-			p := strings.TrimSpace(body.RepoPath)
-			if i := strings.Index(p, "/sessions/"); i >= 0 {
-				rest := p[i+len("/sessions/"):]
-				if j := strings.Index(rest, "/workspace/"); j > 0 {
-					sess = rest[:j]
-				}
-			}
-			branch = "ambient-" + sess
-			log.Printf("contentGitPush: auto branch resolved to %q", branch)
-		} else {
-			branch = br
-		}
-	}
-	if branch != "auto" {
-		ref = "HEAD:" + branch
-	}
-	var pushArgs []string
-	if gitHubToken != "" {
-		// One-shot URL rewrite to inject token for https github.com pushes
-		cfg := fmt.Sprintf("url.https://x-access-token:%s@github.com/.insteadOf=https://github.com/", gitHubToken)
-		pushArgs = []string{"git", "-c", cfg, "push", "-u", outputRepoURL, ref}
-		// Redact token in logs
-		log.Printf("contentGitPush: running git -c url.https://x-access-token:****@github.com/.insteadOf=https://github.com/ push %s %s in %s", outputRepoURL, ref, repoDir)
-	} else {
-		pushArgs = []string{"git", "push", "-u", outputRepoURL, ref}
-		log.Printf("contentGitPush: running git push %s %s in %s", outputRepoURL, ref, repoDir)
-	}
-	out, errOut, err := run(pushArgs...)
+	// Call refactored git push function
+	out, err := gitPushRepo(c.Request.Context(), repoDir, body.CommitMessage, body.OutputRepoURL, body.Branch, gitHubToken)
 	if err != nil {
-		serr := errOut
-		if len(serr) > 2000 {
-			serr = serr[:2000] + "..."
+		if out == "" {
+			// No changes to commit
+			c.JSON(http.StatusOK, gin.H{"ok": true, "message": "no changes"})
+			return
 		}
-		sout := out
-		if len(sout) > 2000 {
-			sout = sout[:2000] + "..."
-		}
-		log.Printf("contentGitPush: push failed url=%q ref=%q err=%v stderr.snip=%q stdout.snip=%q", outputRepoURL, ref, err, serr, sout)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "push failed", "stderr": errOut, "stdout": out})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "push failed", "stderr": err.Error()})
 		return
 	}
-	if len(out) > 2000 {
-		out = out[:2000] + "..."
-	}
-	log.Printf("contentGitPush: push ok url=%q ref=%q stdout.snip=%q", outputRepoURL, ref, out)
+
 	c.JSON(http.StatusOK, gin.H{"ok": true, "stdout": out})
 }
 
-// deriveRepoFolderFromURLFallback extracts the repo folder from a Git URL (supports https and ssh forms)
-func deriveRepoFolderFromURLFallback(u string) string {
-	s := strings.TrimSpace(u)
-	if s == "" {
-		return ""
-	}
-	// Normalize SSH form git@github.com:owner/repo.git -> https://github.com/owner/repo.git
-	if strings.HasPrefix(s, "git@") && strings.Contains(s, ":") {
-		parts := strings.SplitN(s, ":", 2)
-		host := strings.TrimPrefix(parts[0], "git@")
-		s = "https://" + host + "/" + parts[1]
-	}
-	// Trim protocol
-	if i := strings.Index(s, "://"); i >= 0 {
-		s = s[i+3:]
-	}
-	// Remove host portion if present
-	if i := strings.Index(s, "/"); i >= 0 {
-		s = s[i+1:]
-	}
-	segs := strings.Split(s, "/")
-	if len(segs) == 0 {
-		return ""
-	}
-	last := segs[len(segs)-1]
-	last = strings.TrimSuffix(last, ".git")
-	return strings.TrimSpace(last)
-}
-
-// contentGitAbandon marks a repo as abandoned by removing uncommitted changes.
-// Body: { repoPath?: string }
 func contentGitAbandon(c *gin.Context) {
 	var body struct {
 		RepoPath string `json:"repoPath"`
 	}
 	_ = c.BindJSON(&body)
 	log.Printf("contentGitAbandon: request repoPath=%q", body.RepoPath)
+
 	repoDir := filepath.Clean(filepath.Join(stateBaseDir, body.RepoPath))
 	if body.RepoPath == "" {
 		repoDir = stateBaseDir
 	}
+
 	if !strings.HasPrefix(repoDir+string(os.PathSeparator), stateBaseDir+string(os.PathSeparator)) && repoDir != stateBaseDir {
 		log.Printf("contentGitAbandon: invalid repoPath resolved=%q base=%q", repoDir, stateBaseDir)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid repoPath"})
 		return
 	}
+
 	log.Printf("contentGitAbandon: using repoDir=%q", repoDir)
-	run := func(args ...string) (string, string, error) {
-		cmd := exec.Command(args[0], args[1:]...)
-		cmd.Dir = repoDir
-		var stdout, stderr bytes.Buffer
-		cmd.Stdout = &stdout
-		cmd.Stderr = &stderr
-		err := cmd.Run()
-		return stdout.String(), stderr.String(), err
+
+	if err := gitAbandonRepo(c.Request.Context(), repoDir); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
 	}
-	// Hard reset and clean untracked files
-	log.Printf("contentGitAbandon: git reset --hard")
-	_, _, _ = run("git", "reset", "--hard")
-	log.Printf("contentGitAbandon: git clean -fd")
-	_, _, _ = run("git", "clean", "-fd")
+
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
-// contentGitDiff returns porcelain-status summary counts for a repoPath
-// GET /content/github/diff?repoPath=/sessions/<session>/workspace/<folder>
 func contentGitDiff(c *gin.Context) {
 	repoPath := strings.TrimSpace(c.Query("repoPath"))
 	if repoPath == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "missing repoPath"})
 		return
 	}
+
 	repoDir := filepath.Clean(filepath.Join(stateBaseDir, repoPath))
 	if !strings.HasPrefix(repoDir+string(os.PathSeparator), stateBaseDir+string(os.PathSeparator)) && repoDir != stateBaseDir {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid repoPath"})
 		return
 	}
+
 	log.Printf("contentGitDiff: repoPath=%q repoDir=%q", repoPath, repoDir)
-	run := func(args ...string) (string, error) {
-		cmd := exec.Command(args[0], args[1:]...)
-		cmd.Dir = repoDir
-		var stdout bytes.Buffer
-		cmd.Stdout = &stdout
-		cmd.Stderr = &stdout
-		if err := cmd.Run(); err != nil {
-			return "", err
-		}
-		return stdout.String(), nil
-	}
-	// staged + unstaged summary in porcelain
-	out, err := run("git", "status", "--porcelain")
+
+	summary, err := gitDiffRepo(c.Request.Context(), repoDir)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"added": 0, "modified": 0, "deleted": 0, "renamed": 0, "untracked": 0})
 		return
 	}
-	lines := strings.Split(strings.TrimSpace(out), "\n")
-	var added, modified, deleted, renamed, untracked int
-	for _, ln := range lines {
-		if len(ln) < 2 {
-			continue
-		}
-		x, y := ln[0], ln[1]
-		code := string([]byte{x, y})
-		switch {
-		case strings.Contains(code, "A"):
-			added++
-		case strings.Contains(code, "M"):
-			modified++
-		case strings.Contains(code, "D"):
-			deleted++
-		case strings.Contains(strings.ToUpper(code), "R"):
-			renamed++
-		case code == "??":
-			untracked++
-		}
-	}
-	log.Printf("contentGitDiff: summary added=%d modified=%d deleted=%d renamed=%d untracked=%d", added, modified, deleted, renamed, untracked)
-	c.JSON(http.StatusOK, gin.H{"added": added, "modified": modified, "deleted": deleted, "renamed": renamed, "untracked": untracked})
+
+	c.JSON(http.StatusOK, gin.H{
+		"added":     summary.Added,
+		"modified":  summary.Modified,
+		"deleted":   summary.Deleted,
+		"renamed":   summary.Renamed,
+		"untracked": summary.Untracked,
+	})
 }
 
 // contentWrite handles POST /content/write when running in CONTENT_SERVICE_MODE
@@ -2114,7 +1921,7 @@ func pushSessionRepo(c *gin.Context) {
 		// Derive repoPath from input URL folder name
 		if in, ok := rm["input"].(map[string]interface{}); ok {
 			if urlv, ok2 := in["url"].(string); ok2 && strings.TrimSpace(urlv) != "" {
-				folder := deriveRepoFolderFromURLFallback(strings.TrimSpace(urlv))
+				folder := deriveRepoFolderFromURL(strings.TrimSpace(urlv))
 				if folder != "" {
 					resolvedRepoPath = fmt.Sprintf("/sessions/%s/workspace/%s", session, folder)
 				}

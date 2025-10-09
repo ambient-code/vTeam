@@ -464,6 +464,9 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ name
                 <div className="pt-3">
                   <Label className="text-base font-semibold">Git Integration (Optional)</Label>
                   <div className="text-xs text-muted-foreground mb-3">Configure Git credentials for repository operations (clone, commit, push)</div>
+                  <div className="text-xs text-blue-600 bg-blue-50 border border-blue-200 rounded p-2 mb-3">
+                    <strong>Note:</strong> These fields are only needed if you have not connected a GitHub Application. When GitHub App integration is configured, it will be used automatically and these fields will serve as a fallback.
+                  </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div className="space-y-1">

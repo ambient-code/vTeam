@@ -140,13 +140,11 @@ func handleSessionWebSocket(c *gin.Context) {
 			userIDStr = s
 		}
 	}
-	log.Printf("userIDStr: %s", userIDStr)
 	if userIDStr == "" {
 		if ns, sa, ok := extractServiceAccountFromAuth(c); ok {
 			userIDStr = ns + ":" + sa
 		}
 	}
-	log.Printf("userIDStr: %s", userIDStr)
 
 	// Upgrade HTTP connection to WebSocket
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
@@ -208,12 +206,19 @@ func handleWebSocketMessages(conn *SessionConnection) {
 					conn.writeMu.Unlock()
 					continue
 				}
+				// Extract payload from runner message to avoid double-nesting
+				// Runner sends: {type, seq, timestamp, payload}
+				// We only want to store the payload field
+				payload, ok := msg["payload"].(map[string]interface{})
+				if !ok {
+					payload = msg // Fallback for legacy format
+				}
 				// Broadcast all other messages to session listeners (UI and others)
 				sessionMsg := &SessionMessage{
 					SessionID: conn.SessionID,
 					Type:      msgType,
 					Timestamp: time.Now().UTC().Format(time.RFC3339),
-					Payload:   msg,
+					Payload:   payload,
 				}
 				wsHub.broadcast <- sessionMsg
 			}

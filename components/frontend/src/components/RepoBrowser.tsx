@@ -64,7 +64,7 @@ export default function RepoBrowser({
     setFileContent(null);
     setSelectedPath(undefined);
     try {
-      const response = await apiClient.getRepoTree(repoUrl, currentRef, '');
+      const response = await apiClient.getRepoTree(projectName, repoUrl, currentRef, '');
       const rootNodes = (response.entries || []).map((e) => entryToNode(e));
       setNodes(rootNodes);
     } catch (err) {
@@ -83,13 +83,13 @@ export default function RepoBrowser({
   const onToggle = useCallback(async (node: FileTreeNode) => {
     if (node.type !== 'folder') return;
     try {
-      const response = await apiClient.getRepoTree(repoUrl, currentRef, node.path);
+      const response = await apiClient.getRepoTree(projectName, repoUrl, currentRef, node.path);
       const children = (response.entries || []).map((e) => entryToNode(e, node.path));
       setNodes((prev) => updateChildrenByPath(prev, node.path, children));
     } catch {
       // ignore toggle error; keep previous state
     }
-  }, [repoUrl, currentRef, updateChildrenByPath]);
+  }, [projectName, repoUrl, currentRef, updateChildrenByPath]);
 
   const onSelect = useCallback(async (node: FileTreeNode) => {
     // Only handle file selection
@@ -97,7 +97,7 @@ export default function RepoBrowser({
     setLoading(true);
     setError(null);
     try {
-      const response = await apiClient.getRepoBlob(repoUrl, currentRef, node.path);
+      const response = await apiClient.getRepoBlob(projectName, repoUrl, currentRef, node.path);
       setFileContent(response);
       if (onFileSelect) {
         onFileSelect(node.path, response.content);
@@ -109,7 +109,7 @@ export default function RepoBrowser({
     } finally {
       setLoading(false);
     }
-  }, [repoUrl, currentRef, onFileSelect]);
+  }, [projectName, repoUrl, currentRef, onFileSelect]);
 
   // Directory previews in the right pane are intentionally omitted
 
@@ -118,7 +118,7 @@ export default function RepoBrowser({
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <GitBranch className="w-5 h-5" />
-          Repository Browser
+          Spec Repository Browser
         </CardTitle>
         <div className="flex items-center gap-2 text-sm text-gray-600">
           <span>{repoUrl}</span>

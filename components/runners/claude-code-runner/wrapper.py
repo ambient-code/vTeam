@@ -86,7 +86,7 @@ class ClaudeCodeAdapter:
             if auto_push:
                 await self._push_results_if_any()
 
-            # Best-effort CR completion update if succeeded
+            # Best-effort CR status update based on result
             try:
                 if isinstance(result, dict) and result.get("success"):
                     result_summary = ""
@@ -106,8 +106,19 @@ class ClaudeCodeAdapter:
                         "session_id": self.context.session_id,
                         "result": stdout_text[:10000],
                     })
+                elif isinstance(result, dict) and not result.get("success"):
+                    # Handle failure case (e.g., SDK crashed without ResultMessage)
+                    error_msg = result.get("error", "Unknown error")
+                    await self._update_cr_status({
+                        "phase": "Failed",
+                        "completionTime": self._utc_iso(),
+                        "message": error_msg,
+                        "is_error": True,
+                        "num_turns": getattr(self, "_turn_count", 0),
+                        "session_id": self.context.session_id,
+                    })
             except Exception:
-                logging.debug("CR status update (Completed) skipped")
+                logging.debug("CR status update skipped")
 
             return result
 
@@ -130,12 +141,12 @@ class ClaudeCodeAdapter:
             }
 
     async def _run_claude_agent_sdk(self, prompt: str):
-        """Execute the Claude Agent SDK with the given prompt."""
+        """Execute the Claude Code SDK with the given prompt."""
         try:
-            from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
+            from claude_code_sdk import ClaudeSDKClient, ClaudeCodeOptions
             api_key = self.context.get_env('ANTHROPIC_API_KEY', '')
             if not api_key:
-                raise RuntimeError("ANTHROPIC_API_KEY is required for Claude Agent SDK")
+                raise RuntimeError("ANTHROPIC_API_KEY is required for Claude Code SDK")
 
             # Determine cwd and additional dirs from multi-repo config
             repos_cfg = self._get_repos_config()
@@ -165,7 +176,7 @@ class ClaudeCodeAdapter:
                     if p != cwd_path:
                         add_dirs.append(p)
 
-            options = ClaudeAgentOptions(cwd=cwd_path, permission_mode="acceptEdits", allowed_tools=["Read","Write","Bash","Glob","Grep","Edit","MultiEdit","WebSearch","WebFetch"])
+            options = ClaudeCodeOptions(cwd=cwd_path, permission_mode="acceptEdits", allowed_tools=["Read","Write","Bash","Glob","Grep","Edit","MultiEdit","WebSearch","WebFetch"])
             # Best-effort set add_dirs if supported by SDK version
             try:
                 if add_dirs:
@@ -200,11 +211,10 @@ class ClaudeCodeAdapter:
 
             os.environ['ANTHROPIC_API_KEY'] = api_key
 
-            logs = []
             result_payload = None
             self._turn_count = 0
             # Import SDK message and content types for accurate mapping
-            from claude_agent_sdk import (
+            from claude_code_sdk import (
                 AssistantMessage,
                 UserMessage,
                 SystemMessage,
@@ -227,9 +237,9 @@ class ClaudeCodeAdapter:
                                 text_piece = getattr(block, 'text', None)
                                 if text_piece:
                                     await self.shell._send_message(
-                                    MessageType.AGENT_MESSAGE,
-                                    {"type": "agent_message", "content": {"type": "text_block", "text": text_piece}},
-                                )
+                                        MessageType.AGENT_MESSAGE,
+                                        {"type": "agent_message", "content": {"type": "text_block", "text": text_piece}},
+                                    )
                             elif isinstance(block, ToolUseBlock):
                                 tool_name = getattr(block, 'name', '') or 'unknown'
                                 tool_input = getattr(block, 'input', {}) or {}
@@ -320,17 +330,29 @@ class ClaudeCodeAdapter:
                         else:
                             await self._send_log({"level": "debug", "message": f"ignored.message: {mtype_raw}"})
 
-            stdout_text = "\n".join(logs)
-            await self._check_pr_intent(stdout_text)
+            # Note: All output is streamed via WebSocket, not collected here
+            await self._check_pr_intent("")
+
+            # Check if we received a valid result from the SDK
+            if result_payload is None:
+                # SDK exited without producing a ResultMessage - this indicates failure
+                return {
+                    "success": False,
+                    "error": "Claude SDK exited without producing a result. Session may have crashed or hung.",
+                    "returnCode": 1,
+                    "stdout": "",
+                    "stderr": "No ResultMessage received from SDK"
+                }
+
             return {
                 "success": True,
-                "result": result_payload or {"output": stdout_text, "format": "text"},
+                "result": result_payload,
                 "returnCode": 0,
-                "stdout": stdout_text,
+                "stdout": "",
                 "stderr": ""
             }
         except Exception as e:
-            logging.error(f"Failed to run Claude Agent SDK: {e}")
+            logging.error(f"Failed to run Claude Code SDK: {e}")
             return {
                 "success": False,
                 "error": str(e)
