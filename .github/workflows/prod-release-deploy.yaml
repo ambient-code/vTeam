@@ -12,11 +12,6 @@ on:
           - major
           - minor
           - patch
-
-env:
-  PYTHON_VERSION: '3.11'
-  CACHE_VERSION: v1
-
 jobs:
    release:
     runs-on: ubuntu-latest
