@@ -11,6 +11,13 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# Load .env file if it exists (optional for local CRC setups)
+if [ -f ".env" ]; then
+    set -a  # automatically export all variables
+    source .env
+    set +a
+fi
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -180,20 +187,6 @@ if [ "${1:-}" = "secrets" ]; then
         exit 1
     fi
 
-    # Load .env
-    echo -e "${YELLOW}Loading environment configuration (.env)...${NC}"
-    ENV_FILE=".env"
-    if [[ ! -f "$ENV_FILE" ]]; then
-        echo -e "${RED}❌ .env file not found${NC}"
-        echo -e "${YELLOW}Please create .env file from env.example:${NC}"
-        echo "  cp env.example .env"
-        echo "  # Edit .env and add your actual API key and Git configuration"
-        exit 1
-    fi
-    set -a
-    source "$ENV_FILE"
-    set +a
-
     # Generate secrets values like in full deploy
     OAUTH_ENV_FILE="oauth-secret.env"
     CLIENT_SECRET_VALUE="${OCP_OAUTH_CLIENT_SECRET:-}"
@@ -261,21 +254,6 @@ if ! oc whoami >/dev/null 2>&1; then
 fi
 
 echo -e "${GREEN}✅ Authenticated as: $(oc whoami)${NC}"
-echo ""
-
-# Load required environment file
-echo -e "${YELLOW}Loading environment configuration (.env)...${NC}"
-ENV_FILE=".env"
-if [[ ! -f "$ENV_FILE" ]]; then
-    echo -e "${RED}❌ .env file not found${NC}"
-    echo -e "${YELLOW}Please create .env file from env.example:${NC}"
-    echo "  cp env.example .env"
-    echo "  # Edit .env and add your actual API key and Git configuration"
-    exit 1
-fi
-set -a
-source "$ENV_FILE"
-set +a
 echo ""
 
 # Prepare oauth secret env file for kustomize secretGenerator
