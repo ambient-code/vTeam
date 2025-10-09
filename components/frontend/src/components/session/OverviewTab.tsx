@@ -207,7 +207,7 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                                 {br.deleted > 0 && <span className="text-xs px-1 py-0.5 rounded border bg-red-50 text-red-700">- {br.deleted}</span>}
                               </span>
                             )}
-                            {total > 0 && compareUrl ? (
+                            {total > 0 && compareUrl && repo.status === 'pushed' ? (
                               <a 
                                 href={compareUrl} 
                                 target="_blank" 
