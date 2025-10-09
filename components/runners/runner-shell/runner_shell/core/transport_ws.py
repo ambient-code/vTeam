@@ -38,13 +38,25 @@ class WebSocketTransport:
             # Some websockets versions use `extra_headers`, others use `additional_headers`.
             # Pass headers as list of tuples for broad compatibility.
             header_items = [(k, v) for k, v in headers.items()]
+            # Disable client-side keepalive pings (ping_interval=None)
+            # Backend already sends pings every 30s, client pings cause timeouts during long Claude operations
             try:
-                self.websocket = await websockets.connect(self.url, extra_headers=header_items)
+                self.websocket = await websockets.connect(
+                    self.url,
+                    extra_headers=header_items,
+                    ping_interval=None  # Disable automatic keepalive, rely on backend pings
+                )
             except TypeError:
                 # Fallback for newer versions
-                self.websocket = await websockets.connect(self.url, additional_headers=header_items)
+                self.websocket = await websockets.connect(
+                    self.url,
+                    additional_headers=header_items,
+                    ping_interval=None  # Disable automatic keepalive, rely on backend pings
+                )
             self.running = True
-            logger.info(f"Connected to WebSocket: {self.url}")
+            # Redact token from URL for logging
+            safe_url = self.url.split('?token=')[0] if '?token=' in self.url else self.url
+            logger.info(f"Connected to WebSocket: {safe_url}")
 
             # Start receive loop only once
             if self._recv_task is None or self._recv_task.done():

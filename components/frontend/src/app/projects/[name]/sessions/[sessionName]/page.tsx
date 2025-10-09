@@ -104,7 +104,7 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
     for (const raw of liveMessages as RawWireMessage[]) {
       // Some backends wrap the actual message under payload.payload (and partial under payload.partial)
       const envelope = ((raw?.payload as InnerEnvelope) ?? (raw as unknown as InnerEnvelope)) || {};
-      const innerType: string = envelope.type || (raw as unknown as InnerEnvelope)?.type || "";
+      const innerType: string = (raw as unknown as InnerEnvelope)?.type || envelope.type || "";
       // Always use the top-level timestamp for ordering/rendering
       const innerTs: string = (raw as any)?.timestamp || new Date().toISOString();
       const payloadAny = (envelope as any).payload;

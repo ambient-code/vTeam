@@ -227,9 +227,9 @@ class ClaudeCodeAdapter:
                                 text_piece = getattr(block, 'text', None)
                                 if text_piece:
                                     await self.shell._send_message(
-                                    MessageType.AGENT_MESSAGE,
-                                    {"type": "agent_message", "content": {"type": "text_block", "text": text_piece}},
-                                )
+                                        MessageType.AGENT_MESSAGE,
+                                        {"type": "agent_message", "content": {"type": "text_block", "text": text_piece}},
+                                    )
                             elif isinstance(block, ToolUseBlock):
                                 tool_name = getattr(block, 'name', '') or 'unknown'
                                 tool_input = getattr(block, 'input', {}) or {}

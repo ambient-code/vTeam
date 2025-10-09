@@ -366,6 +366,7 @@ func getGitHubInstallation(ctx context.Context, userID string) (*GitHubAppInstal
 // listUserForks handles GET /projects/:projectName/users/forks
 // List user forks for an upstream repo (RBAC-scoped)
 func listUserForks(c *gin.Context) {
+	project := c.Param("projectName")
 	upstreamRepo := c.Query("upstreamRepo")
 
 	if upstreamRepo == "" {
@@ -373,14 +374,13 @@ func listUserForks(c *gin.Context) {
 		return
 	}
 
-	// Project access is enforced by Kubernetes RBAC on downstream operations
-
 	userID, _ := c.Get("userID")
+	reqK8s, reqDyn := getK8sClientsForRequest(c)
 
-	// Get user's GitHub installation
-	installation, err := getGitHubInstallation(c.Request.Context(), userID.(string))
+	// Try to get GitHub token (GitHub App or PAT from runner secret)
+	token, err := getGitHubToken(c.Request.Context(), reqK8s, reqDyn, project, userID.(string))
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "GitHub App not installed for user"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -389,12 +389,7 @@ func listUserForks(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	token, err := mintInstallationToken(c.Request.Context(), installation.InstallationID, installation.Host)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to mint token: %v", err)})
-		return
-	}
-	api := githubAPIBaseURL(installation.Host)
+	api := githubAPIBaseURL("github.com")
 	// Fetch all pages of forks (public + any accessible private). Cap pages for safety.
 	allForksResp := make([]map[string]interface{}, 0, 100)
 	const perPage = 100
@@ -438,10 +433,6 @@ func listUserForks(c *gin.Context) {
 			"url":      html,
 		})
 	}
-	fmt.Printf("forksResp: %+v\n", allForksResp)
-	fmt.Printf("installation: %+v\n", installation)
-	fmt.Printf("all: %+v\n", all)
-	// Return all forks without filtering
 	c.JSON(http.StatusOK, gin.H{
 		"forks": all,
 	})
@@ -450,6 +441,7 @@ func listUserForks(c *gin.Context) {
 // createUserFork handles POST /projects/:projectName/users/forks
 // Create a fork of the upstream umbrella repo for the user
 func createUserFork(c *gin.Context) {
+	project := c.Param("projectName")
 
 	var req struct {
 		UpstreamRepo string `json:"upstreamRepo" binding:"required"`
@@ -460,27 +452,22 @@ func createUserFork(c *gin.Context) {
 		return
 	}
 
-	// Project access is enforced by Kubernetes RBAC on downstream operations
-
 	userID, _ := c.Get("userID")
+	reqK8s, reqDyn := getK8sClientsForRequest(c)
 
-	// Get user's GitHub installation
-	installation, err := getGitHubInstallation(c.Request.Context(), userID.(string))
+	// Try to get GitHub token (GitHub App or PAT from runner secret)
+	token, err := getGitHubToken(c.Request.Context(), reqK8s, reqDyn, project, userID.(string))
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "GitHub App not installed for user"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
 	}
+
 	owner, repoName, err := parseOwnerRepo(req.UpstreamRepo)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	token, err := mintInstallationToken(c.Request.Context(), installation.InstallationID, installation.Host)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to mint token: %v", err)})
-		return
-	}
-	api := githubAPIBaseURL(installation.Host)
+	api := githubAPIBaseURL("github.com")
 	url := fmt.Sprintf("%s/repos/%s/%s/forks", api, owner, repoName)
 	resp, err := doGitHubRequest(c.Request.Context(), http.MethodPost, url, "Bearer "+token, "", nil)
 	if err != nil {
@@ -500,6 +487,7 @@ func createUserFork(c *gin.Context) {
 // getRepoTree handles GET /projects/:projectName/repo/tree
 // Fetch repo tree entries via backend proxy
 func getRepoTree(c *gin.Context) {
+	project := c.Param("projectName")
 	repo := c.Query("repo")
 	ref := c.Query("ref")
 	path := c.Query("path")
@@ -509,25 +497,22 @@ func getRepoTree(c *gin.Context) {
 		return
 	}
 
-	// Project access is enforced by Kubernetes RBAC on downstream operations
-
 	userID, _ := c.Get("userID")
-	installation, err := getGitHubInstallation(c.Request.Context(), userID.(string))
+	reqK8s, reqDyn := getK8sClientsForRequest(c)
+
+	// Try to get GitHub token (GitHub App or PAT from runner secret)
+	token, err := getGitHubToken(c.Request.Context(), reqK8s, reqDyn, project, userID.(string))
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "GitHub App not installed for user"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
 	}
+
 	owner, repoName, err := parseOwnerRepo(repo)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	token, err := mintInstallationToken(c.Request.Context(), installation.InstallationID, installation.Host)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to mint token: %v", err)})
-		return
-	}
-	api := githubAPIBaseURL(installation.Host)
+	api := githubAPIBaseURL("github.com")
 	p := path
 	if p == "" || p == "/" {
 		p = ""
@@ -587,6 +572,7 @@ func getRepoTree(c *gin.Context) {
 // getRepoBlob handles GET /projects/:projectName/repo/blob
 // Fetch blob (text) via backend proxy
 func getRepoBlob(c *gin.Context) {
+	project := c.Param("projectName")
 	repo := c.Query("repo")
 	ref := c.Query("ref")
 	path := c.Query("path")
@@ -596,25 +582,22 @@ func getRepoBlob(c *gin.Context) {
 		return
 	}
 
-	// Project access is enforced by Kubernetes RBAC on downstream operations
-
 	userID, _ := c.Get("userID")
-	installation, err := getGitHubInstallation(c.Request.Context(), userID.(string))
+	reqK8s, reqDyn := getK8sClientsForRequest(c)
+
+	// Try to get GitHub token (GitHub App or PAT from runner secret)
+	token, err := getGitHubToken(c.Request.Context(), reqK8s, reqDyn, project, userID.(string))
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "GitHub App not installed for user"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
 	}
+
 	owner, repoName, err := parseOwnerRepo(repo)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	token, err := mintInstallationToken(c.Request.Context(), installation.InstallationID, installation.Host)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to mint token: %v", err)})
-		return
-	}
-	api := githubAPIBaseURL(installation.Host)
+	api := githubAPIBaseURL("github.com")
 	url := fmt.Sprintf("%s/repos/%s/%s/contents/%s?ref=%s", api, owner, repoName, strings.TrimPrefix(path, "/"), ref)
 	resp, err := doGitHubRequest(c.Request.Context(), http.MethodGet, url, "Bearer "+token, "", nil)
 	if err != nil {

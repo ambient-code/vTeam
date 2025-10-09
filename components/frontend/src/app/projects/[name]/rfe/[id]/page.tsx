@@ -456,8 +456,8 @@ export default function ProjectRFEDetailPage() {
                                     )
                                 )
                                 : (
-                                    <Button 
-                                      size="sm" 
+                                    <Button
+                                      size="sm"
                                       onClick={async () => {
                                       try {
                                         setStartingPhase(phase);
@@ -517,9 +517,9 @@ export default function ProjectRFEDetailPage() {
                                       } finally {
                                         setStartingPhase(null);
                                       }
-                                    }} disabled={startingPhase === phase || !isSeeded}>
-                                      {startingPhase === phase ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" />Starting…</>) : (<><Play className="mr-2 h-4 w-4" />Generate</>)}
-                                    </Button>
+                                      }} disabled={startingPhase === phase || !isSeeded}>
+                                        {startingPhase === phase ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" />Starting…</>) : (<><Play className="mr-2 h-4 w-4" />Generate</>)}
+                                      </Button>
                                 )
                             )}
                             {exists && phase !== "ideate" && (
@@ -653,7 +653,7 @@ export default function ProjectRFEDetailPage() {
             <RepoBrowser
               projectName={project}
               repoUrl={selectedFork?.url || upstreamRepo}
-              defaultRef={selectedFork?.default_branch || "main"}
+              defaultRef={selectedFork?.default_branch || workflow.umbrellaRepo?.branch || "main"}
             />
           </TabsContent>
         </Tabs>

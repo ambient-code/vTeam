@@ -5,16 +5,15 @@ metadata:
   name: vteam-ambient-runner
 
 # Namespace for all resources (can be overridden with kustomize edit set namespace)
-#namespace: sallyom-vteam
 namespace: ambient-code
 
 # Resources to include in deployment
+# Must create github-app-secret.yaml separately for GitHub Application integration
 resources:
 - namespace.yaml
 - crds
 - rbac
 - route.yaml
-- github-app-secret.yaml
 - backend-deployment.yaml
 - backend-route.yaml
 - frontend-deployment.yaml

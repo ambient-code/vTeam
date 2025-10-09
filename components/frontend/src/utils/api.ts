@@ -28,21 +28,23 @@ class APIClient {
 
   // Repository browsing
   async getRepoTree(
+    projectName: string,
     repo: string,
     ref: string,
     path?: string
   ): Promise<RepoTree> {
-    const params = new URLSearchParams({ repo, ref });
+    const params = new URLSearchParams({ project: projectName, repo, ref });
     if (path) params.append('path', path);
     return this.request(`/repo/tree?${params}`);
   }
 
   async getRepoBlob(
+    projectName: string,
     repo: string,
     ref: string,
     path: string
   ): Promise<RepoBlob> {
-    const params = new URLSearchParams({ repo, ref, path });
+    const params = new URLSearchParams({ project: projectName, repo, ref, path });
     return this.request(`/repo/blob?${params}`);
   }
 

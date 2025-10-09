@@ -63,28 +63,6 @@ spec:
               name: github-app-secret
               key: GITHUB_STATE_SECRET
               optional: true
-
-        # Git secret authentication (optional - use this OR github-app-secret)
-        - name: GIT_USER_NAME
-          valueFrom:
-            secretKeyRef:
-              name: git-secret
-              key: GIT_USER_NAME
-              optional: true
-        - name: GIT_USER_EMAIL
-          valueFrom:
-            secretKeyRef:
-              name: git-secret
-              key: GIT_USER_EMAIL
-              optional: true
-        - name: GIT_TOKEN
-          valueFrom:
-            secretKeyRef:
-              name: git-secret
-              key: GIT_TOKEN
-              optional: true
-
-        
         resources:
           requests:
             cpu: 100m

@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/fs"
@@ -14,6 +15,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -61,12 +63,18 @@ func getGitHubToken(ctx context.Context, k8sClient *kubernetes.Clientset, dynCli
 		// GitHub App is available - mint token
 		token, _, err := githubTokenManager.MintInstallationTokenForHost(ctx, installation.InstallationID, installation.Host)
 		if err == nil && token != "" {
+			log.Printf("Using GitHub App token for user %s", userID)
 			return token, nil
 		}
 		log.Printf("Failed to mint GitHub App token for user %s: %v", userID, err)
 	}
 
 	// Fall back to project runner secret GIT_TOKEN
+	if k8sClient == nil {
+		log.Printf("Cannot read runner secret: k8s client is nil")
+		return "", fmt.Errorf("no GitHub credentials available. Either connect GitHub App or configure GIT_TOKEN in project runner secret")
+	}
+
 	settings, err := getProjectSettings(ctx, dynClient, project)
 
 	// Default to "ambient-runner-secrets" if not configured (same as updateRunnerSecrets handler)
@@ -77,19 +85,42 @@ func getGitHubToken(ctx context.Context, k8sClient *kubernetes.Clientset, dynCli
 		secretName = settings.RunnerSecret
 	}
 
+	log.Printf("Attempting to read GIT_TOKEN from secret %s/%s", project, secretName)
+
 	// Use user-scoped client to read secret in their namespace
 	secret, err := k8sClient.CoreV1().Secrets(project).Get(ctx, secretName, v1.GetOptions{})
-	if err == nil && secret.Data != nil {
-		if token, ok := secret.Data["GIT_TOKEN"]; ok && len(token) > 0 {
-			log.Printf("Using GIT_TOKEN from project runner secret %s for git operations", secretName)
-			return string(token), nil
-		}
-		log.Printf("Secret %s/%s exists but has no GIT_TOKEN key", project, secretName)
-	} else if err != nil {
+	if err != nil {
 		log.Printf("Failed to get runner secret %s/%s: %v", project, secretName, err)
+		return "", fmt.Errorf("no GitHub credentials available. Either connect GitHub App or configure GIT_TOKEN in project runner secret")
 	}
 
-	return "", fmt.Errorf("no GitHub credentials available. Either connect GitHub App or configure GIT_TOKEN in project runner secret")
+	if secret.Data == nil {
+		log.Printf("Secret %s/%s exists but Data is nil", project, secretName)
+		return "", fmt.Errorf("no GitHub credentials available. Either connect GitHub App or configure GIT_TOKEN in project runner secret")
+	}
+
+	token, ok := secret.Data["GIT_TOKEN"]
+	if !ok {
+		log.Printf("Secret %s/%s exists but has no GIT_TOKEN key (available keys: %v)", project, secretName, getSecretKeys(secret.Data))
+		return "", fmt.Errorf("no GitHub credentials available. Either connect GitHub App or configure GIT_TOKEN in project runner secret")
+	}
+
+	if len(token) == 0 {
+		log.Printf("Secret %s/%s has GIT_TOKEN key but value is empty", project, secretName)
+		return "", fmt.Errorf("no GitHub credentials available. Either connect GitHub App or configure GIT_TOKEN in project runner secret")
+	}
+
+	log.Printf("Using GIT_TOKEN from project runner secret %s/%s", project, secretName)
+	return string(token), nil
+}
+
+// getSecretKeys returns a list of keys from a secret's Data map for debugging
+func getSecretKeys(data map[string][]byte) []string {
+	keys := make([]string, 0, len(data))
+	for k := range data {
+		keys = append(keys, k)
+	}
+	return keys
 }
 
 // checkRepoSeeding checks if a repo has been seeded by verifying .claude/ and .specify/ exist
@@ -387,4 +418,259 @@ func injectGitHubToken(gitURL, token string) (string, error) {
 	// Set credentials: GitHub App tokens use x-access-token as username
 	u.User = url.UserPassword("x-access-token", token)
 	return u.String(), nil
+}
+
+// deriveRepoFolderFromURL extracts the repo folder from a Git URL (supports https and ssh forms)
+func deriveRepoFolderFromURL(u string) string {
+	s := strings.TrimSpace(u)
+	if s == "" {
+		return ""
+	}
+	// Normalize SSH form git@github.com:owner/repo.git -> https://github.com/owner/repo.git
+	if strings.HasPrefix(s, "git@") && strings.Contains(s, ":") {
+		parts := strings.SplitN(s, ":", 2)
+		host := strings.TrimPrefix(parts[0], "git@")
+		s = "https://" + host + "/" + parts[1]
+	}
+	// Trim protocol
+	if i := strings.Index(s, "://"); i >= 0 {
+		s = s[i+3:]
+	}
+	// Remove host portion if present
+	if i := strings.Index(s, "/"); i >= 0 {
+		s = s[i+1:]
+	}
+	segs := strings.Split(s, "/")
+	if len(segs) == 0 {
+		return ""
+	}
+	last := segs[len(segs)-1]
+	last = strings.TrimSuffix(last, ".git")
+	return strings.TrimSpace(last)
+}
+
+// gitPushRepo performs git add/commit/push operations on a repository directory
+// Returns stdout from push operation on success
+func gitPushRepo(ctx context.Context, repoDir, commitMessage, outputRepoURL, branch, githubToken string) (string, error) {
+	// Validate repoDir exists
+	if fi, err := os.Stat(repoDir); err != nil || !fi.IsDir() {
+		return "", fmt.Errorf("repo directory not found: %s", repoDir)
+	}
+
+	// Helper to run git commands
+	run := func(args ...string) (string, string, error) {
+		start := time.Now()
+		cmd := exec.CommandContext(ctx, args[0], args[1:]...)
+		cmd.Dir = repoDir
+		var stdout, stderr bytes.Buffer
+		cmd.Stdout = &stdout
+		cmd.Stderr = &stderr
+		err := cmd.Run()
+		dur := time.Since(start)
+		log.Printf("gitPushRepo: exec dur=%s cmd=%q stderr.len=%d stdout.len=%d err=%v", dur, strings.Join(args, " "), len(stderr.Bytes()), len(stdout.Bytes()), err)
+		return stdout.String(), stderr.String(), err
+	}
+
+	// Check for changes
+	log.Printf("gitPushRepo: checking worktree status ...")
+	if out, _, _ := run("git", "status", "--porcelain"); strings.TrimSpace(out) == "" {
+		return "", nil // no changes
+	}
+
+	// Configure git user identity from GitHub API
+	gitUserName := ""
+	gitUserEmail := ""
+
+	if githubToken != "" {
+		// Fetch user info from GitHub API
+		req, _ := http.NewRequest("GET", "https://api.github.com/user", nil)
+		req.Header.Set("Authorization", "token "+githubToken)
+		req.Header.Set("Accept", "application/vnd.github+json")
+		resp, err := http.DefaultClient.Do(req)
+		if err == nil {
+			defer resp.Body.Close()
+			if resp.StatusCode == 200 {
+				var ghUser struct {
+					Login string `json:"login"`
+					Name  string `json:"name"`
+					Email string `json:"email"`
+				}
+				if json.Unmarshal([]byte(fmt.Sprintf("%v", resp.Body)), &ghUser) == nil {
+					if gitUserName == "" && ghUser.Name != "" {
+						gitUserName = ghUser.Name
+					} else if gitUserName == "" && ghUser.Login != "" {
+						gitUserName = ghUser.Login
+					}
+					if gitUserEmail == "" && ghUser.Email != "" {
+						gitUserEmail = ghUser.Email
+					}
+					log.Printf("gitPushRepo: fetched GitHub user name=%q email=%q", gitUserName, gitUserEmail)
+				}
+			} else if resp.StatusCode == 403 {
+				log.Printf("gitPushRepo: GitHub API /user returned 403 (token lacks 'read:user' scope, using fallback identity)")
+			} else {
+				log.Printf("gitPushRepo: GitHub API /user returned status %d", resp.StatusCode)
+			}
+		} else {
+			log.Printf("gitPushRepo: failed to fetch GitHub user: %v", err)
+		}
+	}
+
+	// Fallback to defaults if still empty
+	if gitUserName == "" {
+		gitUserName = "Ambient Code Bot"
+	}
+	if gitUserEmail == "" {
+		gitUserEmail = "bot@ambient-code.local"
+	}
+	run("git", "config", "user.name", gitUserName)
+	run("git", "config", "user.email", gitUserEmail)
+	log.Printf("gitPushRepo: configured git identity name=%q email=%q", gitUserName, gitUserEmail)
+
+	// Stage and commit changes
+	log.Printf("gitPushRepo: staging changes ...")
+	_, _, _ = run("git", "add", "-A")
+
+	cm := commitMessage
+	if strings.TrimSpace(cm) == "" {
+		cm = "Update from Ambient session"
+	}
+
+	log.Printf("gitPushRepo: committing changes ...")
+	commitOut, commitErr, commitErrCode := run("git", "commit", "-m", cm)
+	if commitErrCode != nil {
+		log.Printf("gitPushRepo: commit failed (continuing): err=%v stderr=%q stdout=%q", commitErrCode, commitErr, commitOut)
+	}
+
+	// Determine target refspec
+	ref := "HEAD"
+	if branch == "auto" {
+		cur, _, _ := run("git", "rev-parse", "--abbrev-ref", "HEAD")
+		br := strings.TrimSpace(cur)
+		if br == "" || br == "HEAD" {
+			branch = "ambient-session"
+			log.Printf("gitPushRepo: auto branch resolved to %q", branch)
+		} else {
+			branch = br
+		}
+	}
+	if branch != "auto" {
+		ref = "HEAD:" + branch
+	}
+
+	// Push with token authentication
+	var pushArgs []string
+	if githubToken != "" {
+		cfg := fmt.Sprintf("url.https://x-access-token:%s@github.com/.insteadOf=https://github.com/", githubToken)
+		pushArgs = []string{"git", "-c", cfg, "push", "-u", outputRepoURL, ref}
+		log.Printf("gitPushRepo: running git push with token auth to %s %s", outputRepoURL, ref)
+	} else {
+		pushArgs = []string{"git", "push", "-u", outputRepoURL, ref}
+		log.Printf("gitPushRepo: running git push %s %s in %s", outputRepoURL, ref, repoDir)
+	}
+
+	out, errOut, err := run(pushArgs...)
+	if err != nil {
+		serr := errOut
+		if len(serr) > 2000 {
+			serr = serr[:2000] + "..."
+		}
+		sout := out
+		if len(sout) > 2000 {
+			sout = sout[:2000] + "..."
+		}
+		log.Printf("gitPushRepo: push failed url=%q ref=%q err=%v stderr.snip=%q stdout.snip=%q", outputRepoURL, ref, err, serr, sout)
+		return "", fmt.Errorf("push failed: %s", errOut)
+	}
+
+	if len(out) > 2000 {
+		out = out[:2000] + "..."
+	}
+	log.Printf("gitPushRepo: push ok url=%q ref=%q stdout.snip=%q", outputRepoURL, ref, out)
+	return out, nil
+}
+
+// gitAbandonRepo discards all uncommitted changes in a repository directory
+func gitAbandonRepo(ctx context.Context, repoDir string) error {
+	// Validate repoDir exists
+	if fi, err := os.Stat(repoDir); err != nil || !fi.IsDir() {
+		return fmt.Errorf("repo directory not found: %s", repoDir)
+	}
+
+	run := func(args ...string) (string, string, error) {
+		cmd := exec.CommandContext(ctx, args[0], args[1:]...)
+		cmd.Dir = repoDir
+		var stdout, stderr bytes.Buffer
+		cmd.Stdout = &stdout
+		cmd.Stderr = &stderr
+		err := cmd.Run()
+		return stdout.String(), stderr.String(), err
+	}
+
+	log.Printf("gitAbandonRepo: git reset --hard in %s", repoDir)
+	_, _, _ = run("git", "reset", "--hard")
+	log.Printf("gitAbandonRepo: git clean -fd in %s", repoDir)
+	_, _, _ = run("git", "clean", "-fd")
+	return nil
+}
+
+// GitDiffSummary holds summary counts from git status --porcelain
+type GitDiffSummary struct {
+	Added      int `json:"added"`
+	Modified   int `json:"modified"`
+	Deleted    int `json:"deleted"`
+	Renamed    int `json:"renamed"`
+	Untracked  int `json:"untracked"`
+}
+
+// gitDiffRepo returns porcelain-status summary counts for a repository directory
+func gitDiffRepo(ctx context.Context, repoDir string) (*GitDiffSummary, error) {
+	// Validate repoDir exists
+	if fi, err := os.Stat(repoDir); err != nil || !fi.IsDir() {
+		return &GitDiffSummary{}, nil // Return empty summary for missing repo
+	}
+
+	run := func(args ...string) (string, error) {
+		cmd := exec.CommandContext(ctx, args[0], args[1:]...)
+		cmd.Dir = repoDir
+		var stdout bytes.Buffer
+		cmd.Stdout = &stdout
+		cmd.Stderr = &stdout
+		if err := cmd.Run(); err != nil {
+			return "", err
+		}
+		return stdout.String(), nil
+	}
+
+	out, err := run("git", "status", "--porcelain")
+	if err != nil {
+		return &GitDiffSummary{}, nil
+	}
+
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	summary := &GitDiffSummary{}
+
+	for _, ln := range lines {
+		if len(ln) < 2 {
+			continue
+		}
+		x, y := ln[0], ln[1]
+		code := string([]byte{x, y})
+		switch {
+		case strings.Contains(code, "A"):
+			summary.Added++
+		case strings.Contains(code, "M"):
+			summary.Modified++
+		case strings.Contains(code, "D"):
+			summary.Deleted++
+		case strings.Contains(strings.ToUpper(code), "R"):
+			summary.Renamed++
+		case code == "??":
+			summary.Untracked++
+		}
+	}
+
+	log.Printf("gitDiffRepo: summary added=%d modified=%d deleted=%d renamed=%d untracked=%d",
+		summary.Added, summary.Modified, summary.Deleted, summary.Renamed, summary.Untracked)
+	return summary, nil
 }

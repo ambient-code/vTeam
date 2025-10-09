@@ -133,14 +133,14 @@ export default function ProjectNewRFEWorkflowPage() {
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2"><GitBranch className="h-5 w-5" />Repositories</CardTitle>
-                <CardDescription>Set the umbrella repo and optional supporting repos</CardDescription>
+                <CardDescription>Set the spec repo and optional supporting repos</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
                   <div className="md:col-span-3">
                     <FormField control={form.control} name={`umbrellaRepo.url`} render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Umbrella Repo URL</FormLabel>
+                        <FormLabel>Spec Repo URL</FormLabel>
                         <FormControl><Input placeholder="https://github.com/org/repo.git" {...field} /></FormControl>
                         <FormMessage />
                       </FormItem>

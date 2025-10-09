@@ -64,8 +64,22 @@ func main() {
 
 	// Project-scoped storage; no global preload required
 
-	// Setup Gin router
-	r := gin.Default()
+	// Setup Gin router with custom logger that redacts tokens
+	r := gin.New()
+	r.Use(gin.Recovery())
+	r.Use(gin.LoggerWithFormatter(func(param gin.LogFormatterParams) string {
+		// Redact token from query string
+		path := param.Path
+		if strings.Contains(param.Request.URL.RawQuery, "token=") {
+			path = strings.Split(path, "?")[0] + "?token=[REDACTED]"
+		}
+		return fmt.Sprintf("[GIN] %s | %3d | %s | %s\n",
+			param.Method,
+			param.StatusCode,
+			param.ClientIP,
+			path,
+		)
+	}))
 
 	// Middleware to populate user context from forwarded headers
 	r.Use(forwardedIdentityMiddleware())
@@ -118,7 +132,10 @@ func main() {
 			projectGroup.GET("/users/forks", listUserForks)
 			projectGroup.POST("/users/forks", createUserFork)
 
-			// Repo browsing moved to global routes (non project-scoped)
+			// Repo browsing (project-scoped for GitHub credentials)
+			projectGroup.GET("/repo/tree", getRepoTree)
+			projectGroup.GET("/repo/blob", getRepoBlob)
+
 			// Agentic sessions under a project
 			projectGroup.GET("/agentic-sessions", listSessions)
 			projectGroup.POST("/agentic-sessions", createSession)
@@ -187,10 +204,6 @@ func main() {
 		api.GET("/auth/github/status", getGitHubStatusGlobal)
 		api.POST("/auth/github/disconnect", disconnectGitHubGlobal)
 		api.GET("/auth/github/user/callback", handleGitHubUserOAuthCallback)
-
-		// Repo browsing via backend proxy (global)
-		api.GET("/repo/tree", getRepoTree)
-		api.GET("/repo/blob", getRepoBlob)
 
 		// Project management (cluster-wide)
 		api.GET("/projects", listProjects)
