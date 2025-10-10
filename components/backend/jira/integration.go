@@ -1,4 +1,4 @@
-package main
+package jira
 
 import (
 	"bytes"
@@ -12,14 +12,129 @@ import (
 	"time"
 
 	"ambient-code-backend/git"
+	"ambient-code-backend/handlers"
+	"ambient-code-backend/types"
 
 	"github.com/gin-gonic/gin"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/kubernetes"
 )
+
+// Handler dependencies
+type Handler struct {
+	GetK8sClientsForRequest     func(*gin.Context) (*kubernetes.Clientset, dynamic.Interface)
+	GetProjectSettingsResource  func() schema.GroupVersionResource
+	GetRFEWorkflowResource      func() schema.GroupVersionResource
+}
+
+// RFEFromUnstructured converts an unstructured RFEWorkflow CR into our RFEWorkflow struct
+func RFEFromUnstructured(item *unstructured.Unstructured) *types.RFEWorkflow {
+	if item == nil {
+		return nil
+	}
+	obj := item.Object
+	spec, _ := obj["spec"].(map[string]interface{})
+
+	created := ""
+	if item.GetCreationTimestamp().Time != (time.Time{}) {
+		created = item.GetCreationTimestamp().Time.UTC().Format(time.RFC3339)
+	}
+	wf := &types.RFEWorkflow{
+		ID:            item.GetName(),
+		Title:         fmt.Sprintf("%v", spec["title"]),
+		Description:   fmt.Sprintf("%v", spec["description"]),
+		Project:       item.GetNamespace(),
+		WorkspacePath: fmt.Sprintf("%v", spec["workspacePath"]),
+		CreatedAt:     created,
+		UpdatedAt:     time.Now().UTC().Format(time.RFC3339),
+	}
+
+	// Parse umbrellaRepo/supportingRepos when present; fallback to repositories
+	if um, ok := spec["umbrellaRepo"].(map[string]interface{}); ok {
+		repo := types.GitRepository{}
+		if u, ok := um["url"].(string); ok {
+			repo.URL = u
+		}
+		if b, ok := um["branch"].(string); ok && strings.TrimSpace(b) != "" {
+			repo.Branch = handlers.StringPtr(b)
+		}
+		wf.UmbrellaRepo = &repo
+	}
+	if srs, ok := spec["supportingRepos"].([]interface{}); ok {
+		wf.SupportingRepos = make([]types.GitRepository, 0, len(srs))
+		for _, r := range srs {
+			if rm, ok := r.(map[string]interface{}); ok {
+				repo := types.GitRepository{}
+				if u, ok := rm["url"].(string); ok {
+					repo.URL = u
+				}
+				if b, ok := rm["branch"].(string); ok && strings.TrimSpace(b) != "" {
+					repo.Branch = handlers.StringPtr(b)
+				}
+				wf.SupportingRepos = append(wf.SupportingRepos, repo)
+			}
+		}
+	} else if repos, ok := spec["repositories"].([]interface{}); ok {
+		// Backward compatibility: map legacy repositories -> umbrellaRepo (first) + supportingRepos (rest)
+		for i, r := range repos {
+			if rm, ok := r.(map[string]interface{}); ok {
+				repo := types.GitRepository{}
+				if u, ok := rm["url"].(string); ok {
+					repo.URL = u
+				}
+				if b, ok := rm["branch"].(string); ok && strings.TrimSpace(b) != "" {
+					repo.Branch = handlers.StringPtr(b)
+				}
+				if i == 0 {
+					rcopy := repo
+					wf.UmbrellaRepo = &rcopy
+				} else {
+					wf.SupportingRepos = append(wf.SupportingRepos, repo)
+				}
+			}
+		}
+	}
+
+	// Parse jiraLinks
+	if links, ok := spec["jiraLinks"].([]interface{}); ok {
+		for _, it := range links {
+			if m, ok := it.(map[string]interface{}); ok {
+				path := fmt.Sprintf("%v", m["path"])
+				jiraKey := fmt.Sprintf("%v", m["jiraKey"])
+				if strings.TrimSpace(path) != "" && strings.TrimSpace(jiraKey) != "" {
+					wf.JiraLinks = append(wf.JiraLinks, types.WorkflowJiraLink{Path: path, JiraKey: jiraKey})
+				}
+			}
+		}
+	}
+
+	// Parse parentOutcome
+	if po, ok := spec["parentOutcome"].(string); ok && strings.TrimSpace(po) != "" {
+		wf.ParentOutcome = handlers.StringPtr(strings.TrimSpace(po))
+	}
+
+	return wf
+}
+
+// ExtractTitleFromContent attempts to extract a title from markdown content
+// by looking for the first # heading
+func ExtractTitleFromContent(content string) string {
+	lines := strings.Split(content, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "# ") {
+			return strings.TrimSpace(strings.TrimPrefix(line, "# "))
+		}
+	}
+	return ""
+}
 
 // POST /api/projects/:projectName/rfe-workflows/:id/jira { path }
 // Creates or updates a Jira issue from a GitHub file and updates the RFEWorkflow CR with the linkage
-func publishWorkflowFileToJira(c *gin.Context) {
+func (h *Handler) PublishWorkflowFileToJira(c *gin.Context) {
 	project := c.Param("projectName")
 	id := c.Param("id")
 
@@ -32,8 +147,8 @@ func publishWorkflowFileToJira(c *gin.Context) {
 	}
 
 	// Load runner secrets for Jira config
-	_, reqDyn := getK8sClientsForRequest(c)
-	reqK8s, _ := getK8sClientsForRequest(c)
+	_, reqDyn := h.GetK8sClientsForRequest(c)
+	reqK8s, _ := h.GetK8sClientsForRequest(c)
 	if reqK8s == nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing or invalid user token"})
 		return
@@ -42,7 +157,7 @@ func publishWorkflowFileToJira(c *gin.Context) {
 	// Determine configured secret name
 	secretName := ""
 	if reqDyn != nil {
-		gvr := getProjectSettingsResource()
+		gvr := h.GetProjectSettingsResource()
 		if obj, err := reqDyn.Resource(gvr).Namespace(project).Get(c.Request.Context(), "projectsettings", v1.GetOptions{}); err == nil {
 			if spec, ok := obj.Object["spec"].(map[string]interface{}); ok {
 				if v, ok := spec["runnerSecretsName"].(string); ok {
@@ -75,7 +190,7 @@ func publishWorkflowFileToJira(c *gin.Context) {
 	}
 
 	// Load workflow
-	gvrWf := getRFEWorkflowResource()
+	gvrWf := h.GetRFEWorkflowResource()
 	if reqDyn == nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing or invalid user token"})
 		return
@@ -85,7 +200,7 @@ func publishWorkflowFileToJira(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Workflow not found"})
 		return
 	}
-	wf := rfeFromUnstructured(item)
+	wf := RFEFromUnstructured(item)
 	if wf == nil || wf.UmbrellaRepo == nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Workflow has no umbrella repo configured"})
 		return
@@ -121,7 +236,7 @@ func publishWorkflowFileToJira(c *gin.Context) {
 	}
 
 	// Extract title from markdown content
-	title := extractTitleFromContent(string(content))
+	title := ExtractTitleFromContent(string(content))
 	if title == "" {
 		title = wf.Title // Fallback to workflow title
 	}

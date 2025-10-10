@@ -8,6 +8,7 @@ import (
 
 	"ambient-code-backend/git"
 	"ambient-code-backend/handlers"
+	"ambient-code-backend/jira"
 	"ambient-code-backend/server"
 	"ambient-code-backend/types"
 
@@ -92,8 +93,14 @@ func main() {
 	handlers.UpsertProjectRFEWorkflowCR = upsertProjectRFEWorkflowCR
 	handlers.PerformRepoSeeding = performRepoSeeding
 	handlers.CheckRepoSeeding = checkRepoSeeding
-	handlers.StringPtr = stringPtr
-	handlers.RfeFromUnstructured = rfeFromUnstructured
+	handlers.RfeFromUnstructured = jira.RFEFromUnstructured
+
+	// Initialize Jira handler
+	jiraHandler := &jira.Handler{
+		GetK8sClientsForRequest:    getK8sClientsForRequest,
+		GetProjectSettingsResource: getProjectSettingsResource,
+		GetRFEWorkflowResource:     getRFEWorkflowResource,
+	}
 
 	// Initialize repo handlers
 	handlers.GetK8sClientsForRequestRepo = getK8sClientsForRequest
@@ -111,8 +118,11 @@ func main() {
 		return
 	}
 
-	// Normal server mode
-	if err := server.Run(registerRoutes); err != nil {
+	// Normal server mode - create closure to capture jiraHandler
+	registerRoutesWithJira := func(r *gin.Engine) {
+		registerRoutes(r, jiraHandler)
+	}
+	if err := server.Run(registerRoutesWithJira); err != nil {
 		log.Fatalf("Server error: %v", err)
 	}
 }
@@ -126,7 +136,7 @@ func registerContentRoutes(r *gin.Engine) {
 	r.GET("/content/github/diff", handlers.ContentGitDiff)
 }
 
-func registerRoutes(r *gin.Engine) {
+func registerRoutes(r *gin.Engine, jiraHandler *jira.Handler) {
 	// API routes
 	api := r.Group("/api")
 	{
@@ -168,7 +178,7 @@ func registerRoutes(r *gin.Engine) {
 			projectGroup.GET("/sessions/:sessionId/ws", handleSessionWebSocket)
 			projectGroup.GET("/sessions/:sessionId/messages", getSessionMessagesWS)
 			projectGroup.POST("/sessions/:sessionId/messages", postSessionMessageWS)
-			projectGroup.POST("/rfe-workflows/:id/jira", publishWorkflowFileToJira)
+			projectGroup.POST("/rfe-workflows/:id/jira", jiraHandler.PublishWorkflowFileToJira)
 			projectGroup.GET("/rfe-workflows/:id/jira", handlers.GetWorkflowJira)
 			projectGroup.GET("/rfe-workflows/:id/sessions", handlers.ListProjectRFEWorkflowSessions)
 			projectGroup.POST("/rfe-workflows/:id/sessions/link", handlers.AddProjectRFEWorkflowSession)
