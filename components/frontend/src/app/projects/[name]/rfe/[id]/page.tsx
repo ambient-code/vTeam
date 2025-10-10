@@ -464,9 +464,7 @@ export default function ProjectRFEDetailPage() {
                                         setStartingPhase(phase);
                                         const isSpecify = phase === "specify";
                                         const prompt = isSpecify
-                                          ? (rfeDoc.exists
-                                              ? "/specify Develop a new feature on top of the projects in /repos based on rfe.md"
-                                              : `/specify Develop a new feature on top of the projects in /repos. Feature requirements: ${workflow.description}`)
+                                          ? "/specify Develop a new feature on top of the projects in /repos based on rfe.md or if that does not exist, follow these feature requirements: ${workflow.description}"
                                           : `/${phase}`
                                         const payload: CreateAgenticSessionRequest = {
                                           prompt,

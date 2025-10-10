@@ -630,12 +630,8 @@ func gitAbandonRepo(ctx context.Context, repoDir string) error {
 	return nil
 }
 
-// GitDiffSummary holds summary counts from git status --porcelain
+// GitDiffSummary holds summary counts from git diff --numstat
 type GitDiffSummary struct {
-	Files struct {
-		Added   int `json:"added"`
-		Removed int `json:"removed"`
-	} `json:"files"`
 	TotalAdded   int `json:"total_added"`
 	TotalRemoved int `json:"total_removed"`
 }
@@ -689,26 +685,7 @@ func gitDiffRepo(ctx context.Context, repoDir string) (*GitDiffSummary, error) {
 		}
 	}
 
-	// Get file status to count added/removed files
-	statusOut, err := run("git", "status", "--porcelain")
-	if err == nil && strings.TrimSpace(statusOut) != "" {
-		lines := strings.Split(strings.TrimSpace(statusOut), "\n")
-		for _, ln := range lines {
-			if len(ln) < 2 {
-				continue
-			}
-			x, y := ln[0], ln[1]
-			code := string([]byte{x, y})
-			switch {
-			case strings.Contains(code, "A") || code == "??":
-				summary.Files.Added++
-			case strings.Contains(code, "D"):
-				summary.Files.Removed++
-			}
-		}
-	}
-
-	log.Printf("gitDiffRepo: files.added=%d files.removed=%d total_added=%d total_removed=%d",
-		summary.Files.Added, summary.Files.Removed, summary.TotalAdded, summary.TotalRemoved)
+	log.Printf("gitDiffRepo: total_added=%d total_removed=%d",
+		summary.TotalAdded, summary.TotalRemoved)
 	return summary, nil
 }

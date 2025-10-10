@@ -15,7 +15,7 @@ type Props = {
   setPromptExpanded: (v: boolean) => void;
   latestLiveMessage: any;
   subagentStats: { uniqueCount: number; orderedTypes: string[] };
-  diffTotals: Record<number, { files: { added: number; removed: number }; total_added: number; total_removed: number }>;
+  diffTotals: Record<number, { total_added: number; total_removed: number }>;
   onPush: (repoIndex: number) => Promise<void>;
   onAbandon: (repoIndex: number) => Promise<void>;
   busyRepo: Record<number, 'push' | 'abandon' | null>;
@@ -75,7 +75,10 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                   <Badge variant="outline" className="text-xs">{latestLiveMessage.type}</Badge>
                   <span className="text-xs text-gray-500">{new Date(latestLiveMessage.timestamp).toLocaleTimeString()}</span>
                 </div>
-                <pre className="whitespace-pre-wrap break-words bg-gray-50 rounded p-2 text-xs text-gray-800">{JSON.stringify(latestLiveMessage.payload, null, 2)}</pre>
+                <div className="relative max-h-40 overflow-hidden">
+                  <pre className="whitespace-pre-wrap break-words bg-gray-50 rounded p-2 text-xs text-gray-800">{JSON.stringify(latestLiveMessage.payload, null, 2)}</pre>
+                  <div className="absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-white to-transparent pointer-events-none" />
+                </div>
               </div>
             ) : (
               <div className="text-sm text-gray-500">No messages yet</div>
@@ -181,8 +184,8 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                           ? repo.output.branch 
                           : `sessions/${session.metadata.name}`;
                         const compareUrl = buildGithubCompareUrl(repo.input.url, repo.input.branch || 'main', repo.output?.url, outBranch);
-                        const br = diffTotals[idx] || { files: { added: 0, removed: 0 }, total_added: 0, total_removed: 0 };
-                        const hasChanges = br.files.added > 0 || br.files.removed > 0 || br.total_added > 0 || br.total_removed > 0;
+                        const br = diffTotals[idx] || { total_added: 0, total_removed: 0 };
+                        const hasChanges = br.total_added > 0 || br.total_removed > 0;
                         return (
                           <div key={idx} className="flex items-center gap-2 text-sm font-mono">
                             {isMain && <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded font-sans">MAIN</span>}
@@ -222,18 +225,14 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                               )
                             ) : (
                               <span className="flex items-center gap-2">
-                                {(br.files.added > 0 || br.files.removed > 0) && (
-                                  <span className="text-xs px-1 py-0.5 rounded border bg-blue-50 text-blue-700">
-                                    {br.files.added > 0 && `+${br.files.added}`}
-                                    {br.files.added > 0 && br.files.removed > 0 && '/'}
-                                    {br.files.removed > 0 && `-${br.files.removed}`} files
+                                {br.total_added > 0 && (
+                                  <span className="text-xs px-1 py-0.5 rounded border bg-green-50 text-green-700 border-green-200">
+                                    +{br.total_added}
                                   </span>
                                 )}
-                                {(br.total_added > 0 || br.total_removed > 0) && (
-                                  <span className="text-xs px-1 py-0.5 rounded border bg-green-50 text-green-700">
-                                    {br.total_added > 0 && `+${br.total_added}`}
-                                    {br.total_added > 0 && br.total_removed > 0 && '/'}
-                                    {br.total_removed > 0 && `-${br.total_removed}`} lines
+                                {br.total_removed > 0 && (
+                                  <span className="text-xs px-1 py-0.5 rounded border bg-red-50 text-red-700 border-red-200">
+                                    -{br.total_removed}
                                   </span>
                                 )}
                               </span>
