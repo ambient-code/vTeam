@@ -25,9 +25,9 @@
 
 ## Next Steps: Code Organization Refactor
 
-### Current State (2025-01-10)
-- ✅ `handlers.go`: ~2630 lines (in progress - content, GitHub auth, project, permissions, and secrets handlers extracted)
-- ✅ `main.go`: 162 lines (will eventually be ~20-30 lines following Go best practices)
+### Current State (2025-10-10)
+- ✅ `handlers.go`: 1,058 lines (in progress - content, GitHub auth, project, permissions, secrets, and session handlers extracted)
+- ✅ `main.go`: 374 lines (will eventually be ~20-30 lines following Go best practices)
 - ✅ All Jira integration complete
 - ✅ Types package created (`types/common.go`, `types/session.go`, `types/rfe.go`, `types/project.go`)
 - ✅ Server package created (`server/server.go`, `server/k8s.go`)
@@ -37,6 +37,7 @@
 - ✅ Project handlers extracted (`handlers/projects.go`)
 - ✅ Permissions handlers extracted (`handlers/permissions.go`)
 - ✅ Secrets handlers extracted (`handlers/secrets.go`)
+- ✅ Session handlers extracted (`handlers/sessions.go`)
 - ✅ Build clean
 
 ### Refactor Goals
@@ -120,10 +121,15 @@
 - ✅ Build verified clean
 - ✅ Commit: "refactor: extract secrets handlers"
 
-**Commit 7:** Session handlers
-- Extract agentic session endpoints
-- Create `handlers/sessions.go`
-- Commit: "refactor: extract session handlers"
+**Commit 7:** ✅ Session handlers
+- ✅ Extract agentic session endpoints (listSessions, createSession, getSession, updateSession, deleteSession, cloneSession, startSession, stopSession, updateSessionStatus, listSessionWorkspace, getSessionWorkspaceFile, putSessionWorkspaceFile, pushSessionRepo, abandonSessionRepo, diffSessionRepo, mintSessionGitHubToken)
+- ✅ Create `handlers/sessions.go` (1,657 lines, 16 handlers)
+- ✅ Helper functions: provisionRunnerTokenForSession, updateSessionDisplayName, setRepoStatus, parseSpec, stringPtr, contentListItem
+- ✅ Updated `main.go` to initialize session handler dependencies and update routes
+- ✅ Removed from `handlers.go` (lines 334-471, 475-1909 deleted - 1,575 lines total)
+- ✅ Added shared helpers to `handlers.go` (stringPtr, contentListItem) for RFE handlers
+- ✅ Build verified clean
+- ✅ Commit: "refactor: extract session handlers"
 
 **Commit 8:** RFE workflow handlers
 - Extract RFE workflow endpoints
