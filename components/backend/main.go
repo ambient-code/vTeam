@@ -64,6 +64,10 @@ func main() {
 	handlers.Namespace = namespace
 	handlers.GithubTokenManager = githubTokenManager
 
+	// Initialize project handlers
+	handlers.GetK8sClientsForRequest = getK8sClientsForRequest
+	handlers.GetOpenShiftProjectResource = getOpenShiftProjectResource
+
 	// Content service mode
 	if os.Getenv("CONTENT_SERVICE_MODE") == "true" {
 		if err := server.RunContentService(registerContentRoutes); err != nil {
@@ -155,11 +159,11 @@ func registerRoutes(r *gin.Engine) {
 		api.POST("/auth/github/disconnect", handlers.DisconnectGitHubGlobal)
 		api.GET("/auth/github/user/callback", handlers.HandleGitHubUserOAuthCallback)
 
-		api.GET("/projects", listProjects)
-		api.POST("/projects", createProject)
-		api.GET("/projects/:projectName", getProject)
-		api.PUT("/projects/:projectName", updateProject)
-		api.DELETE("/projects/:projectName", deleteProject)
+		api.GET("/projects", handlers.ListProjects)
+		api.POST("/projects", handlers.CreateProject)
+		api.GET("/projects/:projectName", handlers.GetProject)
+		api.PUT("/projects/:projectName", handlers.UpdateProject)
+		api.DELETE("/projects/:projectName", handlers.DeleteProject)
 	}
 
 	// Health check endpoint

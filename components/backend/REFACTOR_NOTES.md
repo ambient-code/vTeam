@@ -27,23 +27,27 @@
 
 ### Current State (2025-01-10)
 - ✅ `handlers.go`: 3614 lines (in progress - content handlers extracted)
-- ✅ `main.go`: 162 lines (simplified with server package)
+- ✅ `main.go`: 162 lines (will eventually be ~20-30 lines following Go best practices)
 - ✅ All Jira integration complete
 - ✅ Types package created (`types/common.go`, `types/session.go`, `types/rfe.go`, `types/project.go`)
 - ✅ Server package created (`server/server.go`, `server/k8s.go`)
 - ✅ Health handler extracted (`handlers/health.go`)
 - ✅ Content handlers extracted (`handlers/content.go`)
+- ✅ GitHub auth handlers extracted (`handlers/github_auth.go`)
 - ✅ Build clean
 
 ### Refactor Goals
 
 **Goal 1: Simplify main.go (Standard Go Practice)**
-- Current: 497 lines with routing, initialization, helpers
+- Current: 162 lines with routing, initialization, helpers
 - Target: ~20-30 lines (just initialize and run)
-- Move logic to:
-  - `server/server.go` - Server setup, routing, middleware
-  - `server/k8s.go` - Kubernetes client initialization
-  - Keep `main.go` minimal (industry standard)
+- Move logic to appropriate packages:
+  - `server/` - Server setup, routing, middleware
+  - `handlers/` - All HTTP handlers and business logic
+  - `types/` - Type definitions
+- **IMPORTANT**: Most code in main.go will eventually move to new packages
+- Keep `main.go` minimal (industry standard)
+- **NO LOGIC CHANGES** - everything must continue working with existing frontend!
 
 **Goal 2: Break Down handlers.go**
 - Current: 3835 lines (too large)
@@ -83,10 +87,13 @@
 - ✅ Build verified clean
 - ✅ Commit: "refactor: extract content handlers to handlers/content.go"
 
-**Commit 3:** GitHub auth handlers
-- Extract GitHub auth endpoints
-- Create `handlers/github_auth.go`
-- Commit: "refactor: extract GitHub auth handlers"
+**Commit 3:** ✅ GitHub auth handlers
+- ✅ Extract GitHub auth endpoints from `github_app.go`
+- ✅ Create `handlers/github_auth.go` (441 lines, 4 handlers)
+- ✅ Added wrapper function for backward compatibility
+- ✅ Removed unused imports
+- ✅ Build verified clean
+- ✅ Commit: "refactor: extract GitHub auth handlers"
 
 **Commit 4:** Project handlers
 - Extract project CRUD endpoints
