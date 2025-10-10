@@ -26,8 +26,8 @@
 ## Next Steps: Code Organization Refactor
 
 ### Current State (2025-10-10)
-- ✅ `handlers.go`: 1,058 lines (in progress - content, GitHub auth, project, permissions, secrets, and session handlers extracted)
-- ✅ `main.go`: 374 lines (will eventually be ~20-30 lines following Go best practices)
+- ✅ `handlers.go`: 441 lines (in progress - RFE, repo browsing, WebSocket, and middleware remaining)
+- ✅ `main.go`: 375 lines (will eventually be ~20-30 lines following Go best practices)
 - ✅ All Jira integration complete
 - ✅ Types package created (`types/common.go`, `types/session.go`, `types/rfe.go`, `types/project.go`)
 - ✅ Server package created (`server/server.go`, `server/k8s.go`)
@@ -38,6 +38,7 @@
 - ✅ Permissions handlers extracted (`handlers/permissions.go`)
 - ✅ Secrets handlers extracted (`handlers/secrets.go`)
 - ✅ Session handlers extracted (`handlers/sessions.go`)
+- ✅ RFE workflow handlers extracted (`handlers/rfe.go`)
 - ✅ Build clean
 
 ### Refactor Goals
@@ -131,10 +132,14 @@
 - ✅ Build verified clean
 - ✅ Commit: "refactor: extract session handlers"
 
-**Commit 8:** RFE workflow handlers
-- Extract RFE workflow endpoints
-- Create `handlers/rfe.go`
-- Commit: "refactor: extract RFE workflow handlers"
+**Commit 8:** ✅ RFE workflow handlers
+- ✅ Extract RFE workflow endpoints (listProjectRFEWorkflows, createProjectRFEWorkflow, seedProjectRFEWorkflow, checkProjectRFEWorkflowSeeding, getProjectRFEWorkflow, getProjectRFEWorkflowSummary, deleteProjectRFEWorkflow, listProjectRFEWorkflowSessions, addProjectRFEWorkflowSession, removeProjectRFEWorkflowSession, getWorkflowJira)
+- ✅ Create `handlers/rfe.go` (652 lines, 11 handlers)
+- ✅ Kept rfeFromUnstructured and extractTitleFromContent in main package (handlers.go) for jira.go dependency
+- ✅ Updated main.go to initialize RFE handler dependencies
+- ✅ Removed from `handlers.go` (reduced from 1,058 to 441 lines)
+- ✅ Build verified clean
+- ✅ Commit: "refactor: extract RFE workflow handlers"
 
 **Commit 9:** Repo browsing handlers
 - Extract repo tree/blob endpoints
