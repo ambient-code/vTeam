@@ -6,11 +6,10 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"strings"
 
+	"ambient-code-backend/server"
 	"ambient-code-backend/types"
 
-	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -20,9 +19,9 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
 )
 
+// Expose server globals for backward compatibility
 var (
 	k8sClient      *kubernetes.Clientset
 	dynamicClient  dynamic.Interface
@@ -34,111 +33,64 @@ var (
 
 func main() {
 	// Load environment from .env in development if present
-	// Order: .env.local overrides .env
 	_ = godotenv.Overload(".env.local")
 	_ = godotenv.Overload(".env")
 
-	// Initialize components that depend on env vars loaded above
+	// Initialize components
 	initializeGitHubTokenManager()
 
-	// Initialize Kubernetes clients
-	if err := initK8sClients(); err != nil {
+	if err := server.InitK8sClients(); err != nil {
 		log.Fatalf("Failed to initialize Kubernetes clients: %v", err)
 	}
 
-	// Get namespace from environment or use default
-	namespace = os.Getenv("NAMESPACE")
-	if namespace == "" {
-		namespace = "default"
-	}
+	server.InitConfig()
 
-	// Get state storage base directory
-	stateBaseDir = os.Getenv("STATE_BASE_DIR")
-	if stateBaseDir == "" {
-		stateBaseDir = "/data/state"
-	}
+	// Sync server globals to main package globals for backward compatibility
+	k8sClient = server.K8sClient
+	dynamicClient = server.DynamicClient
+	namespace = server.Namespace
+	stateBaseDir = server.StateBaseDir
+	pvcBaseDir = server.PvcBaseDir
+	baseKubeConfig = server.BaseKubeConfig
 
-	// Get PVC base directory for RFE workspaces
-	pvcBaseDir = os.Getenv("PVC_BASE_DIR")
-	if pvcBaseDir == "" {
-		pvcBaseDir = "/workspace"
-	}
-
-	// Project-scoped storage; no global preload required
-
-	// Setup Gin router with custom logger that redacts tokens
-	r := gin.New()
-	r.Use(gin.Recovery())
-	r.Use(gin.LoggerWithFormatter(func(param gin.LogFormatterParams) string {
-		// Redact token from query string
-		path := param.Path
-		if strings.Contains(param.Request.URL.RawQuery, "token=") {
-			path = strings.Split(path, "?")[0] + "?token=[REDACTED]"
-		}
-		return fmt.Sprintf("[GIN] %s | %3d | %s | %s\n",
-			param.Method,
-			param.StatusCode,
-			param.ClientIP,
-			path,
-		)
-	}))
-
-	// Middleware to populate user context from forwarded headers
-	r.Use(forwardedIdentityMiddleware())
-
-	// Configure CORS
-	config := cors.DefaultConfig()
-	config.AllowAllOrigins = true
-	config.AllowMethods = []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}
-	config.AllowHeaders = []string{"Origin", "Content-Length", "Content-Type", "Authorization"}
-	r.Use(cors.New(config))
-
-	// Content service mode: expose minimal file APIs for per-namespace writer service
+	// Content service mode
 	if os.Getenv("CONTENT_SERVICE_MODE") == "true" {
-		r.POST("/content/write", contentWrite)
-		r.GET("/content/file", contentRead)
-		r.GET("/content/list", contentList)
-		// Git operations proxied to this sidecar (invoked by backend)
-		r.POST("/content/github/push", contentGitPush)
-		r.POST("/content/github/abandon", contentGitAbandon)
-		r.GET("/content/github/diff", contentGitDiff)
-		// Health check endpoint
-		r.GET("/health", func(c *gin.Context) {
-			c.JSON(http.StatusOK, gin.H{"status": "healthy"})
-		})
-
-		port := os.Getenv("PORT")
-		if port == "" {
-			port = "8080"
-		}
-		log.Printf("Content service starting on port %s", port)
-		if err := r.Run(":" + port); err != nil {
-			log.Fatalf("Failed to start content service: %v", err)
+		if err := server.RunContentService(registerContentRoutes); err != nil {
+			log.Fatalf("Content service error: %v", err)
 		}
 		return
 	}
 
-	// API routes (all consolidated under /api) remain available
+	// Normal server mode
+	if err := server.Run(registerRoutes); err != nil {
+		log.Fatalf("Server error: %v", err)
+	}
+}
+
+func registerContentRoutes(r *gin.Engine) {
+	r.POST("/content/write", contentWrite)
+	r.GET("/content/file", contentRead)
+	r.GET("/content/list", contentList)
+	r.POST("/content/github/push", contentGitPush)
+	r.POST("/content/github/abandon", contentGitAbandon)
+	r.GET("/content/github/diff", contentGitDiff)
+}
+
+func registerRoutes(r *gin.Engine) {
+	// API routes
 	api := r.Group("/api")
 	{
-		// Runner token mint endpoint (SA-authenticated via TokenReview; not gated by validateProjectContext)
 		api.POST("/projects/:projectName/agentic-sessions/:sessionName/github/token", mintSessionGitHubToken)
-		// Legacy non-project agentic session routes removed
 
-		// RFE workflows are project-scoped only (legacy non-project routes removed)
-		// Project-scoped routes for multi-tenant session management
 		projectGroup := api.Group("/projects/:projectName", validateProjectContext())
 		{
-			// Access check (SSAR based)
 			projectGroup.GET("/access", accessCheck)
 			projectGroup.GET("/users/forks", listUserForks)
 			projectGroup.POST("/users/forks", createUserFork)
 
-			// Repo browsing (project-scoped for GitHub credentials)
 			projectGroup.GET("/repo/tree", getRepoTree)
 			projectGroup.GET("/repo/blob", getRepoBlob)
 
-			// Agentic sessions under a project
 			projectGroup.GET("/agentic-sessions", listSessions)
 			projectGroup.POST("/agentic-sessions", createSession)
 			projectGroup.GET("/agentic-sessions/:sessionName", getSession)
@@ -148,18 +100,13 @@ func main() {
 			projectGroup.POST("/agentic-sessions/:sessionName/start", startSession)
 			projectGroup.POST("/agentic-sessions/:sessionName/stop", stopSession)
 			projectGroup.PUT("/agentic-sessions/:sessionName/status", updateSessionStatus)
-			// Session workspace proxy to content service
 			projectGroup.GET("/agentic-sessions/:sessionName/workspace", listSessionWorkspace)
 			projectGroup.GET("/agentic-sessions/:sessionName/workspace/*path", getSessionWorkspaceFile)
 			projectGroup.PUT("/agentic-sessions/:sessionName/workspace/*path", putSessionWorkspaceFile)
-			// Git push/abandon actions for a specific repo in a session
 			projectGroup.POST("/agentic-sessions/:sessionName/github/push", pushSessionRepo)
 			projectGroup.POST("/agentic-sessions/:sessionName/github/abandon", abandonSessionRepo)
 			projectGroup.GET("/agentic-sessions/:sessionName/github/diff", diffSessionRepo)
-			// Mint short-lived GitHub token for a session runner (session-scoped)
-			// Token minting endpoint moved outside validateProjectContext to allow runner SA auth
 
-			// RFE workflow endpoints (project-scoped)
 			projectGroup.GET("/rfe-workflows", listProjectRFEWorkflows)
 			projectGroup.POST("/rfe-workflows", createProjectRFEWorkflow)
 			projectGroup.GET("/rfe-workflows/:id", getProjectRFEWorkflow)
@@ -168,32 +115,23 @@ func main() {
 			projectGroup.POST("/rfe-workflows/:id/seed", seedProjectRFEWorkflow)
 			projectGroup.GET("/rfe-workflows/:id/check-seeding", checkProjectRFEWorkflowSeeding)
 
-			// Session WebSocket and messages
 			projectGroup.GET("/sessions/:sessionId/ws", handleSessionWebSocket)
 			projectGroup.GET("/sessions/:sessionId/messages", getSessionMessagesWS)
 			projectGroup.POST("/sessions/:sessionId/messages", postSessionMessageWS)
-			// Publish a workspace file to Jira and record linkage on the CR
 			projectGroup.POST("/rfe-workflows/:id/jira", publishWorkflowFileToJira)
 			projectGroup.GET("/rfe-workflows/:id/jira", getWorkflowJira)
-			// Sessions linkage within an RFE
 			projectGroup.GET("/rfe-workflows/:id/sessions", listProjectRFEWorkflowSessions)
-			// Link an existing session to the RFE; avoid conflict with session creation endpoint
 			projectGroup.POST("/rfe-workflows/:id/sessions/link", addProjectRFEWorkflowSession)
 			projectGroup.DELETE("/rfe-workflows/:id/sessions/:sessionName", removeProjectRFEWorkflowSession)
 
-			// Agents moved to global routes (non project-scoped)
-
-			// Permissions (users & groups)
 			projectGroup.GET("/permissions", listProjectPermissions)
 			projectGroup.POST("/permissions", addProjectPermission)
 			projectGroup.DELETE("/permissions/:subjectType/:subjectName", removeProjectPermission)
 
-			// Project access keys
 			projectGroup.GET("/keys", listProjectKeys)
 			projectGroup.POST("/keys", createProjectKey)
 			projectGroup.DELETE("/keys/:keyId", deleteProjectKey)
 
-			// Runner secrets configuration and CRUD
 			projectGroup.GET("/secrets", listNamespaceSecrets)
 			projectGroup.GET("/runner-secrets/config", getRunnerSecretsConfig)
 			projectGroup.PUT("/runner-secrets/config", updateRunnerSecretsConfig)
@@ -201,13 +139,11 @@ func main() {
 			projectGroup.PUT("/runner-secrets", updateRunnerSecrets)
 		}
 
-		// Global GitHub auth endpoints
 		api.POST("/auth/github/install", linkGitHubInstallationGlobal)
 		api.GET("/auth/github/status", getGitHubStatusGlobal)
 		api.POST("/auth/github/disconnect", disconnectGitHubGlobal)
 		api.GET("/auth/github/user/callback", handleGitHubUserOAuthCallback)
 
-		// Project management (cluster-wide)
 		api.GET("/projects", listProjects)
 		api.POST("/projects", createProject)
 		api.GET("/projects/:projectName", getProject)
@@ -219,86 +155,6 @@ func main() {
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "healthy"})
 	})
-
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
-	}
-
-	log.Printf("Server starting on port %s", port)
-	log.Printf("Using namespace: %s", namespace)
-
-	if err := r.Run(":" + port); err != nil {
-		log.Fatalf("Failed to start server: %v", err)
-	}
-}
-
-func initK8sClients() error {
-	var config *rest.Config
-	var err error
-
-	// Try in-cluster config first
-	if config, err = rest.InClusterConfig(); err != nil {
-		// If in-cluster config fails, try kubeconfig
-		kubeconfig := os.Getenv("KUBECONFIG")
-		if kubeconfig == "" {
-			kubeconfig = fmt.Sprintf("%s/.kube/config", os.Getenv("HOME"))
-		}
-
-		if config, err = clientcmd.BuildConfigFromFlags("", kubeconfig); err != nil {
-			return fmt.Errorf("failed to create Kubernetes config: %v", err)
-		}
-
-	}
-
-	// Create standard Kubernetes client
-	k8sClient, err = kubernetes.NewForConfig(config)
-	if err != nil {
-		return fmt.Errorf("failed to create Kubernetes client: %v", err)
-	}
-
-	// Create dynamic client for CRD operations
-	dynamicClient, err = dynamic.NewForConfig(config)
-	if err != nil {
-		return fmt.Errorf("failed to create dynamic client: %v", err)
-	}
-
-	// Save base config for per-request impersonation/user-token clients
-	baseKubeConfig = config
-
-	return nil
-}
-
-// forwardedIdentityMiddleware populates Gin context from common OAuth proxy headers
-func forwardedIdentityMiddleware() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		if v := c.GetHeader("X-Forwarded-User"); v != "" {
-			c.Set("userID", v)
-		}
-		// Prefer preferred username; fallback to user id
-		name := c.GetHeader("X-Forwarded-Preferred-Username")
-		if name == "" {
-			name = c.GetHeader("X-Forwarded-User")
-		}
-		if name != "" {
-			c.Set("userName", name)
-		}
-		if v := c.GetHeader("X-Forwarded-Email"); v != "" {
-			c.Set("userEmail", v)
-		}
-		if v := c.GetHeader("X-Forwarded-Groups"); v != "" {
-			c.Set("userGroups", strings.Split(v, ","))
-		}
-		// Also expose access token if present
-		auth := c.GetHeader("Authorization")
-		if auth != "" {
-			c.Set("authorizationHeader", auth)
-		}
-		if v := c.GetHeader("X-Forwarded-Access-Token"); v != "" {
-			c.Set("forwardedAccessToken", v)
-		}
-		c.Next()
-	}
 }
 
 // Type aliases to types package - preserves backward compatibility
