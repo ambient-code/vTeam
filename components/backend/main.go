@@ -53,6 +53,12 @@ func main() {
 	pvcBaseDir = server.PvcBaseDir
 	baseKubeConfig = server.BaseKubeConfig
 
+	// Initialize content handlers
+	handlers.StateBaseDir = stateBaseDir
+	handlers.GitPushRepo = gitPushRepo
+	handlers.GitAbandonRepo = gitAbandonRepo
+	handlers.GitDiffRepo = gitDiffRepo
+
 	// Content service mode
 	if os.Getenv("CONTENT_SERVICE_MODE") == "true" {
 		if err := server.RunContentService(registerContentRoutes); err != nil {
@@ -68,12 +74,12 @@ func main() {
 }
 
 func registerContentRoutes(r *gin.Engine) {
-	r.POST("/content/write", contentWrite)
-	r.GET("/content/file", contentRead)
-	r.GET("/content/list", contentList)
-	r.POST("/content/github/push", contentGitPush)
-	r.POST("/content/github/abandon", contentGitAbandon)
-	r.GET("/content/github/diff", contentGitDiff)
+	r.POST("/content/write", handlers.ContentWrite)
+	r.GET("/content/file", handlers.ContentRead)
+	r.GET("/content/list", handlers.ContentList)
+	r.POST("/content/github/push", handlers.ContentGitPush)
+	r.POST("/content/github/abandon", handlers.ContentGitAbandon)
+	r.GET("/content/github/diff", handlers.ContentGitDiff)
 }
 
 func registerRoutes(r *gin.Engine) {
