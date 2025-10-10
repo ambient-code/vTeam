@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
 import { Button } from "@/components/ui/button";
@@ -17,11 +17,6 @@ export default function ProjectSessionsListPage({ params }: { params: Promise<{ 
   const [sessions, setSessions] = useState<AgenticSession[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [actionLoading, setActionLoading] = useState<Record<string, string>>({});
-  const [changesMap, setChangesMap] = useState<Record<string, { label: string; count: number }>>({});
-  // Keep a signature of sessions to avoid redundant diff calls on re-renders
-  const lastDiffSignatureRef = useRef<string>("");
-  const diffInFlightRef = useRef<boolean>(false);
-  const lastDiffRunAtRef = useRef<number>(0);
 
   const fetchSessions = async () => {
     if (!projectName) return;
@@ -47,79 +42,8 @@ export default function ProjectSessionsListPage({ params }: { params: Promise<{ 
       const i = setInterval(fetchSessions, 10000);
       return () => clearInterval(i);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectName]);
-
-  // Compute changes summary per session (sum across repos via diff API)
-  useEffect(() => {
-    if (!sessions || sessions.length === 0 || !projectName) return;
-    if (typeof document !== 'undefined' && document.hidden) return;
-    // Build a stable signature of sessions that affects diffs
-    const signature = JSON.stringify(
-      sessions.map((s) => ({
-        n: s.metadata?.name,
-        rs: Array.isArray(s.spec?.repos) ? (s.spec!.repos as any[]).map((r: any) => r?.status || "") : [],
-      }))
-    );
-    if (signature === lastDiffSignatureRef.current) return; // No meaningful change
-    // Throttle to at most once every 30s
-    const now = Date.now();
-    if (now - lastDiffRunAtRef.current < 30000) return;
-    if (diffInFlightRef.current) return;
-    lastDiffSignatureRef.current = signature;
-
-    const run = async () => {
-      diffInFlightRef.current = true;
-      const apiUrl = getApiUrl();
-      const next: Record<string, { label: string; count: number }> = {};
-      await Promise.all((sessions || []).map(async (s) => {
-        try {
-          const sessionName = s.metadata.name;
-          const repos = Array.isArray(s.spec?.repos) ? (s.spec!.repos as any[]) : ([] as any[]);
-          const statuses = repos.map((r:any)=> (r?.status as string)||"");
-          const allPushed = statuses.length>0 && statuses.every((st:string)=> st==='pushed');
-          if (allPushed) {
-            next[sessionName] = statuses.some((st:string)=> st==='pushed') ? { label: 'pushed', count: 0 } : { label: 'no changes', count: 0 };
-            return;
-          }
-          const counts = await Promise.all(repos.map(async (r, idx) => {
-            const url = (r?.input?.url as string) || "";
-            const status = (r?.status as string) || '';
-            if (!url) return 0;
-            // Only compute diffs for repos without a final status; 'pushed'/'abandoned' are final
-            if (status === 'pushed' || status === 'abandoned') return 0;
-            const folder = (() => {
-              try {
-                const cleaned = url.replace(/^git@([^:]+):/, "https://$1/");
-                const u = new URL(cleaned);
-                const segs = u.pathname.split('/').filter(Boolean);
-                const last = segs[segs.length-1] || "repo";
-                return last.replace(/\.git$/i, "");
-              } catch {
-                const parts = url.split('/');
-                const last = parts[parts.length-1] || "repo";
-                return last.replace(/\.git$/i, "");
-              }
-            })();
-            const qs = new URLSearchParams({ repoIndex: String(idx), repoPath: `/sessions/${sessionName}/workspace/${folder}` });
-            const resp = await fetch(`${apiUrl}/projects/${encodeURIComponent(projectName)}/agentic-sessions/${encodeURIComponent(sessionName)}/github/diff?${qs.toString()}`);
-            if (!resp.ok) return 0;
-            const data = await resp.json();
-            const total = Number(data.added||0)+Number(data.modified||0)+Number(data.deleted||0)+Number(data.renamed||0)+Number(data.untracked||0);
-            return total;
-          }));
-          const total = counts.reduce((a,b)=>a+b,0);
-          if (total > 0) next[s.metadata.name] = { label: `diff ${total}`, count: total };
-          else if (allPushed && statuses.some((st:string)=> st==='pushed')) next[s.metadata.name] = { label: "pushed", count: 0 };
-          else next[s.metadata.name] = { label: "no changes", count: 0 };
-        } catch { /* ignore per-row errors */ }
-      }));
-      setChangesMap(next);
-      lastDiffRunAtRef.current = Date.now();
-      diffInFlightRef.current = false;
-    };
-
-    run();
-  }, [sessions, projectName]);
 
   const handleStop = async (sessionName: string) => {
     setActionLoading((prev) => ({ ...prev, [sessionName]: "stopping" }));
@@ -216,7 +140,6 @@ export default function ProjectSessionsListPage({ params }: { params: Promise<{ 
                   <TableRow>
                     <TableHead className="min-w-[180px]">Name</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead>Changes</TableHead>
                     <TableHead>Mode</TableHead>
                         <TableHead className="hidden md:table-cell">Model</TableHead>
                     <TableHead className="hidden lg:table-cell">Created</TableHead>
@@ -245,16 +168,6 @@ export default function ProjectSessionsListPage({ params }: { params: Promise<{ 
                       </TableCell>
                       <TableCell>
                         <span className="text-sm">{session.status?.phase || "Pending"}</span>
-                      </TableCell>
-                      <TableCell>
-                        {(() => {
-                          const sName = session.metadata.name;
-                          const ch = changesMap[sName];
-                          if (!ch) return <span className="text-xs text-muted-foreground">—</span>;
-                          if (ch.label === 'no changes') return <span className="text-xs text-muted-foreground">no changes</span>;
-                          if (ch.label === 'pushed') return <span className="text-xs px-2 py-0.5 rounded border bg-green-50 text-green-700">pushed</span>;
-                          return <span className="text-xs px-2 py-0.5 rounded border">{ch.label}</span>;
-                        })()}
                       </TableCell>
                       <TableCell>
                         <span className="text-xs px-2 py-1 rounded border bg-gray-50">
