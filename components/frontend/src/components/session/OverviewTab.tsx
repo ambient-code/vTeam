@@ -15,14 +15,16 @@ type Props = {
   setPromptExpanded: (v: boolean) => void;
   latestLiveMessage: any;
   subagentStats: { uniqueCount: number; orderedTypes: string[] };
-  diffTotals: Record<number, { added: number; modified: number; deleted: number; renamed: number; untracked: number }>;
+  diffTotals: Record<number, { files: { added: number; removed: number }; total_added: number; total_removed: number }>;
   onPush: (repoIndex: number) => Promise<void>;
   onAbandon: (repoIndex: number) => Promise<void>;
   busyRepo: Record<number, 'push' | 'abandon' | null>;
   buildGithubCompareUrl: (inUrl: string, inBranch?: string, outUrl?: string, outBranch?: string) => string | null;
+  onRefreshDiff: () => Promise<void>;
 };
 
-export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromptExpanded, latestLiveMessage, subagentStats, diffTotals, onPush, onAbandon, busyRepo, buildGithubCompareUrl }) => {
+export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromptExpanded, latestLiveMessage, subagentStats, diffTotals, onPush, onAbandon, busyRepo, buildGithubCompareUrl, onRefreshDiff }) => {
+  const [refreshingDiff, setRefreshingDiff] = React.useState(false);
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -151,7 +153,25 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                 </div>
 
                 <div>
-                  <div className="text-xs font-semibold text-muted-foreground mb-2">Repositories</div>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="text-xs font-semibold text-muted-foreground">Repositories</div>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={async () => {
+                        setRefreshingDiff(true);
+                        try {
+                          await onRefreshDiff();
+                        } finally {
+                          setRefreshingDiff(false);
+                        }
+                      }}
+                      disabled={refreshingDiff}
+                      className="h-6 px-2"
+                    >
+                      <RefreshCw className={cn("h-3 w-3", refreshingDiff && "animate-spin")} />
+                    </Button>
+                  </div>
                   {session.spec.repos && session.spec.repos.length > 0 ? (
                     <div className="space-y-2">
                       {session.spec.repos.map((repo, idx) => {
@@ -161,8 +181,8 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                           ? repo.output.branch 
                           : `sessions/${session.metadata.name}`;
                         const compareUrl = buildGithubCompareUrl(repo.input.url, repo.input.branch || 'main', repo.output?.url, outBranch);
-                        const br = diffTotals[idx] || { added: 0, modified: 0, deleted: 0, renamed: 0, untracked: 0 };
-                        const total = br.added + br.modified + br.deleted + br.renamed + br.untracked;
+                        const br = diffTotals[idx] || { files: { added: 0, removed: 0 }, total_added: 0, total_removed: 0 };
+                        const hasChanges = br.files.added > 0 || br.files.removed > 0 || br.total_added > 0 || br.total_removed > 0;
                         return (
                           <div key={idx} className="flex items-center gap-2 text-sm font-mono">
                             {isMain && <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded font-sans">MAIN</span>}
@@ -186,7 +206,7 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                               </span>
                             )}
                             <span className="flex-1" />
-                            {total === 0 ? (
+                            {!hasChanges ? (
                               repo.status === 'pushed' && compareUrl ? (
                                 <a 
                                   href={compareUrl} 
@@ -201,13 +221,24 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                                 <span className="text-xs text-muted-foreground">no diff</span>
                               )
                             ) : (
-                              <span className="flex items-center gap-1">
-                                {br.added > 0 && <span className="text-xs px-1 py-0.5 rounded border bg-green-50 text-green-700">+ {br.added}</span>}
-                                {br.modified > 0 && <span className="text-xs px-1 py-0.5 rounded border bg-yellow-50 text-yellow-700">~ {br.modified}</span>}
-                                {br.deleted > 0 && <span className="text-xs px-1 py-0.5 rounded border bg-red-50 text-red-700">- {br.deleted}</span>}
+                              <span className="flex items-center gap-2">
+                                {(br.files.added > 0 || br.files.removed > 0) && (
+                                  <span className="text-xs px-1 py-0.5 rounded border bg-blue-50 text-blue-700">
+                                    {br.files.added > 0 && `+${br.files.added}`}
+                                    {br.files.added > 0 && br.files.removed > 0 && '/'}
+                                    {br.files.removed > 0 && `-${br.files.removed}`} files
+                                  </span>
+                                )}
+                                {(br.total_added > 0 || br.total_removed > 0) && (
+                                  <span className="text-xs px-1 py-0.5 rounded border bg-green-50 text-green-700">
+                                    {br.total_added > 0 && `+${br.total_added}`}
+                                    {br.total_added > 0 && br.total_removed > 0 && '/'}
+                                    {br.total_removed > 0 && `-${br.total_removed}`} lines
+                                  </span>
+                                )}
                               </span>
                             )}
-                            {total > 0 && compareUrl && repo.status === 'pushed' ? (
+                            {hasChanges && compareUrl && repo.status === 'pushed' ? (
                               <a 
                                 href={compareUrl} 
                                 target="_blank" 
@@ -218,7 +249,7 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                                 <ExternalLink className="h-3 w-3" />
                               </a>
                             ) : null}
-                            {total > 0 && (
+                            {hasChanges && (
                               repo.output?.url ? (
                                 <div className="flex items-center gap-2">
                                   <Button size="sm" variant="secondary" onClick={() => onPush(idx)}>{busyRepo[idx] === 'push' ? 'Pushing…' : 'Push'}</Button>

@@ -602,6 +602,11 @@ func createSession(c *gin.Context) {
 		session["spec"].(map[string]interface{})["interactive"] = *req.Interactive
 	}
 
+	// AutoPushOnComplete flag
+	if req.AutoPushOnComplete != nil {
+		session["spec"].(map[string]interface{})["autoPushOnComplete"] = *req.AutoPushOnComplete
+	}
+
 	// Set multi-repo configuration on spec
 	{
 		spec := session["spec"].(map[string]interface{})
@@ -1755,17 +1760,18 @@ func contentGitDiff(c *gin.Context) {
 
 	summary, err := gitDiffRepo(c.Request.Context(), repoDir)
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"added": 0, "modified": 0, "deleted": 0, "renamed": 0, "untracked": 0})
+		c.JSON(http.StatusOK, gin.H{
+			"files": gin.H{
+				"added":   0,
+				"removed": 0,
+			},
+			"total_added":   0,
+			"total_removed": 0,
+		})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"added":     summary.Added,
-		"modified":  summary.Modified,
-		"deleted":   summary.Deleted,
-		"renamed":   summary.Renamed,
-		"untracked": summary.Untracked,
-	})
+	c.JSON(http.StatusOK, summary)
 }
 
 // contentWrite handles POST /content/write when running in CONTENT_SERVICE_MODE

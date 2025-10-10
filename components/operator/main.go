@@ -303,6 +303,9 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 		outputBranch = v
 	}
 
+	// Read autoPushOnComplete flag
+	autoPushOnComplete, _, _ := unstructured.NestedBool(spec, "autoPushOnComplete")
+
 	// Create the Job
 	job := &batchv1.Job{
 		ObjectMeta: v1.ObjectMeta{
@@ -410,6 +413,7 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 									{Name: "LLM_TEMPERATURE", Value: fmt.Sprintf("%.2f", temperature)},
 									{Name: "LLM_MAX_TOKENS", Value: fmt.Sprintf("%d", maxTokens)},
 									{Name: "TIMEOUT", Value: fmt.Sprintf("%d", timeout)},
+									{Name: "AUTO_PUSH_ON_COMPLETE", Value: fmt.Sprintf("%t", autoPushOnComplete)},
 									{Name: "BACKEND_API_URL", Value: fmt.Sprintf("http://backend-service.%s.svc.cluster.local:8080/api", backendNamespace)},
 									// WebSocket URL used by runner-shell to connect back to backend
 									{Name: "WEBSOCKET_URL", Value: fmt.Sprintf("ws://backend-service.%s.svc.cluster.local:8080/api/projects/%s/sessions/%s/ws", backendNamespace, sessionNamespace, name)},
@@ -816,42 +820,42 @@ func monitorJob(jobName, sessionName, sessionNamespace string) {
 
 		// Check CR repo statuses; if session marked Completed/Stopped and all repos are finalized, cleanup
 		{
-				gvr := getAgenticSessionResource()
-				obj, err := dynamicClient.Resource(gvr).Namespace(sessionNamespace).Get(context.TODO(), sessionName, v1.GetOptions{})
-				if err == nil && obj != nil {
-					status, _, _ := unstructured.NestedMap(obj.Object, "status")
-					phase := ""
-					if v, ok := status["phase"].(string); ok {
-						phase = v
-					}
-					spec, _, _ := unstructured.NestedMap(obj.Object, "spec")
-					repos, _, _ := unstructured.NestedSlice(spec, "repos")
-					// Only finalize when there is at least one repo and ALL are in a final state
-					allFinal := false
-					if len(repos) > 0 {
-						allFinal = true
-						for _, r := range repos {
-							m, ok := r.(map[string]interface{})
-							if !ok {
-								continue
-							}
-							st, _ := m["status"].(string)
-							st = strings.ToLower(strings.TrimSpace(st))
-							if !(st == "pushed" || st == "abandoned") {
-								allFinal = false
-								break
-							}
+			gvr := getAgenticSessionResource()
+			obj, err := dynamicClient.Resource(gvr).Namespace(sessionNamespace).Get(context.TODO(), sessionName, v1.GetOptions{})
+			if err == nil && obj != nil {
+				status, _, _ := unstructured.NestedMap(obj.Object, "status")
+				phase := ""
+				if v, ok := status["phase"].(string); ok {
+					phase = v
+				}
+				spec, _, _ := unstructured.NestedMap(obj.Object, "spec")
+				repos, _, _ := unstructured.NestedSlice(spec, "repos")
+				// Only finalize when there is at least one repo and ALL are in a final state
+				allFinal := false
+				if len(repos) > 0 {
+					allFinal = true
+					for _, r := range repos {
+						m, ok := r.(map[string]interface{})
+						if !ok {
+							continue
+						}
+						st, _ := m["status"].(string)
+						st = strings.ToLower(strings.TrimSpace(st))
+						if !(st == "pushed" || st == "abandoned") {
+							allFinal = false
+							break
 						}
 					}
-					if (phase == "Completed" || phase == "Stopped") && allFinal {
-						log.Printf("All repos finalized for %s; cleaning up job and service", sessionName)
-						_ = deleteJobAndPerJobService(sessionNamespace, jobName, sessionName)
-						return
-					}
+				}
+				if (phase == "Completed" || phase == "Stopped") && allFinal {
+					log.Printf("All repos finalized for %s; cleaning up job and service", sessionName)
+					_ = deleteJobAndPerJobService(sessionNamespace, jobName, sessionName)
+					return
 				}
 			}
 		}
 	}
+}
 
 // getContainerStatusByName returns the ContainerStatus for a given container name
 func getContainerStatusByName(pod *corev1.Pod, name string) *corev1.ContainerStatus {

@@ -189,6 +189,7 @@ export default function NewProjectSessionPage({ params }: { params: Promise<{ na
         },
         timeout: values.timeout,
         interactive: values.interactive,
+        autoPushOnComplete: values.autoPushOnComplete,
       };
 
       if (prefillWorkspacePath) {
@@ -217,14 +218,6 @@ export default function NewProjectSessionPage({ params }: { params: Promise<{ na
         request.environmentVariables = {
           ...(request.environmentVariables || {}),
           AGENT_PERSONA: values.agentPersona,
-        };
-      }
-
-      // Auto-push toggle
-      if (values.autoPushOnComplete) {
-        request.environmentVariables = {
-          ...(request.environmentVariables || {}),
-          AUTO_PUSH_ON_COMPLETE: "true",
         };
       }
 

@@ -102,6 +102,10 @@ spec:
                 type: integer
                 default: 300
                 description: "Timeout in seconds for the agentic session"
+              autoPushOnComplete:
+                type: boolean
+                default: false
+                description: "When true, the runner will commit and push changes automatically after it finishes"
           status:
             type: object
             properties:

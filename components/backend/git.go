@@ -616,14 +616,15 @@ func gitAbandonRepo(ctx context.Context, repoDir string) error {
 
 // GitDiffSummary holds summary counts from git status --porcelain
 type GitDiffSummary struct {
-	Added      int `json:"added"`
-	Modified   int `json:"modified"`
-	Deleted    int `json:"deleted"`
-	Renamed    int `json:"renamed"`
-	Untracked  int `json:"untracked"`
+	Files struct {
+		Added   int `json:"added"`
+		Removed int `json:"removed"`
+	} `json:"files"`
+	TotalAdded   int `json:"total_added"`
+	TotalRemoved int `json:"total_removed"`
 }
 
-// gitDiffRepo returns porcelain-status summary counts for a repository directory
+// gitDiffRepo returns diff statistics comparing working directory to HEAD
 func gitDiffRepo(ctx context.Context, repoDir string) (*GitDiffSummary, error) {
 	// Validate repoDir exists
 	if fi, err := os.Stat(repoDir); err != nil || !fi.IsDir() {
@@ -642,35 +643,56 @@ func gitDiffRepo(ctx context.Context, repoDir string) (*GitDiffSummary, error) {
 		return stdout.String(), nil
 	}
 
-	out, err := run("git", "status", "--porcelain")
-	if err != nil {
-		return &GitDiffSummary{}, nil
-	}
-
-	lines := strings.Split(strings.TrimSpace(out), "\n")
 	summary := &GitDiffSummary{}
 
-	for _, ln := range lines {
-		if len(ln) < 2 {
-			continue
-		}
-		x, y := ln[0], ln[1]
-		code := string([]byte{x, y})
-		switch {
-		case strings.Contains(code, "A"):
-			summary.Added++
-		case strings.Contains(code, "M"):
-			summary.Modified++
-		case strings.Contains(code, "D"):
-			summary.Deleted++
-		case strings.Contains(strings.ToUpper(code), "R"):
-			summary.Renamed++
-		case code == "??":
-			summary.Untracked++
+	// Get numstat for modified files (working tree vs HEAD)
+	numstatOut, err := run("git", "diff", "--numstat", "HEAD")
+	if err == nil && strings.TrimSpace(numstatOut) != "" {
+		lines := strings.Split(strings.TrimSpace(numstatOut), "\n")
+		for _, ln := range lines {
+			if ln == "" {
+				continue
+			}
+			parts := strings.Fields(ln)
+			if len(parts) < 3 {
+				continue
+			}
+			added, removed := parts[0], parts[1]
+			// Parse additions
+			if added != "-" {
+				var n int
+				fmt.Sscanf(added, "%d", &n)
+				summary.TotalAdded += n
+			}
+			// Parse deletions
+			if removed != "-" {
+				var n int
+				fmt.Sscanf(removed, "%d", &n)
+				summary.TotalRemoved += n
+			}
 		}
 	}
 
-	log.Printf("gitDiffRepo: summary added=%d modified=%d deleted=%d renamed=%d untracked=%d",
-		summary.Added, summary.Modified, summary.Deleted, summary.Renamed, summary.Untracked)
+	// Get file status to count added/removed files
+	statusOut, err := run("git", "status", "--porcelain")
+	if err == nil && strings.TrimSpace(statusOut) != "" {
+		lines := strings.Split(strings.TrimSpace(statusOut), "\n")
+		for _, ln := range lines {
+			if len(ln) < 2 {
+				continue
+			}
+			x, y := ln[0], ln[1]
+			code := string([]byte{x, y})
+			switch {
+			case strings.Contains(code, "A") || code == "??":
+				summary.Files.Added++
+			case strings.Contains(code, "D"):
+				summary.Files.Removed++
+			}
+		}
+	}
+
+	log.Printf("gitDiffRepo: files.added=%d files.removed=%d total_added=%d total_removed=%d",
+		summary.Files.Added, summary.Files.Removed, summary.TotalAdded, summary.TotalRemoved)
 	return summary, nil
 }

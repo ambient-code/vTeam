@@ -390,6 +390,7 @@ type CreateAgenticSessionRequest struct {
 	// Multi-repo support (unified mapping)
 	Repos                []SessionRepoMapping `json:"repos,omitempty"`
 	MainRepoIndex        *int                 `json:"mainRepoIndex,omitempty"`
+	AutoPushOnComplete   *bool                `json:"autoPushOnComplete,omitempty"`
 	UserContext          *UserContext         `json:"userContext,omitempty"`
 	BotAccount           *BotAccountRef       `json:"botAccount,omitempty"`
 	ResourceOverrides    *ResourceOverrides   `json:"resourceOverrides,omitempty"`

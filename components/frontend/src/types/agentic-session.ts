@@ -165,6 +165,7 @@ export type CreateAgenticSessionRequest = {
 	// Multi-repo support
 	repos?: SessionRepo[];
 	mainRepoIndex?: number;
+	autoPushOnComplete?: boolean;
 	labels?: Record<string, string>;
 	annotations?: Record<string, string>;
 };

@@ -405,10 +405,10 @@ export default function ProjectRFEDetailPage() {
                                             displayName: `${workflow.title} - ${phase}`,
                                             interactive: true,
                                             workspacePath: workflowWorkspace,
+                                            autoPushOnComplete: true,
                                             environmentVariables: {
                                               WORKFLOW_PHASE: phase,
                                               PARENT_RFE: workflow.id,
-                                              AUTO_PUSH_ON_COMPLETE: "true",
                                             },
                                             labels: {
                                               project,
