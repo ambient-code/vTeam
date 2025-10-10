@@ -144,7 +144,7 @@ jobs:
 
   deploy-to-openshift:
     runs-on: ubuntu-latest
-    needs: [detect-changes, build-and-push]
+    needs: [detect-changes, build-and-push, patch-yaml]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && (needs.detect-changes.outputs.frontend == 'true' || needs.detect-changes.outputs.backend == 'true' || needs.detect-changes.outputs.operator == 'true' || needs.detect-changes.outputs.claude-runner == 'true')
     strategy:
       matrix:
@@ -197,7 +197,7 @@ jobs:
 
   rollout-changes:
     runs-on: ubuntu-latest
-    needs: [detect-changes, build-and-push]
+    needs: [detect-changes, build-and-push, patch-yaml, deploy-to-openshift]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && (needs.detect-changes.outputs.frontend == 'true' || needs.detect-changes.outputs.backend == 'true' || needs.detect-changes.outputs.operator == 'true' || needs.detect-changes.outputs.claude-runner == 'true')
     steps:
       - name: Checkout code
