@@ -237,6 +237,7 @@ class ClaudeCodeAdapter:
             interactive = str(self.context.get_env('INTERACTIVE', 'false')).strip().lower() in ('1', 'true', 'yes')
 
             async def process_response_stream(client_obj):
+                nonlocal result_payload
                 async for message in client_obj.receive_response():
                     logging.info(f"[ClaudeSDKClient]: {message}")
 
