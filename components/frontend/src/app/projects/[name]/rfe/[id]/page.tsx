@@ -408,6 +408,7 @@ export default function ProjectRFEDetailPage() {
                                             environmentVariables: {
                                               WORKFLOW_PHASE: phase,
                                               PARENT_RFE: workflow.id,
+                                              AUTO_PUSH_ON_COMPLETE: "true",
                                             },
                                             labels: {
                                               project,
