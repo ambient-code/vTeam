@@ -2,24 +2,21 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"os"
 
+	"ambient-code-backend/crd"
 	"ambient-code-backend/git"
 	"ambient-code-backend/github"
 	"ambient-code-backend/handlers"
 	"ambient-code-backend/jira"
+	"ambient-code-backend/k8s"
 	"ambient-code-backend/server"
 	"ambient-code-backend/types"
 	"ambient-code-backend/websocket"
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
-	"k8s.io/apimachinery/pkg/api/errors"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -63,11 +60,14 @@ func main() {
 	baseKubeConfig = server.BaseKubeConfig
 
 	// Initialize git package
-	git.GetProjectSettingsResource = getProjectSettingsResource
+	git.GetProjectSettingsResource = k8s.GetProjectSettingsResource
 	git.GetGitHubInstallation = func(ctx context.Context, userID string) (interface{}, error) {
 		return github.GetInstallation(ctx, userID)
 	}
 	git.GitHubTokenManager = github.Manager
+
+	// Initialize CRD package
+	crd.GetRFEWorkflowResource = k8s.GetRFEWorkflowResource
 
 	// Initialize content handlers
 	handlers.StateBaseDir = stateBaseDir
@@ -81,18 +81,18 @@ func main() {
 	handlers.GithubTokenManager = github.Manager
 
 	// Initialize project handlers
-	handlers.GetOpenShiftProjectResource = getOpenShiftProjectResource
+	handlers.GetOpenShiftProjectResource = k8s.GetOpenShiftProjectResource
 
 	// Initialize session handlers
-	handlers.GetAgenticSessionV1Alpha1Resource = getAgenticSessionV1Alpha1Resource
+	handlers.GetAgenticSessionV1Alpha1Resource = k8s.GetAgenticSessionV1Alpha1Resource
 	handlers.DynamicClient = dynamicClient
 	handlers.ParseStatus = parseStatus
 	handlers.GetGitHubToken = git.GetGitHubToken
 	handlers.DeriveRepoFolderFromURL = git.DeriveRepoFolderFromURL
 
 	// Initialize RFE workflow handlers
-	handlers.GetRFEWorkflowResource = getRFEWorkflowResource
-	handlers.UpsertProjectRFEWorkflowCR = upsertProjectRFEWorkflowCR
+	handlers.GetRFEWorkflowResource = k8s.GetRFEWorkflowResource
+	handlers.UpsertProjectRFEWorkflowCR = crd.UpsertProjectRFEWorkflowCR
 	handlers.PerformRepoSeeding = performRepoSeeding
 	handlers.CheckRepoSeeding = checkRepoSeeding
 	handlers.RfeFromUnstructured = jira.RFEFromUnstructured
@@ -100,8 +100,8 @@ func main() {
 	// Initialize Jira handler
 	jiraHandler := &jira.Handler{
 		GetK8sClientsForRequest:    getK8sClientsForRequest,
-		GetProjectSettingsResource: getProjectSettingsResource,
-		GetRFEWorkflowResource:     getRFEWorkflowResource,
+		GetProjectSettingsResource: k8s.GetProjectSettingsResource,
+		GetRFEWorkflowResource:     k8s.GetRFEWorkflowResource,
 	}
 
 	// Initialize repo handlers
@@ -243,124 +243,6 @@ type ResourceOverrides = types.ResourceOverrides
 type AmbientProject = types.AmbientProject
 type CreateProjectRequest = types.CreateProjectRequest
 
-// getAgenticSessionV1Alpha1Resource returns the GroupVersionResource for AgenticSession v1alpha1
-func getAgenticSessionV1Alpha1Resource() schema.GroupVersionResource {
-	return schema.GroupVersionResource{
-		Group:    "vteam.ambient-code",
-		Version:  "v1alpha1",
-		Resource: "agenticsessions",
-	}
-}
-
-// getProjectSettingsResource returns the GroupVersionResource for ProjectSettings
-func getProjectSettingsResource() schema.GroupVersionResource {
-	return schema.GroupVersionResource{
-		Group:    "vteam.ambient-code",
-		Version:  "v1alpha1",
-		Resource: "projectsettings",
-	}
-}
-
-// getRFEWorkflowResource returns the GroupVersionResource for RFEWorkflow CRD
-func getRFEWorkflowResource() schema.GroupVersionResource {
-	return schema.GroupVersionResource{
-		Group:    "vteam.ambient-code",
-		Version:  "v1alpha1",
-		Resource: "rfeworkflows",
-	}
-}
-
-// ===== CRD helpers for project-scoped RFE workflows =====
-
-func rfeWorkflowToCRObject(workflow *RFEWorkflow) map[string]interface{} {
-	// Build spec
-	spec := map[string]interface{}{
-		"title":         workflow.Title,
-		"description":   workflow.Description,
-		"workspacePath": workflow.WorkspacePath,
-	}
-	if len(workflow.JiraLinks) > 0 {
-		links := make([]map[string]interface{}, 0, len(workflow.JiraLinks))
-		for _, l := range workflow.JiraLinks {
-			links = append(links, map[string]interface{}{"path": l.Path, "jiraKey": l.JiraKey})
-		}
-		spec["jiraLinks"] = links
-	}
-	if workflow.ParentOutcome != nil && *workflow.ParentOutcome != "" {
-		spec["parentOutcome"] = *workflow.ParentOutcome
-	}
-
-	// Prefer umbrellaRepo/supportingRepos; fallback to legacy repositories array
-	if workflow.UmbrellaRepo != nil {
-		u := map[string]interface{}{"url": workflow.UmbrellaRepo.URL}
-		if workflow.UmbrellaRepo.Branch != nil {
-			u["branch"] = *workflow.UmbrellaRepo.Branch
-		}
-		spec["umbrellaRepo"] = u
-	}
-	if len(workflow.SupportingRepos) > 0 {
-		items := make([]map[string]interface{}, 0, len(workflow.SupportingRepos))
-		for _, r := range workflow.SupportingRepos {
-			rm := map[string]interface{}{"url": r.URL}
-			if r.Branch != nil {
-				rm["branch"] = *r.Branch
-			}
-			items = append(items, rm)
-		}
-		spec["supportingRepos"] = items
-	}
-
-	labels := map[string]string{
-		"project":      workflow.Project,
-		"rfe-workflow": workflow.ID,
-	}
-
-	return map[string]interface{}{
-		"apiVersion": "vteam.ambient-code/v1alpha1",
-		"kind":       "RFEWorkflow",
-		"metadata": map[string]interface{}{
-			"name":      workflow.ID,
-			"namespace": workflow.Project,
-			"labels":    labels,
-		},
-		"spec": spec,
-	}
-}
-
-func upsertProjectRFEWorkflowCR(dyn dynamic.Interface, workflow *RFEWorkflow) error {
-	if workflow.Project == "" {
-		// Only manage CRD for project-scoped workflows
-		return nil
-	}
-	if dyn == nil {
-		return fmt.Errorf("no dynamic client provided")
-	}
-	gvr := getRFEWorkflowResource()
-	obj := &unstructured.Unstructured{Object: rfeWorkflowToCRObject(workflow)}
-	// Try create, if exists then update
-	_, err := dyn.Resource(gvr).Namespace(workflow.Project).Create(context.TODO(), obj, v1.CreateOptions{})
-	if err != nil {
-		if errors.IsAlreadyExists(err) {
-			_, uerr := dyn.Resource(gvr).Namespace(workflow.Project).Update(context.TODO(), obj, v1.UpdateOptions{})
-			if uerr != nil {
-				return fmt.Errorf("failed to update RFEWorkflow CR: %v", uerr)
-			}
-			return nil
-		}
-		return fmt.Errorf("failed to create RFEWorkflow CR: %v", err)
-	}
-	return nil
-}
-
-// getOpenShiftProjectResource returns the GroupVersionResource for OpenShift Project
-func getOpenShiftProjectResource() schema.GroupVersionResource {
-	return schema.GroupVersionResource{
-		Group:    "project.openshift.io",
-		Version:  "v1",
-		Resource: "projects",
-	}
-}
-
 func parseStatus(status map[string]interface{}) *AgenticSessionStatus {
 	result := &AgenticSessionStatus{}
 
@@ -415,42 +297,38 @@ func parseStatus(status map[string]interface{}) *AgenticSessionStatus {
 	return result
 }
 
-// Adapter types for git package interfaces
-type repoAdapter struct {
+// Adapter types to implement git package interfaces for RFEWorkflow
+type rfeWorkflowAdapter struct {
 	wf *RFEWorkflow
 }
 
-type gitRepoAdapter struct {
+type gitRepositoryAdapter struct {
 	repo *types.GitRepository
 }
 
-type gitRepo interface {
-	GetURL() string
-	GetBranch() *string
-}
-
-// Wrapper for git.PerformRepoSeeding that accepts *RFEWorkflow
+// Wrapper for git.PerformRepoSeeding that adapts *RFEWorkflow to git.Workflow interface
 func performRepoSeeding(ctx context.Context, wf *RFEWorkflow, githubToken, agentURL, agentBranch, agentPath, specKitVersion, specKitTemplate string) error {
-	adapter := &repoAdapter{wf: wf}
-	return git.PerformRepoSeeding(ctx, adapter, githubToken, agentURL, agentBranch, agentPath, specKitVersion, specKitTemplate)
+	return git.PerformRepoSeeding(ctx, &rfeWorkflowAdapter{wf: wf}, githubToken, agentURL, agentBranch, agentPath, specKitVersion, specKitTemplate)
 }
 
-// GetUmbrellaRepo implements the workflow interface for git.PerformRepoSeeding
-func (r *repoAdapter) GetUmbrellaRepo() gitRepo {
+// GetUmbrellaRepo implements git.Workflow interface
+func (r *rfeWorkflowAdapter) GetUmbrellaRepo() git.GitRepo {
 	if r.wf.UmbrellaRepo == nil {
 		return nil
 	}
-	return &gitRepoAdapter{repo: r.wf.UmbrellaRepo}
+	return &gitRepositoryAdapter{repo: r.wf.UmbrellaRepo}
 }
 
-func (g *gitRepoAdapter) GetURL() string {
+// GetURL implements git.GitRepo interface
+func (g *gitRepositoryAdapter) GetURL() string {
 	if g.repo == nil {
 		return ""
 	}
 	return g.repo.URL
 }
 
-func (g *gitRepoAdapter) GetBranch() *string {
+// GetBranch implements git.GitRepo interface
+func (g *gitRepositoryAdapter) GetBranch() *string {
 	if g.repo == nil {
 		return nil
 	}

@@ -255,24 +255,21 @@ func checkGitHubPathExists(ctx context.Context, owner, repo, branch, path, token
 	return false, fmt.Errorf("GitHub API error: %s (body: %s)", resp.Status, string(body))
 }
 
+// GitRepo interface for repository information
+type GitRepo interface {
+	GetURL() string
+	GetBranch() *string
+}
+
+// Workflow interface for RFE workflows
+type Workflow interface {
+	GetUmbrellaRepo() GitRepo
+}
+
 // PerformRepoSeeding performs the actual seeding operations
-// wf parameter should be *RFEWorkflow from main package
-func PerformRepoSeeding(ctx context.Context, wf interface{}, githubToken, agentURL, agentBranch, agentPath, specKitVersion, specKitTemplate string) error {
-	// Type assertion helpers for RFEWorkflow
-	type gitRepo interface {
-		GetURL() string
-		GetBranch() *string
-	}
-	type workflow interface {
-		GetUmbrellaRepo() gitRepo
-	}
-
-	w, ok := wf.(workflow)
-	if !ok {
-		return fmt.Errorf("invalid workflow type")
-	}
-
-	umbrellaRepo := w.GetUmbrellaRepo()
+// wf parameter should implement the Workflow interface
+func PerformRepoSeeding(ctx context.Context, wf Workflow, githubToken, agentURL, agentBranch, agentPath, specKitVersion, specKitTemplate string) error {
+	umbrellaRepo := wf.GetUmbrellaRepo()
 	if umbrellaRepo == nil {
 		return fmt.Errorf("workflow has no umbrella repo")
 	}
