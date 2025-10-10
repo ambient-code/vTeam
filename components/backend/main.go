@@ -76,6 +76,14 @@ func main() {
 	handlers.DeriveRepoFolderFromURL = deriveRepoFolderFromURL
 	handlers.BoolPtr = boolPtr // Use the one from handlers.go main package
 
+	// Initialize RFE workflow handlers
+	handlers.GetRFEWorkflowResource = getRFEWorkflowResource
+	handlers.UpsertProjectRFEWorkflowCR = upsertProjectRFEWorkflowCR
+	handlers.PerformRepoSeeding = performRepoSeeding
+	handlers.CheckRepoSeeding = checkRepoSeeding
+	handlers.StringPtr = stringPtr
+	handlers.RfeFromUnstructured = rfeFromUnstructured
+
 	// Content service mode
 	if os.Getenv("CONTENT_SERVICE_MODE") == "true" {
 		if err := server.RunContentService(registerContentRoutes); err != nil {
@@ -130,22 +138,22 @@ func registerRoutes(r *gin.Engine) {
 			projectGroup.POST("/agentic-sessions/:sessionName/github/abandon", handlers.AbandonSessionRepo)
 			projectGroup.GET("/agentic-sessions/:sessionName/github/diff", handlers.DiffSessionRepo)
 
-			projectGroup.GET("/rfe-workflows", listProjectRFEWorkflows)
-			projectGroup.POST("/rfe-workflows", createProjectRFEWorkflow)
-			projectGroup.GET("/rfe-workflows/:id", getProjectRFEWorkflow)
-			projectGroup.GET("/rfe-workflows/:id/summary", getProjectRFEWorkflowSummary)
-			projectGroup.DELETE("/rfe-workflows/:id", deleteProjectRFEWorkflow)
-			projectGroup.POST("/rfe-workflows/:id/seed", seedProjectRFEWorkflow)
-			projectGroup.GET("/rfe-workflows/:id/check-seeding", checkProjectRFEWorkflowSeeding)
+			projectGroup.GET("/rfe-workflows", handlers.ListProjectRFEWorkflows)
+			projectGroup.POST("/rfe-workflows", handlers.CreateProjectRFEWorkflow)
+			projectGroup.GET("/rfe-workflows/:id", handlers.GetProjectRFEWorkflow)
+			projectGroup.GET("/rfe-workflows/:id/summary", handlers.GetProjectRFEWorkflowSummary)
+			projectGroup.DELETE("/rfe-workflows/:id", handlers.DeleteProjectRFEWorkflow)
+			projectGroup.POST("/rfe-workflows/:id/seed", handlers.SeedProjectRFEWorkflow)
+			projectGroup.GET("/rfe-workflows/:id/check-seeding", handlers.CheckProjectRFEWorkflowSeeding)
 
 			projectGroup.GET("/sessions/:sessionId/ws", handleSessionWebSocket)
 			projectGroup.GET("/sessions/:sessionId/messages", getSessionMessagesWS)
 			projectGroup.POST("/sessions/:sessionId/messages", postSessionMessageWS)
 			projectGroup.POST("/rfe-workflows/:id/jira", publishWorkflowFileToJira)
-			projectGroup.GET("/rfe-workflows/:id/jira", getWorkflowJira)
-			projectGroup.GET("/rfe-workflows/:id/sessions", listProjectRFEWorkflowSessions)
-			projectGroup.POST("/rfe-workflows/:id/sessions/link", addProjectRFEWorkflowSession)
-			projectGroup.DELETE("/rfe-workflows/:id/sessions/:sessionName", removeProjectRFEWorkflowSession)
+			projectGroup.GET("/rfe-workflows/:id/jira", handlers.GetWorkflowJira)
+			projectGroup.GET("/rfe-workflows/:id/sessions", handlers.ListProjectRFEWorkflowSessions)
+			projectGroup.POST("/rfe-workflows/:id/sessions/link", handlers.AddProjectRFEWorkflowSession)
+			projectGroup.DELETE("/rfe-workflows/:id/sessions/:sessionName", handlers.RemoveProjectRFEWorkflowSession)
 
 			projectGroup.GET("/permissions", handlers.ListProjectPermissions)
 			projectGroup.POST("/permissions", handlers.AddProjectPermission)
