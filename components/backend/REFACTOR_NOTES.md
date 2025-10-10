@@ -26,7 +26,7 @@
 ## Next Steps: Code Organization Refactor
 
 ### Current State (2025-01-10)
-- ✅ `handlers.go`: 3614 lines (in progress - content handlers extracted)
+- ✅ `handlers.go`: ~3260 lines (in progress - content, GitHub auth, and project handlers extracted)
 - ✅ `main.go`: 162 lines (will eventually be ~20-30 lines following Go best practices)
 - ✅ All Jira integration complete
 - ✅ Types package created (`types/common.go`, `types/session.go`, `types/rfe.go`, `types/project.go`)
@@ -34,6 +34,7 @@
 - ✅ Health handler extracted (`handlers/health.go`)
 - ✅ Content handlers extracted (`handlers/content.go`)
 - ✅ GitHub auth handlers extracted (`handlers/github_auth.go`)
+- ✅ Project handlers extracted (`handlers/projects.go`)
 - ✅ Build clean
 
 ### Refactor Goals
@@ -95,10 +96,12 @@
 - ✅ Build verified clean
 - ✅ Commit: "refactor: extract GitHub auth handlers"
 
-**Commit 4:** Project handlers
-- Extract project CRUD endpoints
-- Create `handlers/projects.go`
-- Commit: "refactor: extract project handlers"
+**Commit 4:** ✅ Project handlers
+- ✅ Extract project CRUD endpoints (listProjects, createProject, getProject, deleteProject, updateProject)
+- ✅ Create `handlers/projects.go` (384 lines, 5 handlers)
+- ✅ Removed from `handlers.go` (lines 1910-2263 deleted)
+- ✅ Build verified clean
+- ✅ Commit: "refactor: extract project handlers"
 
 **Commit 5:** Permissions handlers
 - Extract RBAC + access key endpoints

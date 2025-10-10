@@ -139,13 +139,13 @@ func registerRoutes(r *gin.Engine) {
 			projectGroup.POST("/rfe-workflows/:id/sessions/link", addProjectRFEWorkflowSession)
 			projectGroup.DELETE("/rfe-workflows/:id/sessions/:sessionName", removeProjectRFEWorkflowSession)
 
-			projectGroup.GET("/permissions", listProjectPermissions)
-			projectGroup.POST("/permissions", addProjectPermission)
-			projectGroup.DELETE("/permissions/:subjectType/:subjectName", removeProjectPermission)
+			projectGroup.GET("/permissions", handlers.ListProjectPermissions)
+			projectGroup.POST("/permissions", handlers.AddProjectPermission)
+			projectGroup.DELETE("/permissions/:subjectType/:subjectName", handlers.RemoveProjectPermission)
 
-			projectGroup.GET("/keys", listProjectKeys)
-			projectGroup.POST("/keys", createProjectKey)
-			projectGroup.DELETE("/keys/:keyId", deleteProjectKey)
+			projectGroup.GET("/keys", handlers.ListProjectKeys)
+			projectGroup.POST("/keys", handlers.CreateProjectKey)
+			projectGroup.DELETE("/keys/:keyId", handlers.DeleteProjectKey)
 
 			projectGroup.GET("/secrets", listNamespaceSecrets)
 			projectGroup.GET("/runner-secrets/config", getRunnerSecretsConfig)
