@@ -1,8 +1,21 @@
 # Backend Refactor & Jira Integration - Progress Notes
 
-## Status: ✅ COMPLETE
+## Status: 🔄 REBASED ON PR #152 - READY FOR HANDLERS REFACTOR
 
-All implementation tasks completed and build verified successfully!
+### Recent Progress (2025-01-09)
+
+✅ **Successfully rebased on PR #152** (merged into upstream/main)
+- Resolved conflicts in `git.go` (merged both Jira helpers and GitHub file reading)
+- Resolved conflicts in `main.go` (kept types package refactoring with aliases)
+- Fixed missing fields in types after merge:
+  - Added `EnvironmentVariables` to `AgenticSessionSpec`
+  - Added `Status` to `SessionRepoMapping`
+- ✅ Build verified clean with no errors
+
+✅ **Jira Integration Complete**
+- All Jira integration features working
+- Types refactored into `types/` package
+- Frontend has GitHub App note in Project Settings
 
 ## Goal
 Restore Jira integration from commit `9d76b17b6ca62d1f3` to current codebase, with improvements.
@@ -529,22 +542,51 @@ Support: GitHub/Gitea, Jira Cloud/Server/Linear
 
 ---
 
-## Next Steps: Code Organization
+## Next Steps: Code Organization (handlers.go Refactor)
 
 The backend is now functional but needs refactoring:
 
-1. **handlers.go is too large** (~3100 lines) - break into focused modules
-2. **Suggested structure:**
-   ```
-   handlers/
-   ├── sessions.go      - AgenticSession CRUD
-   ├── rfe.go           - RFEWorkflow CRUD + seeding
-   ├── projects.go      - Project management
-   ├── permissions.go   - RBAC + access keys
-   ├── secrets.go       - Runner secrets management
-   └── middleware.go    - Auth + validation
-   ```
-3. **Benefits:**
-   - Easier navigation and maintenance
-   - Clear separation of concerns
-   - Better testability
+### Current State
+- `handlers.go`: **3310 lines** (after PR #152 merge)
+- All Jira integration complete
+- Types package created (`types/common.go`, `types/session.go`, `types/rfe.go`, `types/project.go`)
+- Build clean ✅
+
+### Planned Refactor Structure
+
+Break `handlers.go` into focused modules:
+
+```
+handlers/
+├── middleware.go    - Auth, validation, K8s client helpers (~300 lines)
+├── sessions.go      - AgenticSession CRUD + lifecycle (~900 lines)
+├── projects.go      - Project CRUD (~350 lines)
+├── permissions.go   - RBAC + access keys (~400 lines)
+├── rfe.go           - RFEWorkflow CRUD + seeding + sessions (~700 lines)
+└── secrets.go       - Runner secrets management (~350 lines)
+```
+
+### Refactor Tasks (from todo list)
+
+1. ✅ Create handlers/ directory structure
+2. ⏸️ Extract middleware.go (auth, validation, K8s client helpers)
+3. ⏸️ Extract sessions.go (AgenticSession CRUD + lifecycle)
+4. ⏸️ Extract projects.go (Project CRUD)
+5. ⏸️ Extract permissions.go (RBAC + access keys)
+6. ⏸️ Extract rfe.go (RFEWorkflow CRUD + seeding + sessions)
+7. ⏸️ Extract secrets.go (Runner secrets management)
+8. ⏸️ Update main.go to import new handler packages
+9. ⏸️ Verify build and test endpoints
+
+### Benefits
+- Easier navigation and maintenance
+- Clear separation of concerns
+- Better testability
+- Reduced cognitive load when working on specific areas
+
+### Notes for Continuing
+- All conflicts from PR #152 resolved
+- Type system is solid and compiles
+- Can start refactoring handlers.go immediately after /compact
+- Branch: `jira-backend-refactor`
+- Build status: ✅ Clean
