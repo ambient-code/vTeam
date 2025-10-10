@@ -1,4 +1,4 @@
-package main
+package github
 
 import (
 	"bytes"
@@ -19,8 +19,8 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-// GitHubTokenManager manages GitHub App installation tokens
-type GitHubTokenManager struct {
+// TokenManager manages GitHub App installation tokens
+type TokenManager struct {
 	AppID      string
 	PrivateKey *rsa.PrivateKey
 	cacheMu    *sync.Mutex
@@ -32,8 +32,8 @@ type cachedInstallationToken struct {
 	expiresAt time.Time
 }
 
-// NewGitHubTokenManager creates a new token manager
-func NewGitHubTokenManager() (*GitHubTokenManager, error) {
+// NewTokenManager creates a new token manager
+func NewTokenManager() (*TokenManager, error) {
 	appID := os.Getenv("GITHUB_APP_ID")
 	if appID == "" {
 		// Return nil if GitHub App is not configured
@@ -59,7 +59,7 @@ func NewGitHubTokenManager() (*GitHubTokenManager, error) {
 		return nil, fmt.Errorf("failed to parse GITHUB_PRIVATE_KEY: %w", perr)
 	}
 
-	return &GitHubTokenManager{
+	return &TokenManager{
 		AppID:      appID,
 		PrivateKey: privateKey,
 		cacheMu:    &sync.Mutex{},
@@ -101,7 +101,7 @@ func loadPrivateKey(path string) (*rsa.PrivateKey, error) {
 }
 
 // GenerateJWT generates a JWT for GitHub App authentication
-func (m *GitHubTokenManager) GenerateJWT() (string, error) {
+func (m *TokenManager) GenerateJWT() (string, error) {
 	now := time.Now()
 	claims := jwt.MapClaims{
 		"iat": now.Unix(),
@@ -114,7 +114,7 @@ func (m *GitHubTokenManager) GenerateJWT() (string, error) {
 }
 
 // MintInstallationToken creates a short-lived installation access token
-func (m *GitHubTokenManager) MintInstallationToken(ctx context.Context, installationID int64) (string, time.Time, error) {
+func (m *TokenManager) MintInstallationToken(ctx context.Context, installationID int64) (string, time.Time, error) {
 	if m == nil {
 		return "", time.Time{}, fmt.Errorf("GitHub App not configured")
 	}
@@ -122,7 +122,7 @@ func (m *GitHubTokenManager) MintInstallationToken(ctx context.Context, installa
 }
 
 // MintInstallationTokenForHost mints an installation token against the specified GitHub API host
-func (m *GitHubTokenManager) MintInstallationTokenForHost(ctx context.Context, installationID int64, host string) (string, time.Time, error) {
+func (m *TokenManager) MintInstallationTokenForHost(ctx context.Context, installationID int64, host string) (string, time.Time, error) {
 	if m == nil {
 		return "", time.Time{}, fmt.Errorf("GitHub App not configured")
 	}
@@ -143,7 +143,7 @@ func (m *GitHubTokenManager) MintInstallationTokenForHost(ctx context.Context, i
 		return "", time.Time{}, fmt.Errorf("failed to generate JWT: %w", err)
 	}
 
-	apiBase := githubAPIBaseURLLocal(host)
+	apiBase := APIBaseURL(host)
 	url := fmt.Sprintf("%s/app/installations/%d/access_tokens", apiBase, installationID)
 	reqBody := bytes.NewBuffer([]byte("{}"))
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, reqBody)
@@ -179,7 +179,7 @@ func (m *GitHubTokenManager) MintInstallationTokenForHost(ctx context.Context, i
 }
 
 // ValidateInstallationAccess checks if the installation has access to a repository
-func (m *GitHubTokenManager) ValidateInstallationAccess(ctx context.Context, installationID int64, repo string) error {
+func (m *TokenManager) ValidateInstallationAccess(ctx context.Context, installationID int64, repo string) error {
 	if m == nil {
 		return fmt.Errorf("GitHub App not configured")
 	}
@@ -207,7 +207,7 @@ func (m *GitHubTokenManager) ValidateInstallationAccess(ctx context.Context, ins
 	owner := parts[0]
 	name := parts[1]
 
-	apiBase := githubAPIBaseURLLocal("github.com")
+	apiBase := APIBaseURL("github.com")
 	url := fmt.Sprintf("%s/repos/%s/%s", apiBase, owner, name)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -234,30 +234,8 @@ func (m *GitHubTokenManager) ValidateInstallationAccess(ctx context.Context, ins
 	return nil
 }
 
-// MintSessionToken creates a GitHub access token for a session
-// Returns the token and expiry time to be injected as a Kubernetes Secret
-func MintSessionToken(ctx context.Context, userID string) (string, time.Time, error) {
-	if githubTokenManager == nil {
-		return "", time.Time{}, fmt.Errorf("GitHub App not configured")
-	}
-
-	// Get user's GitHub installation
-	installation, err := getGitHubInstallation(ctx, userID)
-	if err != nil {
-		return "", time.Time{}, fmt.Errorf("failed to get GitHub installation: %w", err)
-	}
-
-	// Mint short-lived token for the installation's host
-	token, expiresAt, err := githubTokenManager.MintInstallationTokenForHost(ctx, installation.InstallationID, installation.Host)
-	if err != nil {
-		return "", time.Time{}, fmt.Errorf("failed to mint installation token: %w", err)
-	}
-
-	return token, expiresAt, nil
-}
-
-// local helper (dup of backend file) to avoid cross-file deps
-func githubAPIBaseURLLocal(host string) string {
+// APIBaseURL returns the GitHub API base URL for the given host
+func APIBaseURL(host string) string {
 	if host == "" || host == "github.com" {
 		return "https://api.github.com"
 	}

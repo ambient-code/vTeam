@@ -43,6 +43,16 @@ type GitHubAppInstallation struct {
 	UpdatedAt      time.Time `json:"updatedAt"`
 }
 
+// GetInstallationID implements the interface for git package
+func (g *GitHubAppInstallation) GetInstallationID() int64 {
+	return g.InstallationID
+}
+
+// GetHost implements the interface for git package
+func (g *GitHubAppInstallation) GetHost() string {
+	return g.Host
+}
+
 // helper: resolve GitHub API base URL from host
 func githubAPIBaseURL(host string) string {
 	if host == "" || host == "github.com" {

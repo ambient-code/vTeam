@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"ambient-code-backend/git"
+	"ambient-code-backend/github"
 	"ambient-code-backend/handlers"
 	"ambient-code-backend/jira"
 	"ambient-code-backend/server"
@@ -45,7 +46,7 @@ func main() {
 	_ = godotenv.Overload(".env")
 
 	// Initialize components
-	initializeGitHubTokenManager()
+	github.InitializeTokenManager()
 
 	if err := server.InitK8sClients(); err != nil {
 		log.Fatalf("Failed to initialize Kubernetes clients: %v", err)
@@ -64,9 +65,9 @@ func main() {
 	// Initialize git package
 	git.GetProjectSettingsResource = getProjectSettingsResource
 	git.GetGitHubInstallation = func(ctx context.Context, userID string) (interface{}, error) {
-		return getGitHubInstallation(ctx, userID)
+		return github.GetInstallation(ctx, userID)
 	}
-	git.GitHubTokenManager = githubTokenManager
+	git.GitHubTokenManager = github.Manager
 
 	// Initialize content handlers
 	handlers.StateBaseDir = stateBaseDir
@@ -77,7 +78,7 @@ func main() {
 	// Initialize GitHub auth handlers
 	handlers.K8sClient = k8sClient
 	handlers.Namespace = namespace
-	handlers.GithubTokenManager = githubTokenManager
+	handlers.GithubTokenManager = github.Manager
 
 	// Initialize project handlers
 	handlers.GetOpenShiftProjectResource = getOpenShiftProjectResource
