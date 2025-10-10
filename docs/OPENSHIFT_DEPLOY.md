@@ -4,51 +4,83 @@ vTeam is an OpenShift-native platform that deploys a backend API, frontend, and 
 
 ## Prerequisites
 
-- OpenShift cluster with admin access
-- Container registry access or use default images from quay.io/ambient_code
-- `oc` CLI configured
+- **OpenShift cluster** with admin access
+- **oc CLI** configured and authenticated
+- **kustomize** installed
+- Container registry access (or use default images from `quay.io/ambient_code`)
 
 ## Quick Deploy
 
-1. **Deploy** (from project root):
-   ```bash
-   # Prepare env once
-   cp components/manifests/env.example components/manifests/.env
-   # Edit .env and set ANTHROPIC_API_KEY
-   make deploy
-   ```
-   This deploys to the `ambient-code` namespace using default images from quay.io/ambient_code.
+### 1. Prepare Configuration
 
-2. **Verify deployment**:
-   ```bash
-   oc get pods -n ambient-code
-   oc get services -n ambient-code
-   ```
+```bash
+# From project root
+cd components/manifests
+cp env.example .env
 
-3. **Access the UI**:
-   ```bash
-   # Get the route URL
-   oc get route frontend-route -n ambient-code
+# Edit .env and set required values:
+# - ANTHROPIC_API_KEY (required for AI sessions)
+# - Optionally: GitHub App credentials, OAuth settings
+vim .env
+```
 
-   # Or use port forwarding as fallback
-   kubectl port-forward svc/frontend-service 3000:3000 -n ambient-code
-   ```
+### 2. Deploy
+
+```bash
+# Deploy to default namespace (ambient-code)
+./deploy.sh
+
+# Or deploy to custom namespace
+NAMESPACE=my-vteam ./deploy.sh
+```
+
+This deploys using pre-built images from `quay.io/ambient_code`.
+
+### 3. Verify Deployment
+
+```bash
+# Check pods
+oc get pods -n ambient-code
+
+# Check services and routes
+oc get svc,route -n ambient-code
+```
+
+### 4. Access the UI
+
+```bash
+# Get the route URL
+oc get route frontend-route -n ambient-code -o jsonpath='{.spec.host}'
+
+# Or use port forwarding as fallback
+oc port-forward svc/frontend-service 3000:3000 -n ambient-code
+```
 
 ## Configuration
 
-### Customizing Namespace
-To deploy to a different namespace:
+### Git Authentication
+
+**Important:** GitHub secrets for git operations must be created separately per project. The deploy script does NOT create these automatically.
+
+See [../components/manifests/GIT_AUTH_SETUP.md](../components/manifests/GIT_AUTH_SETUP.md) for detailed instructions.
+
+**Quick example:**
 ```bash
-make deploy NAMESPACE=my-namespace
+oc create secret generic my-runner-secret \
+  --from-literal=ANTHROPIC_API_KEY="your-anthropic-key" \
+  --from-literal=GIT_TOKEN="ghp_your_github_token" \
+  --from-literal=GIT_USER_NAME="Your Name" \
+  --from-literal=GIT_USER_EMAIL="your.email@example.com" \
+  -n your-project-namespace
 ```
 
 ### Building Custom Images
+
 To build and use your own images:
+
 ```bash
 # Set your container registry
 export REGISTRY="quay.io/your-username"
-
-# Login to your container registry
 docker login $REGISTRY
 
 # Build and push all images
@@ -56,31 +88,83 @@ make build-all REGISTRY=$REGISTRY
 make push-all REGISTRY=$REGISTRY
 
 # Deploy with custom images
-make deploy CONTAINER_REGISTRY=$REGISTRY
-```
-
-### Advanced Configuration
-Create and edit environment file for detailed customization:
-```bash
 cd components/manifests
-cp env.example .env
-# Edit .env to set CONTAINER_REGISTRY, IMAGE_TAG, Git settings, etc.
+CONTAINER_REGISTRY=$REGISTRY ./deploy.sh
 ```
 
-### Setting up API Keys
-After deployment, configure runner secrets through Settings → Runner Secrets in the UI. At minimum, provide `ANTHROPIC_API_KEY`.
+### Deploying to Custom Namespace
+
+```bash
+# Deploy to specific namespace
+NAMESPACE=my-vteam ./deploy.sh
+
+# Or from project root
+make deploy NAMESPACE=my-vteam
+```
 
 ### OpenShift OAuth (Recommended)
-For cluster login and authentication, see [OpenShift OAuth Setup](OPENSHIFT_OAUTH.md). The deploy script also supports a `secrets` subcommand if you only need to (re)configure OAuth secrets:
+
+For cluster SSO authentication, see [OPENSHIFT_OAUTH.md](OPENSHIFT_OAUTH.md).
+
+The deploy script also supports a `secrets` subcommand to (re)configure OAuth without full redeployment:
 
 ```bash
 cd components/manifests
 ./deploy.sh secrets
 ```
 
+## Deployment Script Options
+
+The `deploy.sh` script supports several commands:
+
+```bash
+# Standard deployment
+./deploy.sh
+
+# Deploy to custom namespace
+NAMESPACE=my-namespace ./deploy.sh
+
+# Configure OAuth secrets only (no redeployment)
+./deploy.sh secrets
+
+# Uninstall/cleanup
+./deploy.sh uninstall
+# or
+./deploy.sh clean
+```
+
+## Post-Deployment Setup
+
+### 1. Configure Runner Secrets
+
+Access the UI and navigate to **Settings → Runner Secrets** to configure API keys per project.
+
+Required: `ANTHROPIC_API_KEY`
+
+### 2. Create Projects
+
+Create project namespaces via the UI (**New Project** button). Each project gets isolated RBAC and resources.
+
+### 3. Set Up Git Authentication
+
+Create Kubernetes secrets in each project namespace with git credentials. See [GIT_AUTH_SETUP.md](../components/manifests/GIT_AUTH_SETUP.md).
+
 ## Cleanup
 
 ```bash
-# Uninstall resources
-make clean  # alias to ./components/manifests/deploy.sh clean
+# Uninstall from default namespace
+cd components/manifests
+./deploy.sh uninstall
+
+# Or from project root
+make clean
+
+# Uninstall from custom namespace
+NAMESPACE=my-vteam ./deploy.sh uninstall
+```
+
+This removes all resources but keeps the namespace. To fully remove:
+
+```bash
+oc delete namespace ambient-code
 ```

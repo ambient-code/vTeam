@@ -62,13 +62,14 @@ Deploy using pre-built images from `quay.io/ambient_code`:
 cd components/manifests
 cp env.example .env
 
-# Edit .env and set required values:
-# - ANTHROPIC_API_KEY (required for AI sessions)
-# - Optionally: GITHUB_APP_ID, GITHUB_PRIVATE_KEY, OAUTH_CLIENT_SECRET
+# Edit .env and set ANTHROPIC_API_KEY (required for AI sessions)
+# Optionally configure: GitHub App credentials, OAuth settings
 
 # Deploy to ambient-code namespace (default)
-make deploy
+./deploy.sh
 ```
+
+**Note:** The GitHub secret for git authentication must be created separately per project. See [components/manifests/GIT_AUTH_SETUP.md](components/manifests/GIT_AUTH_SETUP.md) for details.
 
 ### 2. Verify Deployment
 
@@ -133,36 +134,18 @@ oc port-forward svc/frontend-service 3000:3000 -n ambient-code
 
 ### Building Custom Images
 
-Build and push your own container images:
-
 ```bash
-# Set container registry
+# Set container registry and build
 export REGISTRY="quay.io/your-username"
-
-# Build all images (frontend, backend, operator, runner)
-make build-all
-
-# Push to registry (requires authentication)
+make build-all REGISTRY=$REGISTRY
 make push-all REGISTRY=$REGISTRY
 
 # Deploy with custom images
 cd components/manifests
-# Edit .env to set CONTAINER_REGISTRY=$REGISTRY
 ./deploy.sh
 ```
 
-### Container Engine Options
-
-```bash
-# Use Podman instead of Docker
-make build-all CONTAINER_ENGINE=podman
-
-# Build for specific platform (default: linux/amd64)
-make build-all PLATFORM=linux/arm64
-
-# Build with additional flags
-make build-all BUILD_FLAGS="--no-cache --pull"
-```
+Container engine options: Set `CONTAINER_ENGINE=podman` or `PLATFORM=linux/arm64` as needed.
 
 ### OpenShift OAuth Integration
 
@@ -266,53 +249,21 @@ oc describe agenticsession <session-name> -n <project-namespace>
 
 ## Development
 
-### Local Development with OpenShift Local (CRC)
+### Local Development
 
-Run vTeam locally using OpenShift Local (CRC) for a production-like environment:
+See [components/scripts/local-dev/README.md](components/scripts/local-dev/README.md) for detailed local development instructions.
 
+**Quick Start:**
 ```bash
-# Install CRC (macOS/Linux)
-brew install crc  # or download from console.redhat.com
+# Install prerequisites (OpenShift Local/CRC)
+brew install crc
 
-# Setup CRC with pull secret (one-time)
+# Setup and start local cluster
 crc setup
-# Download pull secret from: https://console.redhat.com/openshift/create/local
-
-# Start local OpenShift cluster and deploy vTeam
 make dev-start
 ```
 
-**What this provides:**
-- ✅ Full OpenShift cluster running locally
-- ✅ Automatic image builds and deployment
-- ✅ Production-like environment with RBAC
-- ✅ Frontend, backend, and operator components
-- ✅ Live log streaming
-
-**Development with Hot Reloading:**
-```bash
-# Terminal 1: Start with development images
-DEV_MODE=true make dev-start
-
-# Terminal 2: Enable file sync for instant updates
-make dev-sync
-```
-
-**Access Local Environment:**
-- Frontend: `https://vteam-frontend-vteam-dev.apps-crc.testing`
-- Backend API: `https://vteam-backend-vteam-dev.apps-crc.testing`
-- OpenShift Console: `https://console-openshift-console.apps-crc.testing`
-
-**Development Commands:**
-```bash
-make dev-logs            # View frontend and backend logs
-make dev-logs-operator   # View operator logs
-make dev-stop            # Stop local development (keeps cluster)
-make dev-clean           # Stop and delete project
-```
-
-### Building from Source
-
+**Building from Source:**
 ```bash
 # Build all components
 make build-all

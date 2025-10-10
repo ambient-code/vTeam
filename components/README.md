@@ -1,81 +1,66 @@
 # vTeam Components
 
-This directory contains the core components of the vTeam Ambient Agentic Runner platform.
+This directory contains the core components of the vTeam platform. See the main [README.md](../README.md) for complete documentation.
 
-See the main [README.md](../README.md) for complete documentation, deployment instructions, and usage examples.
-
-## Component Directory Structure
+## Component Overview
 
 ```
 components/
-├── frontend/                   # NextJS web interface with Shadcn UI
-├── backend/                    # Go API service for Kubernetes CRD management
-├── operator/                   # Kubernetes operator (Go)
-├── runners/                    # AI runner services
-│   └── claude-code-runner/     # Python service running Claude Code CLI with MCP
-├── manifests/                  # Kubernetes deployment manifests
-└── README.md                   # This documentation
+├── frontend/                   # Next.js 15 web interface (React + Shadcn UI)
+├── backend/                    # Go API service (Gin framework, K8s CRD management)
+├── operator/                   # Kubernetes operator (reconciles AgenticSession CRs)
+├── runners/
+│   ├── claude-code-runner/     # Python runner (Claude Code SDK wrapper)
+│   └── runner-shell/           # Runner shell library (WebSocket transport)
+├── manifests/                  # Kubernetes manifests (CRDs, RBAC, deployments)
+│   ├── deploy.sh              # Main deployment script
+│   └── GIT_AUTH_SETUP.md      # Git authentication configuration
+└── scripts/                    # Development and deployment utilities
 ```
 
-## 🎯 Agentic Session Flow
+## Architecture
 
-1. **Create Session**: User creates a new agentic session via the web UI
-2. **API Processing**: Backend creates an `AgenticSession` Custom Resource in Kubernetes
-3. **Job Scheduling**: Operator detects the CR and creates a Kubernetes Job
-4. **Execution**: Job runs a pod with AI CLI and Playwright MCP server
-5. **Task Execution**: AI executes the specified task using MCP capabilities
-6. **Result Storage**: Results are stored back in the Custom Resource
-7. **UI Update**: Frontend displays the completed agentic session with results
+**Agentic Session Flow:**
+1. User creates session via web UI with prompt and optional repositories
+2. Backend creates `AgenticSession` Custom Resource in project namespace
+3. Operator reconciles CR and creates Kubernetes Job with runner + content sidecar
+4. Runner executes Claude Code SDK session with workspace synced via PVC
+5. Real-time messages streamed to frontend via WebSocket
+6. Session results and metadata stored in CR status
 
-## ⚡ Quick Start
+## Quick Start
 
-### Local Development (Recommended)
+### Production Deployment
+
 ```bash
-# Single command to start everything
+# Prepare configuration
+cd manifests
+cp env.example .env
+# Edit .env: set ANTHROPIC_API_KEY
+
+# Deploy to OpenShift
+./deploy.sh
+```
+
+**Note:** GitHub secrets for git authentication must be created separately per project. See [manifests/GIT_AUTH_SETUP.md](manifests/GIT_AUTH_SETUP.md).
+
+### Local Development
+
+```bash
+# From project root
 make dev-start
 ```
 
-**Prerequisites:**
-- OpenShift Local (CRC): `brew install crc`
-- Red Hat pull secret: Get free from [console.redhat.com](https://console.redhat.com/openshift/create/local)
+See [scripts/local-dev/README.md](scripts/local-dev/README.md) for detailed local development setup.
 
-**What you get:**
-- ✅ Complete OpenShift development environment
-- ✅ Frontend: `https://vteam-frontend-vteam-dev.apps-crc.testing`
-- ✅ Backend API working with authentication
-- ✅ OpenShift console access
-- ✅ Ready for project creation and agentic sessions
+### Building Custom Images
 
-### Production Deployment
 ```bash
-# Build and push images to your registry
-export REGISTRY="your-registry.com"
-make build-all push-all REGISTRY=$REGISTRY
+export REGISTRY="quay.io/your-username"
+make build-all REGISTRY=$REGISTRY
+make push-all REGISTRY=$REGISTRY
 
-# Deploy to OpenShift/Kubernetes
-cd components/manifests
+# Deploy with custom images
+cd manifests
 CONTAINER_REGISTRY=$REGISTRY ./deploy.sh
 ```
-
-### Hot Reloading Development
-```bash
-# Terminal 1: Start with development mode
-DEV_MODE=true make dev-start
-
-# Terminal 2: Enable file sync for hot-reloading
-make dev-sync
-```
-
-## Quick Deploy
-
-From the project root:
-
-```bash
-# Deploy with default images
-make deploy
-
-# Or deploy to custom namespace
-make deploy NAMESPACE=my-namespace
-```
-
-For detailed deployment instructions, see [../docs/OPENSHIFT_DEPLOY.md](../docs/OPENSHIFT_DEPLOY.md).
