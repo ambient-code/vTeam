@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"net/http"
 	"os"
 
+	"ambient-code-backend/handlers"
 	"ambient-code-backend/server"
 	"ambient-code-backend/types"
 
@@ -152,9 +152,7 @@ func registerRoutes(r *gin.Engine) {
 	}
 
 	// Health check endpoint
-	r.GET("/health", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"status": "healthy"})
-	})
+	r.GET("/health", handlers.Health)
 }
 
 // Type aliases to types package - preserves backward compatibility
