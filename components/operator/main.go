@@ -359,7 +359,7 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 							ImagePullPolicy: imagePullPolicy,
 							Env: []corev1.EnvVar{
 								{Name: "CONTENT_SERVICE_MODE", Value: "true"},
-								{Name: "STATE_BASE_DIR", Value: "/data/state"},
+								{Name: "STATE_BASE_DIR", Value: "/workspace"},
 							},
 							Ports: []corev1.ContainerPort{{ContainerPort: 8080, Name: "http"}},
 							ReadinessProbe: &corev1.Probe{
@@ -372,7 +372,7 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 								InitialDelaySeconds: 5,
 								PeriodSeconds:       5,
 							},
-							VolumeMounts: []corev1.VolumeMount{{Name: "workspace", MountPath: "/data/state"}},
+							VolumeMounts: []corev1.VolumeMount{{Name: "workspace", MountPath: "/workspace"}},
 						},
 						{
 							Name:            "ambient-code-runner",
@@ -437,7 +437,7 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 									}},
 								})
 								// Add CR-provided envs last (override base when same key)
-								if spec, ok := obj.Object["spec"].(map[string]interface{}); ok {
+								if spec, ok := currentObj.Object["spec"].(map[string]interface{}); ok {
 									// Inject REPOS_JSON and MAIN_REPO_NAME from spec.repos and spec.mainRepoName if present
 									if repos, ok := spec["repos"].([]interface{}); ok && len(repos) > 0 {
 										// Use a minimal JSON serialization via fmt (we'll rely on client to pass REPOS_JSON too)
