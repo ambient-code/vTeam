@@ -1,4 +1,4 @@
-package main
+package git
 
 import (
 	"archive/zip"
@@ -19,13 +19,30 @@ import (
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
+)
+
+// Package-level dependencies (set from main package)
+var (
+	GetProjectSettingsResource func() schema.GroupVersionResource
+	GetGitHubInstallation      func(context.Context, string) (interface{}, error)
+	GitHubTokenManager         interface{} // *GitHubTokenManager from main package
 )
 
 // ProjectSettings represents the project configuration
 type ProjectSettings struct {
 	RunnerSecret string
+}
+
+// DiffSummary holds summary counts from git status --porcelain
+type DiffSummary struct {
+	Added     int `json:"added"`
+	Modified  int `json:"modified"`
+	Deleted   int `json:"deleted"`
+	Renamed   int `json:"renamed"`
+	Untracked int `json:"untracked"`
 }
 
 // getProjectSettings retrieves the ProjectSettings CR for a project using the provided dynamic client
@@ -34,7 +51,11 @@ func getProjectSettings(ctx context.Context, dynClient dynamic.Interface, projec
 		return &ProjectSettings{}, nil
 	}
 
-	gvr := getProjectSettingsResource()
+	if GetProjectSettingsResource == nil {
+		return &ProjectSettings{}, nil
+	}
+
+	gvr := GetProjectSettingsResource()
 	obj, err := dynClient.Resource(gvr).Namespace(projectName).Get(ctx, "projectsettings", v1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -55,18 +76,33 @@ func getProjectSettings(ctx context.Context, dynClient dynamic.Interface, projec
 	return settings, nil
 }
 
-// getGitHubToken tries to get a GitHub token from GitHub App first, then falls back to project runner secret
-func getGitHubToken(ctx context.Context, k8sClient *kubernetes.Clientset, dynClient dynamic.Interface, project, userID string) (string, error) {
-	// Try GitHub App first
-	installation, err := getGitHubInstallation(ctx, userID)
-	if err == nil && githubTokenManager != nil {
-		// GitHub App is available - mint token
-		token, _, err := githubTokenManager.MintInstallationTokenForHost(ctx, installation.InstallationID, installation.Host)
-		if err == nil && token != "" {
-			log.Printf("Using GitHub App token for user %s", userID)
-			return token, nil
+// GetGitHubToken tries to get a GitHub token from GitHub App first, then falls back to project runner secret
+func GetGitHubToken(ctx context.Context, k8sClient *kubernetes.Clientset, dynClient dynamic.Interface, project, userID string) (string, error) {
+	// Try GitHub App first if available
+	if GetGitHubInstallation != nil && GitHubTokenManager != nil {
+		installation, err := GetGitHubInstallation(ctx, userID)
+		if err == nil && installation != nil {
+			// Use reflection-like approach to call MintInstallationTokenForHost
+			// This requires the caller to set up the proper interface/struct
+			type githubInstallation interface {
+				GetInstallationID() int64
+				GetHost() string
+			}
+			type tokenManager interface {
+				MintInstallationTokenForHost(context.Context, int64, string) (string, time.Time, error)
+			}
+
+			if inst, ok := installation.(githubInstallation); ok {
+				if mgr, ok := GitHubTokenManager.(tokenManager); ok {
+					token, _, err := mgr.MintInstallationTokenForHost(ctx, inst.GetInstallationID(), inst.GetHost())
+					if err == nil && token != "" {
+						log.Printf("Using GitHub App token for user %s", userID)
+						return token, nil
+					}
+					log.Printf("Failed to mint GitHub App token for user %s: %v", userID, err)
+				}
+			}
 		}
-		log.Printf("Failed to mint GitHub App token for user %s: %v", userID, err)
 	}
 
 	// Fall back to project runner secret GIT_TOKEN
@@ -77,7 +113,7 @@ func getGitHubToken(ctx context.Context, k8sClient *kubernetes.Clientset, dynCli
 
 	settings, err := getProjectSettings(ctx, dynClient, project)
 
-	// Default to "ambient-runner-secrets" if not configured (same as updateRunnerSecrets handler)
+	// Default to "ambient-runner-secrets" if not configured
 	secretName := "ambient-runner-secrets"
 	if err != nil {
 		log.Printf("Failed to get ProjectSettings for %s (using default secret name): %v", project, err)
@@ -87,7 +123,6 @@ func getGitHubToken(ctx context.Context, k8sClient *kubernetes.Clientset, dynCli
 
 	log.Printf("Attempting to read GIT_TOKEN from secret %s/%s", project, secretName)
 
-	// Use user-scoped client to read secret in their namespace
 	secret, err := k8sClient.CoreV1().Secrets(project).Get(ctx, secretName, v1.GetOptions{})
 	if err != nil {
 		log.Printf("Failed to get runner secret %s/%s: %v", project, secretName, err)
@@ -123,10 +158,9 @@ func getSecretKeys(data map[string][]byte) []string {
 	return keys
 }
 
-// checkRepoSeeding checks if a repo has been seeded by verifying .claude/commands/ and .specify/ exist
-func checkRepoSeeding(ctx context.Context, repoURL string, branch *string, githubToken string) (bool, map[string]interface{}, error) {
-	// Parse repo URL to get owner/repo
-	owner, repo, err := parseGitHubURL(repoURL)
+// CheckRepoSeeding checks if a repo has been seeded by verifying .claude/commands/ and .specify/ exist
+func CheckRepoSeeding(ctx context.Context, repoURL string, branch *string, githubToken string) (bool, map[string]interface{}, error) {
+	owner, repo, err := ParseGitHubURL(repoURL)
 	if err != nil {
 		return false, nil, err
 	}
@@ -136,7 +170,6 @@ func checkRepoSeeding(ctx context.Context, repoURL string, branch *string, githu
 		branchName = strings.TrimSpace(*branch)
 	}
 
-	// Check for .claude directory
 	claudeExists, err := checkGitHubPathExists(ctx, owner, repo, branchName, ".claude", githubToken)
 	if err != nil {
 		return false, nil, fmt.Errorf("failed to check .claude: %w", err)
@@ -172,9 +205,8 @@ func checkRepoSeeding(ctx context.Context, repoURL string, branch *string, githu
 	return isSeeded, details, nil
 }
 
-// parseGitHubURL extracts owner and repo from a GitHub URL
-func parseGitHubURL(gitURL string) (owner, repo string, err error) {
-	// Handle both https://github.com/owner/repo and git@github.com:owner/repo
+// ParseGitHubURL extracts owner and repo from a GitHub URL
+func ParseGitHubURL(gitURL string) (owner, repo string, err error) {
 	gitURL = strings.TrimSuffix(gitURL, ".git")
 
 	if strings.Contains(gitURL, "github.com") {
@@ -195,7 +227,6 @@ func parseGitHubURL(gitURL string) (owner, repo string, err error) {
 
 // checkGitHubPathExists checks if a path exists in a GitHub repo
 func checkGitHubPathExists(ctx context.Context, owner, repo, branch, path, token string) (bool, error) {
-	// Use GitHub Contents API
 	apiURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/%s?ref=%s",
 		owner, repo, path, branch)
 
@@ -213,7 +244,6 @@ func checkGitHubPathExists(ctx context.Context, owner, repo, branch, path, token
 	}
 	defer resp.Body.Close()
 
-	// 200 = exists, 404 = doesn't exist
 	if resp.StatusCode == http.StatusOK {
 		return true, nil
 	}
@@ -221,14 +251,32 @@ func checkGitHubPathExists(ctx context.Context, owner, repo, branch, path, token
 		return false, nil
 	}
 
-	// Other error
 	body, _ := io.ReadAll(resp.Body)
 	return false, fmt.Errorf("GitHub API error: %s (body: %s)", resp.Status, string(body))
 }
 
-// performRepoSeeding performs the actual seeding operations
-func performRepoSeeding(ctx context.Context, wf *RFEWorkflow, githubToken, agentURL, agentBranch, agentPath, specKitVersion, specKitTemplate string) error {
-	// Create temp directories
+// PerformRepoSeeding performs the actual seeding operations
+// wf parameter should be *RFEWorkflow from main package
+func PerformRepoSeeding(ctx context.Context, wf interface{}, githubToken, agentURL, agentBranch, agentPath, specKitVersion, specKitTemplate string) error {
+	// Type assertion helpers for RFEWorkflow
+	type gitRepo interface {
+		GetURL() string
+		GetBranch() *string
+	}
+	type workflow interface {
+		GetUmbrellaRepo() gitRepo
+	}
+
+	w, ok := wf.(workflow)
+	if !ok {
+		return fmt.Errorf("invalid workflow type")
+	}
+
+	umbrellaRepo := w.GetUmbrellaRepo()
+	if umbrellaRepo == nil {
+		return fmt.Errorf("workflow has no umbrella repo")
+	}
+
 	umbrellaDir, err := os.MkdirTemp("", "umbrella-*")
 	if err != nil {
 		return fmt.Errorf("failed to create temp dir for umbrella repo: %w", err)
@@ -241,23 +289,25 @@ func performRepoSeeding(ctx context.Context, wf *RFEWorkflow, githubToken, agent
 	}
 	defer os.RemoveAll(agentSrcDir)
 
-	// 1. Clone umbrella repo with authentication
-	log.Printf("Cloning umbrella repo: %s", wf.UmbrellaRepo.URL)
-	authenticatedURL, err := injectGitHubToken(wf.UmbrellaRepo.URL, githubToken)
+	// Clone umbrella repo with authentication
+	log.Printf("Cloning umbrella repo: %s", umbrellaRepo.GetURL())
+	authenticatedURL, err := InjectGitHubToken(umbrellaRepo.GetURL(), githubToken)
 	if err != nil {
 		return fmt.Errorf("failed to prepare umbrella repo URL: %w", err)
 	}
+
 	umbrellaArgs := []string{"clone", "--depth", "1"}
-	if wf.UmbrellaRepo.Branch != nil && strings.TrimSpace(*wf.UmbrellaRepo.Branch) != "" {
-		umbrellaArgs = append(umbrellaArgs, "--branch", strings.TrimSpace(*wf.UmbrellaRepo.Branch))
+	if branch := umbrellaRepo.GetBranch(); branch != nil && strings.TrimSpace(*branch) != "" {
+		umbrellaArgs = append(umbrellaArgs, "--branch", strings.TrimSpace(*branch))
 	}
 	umbrellaArgs = append(umbrellaArgs, authenticatedURL, umbrellaDir)
+
 	cmd := exec.CommandContext(ctx, "git", umbrellaArgs...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("failed to clone umbrella repo: %w (output: %s)", err, string(out))
 	}
 
-	// Configure git user for commits
+	// Configure git user
 	cmd = exec.CommandContext(ctx, "git", "-C", umbrellaDir, "config", "user.email", "vteam-bot@ambient-code.io")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		log.Printf("Warning: failed to set git user.email: %v (output: %s)", err, string(out))
@@ -267,7 +317,7 @@ func performRepoSeeding(ctx context.Context, wf *RFEWorkflow, githubToken, agent
 		log.Printf("Warning: failed to set git user.name: %v (output: %s)", err, string(out))
 	}
 
-	// 2. Download and extract spec-kit template
+	// Download and extract spec-kit template
 	log.Printf("Downloading spec-kit template: %s", specKitVersion)
 	specKitURL := fmt.Sprintf("https://github.com/github/spec-kit/releases/download/%s/%s-%s.zip", specKitVersion, specKitTemplate, specKitVersion)
 	resp, err := http.Get(specKitURL)
@@ -275,6 +325,7 @@ func performRepoSeeding(ctx context.Context, wf *RFEWorkflow, githubToken, agent
 		return fmt.Errorf("failed to download spec-kit: %w", err)
 	}
 	defer resp.Body.Close()
+
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("spec-kit download failed with status: %s", resp.Status)
 	}
@@ -289,13 +340,13 @@ func performRepoSeeding(ctx context.Context, wf *RFEWorkflow, githubToken, agent
 		return fmt.Errorf("failed to open spec-kit zip: %w", err)
 	}
 
-	// Extract spec-kit files to umbrella repo (skip if exists)
+	// Extract spec-kit files
 	specKitFilesAdded := 0
 	for _, f := range zr.File {
 		if f.FileInfo().IsDir() {
 			continue
 		}
-		// Normalize path
+
 		rel := strings.TrimPrefix(f.Name, "./")
 		rel = strings.ReplaceAll(rel, "\\", "/")
 		for strings.Contains(rel, "../") {
@@ -304,18 +355,15 @@ func performRepoSeeding(ctx context.Context, wf *RFEWorkflow, githubToken, agent
 
 		targetPath := filepath.Join(umbrellaDir, rel)
 
-		// Skip if file already exists
 		if _, err := os.Stat(targetPath); err == nil {
 			continue
 		}
 
-		// Create parent directory
 		if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
 			log.Printf("Failed to create dir for %s: %v", rel, err)
 			continue
 		}
 
-		// Extract file
 		rc, err := f.Open()
 		if err != nil {
 			log.Printf("Failed to open zip entry %s: %v", f.Name, err)
@@ -336,19 +384,20 @@ func performRepoSeeding(ctx context.Context, wf *RFEWorkflow, githubToken, agent
 	}
 	log.Printf("Extracted %d spec-kit files", specKitFilesAdded)
 
-	// 3. Clone agent source repo
+	// Clone agent source repo
 	log.Printf("Cloning agent source: %s", agentURL)
 	agentArgs := []string{"clone", "--depth", "1"}
 	if agentBranch != "" {
 		agentArgs = append(agentArgs, "--branch", agentBranch)
 	}
 	agentArgs = append(agentArgs, agentURL, agentSrcDir)
+
 	cmd = exec.CommandContext(ctx, "git", agentArgs...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("failed to clone agent source: %w (output: %s)", err, string(out))
 	}
 
-	// 4. Copy agent markdown files to .claude/agents/
+	// Copy agent markdown files to .claude/agents/
 	agentSourcePath := filepath.Join(agentSrcDir, agentPath)
 	claudeDir := filepath.Join(umbrellaDir, ".claude")
 	claudeAgentsDir := filepath.Join(claudeDir, "agents")
@@ -384,16 +433,14 @@ func performRepoSeeding(ctx context.Context, wf *RFEWorkflow, githubToken, agent
 	}
 	log.Printf("Copied %d agent files", agentsCopied)
 
-	// 5. Commit and push changes
+	// Commit and push changes
 	cmd = exec.CommandContext(ctx, "git", "-C", umbrellaDir, "add", ".")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("git add failed: %w (output: %s)", err, string(out))
 	}
 
-	// Check if there are changes to commit
 	cmd = exec.CommandContext(ctx, "git", "-C", umbrellaDir, "diff", "--cached", "--quiet")
 	if err := cmd.Run(); err == nil {
-		// No changes to commit
 		log.Printf("No changes to commit for seeding")
 		return nil
 	}
@@ -403,7 +450,6 @@ func performRepoSeeding(ctx context.Context, wf *RFEWorkflow, githubToken, agent
 		return fmt.Errorf("git commit failed: %w (output: %s)", err, string(out))
 	}
 
-	// Configure git to use the authenticated URL for push
 	cmd = exec.CommandContext(ctx, "git", "-C", umbrellaDir, "remote", "set-url", "origin", authenticatedURL)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("failed to set remote URL: %w (output: %s)", err, string(out))
@@ -418,62 +464,58 @@ func performRepoSeeding(ctx context.Context, wf *RFEWorkflow, githubToken, agent
 	return nil
 }
 
-// injectGitHubToken injects a GitHub token into a git URL for authentication
-func injectGitHubToken(gitURL, token string) (string, error) {
-	// Parse the URL
+// InjectGitHubToken injects a GitHub token into a git URL for authentication
+func InjectGitHubToken(gitURL, token string) (string, error) {
 	u, err := url.Parse(gitURL)
 	if err != nil {
 		return "", fmt.Errorf("invalid git URL: %w", err)
 	}
 
-	// Only inject token for https URLs
 	if u.Scheme != "https" {
-		return gitURL, nil // Return as-is for ssh or other schemes
+		return gitURL, nil
 	}
 
-	// Set credentials: GitHub App tokens use x-access-token as username
 	u.User = url.UserPassword("x-access-token", token)
 	return u.String(), nil
 }
 
-// deriveRepoFolderFromURL extracts the repo folder from a Git URL (supports https and ssh forms)
-func deriveRepoFolderFromURL(u string) string {
+// DeriveRepoFolderFromURL extracts the repo folder from a Git URL
+func DeriveRepoFolderFromURL(u string) string {
 	s := strings.TrimSpace(u)
 	if s == "" {
 		return ""
 	}
-	// Normalize SSH form git@github.com:owner/repo.git -> https://github.com/owner/repo.git
+
 	if strings.HasPrefix(s, "git@") && strings.Contains(s, ":") {
 		parts := strings.SplitN(s, ":", 2)
 		host := strings.TrimPrefix(parts[0], "git@")
 		s = "https://" + host + "/" + parts[1]
 	}
-	// Trim protocol
+
 	if i := strings.Index(s, "://"); i >= 0 {
 		s = s[i+3:]
 	}
-	// Remove host portion if present
+
 	if i := strings.Index(s, "/"); i >= 0 {
 		s = s[i+1:]
 	}
+
 	segs := strings.Split(s, "/")
 	if len(segs) == 0 {
 		return ""
 	}
+
 	last := segs[len(segs)-1]
 	last = strings.TrimSuffix(last, ".git")
 	return strings.TrimSpace(last)
 }
 
-// gitPushRepo performs git add/commit/push operations on a repository directory
-// Returns stdout from push operation on success
-func gitPushRepo(ctx context.Context, repoDir, commitMessage, outputRepoURL, branch, githubToken string) (string, error) {
-	// Validate repoDir exists
+// PushRepo performs git add/commit/push operations on a repository directory
+func PushRepo(ctx context.Context, repoDir, commitMessage, outputRepoURL, branch, githubToken string) (string, error) {
 	if fi, err := os.Stat(repoDir); err != nil || !fi.IsDir() {
 		return "", fmt.Errorf("repo directory not found: %s", repoDir)
 	}
 
-	// Helper to run git commands
 	run := func(args ...string) (string, string, error) {
 		start := time.Now()
 		cmd := exec.CommandContext(ctx, args[0], args[1:]...)
@@ -487,10 +529,9 @@ func gitPushRepo(ctx context.Context, repoDir, commitMessage, outputRepoURL, bra
 		return stdout.String(), stderr.String(), err
 	}
 
-	// Check for changes
 	log.Printf("gitPushRepo: checking worktree status ...")
 	if out, _, _ := run("git", "status", "--porcelain"); strings.TrimSpace(out) == "" {
-		return "", nil // no changes
+		return "", nil
 	}
 
 	// Configure git user identity from GitHub API
@@ -498,7 +539,6 @@ func gitPushRepo(ctx context.Context, repoDir, commitMessage, outputRepoURL, bra
 	gitUserEmail := ""
 
 	if githubToken != "" {
-		// Fetch user info from GitHub API
 		req, _ := http.NewRequest("GET", "https://api.github.com/user", nil)
 		req.Header.Set("Authorization", "token "+githubToken)
 		req.Header.Set("Accept", "application/vnd.github+json")
@@ -532,7 +572,6 @@ func gitPushRepo(ctx context.Context, repoDir, commitMessage, outputRepoURL, bra
 		}
 	}
 
-	// Fallback to defaults if still empty
 	if gitUserName == "" {
 		gitUserName = "Ambient Code Bot"
 	}
@@ -543,7 +582,7 @@ func gitPushRepo(ctx context.Context, repoDir, commitMessage, outputRepoURL, bra
 	run("git", "config", "user.email", gitUserEmail)
 	log.Printf("gitPushRepo: configured git identity name=%q email=%q", gitUserName, gitUserEmail)
 
-	// Stage and commit changes
+	// Stage and commit
 	log.Printf("gitPushRepo: staging changes ...")
 	_, _, _ = run("git", "add", "-A")
 
@@ -606,9 +645,8 @@ func gitPushRepo(ctx context.Context, repoDir, commitMessage, outputRepoURL, bra
 	return out, nil
 }
 
-// gitAbandonRepo discards all uncommitted changes in a repository directory
-func gitAbandonRepo(ctx context.Context, repoDir string) error {
-	// Validate repoDir exists
+// AbandonRepo discards all uncommitted changes in a repository directory
+func AbandonRepo(ctx context.Context, repoDir string) error {
 	if fi, err := os.Stat(repoDir); err != nil || !fi.IsDir() {
 		return fmt.Errorf("repo directory not found: %s", repoDir)
 	}
@@ -630,17 +668,11 @@ func gitAbandonRepo(ctx context.Context, repoDir string) error {
 	return nil
 }
 
-// GitDiffSummary holds summary counts from git diff --numstat
-type GitDiffSummary struct {
-	TotalAdded   int `json:"total_added"`
-	TotalRemoved int `json:"total_removed"`
-}
-
-// gitDiffRepo returns diff statistics comparing working directory to HEAD
-func gitDiffRepo(ctx context.Context, repoDir string) (*GitDiffSummary, error) {
+// DiffRepo returns diff statistics comparing working directory to HEAD
+func DiffRepo(ctx context.Context, repoDir string) (*DiffSummary, error) {
 	// Validate repoDir exists
 	if fi, err := os.Stat(repoDir); err != nil || !fi.IsDir() {
-		return &GitDiffSummary{}, nil // Return empty summary for missing repo
+		return &DiffSummary{}, nil
 	}
 
 	run := func(args ...string) (string, error) {
@@ -655,7 +687,7 @@ func gitDiffRepo(ctx context.Context, repoDir string) (*GitDiffSummary, error) {
 		return stdout.String(), nil
 	}
 
-	summary := &GitDiffSummary{}
+	summary := &DiffSummary{}
 
 	// Get numstat for modified files (working tree vs HEAD)
 	numstatOut, err := run("git", "diff", "--numstat", "HEAD")
@@ -674,25 +706,24 @@ func gitDiffRepo(ctx context.Context, repoDir string) (*GitDiffSummary, error) {
 			if added != "-" {
 				var n int
 				fmt.Sscanf(added, "%d", &n)
-				summary.TotalAdded += n
+				summary.Added += n
 			}
 			// Parse deletions
 			if removed != "-" {
 				var n int
 				fmt.Sscanf(removed, "%d", &n)
-				summary.TotalRemoved += n
+				summary.Deleted += n
 			}
 		}
 	}
 
-	log.Printf("gitDiffRepo: total_added=%d total_removed=%d",
-		summary.TotalAdded, summary.TotalRemoved)
+	log.Printf("gitDiffRepo: added=%d deleted=%d",
+		summary.Added, summary.Deleted)
 	return summary, nil
 }
 
-// readGitHubFile reads the content of a file from a GitHub repository
-func readGitHubFile(ctx context.Context, owner, repo, branch, path, token string) ([]byte, error) {
-	// Use GitHub Contents API with raw accept header
+// ReadGitHubFile reads the content of a file from a GitHub repository
+func ReadGitHubFile(ctx context.Context, owner, repo, branch, path, token string) ([]byte, error) {
 	apiURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/%s?ref=%s",
 		owner, repo, path, branch)
 
@@ -702,7 +733,7 @@ func readGitHubFile(ctx context.Context, owner, repo, branch, path, token string
 	}
 
 	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Accept", "application/vnd.github.v3.raw") // Get raw content directly
+	req.Header.Set("Accept", "application/vnd.github.v3.raw")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {

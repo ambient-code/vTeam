@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 
+	"ambient-code-backend/git"
 	"ambient-code-backend/handlers"
 	"ambient-code-backend/server"
 	"ambient-code-backend/types"
@@ -58,11 +59,18 @@ func main() {
 	pvcBaseDir = server.PvcBaseDir
 	baseKubeConfig = server.BaseKubeConfig
 
+	// Initialize git package
+	git.GetProjectSettingsResource = getProjectSettingsResource
+	git.GetGitHubInstallation = func(ctx context.Context, userID string) (interface{}, error) {
+		return getGitHubInstallation(ctx, userID)
+	}
+	git.GitHubTokenManager = githubTokenManager
+
 	// Initialize content handlers
 	handlers.StateBaseDir = stateBaseDir
-	handlers.GitPushRepo = gitPushRepo
-	handlers.GitAbandonRepo = gitAbandonRepo
-	handlers.GitDiffRepo = gitDiffRepo
+	handlers.GitPushRepo = git.PushRepo
+	handlers.GitAbandonRepo = git.AbandonRepo
+	handlers.GitDiffRepo = git.DiffRepo
 
 	// Initialize GitHub auth handlers
 	handlers.K8sClient = k8sClient
@@ -76,8 +84,8 @@ func main() {
 	handlers.GetAgenticSessionV1Alpha1Resource = getAgenticSessionV1Alpha1Resource
 	handlers.DynamicClient = dynamicClient
 	handlers.ParseStatus = parseStatus
-	handlers.GetGitHubToken = getGitHubToken
-	handlers.DeriveRepoFolderFromURL = deriveRepoFolderFromURL
+	handlers.GetGitHubToken = git.GetGitHubToken
+	handlers.DeriveRepoFolderFromURL = git.DeriveRepoFolderFromURL
 
 	// Initialize RFE workflow handlers
 	handlers.GetRFEWorkflowResource = getRFEWorkflowResource
@@ -89,7 +97,7 @@ func main() {
 
 	// Initialize repo handlers
 	handlers.GetK8sClientsForRequestRepo = getK8sClientsForRequest
-	handlers.GetGitHubTokenRepo = getGitHubToken
+	handlers.GetGitHubTokenRepo = git.GetGitHubToken
 
 	// Initialize middleware
 	handlers.BaseKubeConfig = baseKubeConfig
@@ -390,4 +398,51 @@ func parseStatus(status map[string]interface{}) *AgenticSessionStatus {
 	}
 
 	return result
+}
+
+// Adapter types for git package interfaces
+type repoAdapter struct {
+	wf *RFEWorkflow
+}
+
+type gitRepoAdapter struct {
+	repo *types.GitRepository
+}
+
+type gitRepo interface {
+	GetURL() string
+	GetBranch() *string
+}
+
+// Wrapper for git.PerformRepoSeeding that accepts *RFEWorkflow
+func performRepoSeeding(ctx context.Context, wf *RFEWorkflow, githubToken, agentURL, agentBranch, agentPath, specKitVersion, specKitTemplate string) error {
+	adapter := &repoAdapter{wf: wf}
+	return git.PerformRepoSeeding(ctx, adapter, githubToken, agentURL, agentBranch, agentPath, specKitVersion, specKitTemplate)
+}
+
+// GetUmbrellaRepo implements the workflow interface for git.PerformRepoSeeding
+func (r *repoAdapter) GetUmbrellaRepo() gitRepo {
+	if r.wf.UmbrellaRepo == nil {
+		return nil
+	}
+	return &gitRepoAdapter{repo: r.wf.UmbrellaRepo}
+}
+
+func (g *gitRepoAdapter) GetURL() string {
+	if g.repo == nil {
+		return ""
+	}
+	return g.repo.URL
+}
+
+func (g *gitRepoAdapter) GetBranch() *string {
+	if g.repo == nil {
+		return nil
+	}
+	return g.repo.Branch
+}
+
+// Wrapper for git.CheckRepoSeeding
+func checkRepoSeeding(ctx context.Context, repoURL string, branch *string, githubToken string) (bool, map[string]interface{}, error) {
+	return git.CheckRepoSeeding(ctx, repoURL, branch, githubToken)
 }

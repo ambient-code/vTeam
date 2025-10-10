@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"ambient-code-backend/git"
+
 	"github.com/gin-gonic/gin"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -96,14 +98,14 @@ func publishWorkflowFileToJira(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "User identity required"})
 		return
 	}
-	githubToken, err := getGitHubToken(c.Request.Context(), reqK8s, reqDyn, project, userIDStr)
+	githubToken, err := git.GetGitHubToken(c.Request.Context(), reqK8s, reqDyn, project, userIDStr)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to get GitHub token", "details": err.Error()})
 		return
 	}
 
 	// Read file from GitHub
-	owner, repo, err := parseGitHubURL(wf.UmbrellaRepo.URL)
+	owner, repo, err := git.ParseGitHubURL(wf.UmbrellaRepo.URL)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid umbrella repo URL", "details": err.Error()})
 		return
@@ -112,7 +114,7 @@ func publishWorkflowFileToJira(c *gin.Context) {
 	if wf.UmbrellaRepo.Branch != nil && strings.TrimSpace(*wf.UmbrellaRepo.Branch) != "" {
 		branch = strings.TrimSpace(*wf.UmbrellaRepo.Branch)
 	}
-	content, err := readGitHubFile(c.Request.Context(), owner, repo, branch, req.Path, githubToken)
+	content, err := git.ReadGitHubFile(c.Request.Context(), owner, repo, branch, req.Path, githubToken)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to read file from GitHub", "details": err.Error()})
 		return

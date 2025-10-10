@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"ambient-code-backend/git"
+
 	"github.com/gin-gonic/gin"
 )
 
@@ -19,11 +21,11 @@ import (
 var StateBaseDir string
 
 // Git operation functions - set by main package during initialization
-// These are set to the actual implementations from git.go
+// These are set to the actual implementations from git package
 var (
 	GitPushRepo    func(ctx context.Context, repoDir, commitMessage, outputRepoURL, branch, githubToken string) (string, error)
 	GitAbandonRepo func(ctx context.Context, repoDir string) error
-	GitDiffRepo    interface{} // Set to gitDiffRepo function, returns *GitDiffSummary from main package
+	GitDiffRepo    func(ctx context.Context, repoDir string) (*git.DiffSummary, error)
 )
 
 // ContentGitPush handles POST /content/github/push in CONTENT_SERVICE_MODE
@@ -125,32 +127,18 @@ func ContentGitDiff(c *gin.Context) {
 
 	log.Printf("contentGitDiff: repoPath=%q repoDir=%q", repoPath, repoDir)
 
-	// Call GitDiffRepo function
-	type diffFunc func(context.Context, string) (interface{}, error)
-	fn := GitDiffRepo.(diffFunc)
-	summaryIntf, err := fn(c.Request.Context(), repoDir)
+	summary, err := GitDiffRepo(c.Request.Context(), repoDir)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"added": 0, "modified": 0, "deleted": 0, "renamed": 0, "untracked": 0})
 		return
 	}
 
-	// Use type assertion to access struct fields
-	// We know the structure from git.go
-	type summaryFields struct {
-		Added     int
-		Modified  int
-		Deleted   int
-		Renamed   int
-		Untracked int
-	}
-	summaryStruct := summaryIntf.(*summaryFields)
-
 	c.JSON(http.StatusOK, gin.H{
-		"added":     summaryStruct.Added,
-		"modified":  summaryStruct.Modified,
-		"deleted":   summaryStruct.Deleted,
-		"renamed":   summaryStruct.Renamed,
-		"untracked": summaryStruct.Untracked,
+		"added":     summary.Added,
+		"modified":  summary.Modified,
+		"deleted":   summary.Deleted,
+		"renamed":   summary.Renamed,
+		"untracked": summary.Untracked,
 	})
 }
 
