@@ -1,127 +1,145 @@
 # vTeam: Ambient Agentic Runner
 
-> Kubernetes-native AI automation platform for intelligent agentic sessions with multi-agent collaboration
+> OpenShift-native AI automation platform for intelligent agentic sessions with multi-agent collaboration
 
 ## Overview
 
-**vTeam** is an AI automation platform that combines Claude Code CLI with multi-agent collaboration capabilities. The platform enables teams to create and manage intelligent agentic sessions through a modern web interface.
+**vTeam** is an OpenShift-native AI automation platform that orchestrates Claude Code SDK sessions with multi-agent personas. The platform enables teams to create and manage intelligent agentic sessions and RFE workflows through a modern web interface.
 
 ### Key Capabilities
 
-- **Intelligent Agentic Sessions**: AI-powered automation for analysis, research, content creation, and development tasks
-- **Multi-Agent Workflows**: Specialized AI agents model realistic software team dynamics
-- **Kubernetes Native**: Built with Custom Resources, Operators, and proper RBAC for enterprise deployment
-- **Real-time Monitoring**: Live status updates and job execution tracking
+- **Agentic Sessions**: AI-powered automation for code analysis, content creation, and development workflows
+- **RFE Workflows**: Multi-phase feature refinement with specialized AI agent personas
+- **Multi-Repo Support**: Work with umbrella and supporting repositories simultaneously
+- **OpenShift Native**: Built with Custom Resources, Kubernetes Operators, and RBAC for enterprise deployment
+- **Real-time Communication**: WebSocket-based live updates and interactive sessions
 
 ## Architecture
 
-The platform consists of containerized microservices orchestrated via Kubernetes:
+The platform consists of containerized microservices orchestrated via OpenShift/Kubernetes:
 
 | Component | Technology | Description |
 |-----------|------------|-------------|
-| **Frontend** | NextJS + Shadcn | User interface for managing agentic sessions |
-| **Backend API** | Go + Gin | REST API for managing Kubernetes Custom Resources (multi-tenant: projects, sessions, access control) |
-| **Agentic Operator** | Go | Kubernetes operator that watches CRs and creates Jobs |
-| **Claude Code Runner** | Python + Claude Code CLI | Pod that executes AI with multi-agent collaboration capabilities |
+| **Frontend** | Next.js 15 + Shadcn UI | React-based web interface for managing sessions and workflows |
+| **Backend API** | Go + Gin | REST API for managing Custom Resources with project-scoped multi-tenancy |
+| **Operator** | Go | Kubernetes operator that reconciles AgenticSession and RFEWorkflow CRs |
+| **Claude Code Runner** | Python + Claude Code SDK | Executes AI sessions with workspace management and agent personas |
+| **Content Service** | Go (sidecar mode) | Per-session content proxy for file operations and GitHub integration |
 
 ### Agentic Session Flow
 
-1. **Create Session**: User creates agentic session via web UI with task description
-2. **API Processing**: Backend creates `AgenticSession` Custom Resource in Kubernetes
-3. **Job Scheduling**: Operator detects CR and creates Kubernetes Job with runner pod
-4. **AI Execution**: Pod runs Claude Code CLI with multi-agent collaboration for intelligent analysis
-5. **Result Storage**: Analysis results stored back in Custom Resource status
-6. **UI Updates**: Frontend displays real-time progress and completed results
+1. **Create Session**: User creates session via web UI, specifying prompt and optional repos
+2. **API Processing**: Backend creates `AgenticSession` Custom Resource in project namespace
+3. **Job Scheduling**: Operator reconciles CR and creates Kubernetes Job with runner + content sidecars
+4. **AI Execution**: Runner executes Claude Code SDK session with workspace synced via PVC
+5. **WebSocket Streaming**: Real-time messages streamed to frontend via WebSocket connection
+6. **Result Storage**: Session results and metadata stored in CR status field
 
 ## Prerequisites
 
-### Required Tools
-- **OpenShift Local (CRC)** for local development or OpenShift cluster for production
-- **oc** (OpenShift CLI) or **kubectl** v1.28+ configured to access your cluster  
+### Required Infrastructure
+- **OpenShift cluster** with admin access (or OpenShift Local/CRC for development)
+- **oc CLI** configured to access your cluster
+- **Container registry access** - default images available at `quay.io/ambient_code`
+
+### Optional Build Tools (for custom images)
 - **Docker or Podman** for building container images
-- **Container registry access** (Docker Hub, Quay.io, ECR, etc.) for production
-- **Go 1.24+** for building backend services (if building from source)
-- **Node.js 20+** and **npm** for the frontend (if building from source)
+- **Go 1.24+** for building backend and operator from source
+- **Node.js 20+** and **pnpm** for building frontend from source
 
 ### Required API Keys
 - **Anthropic API Key** - Get from [Anthropic Console](https://console.anthropic.com/)
-  - Configure via web UI: Settings → Runner Secrets after deployment
+  - Configure during deployment or via UI: Settings → Runner Secrets
 
 ## Quick Start
 
 ### 1. Deploy to OpenShift
 
-Deploy using the default images from `quay.io/ambient_code`:
+Deploy using pre-built images from `quay.io/ambient_code`:
 
 ```bash
-# From repo root, prepare env for deploy script (required once)
-cp components/manifests/env.example components/manifests/.env
-# Edit .env and set at least ANTHROPIC_API_KEY
+# Prepare environment configuration
+cd components/manifests
+cp env.example .env
+
+# Edit .env and set required values:
+# - ANTHROPIC_API_KEY (required for AI sessions)
+# - Optionally: GITHUB_APP_ID, GITHUB_PRIVATE_KEY, OAUTH_CLIENT_SECRET
 
 # Deploy to ambient-code namespace (default)
 make deploy
-
-# Or deploy to custom namespace
-make deploy NAMESPACE=my-namespace
 ```
 
 ### 2. Verify Deployment
 
 ```bash
-# Check pod status
+# Check deployment status
 oc get pods -n ambient-code
 
-# Check services and routes
-oc get services,routes -n ambient-code
+# Expected output: frontend, backend, operator pods running
+# Watch operator logs
+oc logs -f deployment/vteam-operator -n ambient-code
 ```
 
 ### 3. Access the Web Interface
 
 ```bash
-# Get the route URL
-oc get route frontend-route -n ambient-code
+# Get the frontend route URL
+oc get route frontend-route -n ambient-code -o jsonpath='{.spec.host}'
 
-# Or use port forwarding as fallback
-kubectl port-forward svc/frontend-service 3000:3000 -n ambient-code
+# Open in browser, or use port forwarding:
+oc port-forward svc/frontend-service 3000:3000 -n ambient-code
 ```
 
-### 4. Configure API Keys
+### 4. Create Your First Project
 
-1. Access the web interface
-2. Navigate to Settings → Runner Secrets
-3. Add your Anthropic API key
+1. Access the web interface at the route URL
+2. Click "New Project" to create a project namespace
+3. Navigate to Settings → Runner Secrets to configure API keys
+4. Create an agentic session or RFE workflow
 
 ## Usage
 
 ### Creating an Agentic Session
 
-1. **Access Web Interface**: Navigate to your deployed route URL
-2. **Create New Session**:
-   - **Prompt**: Task description (e.g., "Review this codebase for security vulnerabilities and suggest improvements")
-   - **Model**: Choose AI model (Claude Sonnet/Haiku)
-   - **Settings**: Adjust temperature, token limits, timeout (default: 300s)
-3. **Monitor Progress**: View real-time status updates and execution logs
-4. **Review Results**: Download analysis results and structured output
+1. **Navigate to Sessions**: Select a project, click "Sessions" → "New Session"
+2. **Configure Session**:
+   - **Prompt**: Task description (e.g., "Analyze this codebase and suggest improvements")
+   - **Model**: Choose AI model (Claude Sonnet 4.5 recommended)
+   - **Repos** (optional): Add input repositories to clone into workspace
+   - **Settings**: Adjust temperature, max tokens, timeout
+3. **Monitor Execution**: View real-time message stream via WebSocket
+4. **Access Results**: Browse workspace files, review conversation, check cost/usage
+
+### Creating an RFE Workflow
+
+1. **Navigate to RFE**: Select a project, click "RFE Workflows" → "New RFE"
+2. **Configure Workflow**:
+   - **Title & Description**: Feature overview
+   - **Umbrella Repo**: Primary repository for the RFE
+   - **Supporting Repos** (optional): Additional context repositories
+3. **Execute Phases**: Run ideation, specification, planning, and implementation phases with specialized agent personas
+4. **Review Artifacts**: Access generated documents, specifications, and implementation plans
 
 ### Example Use Cases
 
-- **Code Analysis**: Security reviews, code quality assessments, architecture analysis
-- **Technical Documentation**: API documentation, user guides, technical specifications
-- **Project Planning**: Feature specifications, implementation plans, task breakdowns
-- **Research & Analysis**: Technology research, competitive analysis, requirement gathering
-- **Development Workflows**: Code reviews, testing strategies, deployment planning
+- **Feature Refinement**: Multi-agent RFE workflows with PM, UX, and engineering perspectives
+- **Code Analysis**: Repository reviews, security audits, quality assessments
+- **Documentation**: Generate technical specs, API docs, user guides
+- **Implementation Planning**: Break down features into actionable tasks
+- **Interactive Development**: Real-time AI pair programming sessions
 
-## Advanced Configuration
+## Configuration
 
 ### Building Custom Images
 
-To build and deploy your own container images:
+Build and push your own container images:
 
 ```bash
-# Set your container registry
+# Set container registry
 export REGISTRY="quay.io/your-username"
 
-# Build all images
+# Build all images (frontend, backend, operator, runner)
 make build-all
 
 # Push to registry (requires authentication)
@@ -129,7 +147,8 @@ make push-all REGISTRY=$REGISTRY
 
 # Deploy with custom images
 cd components/manifests
-REGISTRY=$REGISTRY ./deploy.sh
+# Edit .env to set CONTAINER_REGISTRY=$REGISTRY
+./deploy.sh
 ```
 
 ### Container Engine Options
@@ -138,8 +157,7 @@ REGISTRY=$REGISTRY ./deploy.sh
 # Use Podman instead of Docker
 make build-all CONTAINER_ENGINE=podman
 
-# Build for specific platform
-# Default is linux/amd64
+# Build for specific platform (default: linux/amd64)
 make build-all PLATFORM=linux/arm64
 
 # Build with additional flags
@@ -148,27 +166,28 @@ make build-all BUILD_FLAGS="--no-cache --pull"
 
 ### OpenShift OAuth Integration
 
-For cluster-based authentication and authorization, the deployment script can configure the Route host, create an `OAuthClient`, and set the frontend secret when provided a `.env` file. See the guide for details and a manual alternative:
+Enable cluster SSO authentication using OpenShift OAuth:
 
-- [docs/OPENSHIFT_OAUTH.md](docs/OPENSHIFT_OAUTH.md)
+- See [docs/OPENSHIFT_OAUTH.md](docs/OPENSHIFT_OAUTH.md) for setup instructions
+- Requires configuring OAuthClient and oauth-proxy sidecar
+- Provides seamless user authentication with OpenShift credentials
 
-## Configuration & Secrets
+### GitHub App Integration
 
-### Session Timeout Configuration
+Enable GitHub repository access and PR automation:
 
-Sessions have a configurable timeout (default: 300 seconds):
-
-- **Environment Variable**: Set `TIMEOUT=1800` for 30-minute sessions
-- **CRD Default**: Modify `components/manifests/crds/agenticsessions-crd.yaml`
-- **Interactive Mode**: Set `interactive: true` for unlimited chat-based sessions
+- See [docs/GITHUB_APP_SETUP.md](docs/GITHUB_APP_SETUP.md) for configuration
+- Allows cloning private repos, creating branches, pushing changes
+- Integrates with session workspace for repository operations
 
 ### Runner Secrets Management
 
-Configure AI API keys and integrations via the web interface:
+Configure API keys per-project via the web interface:
 
-- **Settings → Runner Secrets**: Add Anthropic API keys
-- **Project-scoped**: Each project namespace has isolated secret management
-- **Security**: All secrets stored as Kubernetes Secrets with proper RBAC
+- **Settings → Runner Secrets**: Manage secret references and values
+- **Project-scoped**: Each project namespace has isolated secrets
+- **Required secrets**: `ANTHROPIC_API_KEY` at minimum
+- **Optional secrets**: GitHub tokens, Jira credentials, etc.
 
 ## Troubleshooting
 
@@ -176,173 +195,180 @@ Configure AI API keys and integrations via the web interface:
 
 **Pods Not Starting:**
 ```bash
+# Check pod status and events
+oc get pods -n ambient-code
 oc describe pod <pod-name> -n ambient-code
 oc logs <pod-name> -n ambient-code
 ```
 
-**API Connection Issues:**
+**Session Jobs Failing:**
 ```bash
-oc get endpoints -n ambient-code
-oc exec -it <pod-name> -- curl http://backend-service:8080/health
+# Check job and pod logs
+oc get jobs -n <project-namespace>
+oc describe job <session-job-name> -n <project-namespace>
+oc logs <runner-pod-name> -c runner -n <project-namespace>
 ```
 
-**Job Failures:**
+**WebSocket Connection Issues:**
 ```bash
-oc get jobs -n ambient-code
-oc describe job <job-name> -n ambient-code
-oc logs <failed-pod-name> -n ambient-code
+# Verify backend health
+oc port-forward svc/backend-service 8080:8080 -n ambient-code
+curl http://localhost:8080/health
+
+# Check backend logs for WebSocket errors
+oc logs deployment/vteam-backend -n ambient-code --tail=50
+```
+
+**Authentication Issues:**
+```bash
+# Verify OAuth configuration (if enabled)
+oc get oauthclient vteam-frontend -n ambient-code
+oc describe route frontend-route -n ambient-code
 ```
 
 ### Verification Commands
 
 ```bash
-# Check all resources
-oc get all -l app=ambient-code -n ambient-code
+# Check all platform components
+oc get deployments,services,routes -n ambient-code
 
-# View recent events
-oc get events --sort-by='.lastTimestamp' -n ambient-code
+# View operator reconciliation logs
+oc logs -f deployment/vteam-operator -n ambient-code
 
-# Test frontend access
-curl -f http://localhost:3000 || echo "Frontend not accessible"
+# Check Custom Resource Definitions
+oc get crds | grep vteam.ambient-code
 
-# Test backend API
-kubectl port-forward svc/backend-service 8080:8080 -n ambient-code &
-curl http://localhost:8080/health
+# View session status
+oc get agenticsessions -n <project-namespace>
+oc describe agenticsession <session-name> -n <project-namespace>
 ```
 
 ## Production Considerations
 
 ### Security
-- **API Key Management**: Store Anthropic API keys securely in Kubernetes secrets
-- **RBAC**: Configure appropriate role-based access controls
-- **Network Policies**: Implement network isolation between components
-- **Image Scanning**: Scan container images for vulnerabilities before deployment
+- **RBAC**: Per-project namespaces with role-based access control
+- **Secret Management**: API keys stored as Kubernetes Secrets, project-scoped
+- **Network Policies**: Isolate project namespaces and restrict pod communication
+- **Image Scanning**: Scan container images for vulnerabilities
+- **OAuth Integration**: Use OpenShift OAuth for enterprise SSO
 
-### Monitoring
-- **Prometheus Metrics**: Configure metrics collection for all components
-- **Log Aggregation**: Set up centralized logging (ELK, Loki, etc.)
-- **Alerting**: Configure alerts for pod failures, resource exhaustion
-- **Health Checks**: Implement comprehensive health endpoints
+### Monitoring & Observability
+- **Health Endpoints**: Backend and content service expose `/health` endpoints
+- **Operator Logs**: Monitor reconciliation loops and CR updates
+- **Session Metrics**: Track session duration, cost, and success rates
+- **Log Aggregation**: Use OpenShift logging or external log collectors
 
 ### Scaling
-- **Horizontal Pod Autoscaling**: Configure HPA based on CPU/memory usage
-- **Resource Limits**: Set appropriate resource requests and limits
-- **Node Affinity**: Configure pod placement for optimal resource usage
+- **Multi-tenancy**: Projects map to namespaces for resource isolation
+- **Resource Limits**: Configure resource requests/limits per project
+- **PVC Management**: Sessions use persistent volumes for workspace storage
+- **Job Cleanup**: Configure TTL for completed session jobs
 
 ## Development
 
 ### Local Development with OpenShift Local (CRC)
 
-**Single Command Setup:**
+Run vTeam locally using OpenShift Local (CRC) for a production-like environment:
+
 ```bash
-# Start complete local development environment
+# Install CRC (macOS/Linux)
+brew install crc  # or download from console.redhat.com
+
+# Setup CRC with pull secret (one-time)
+crc setup
+# Download pull secret from: https://console.redhat.com/openshift/create/local
+
+# Start local OpenShift cluster and deploy vTeam
 make dev-start
 ```
 
 **What this provides:**
-- ✅ Full OpenShift cluster with CRC
-- ✅ Real OpenShift authentication and RBAC  
-- ✅ Production-like environment
-- ✅ Automatic image builds and deployments
-- ✅ Working frontend-backend integration
+- ✅ Full OpenShift cluster running locally
+- ✅ Automatic image builds and deployment
+- ✅ Production-like environment with RBAC
+- ✅ Frontend, backend, and operator components
+- ✅ Live log streaming
 
-**Prerequisites:**
-```bash
-# Install CRC (macOS)
-brew install crc
-
-# Get Red Hat pull secret (free):
-# 1. Visit: https://console.redhat.com/openshift/create/local
-# 2. Download pull secret to ~/.crc/pull-secret.json
-# 3. Run: crc setup
-
-# Then start development
-make dev-start
-```
-
-**Hot Reloading (optional):**
+**Development with Hot Reloading:**
 ```bash
 # Terminal 1: Start with development images
 DEV_MODE=true make dev-start
 
-# Terminal 2: Enable file sync for hot-reloading
+# Terminal 2: Enable file sync for instant updates
 make dev-sync
 ```
 
-**Access URLs:**
+**Access Local Environment:**
 - Frontend: `https://vteam-frontend-vteam-dev.apps-crc.testing`
-- Backend: `https://vteam-backend-vteam-dev.apps-crc.testing/health`
-- Console: `https://console-openshift-console.apps-crc.testing`
+- Backend API: `https://vteam-backend-vteam-dev.apps-crc.testing`
+- OpenShift Console: `https://console-openshift-console.apps-crc.testing`
+
+**Development Commands:**
+```bash
+make dev-logs            # View frontend and backend logs
+make dev-logs-operator   # View operator logs
+make dev-stop            # Stop local development (keeps cluster)
+make dev-clean           # Stop and delete project
+```
 
 ### Building from Source
+
 ```bash
-# Build all images locally
+# Build all components
 make build-all
 
-# Build specific components
+# Build individual components
 make build-frontend
 make build-backend
 make build-operator
 make build-runner
 ```
 
-## File Structure
+## Project Structure
 
 ```
 vTeam/
-├── components/                     # 🚀 Ambient Agentic Runner Platform
-│   ├── frontend/                   # NextJS web interface
-│   ├── backend/                    # Go API service
-│   ├── operator/                   # Kubernetes operator
-│   ├── runners/                   # AI runner services
-│   │   └── claude-code-runner/    # Python Claude Code CLI service
-│   └── manifests/                  # Kubernetes deployment manifests
-├── docs/                           # Documentation
-│   ├── OPENSHIFT_DEPLOY.md        # Detailed deployment guide
-│   └── OPENSHIFT_OAUTH.md         # OAuth configuration
-├── tools/                          # Supporting development tools
-│   ├── vteam_shared_configs/       # Team configuration management
-│   └── mcp_client_integration/     # MCP client library
-└── Makefile                        # Build and deployment automation
+├── components/                      # Main platform components
+│   ├── frontend/                    # Next.js 15 web interface (React + Shadcn UI)
+│   ├── backend/                     # Go API service (Gin framework)
+│   ├── operator/                    # Kubernetes operator (reconciles CRs)
+│   ├── runners/
+│   │   ├── claude-code-runner/      # Python runner (Claude Code SDK)
+│   │   └── runner-shell/            # Runner shell library (WebSocket transport)
+│   ├── manifests/                   # Kubernetes manifests (CRDs, RBAC, deployments)
+│   └── scripts/                     # Development and deployment scripts
+├── docs/                            # Documentation
+│   ├── OPENSHIFT_DEPLOY.md          # Deployment guide
+│   ├── OPENSHIFT_OAUTH.md           # OAuth configuration
+│   ├── GITHUB_APP_SETUP.md          # GitHub App integration
+│   ├── user-guide/                  # User documentation
+│   ├── developer-guide/             # Developer documentation
+│   └── labs/                        # Hands-on tutorials
+├── agents/                          # Agent persona definitions (YAML)
+├── Makefile                         # Build and deployment automation
+└── mkdocs.yml                       # Documentation site configuration
 ```
 
-## Production Considerations
-
-### Security
-- **RBAC**: Comprehensive role-based access controls
-- **Network Policies**: Component isolation and secure communication
-- **Secret Management**: Kubernetes-native secret storage with encryption
-- **Image Scanning**: Vulnerability scanning for all container images
-
-### Monitoring & Observability
-- **Health Checks**: Comprehensive health endpoints for all services
-- **Metrics**: Prometheus-compatible metrics collection
-- **Logging**: Structured logging with OpenShift logging integration
-- **Alerting**: Integration with OpenShift monitoring and alerting
-
-### Scaling & Performance
-- **Horizontal Pod Autoscaling**: Auto-scaling based on CPU/memory metrics
-- **Resource Management**: Proper requests/limits for optimal resource usage
-- **Job Queuing**: Intelligent job scheduling and resource allocation
-- **Multi-tenancy**: Project-based isolation with shared infrastructure
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Make your changes following the existing patterns
-4. Add tests if applicable
-5. Commit with conventional commit messages
-6. Push to the branch (`git push origin feature/amazing-feature`)
-7. Open a Pull Request
-
-## Support & Documentation
+## Documentation
 
 - **Deployment Guide**: [docs/OPENSHIFT_DEPLOY.md](docs/OPENSHIFT_DEPLOY.md)
 - **OAuth Setup**: [docs/OPENSHIFT_OAUTH.md](docs/OPENSHIFT_OAUTH.md)
-- **Architecture Details**: [diagrams/](diagrams/)
-- **API Documentation**: Available in web interface after deployment
+- **GitHub Integration**: [docs/GITHUB_APP_SETUP.md](docs/GITHUB_APP_SETUP.md)
+- **Runner Architecture**: [docs/CLAUDE_CODE_RUNNER.md](docs/CLAUDE_CODE_RUNNER.md)
+- **User Guide**: [docs/user-guide/](docs/user-guide/)
+- **Developer Guide**: [docs/developer-guide/](docs/developer-guide/)
+
+## Contributing
+
+Contributions are welcome! To contribute:
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/your-feature`)
+3. Make your changes following existing code patterns
+4. Test locally using `make dev-start`
+5. Commit with descriptive messages
+6. Push and open a Pull Request
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License - see [LICENSE](LICENSE) for details.
