@@ -26,7 +26,7 @@
 ## Next Steps: Code Organization Refactor
 
 ### Current State (2025-01-10)
-- ✅ `handlers.go`: ~2860 lines (in progress - content, GitHub auth, project, and permissions handlers extracted)
+- ✅ `handlers.go`: ~2630 lines (in progress - content, GitHub auth, project, permissions, and secrets handlers extracted)
 - ✅ `main.go`: 162 lines (will eventually be ~20-30 lines following Go best practices)
 - ✅ All Jira integration complete
 - ✅ Types package created (`types/common.go`, `types/session.go`, `types/rfe.go`, `types/project.go`)
@@ -36,6 +36,7 @@
 - ✅ GitHub auth handlers extracted (`handlers/github_auth.go`)
 - ✅ Project handlers extracted (`handlers/projects.go`)
 - ✅ Permissions handlers extracted (`handlers/permissions.go`)
+- ✅ Secrets handlers extracted (`handlers/secrets.go`)
 - ✅ Build clean
 
 ### Refactor Goals
@@ -111,10 +112,13 @@
 - ✅ Build verified clean
 - ✅ Commit: "refactor: extract permissions handlers"
 
-**Commit 6:** Secrets handlers
-- Extract runner secrets endpoints
-- Create `handlers/secrets.go`
-- Commit: "refactor: extract secrets handlers"
+**Commit 6:** ✅ Secrets handlers
+- ✅ Extract runner secrets endpoints (listNamespaceSecrets, getRunnerSecretsConfig, updateRunnerSecretsConfig, listRunnerSecrets, updateRunnerSecrets)
+- ✅ Create `handlers/secrets.go` (260 lines, 5 handlers)
+- ✅ Create `handlers/helpers.go` (shared GetProjectSettingsResource function)
+- ✅ Removed from `handlers.go` (lines 2629-2859 deleted)
+- ✅ Build verified clean
+- ✅ Commit: "refactor: extract secrets handlers"
 
 **Commit 7:** Session handlers
 - Extract agentic session endpoints

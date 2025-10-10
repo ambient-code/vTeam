@@ -68,6 +68,14 @@ func main() {
 	handlers.GetK8sClientsForRequest = getK8sClientsForRequest
 	handlers.GetOpenShiftProjectResource = getOpenShiftProjectResource
 
+	// Initialize session handlers
+	handlers.GetAgenticSessionV1Alpha1Resource = getAgenticSessionV1Alpha1Resource
+	handlers.DynamicClient = dynamicClient
+	handlers.ParseStatus = parseStatus
+	handlers.GetGitHubToken = getGitHubToken
+	handlers.DeriveRepoFolderFromURL = deriveRepoFolderFromURL
+	handlers.BoolPtr = boolPtr // Use the one from handlers.go main package
+
 	// Content service mode
 	if os.Getenv("CONTENT_SERVICE_MODE") == "true" {
 		if err := server.RunContentService(registerContentRoutes); err != nil {
@@ -95,7 +103,7 @@ func registerRoutes(r *gin.Engine) {
 	// API routes
 	api := r.Group("/api")
 	{
-		api.POST("/projects/:projectName/agentic-sessions/:sessionName/github/token", mintSessionGitHubToken)
+		api.POST("/projects/:projectName/agentic-sessions/:sessionName/github/token", handlers.MintSessionGitHubToken)
 
 		projectGroup := api.Group("/projects/:projectName", validateProjectContext())
 		{
@@ -106,21 +114,21 @@ func registerRoutes(r *gin.Engine) {
 			projectGroup.GET("/repo/tree", getRepoTree)
 			projectGroup.GET("/repo/blob", getRepoBlob)
 
-			projectGroup.GET("/agentic-sessions", listSessions)
-			projectGroup.POST("/agentic-sessions", createSession)
-			projectGroup.GET("/agentic-sessions/:sessionName", getSession)
-			projectGroup.PUT("/agentic-sessions/:sessionName", updateSession)
-			projectGroup.DELETE("/agentic-sessions/:sessionName", deleteSession)
-			projectGroup.POST("/agentic-sessions/:sessionName/clone", cloneSession)
-			projectGroup.POST("/agentic-sessions/:sessionName/start", startSession)
-			projectGroup.POST("/agentic-sessions/:sessionName/stop", stopSession)
-			projectGroup.PUT("/agentic-sessions/:sessionName/status", updateSessionStatus)
-			projectGroup.GET("/agentic-sessions/:sessionName/workspace", listSessionWorkspace)
-			projectGroup.GET("/agentic-sessions/:sessionName/workspace/*path", getSessionWorkspaceFile)
-			projectGroup.PUT("/agentic-sessions/:sessionName/workspace/*path", putSessionWorkspaceFile)
-			projectGroup.POST("/agentic-sessions/:sessionName/github/push", pushSessionRepo)
-			projectGroup.POST("/agentic-sessions/:sessionName/github/abandon", abandonSessionRepo)
-			projectGroup.GET("/agentic-sessions/:sessionName/github/diff", diffSessionRepo)
+			projectGroup.GET("/agentic-sessions", handlers.ListSessions)
+			projectGroup.POST("/agentic-sessions", handlers.CreateSession)
+			projectGroup.GET("/agentic-sessions/:sessionName", handlers.GetSession)
+			projectGroup.PUT("/agentic-sessions/:sessionName", handlers.UpdateSession)
+			projectGroup.DELETE("/agentic-sessions/:sessionName", handlers.DeleteSession)
+			projectGroup.POST("/agentic-sessions/:sessionName/clone", handlers.CloneSession)
+			projectGroup.POST("/agentic-sessions/:sessionName/start", handlers.StartSession)
+			projectGroup.POST("/agentic-sessions/:sessionName/stop", handlers.StopSession)
+			projectGroup.PUT("/agentic-sessions/:sessionName/status", handlers.UpdateSessionStatus)
+			projectGroup.GET("/agentic-sessions/:sessionName/workspace", handlers.ListSessionWorkspace)
+			projectGroup.GET("/agentic-sessions/:sessionName/workspace/*path", handlers.GetSessionWorkspaceFile)
+			projectGroup.PUT("/agentic-sessions/:sessionName/workspace/*path", handlers.PutSessionWorkspaceFile)
+			projectGroup.POST("/agentic-sessions/:sessionName/github/push", handlers.PushSessionRepo)
+			projectGroup.POST("/agentic-sessions/:sessionName/github/abandon", handlers.AbandonSessionRepo)
+			projectGroup.GET("/agentic-sessions/:sessionName/github/diff", handlers.DiffSessionRepo)
 
 			projectGroup.GET("/rfe-workflows", listProjectRFEWorkflows)
 			projectGroup.POST("/rfe-workflows", createProjectRFEWorkflow)
