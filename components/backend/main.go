@@ -147,11 +147,11 @@ func registerRoutes(r *gin.Engine) {
 			projectGroup.POST("/keys", handlers.CreateProjectKey)
 			projectGroup.DELETE("/keys/:keyId", handlers.DeleteProjectKey)
 
-			projectGroup.GET("/secrets", listNamespaceSecrets)
-			projectGroup.GET("/runner-secrets/config", getRunnerSecretsConfig)
-			projectGroup.PUT("/runner-secrets/config", updateRunnerSecretsConfig)
-			projectGroup.GET("/runner-secrets", listRunnerSecrets)
-			projectGroup.PUT("/runner-secrets", updateRunnerSecrets)
+			projectGroup.GET("/secrets", handlers.ListNamespaceSecrets)
+			projectGroup.GET("/runner-secrets/config", handlers.GetRunnerSecretsConfig)
+			projectGroup.PUT("/runner-secrets/config", handlers.UpdateRunnerSecretsConfig)
+			projectGroup.GET("/runner-secrets", handlers.ListRunnerSecrets)
+			projectGroup.PUT("/runner-secrets", handlers.UpdateRunnerSecrets)
 		}
 
 		api.POST("/auth/github/install", handlers.LinkGitHubInstallationGlobal)
