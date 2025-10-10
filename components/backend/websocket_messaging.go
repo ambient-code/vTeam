@@ -11,6 +11,8 @@ import (
 	"sync"
 	"time"
 
+	"ambient-code-backend/handlers"
+
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 )
@@ -141,7 +143,7 @@ func handleSessionWebSocket(c *gin.Context) {
 		}
 	}
 	if userIDStr == "" {
-		if ns, sa, ok := extractServiceAccountFromAuth(c); ok {
+		if ns, sa, ok := handlers.ExtractServiceAccountFromAuth(c); ok {
 			userIDStr = ns + ":" + sa
 		}
 	}

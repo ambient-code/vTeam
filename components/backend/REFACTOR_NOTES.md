@@ -141,17 +141,29 @@
 - ✅ Build verified clean
 - ✅ Commit: "refactor: extract RFE workflow handlers"
 
-**Commit 9:** Repo browsing handlers
-- Extract repo tree/blob endpoints from main.go
-- Create `handlers/repo.go`
-- Commit: "refactor: extract repo browsing handlers"
+**Commit 9:** ✅ Repo browsing handlers
+- ✅ Extract repo browsing endpoints (accessCheck, listUserForks, createUserFork, getRepoTree, getRepoBlob)
+- ✅ Create `handlers/repo.go` (408 lines, 5 handlers)
+- ✅ Extracted helper function parseOwnerRepo (githubAPIBaseURL and doGitHubRequest already in github_auth.go)
+- ✅ Updated main.go to initialize repo handler dependencies and update routes
+- ✅ Removed from `handlers.go` (accessCheck, lines 279-333 deleted - 55 lines)
+- ✅ Removed from `github_app.go` (listUserForks, createUserFork, getRepoTree, getRepoBlob - 295 lines)
+- ✅ Build verified clean
+- ✅ Commit: "refactor: extract repo browsing handlers"
 
-**Commit 10:** Middleware and helpers
-- Extract middleware functions from handlers.go
-- Extract shared helpers from handlers.go
-- Create `handlers/middleware.go`
-- Keep rfeFromUnstructured and extractTitleFromContent in handlers.go for now (used by jira.go)
-- Commit: "refactor: extract middleware to handlers/middleware.go"
+**Commit 10:** ✅ Middleware and helpers
+- ✅ Extract middleware functions from handlers.go
+- ✅ Create `handlers/middleware.go` (283 lines)
+- ✅ Extracted middleware: ValidateProjectContext, GetK8sClientsForRequest, updateAccessKeyLastUsedAnnotation, ExtractServiceAccountFromAuth
+- ✅ Extracted helpers: BoolPtr, StringPtr, ContentListItem type
+- ✅ Kept rfeFromUnstructured and extractTitleFromContent in handlers.go (used by jira.go)
+- ✅ Reduced handlers.go from 384 to 120 lines (only Jira-related functions remain)
+- ✅ Updated main.go to initialize middleware dependencies and use handlers.ValidateProjectContext()
+- ✅ Updated websocket_messaging.go to use handlers.ExtractServiceAccountFromAuth
+- ✅ Updated projects.go to remove duplicate variable declarations
+- ✅ Updated rfe.go and sessions.go to remove duplicate helper declarations
+- ✅ Build verified clean
+- ✅ Commit: "refactor: extract middleware to handlers/middleware.go"
 
 **Phase 3: Organize remaining files into packages**
 

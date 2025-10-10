@@ -31,6 +31,11 @@ var (
 	baseKubeConfig *rest.Config
 )
 
+// getK8sClientsForRequest is a wrapper for the handlers package version
+func getK8sClientsForRequest(c *gin.Context) (*kubernetes.Clientset, dynamic.Interface) {
+	return handlers.GetK8sClientsForRequest(c)
+}
+
 func main() {
 	// Load environment from .env in development if present
 	_ = godotenv.Overload(".env.local")
@@ -65,7 +70,6 @@ func main() {
 	handlers.GithubTokenManager = githubTokenManager
 
 	// Initialize project handlers
-	handlers.GetK8sClientsForRequest = getK8sClientsForRequest
 	handlers.GetOpenShiftProjectResource = getOpenShiftProjectResource
 
 	// Initialize session handlers
@@ -74,7 +78,6 @@ func main() {
 	handlers.ParseStatus = parseStatus
 	handlers.GetGitHubToken = getGitHubToken
 	handlers.DeriveRepoFolderFromURL = deriveRepoFolderFromURL
-	handlers.BoolPtr = boolPtr // Use the one from handlers.go main package
 
 	// Initialize RFE workflow handlers
 	handlers.GetRFEWorkflowResource = getRFEWorkflowResource
@@ -83,6 +86,14 @@ func main() {
 	handlers.CheckRepoSeeding = checkRepoSeeding
 	handlers.StringPtr = stringPtr
 	handlers.RfeFromUnstructured = rfeFromUnstructured
+
+	// Initialize repo handlers
+	handlers.GetK8sClientsForRequestRepo = getK8sClientsForRequest
+	handlers.GetGitHubTokenRepo = getGitHubToken
+
+	// Initialize middleware
+	handlers.BaseKubeConfig = baseKubeConfig
+	handlers.K8sClientMw = k8sClient
 
 	// Content service mode
 	if os.Getenv("CONTENT_SERVICE_MODE") == "true" {
@@ -113,14 +124,14 @@ func registerRoutes(r *gin.Engine) {
 	{
 		api.POST("/projects/:projectName/agentic-sessions/:sessionName/github/token", handlers.MintSessionGitHubToken)
 
-		projectGroup := api.Group("/projects/:projectName", validateProjectContext())
+		projectGroup := api.Group("/projects/:projectName", handlers.ValidateProjectContext())
 		{
-			projectGroup.GET("/access", accessCheck)
-			projectGroup.GET("/users/forks", listUserForks)
-			projectGroup.POST("/users/forks", createUserFork)
+			projectGroup.GET("/access", handlers.AccessCheck)
+			projectGroup.GET("/users/forks", handlers.ListUserForks)
+			projectGroup.POST("/users/forks", handlers.CreateUserFork)
 
-			projectGroup.GET("/repo/tree", getRepoTree)
-			projectGroup.GET("/repo/blob", getRepoBlob)
+			projectGroup.GET("/repo/tree", handlers.GetRepoTree)
+			projectGroup.GET("/repo/blob", handlers.GetRepoBlob)
 
 			projectGroup.GET("/agentic-sessions", handlers.ListSessions)
 			projectGroup.POST("/agentic-sessions", handlers.CreateSession)

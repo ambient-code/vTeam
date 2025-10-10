@@ -34,7 +34,6 @@ var (
 	ParseStatus                       func(map[string]interface{}) *types.AgenticSessionStatus
 	GetGitHubToken                    func(context.Context, *kubernetes.Clientset, dynamic.Interface, string, string) (string, error)
 	DeriveRepoFolderFromURL           func(string) string
-	BoolPtr                           func(bool) *bool
 )
 
 // Helper functions

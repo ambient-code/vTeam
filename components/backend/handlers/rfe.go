@@ -27,7 +27,6 @@ var (
 	UpsertProjectRFEWorkflowCR func(dynamic.Interface, *types.RFEWorkflow) error
 	PerformRepoSeeding         func(context.Context, *types.RFEWorkflow, string, string, string, string, string, string) error
 	CheckRepoSeeding           func(context.Context, string, *string, string) (bool, map[string]interface{}, error)
-	StringPtr                  func(string) *string
 	RfeFromUnstructured        func(*unstructured.Unstructured) *types.RFEWorkflow
 )
 
