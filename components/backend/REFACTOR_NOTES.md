@@ -142,25 +142,55 @@
 - ✅ Commit: "refactor: extract RFE workflow handlers"
 
 **Commit 9:** Repo browsing handlers
-- Extract repo tree/blob endpoints
+- Extract repo tree/blob endpoints from main.go
 - Create `handlers/repo.go`
 - Commit: "refactor: extract repo browsing handlers"
 
-**Commit 10:** WebSocket handlers
-- Extract WebSocket endpoints
-- Create `handlers/websocket.go` (or move to websocket_messaging.go)
-- Commit: "refactor: extract WebSocket handlers"
+**Commit 10:** Middleware and helpers
+- Extract middleware functions from handlers.go
+- Extract shared helpers from handlers.go
+- Create `handlers/middleware.go`
+- Keep rfeFromUnstructured and extractTitleFromContent in handlers.go for now (used by jira.go)
+- Commit: "refactor: extract middleware to handlers/middleware.go"
 
-**Commit 11:** Middleware and helpers
-- Extract middleware functions
-- Extract shared helpers
-- Create `handlers/middleware.go` and `handlers/helpers.go`
-- Commit: "refactor: extract middleware and helpers"
+**Phase 3: Organize remaining files into packages**
 
-**Commit 12:** Remove old handlers.go
-- Delete empty handlers.go
-- Update imports in all files
-- Commit: "refactor: remove old handlers.go after migration complete"
+**Commit 11:** Git operations package
+- Move git.go functions to `git/` package
+- Create `git/operations.go` - Git clone, push, diff, abandon operations
+- Update dependencies in handlers that use git operations
+- Build verified clean
+- Commit: "refactor: create git package for git operations"
+
+**Commit 12:** Jira integration package
+- Move jira.go to `jira/` package
+- Create `jira/integration.go` - Jira API client and workflow publishing
+- Move rfeFromUnstructured and extractTitleFromContent to jira package or make them exported from handlers
+- Update main.go routes
+- Build verified clean
+- Commit: "refactor: create jira package for Jira integration"
+
+**Commit 13:** WebSocket package organization
+- Consolidate websocket_messaging.go into `websocket/` package
+- Create `websocket/hub.go` - WebSocket hub and connection management
+- Create `websocket/handlers.go` - WebSocket HTTP handlers
+- Update main.go routes
+- Build verified clean
+- Commit: "refactor: create websocket package"
+
+**Commit 14:** GitHub integration package
+- Move github_app.go and github_token.go to `github/` package
+- Create `github/app.go` - GitHub App integration
+- Create `github/token.go` - Token management and caching
+- Update dependencies in handlers
+- Build verified clean
+- Commit: "refactor: create github package"
+
+**Commit 15:** Final cleanup
+- Remove empty handlers.go if all code extracted
+- Update all imports across packages
+- Verify all tests pass
+- Commit: "refactor: final cleanup after package reorganization"
 
 ### Benefits
 - ✅ Small, reviewable commits (easier to debug if issues arise)
