@@ -694,13 +694,30 @@ func monitorJob(jobName, sessionName, sessionNamespace string) {
 		}
 
 		// If K8s already marked the Job as succeeded, mark session Completed but defer cleanup
+		// BUT: respect terminal statuses already set by wrapper (Failed, Completed)
 		if job.Status.Succeeded > 0 {
-			log.Printf("Job %s marked succeeded by Kubernetes", jobName)
-			_ = updateAgenticSessionStatus(sessionNamespace, sessionName, map[string]interface{}{
-				"phase":          "Completed",
-				"message":        "Job completed successfully",
-				"completionTime": time.Now().Format(time.RFC3339),
-			})
+			// Check current status before overriding
+			gvr := getAgenticSessionResource()
+			currentObj, err := dynamicClient.Resource(gvr).Namespace(sessionNamespace).Get(context.TODO(), sessionName, v1.GetOptions{})
+			currentPhase := ""
+			if err == nil && currentObj != nil {
+				if status, found, _ := unstructured.NestedMap(currentObj.Object, "status"); found {
+					if v, ok := status["phase"].(string); ok {
+						currentPhase = v
+					}
+				}
+			}
+			// Only set to Completed if not already in a terminal state (Failed, Completed, Stopped)
+			if currentPhase != "Failed" && currentPhase != "Completed" && currentPhase != "Stopped" {
+				log.Printf("Job %s marked succeeded by Kubernetes, setting to Completed", jobName)
+				_ = updateAgenticSessionStatus(sessionNamespace, sessionName, map[string]interface{}{
+					"phase":          "Completed",
+					"message":        "Job completed successfully",
+					"completionTime": time.Now().Format(time.RFC3339),
+				})
+			} else {
+				log.Printf("Job %s marked succeeded by Kubernetes, but status already %s (not overriding)", jobName, currentPhase)
+			}
 			// Do not delete here; defer cleanup until all repos are finalized
 		}
 
