@@ -59,6 +59,11 @@ func main() {
 	handlers.GitAbandonRepo = gitAbandonRepo
 	handlers.GitDiffRepo = gitDiffRepo
 
+	// Initialize GitHub auth handlers
+	handlers.K8sClient = k8sClient
+	handlers.Namespace = namespace
+	handlers.GithubTokenManager = githubTokenManager
+
 	// Content service mode
 	if os.Getenv("CONTENT_SERVICE_MODE") == "true" {
 		if err := server.RunContentService(registerContentRoutes); err != nil {
@@ -145,10 +150,10 @@ func registerRoutes(r *gin.Engine) {
 			projectGroup.PUT("/runner-secrets", updateRunnerSecrets)
 		}
 
-		api.POST("/auth/github/install", linkGitHubInstallationGlobal)
-		api.GET("/auth/github/status", getGitHubStatusGlobal)
-		api.POST("/auth/github/disconnect", disconnectGitHubGlobal)
-		api.GET("/auth/github/user/callback", handleGitHubUserOAuthCallback)
+		api.POST("/auth/github/install", handlers.LinkGitHubInstallationGlobal)
+		api.GET("/auth/github/status", handlers.GetGitHubStatusGlobal)
+		api.POST("/auth/github/disconnect", handlers.DisconnectGitHubGlobal)
+		api.GET("/auth/github/user/callback", handlers.HandleGitHubUserOAuthCallback)
 
 		api.GET("/projects", listProjects)
 		api.POST("/projects", createProject)
