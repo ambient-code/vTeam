@@ -3130,11 +3130,11 @@ func seedProjectRFEWorkflow(c *gin.Context) {
 	}
 	specKitVersion := req.SpecKitVersion
 	if specKitVersion == "" {
-		specKitVersion = "v0.0.55"
+		specKitVersion = "v0.0.60"
 	}
 	specKitTemplate := req.SpecKitTemplate
 	if specKitTemplate == "" {
-		specKitTemplate = "spec-kit-template-cursor-sh"
+		specKitTemplate = "spec-kit-template-claude-sh"
 	}
 
 	// Perform seeding operations

@@ -185,6 +185,10 @@ class ClaudeCodeAdapter:
                     if p != cwd_path:
                         add_dirs.append(p)
 
+            # Log working directory and additional directories for debugging
+            logging.info(f"Claude SDK CWD: {cwd_path}")
+            logging.info(f"Claude SDK additional directories: {add_dirs}")
+            
             options = ClaudeCodeOptions(cwd=cwd_path, permission_mode="acceptEdits", allowed_tools=["Read","Write","Bash","Glob","Grep","Edit","MultiEdit","WebSearch","WebFetch"])
             # Best-effort set add_dirs if supported by SDK version
             try:

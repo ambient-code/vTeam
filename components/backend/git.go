@@ -123,7 +123,7 @@ func getSecretKeys(data map[string][]byte) []string {
 	return keys
 }
 
-// checkRepoSeeding checks if a repo has been seeded by verifying .claude/ and .specify/ exist
+// checkRepoSeeding checks if a repo has been seeded by verifying .claude/commands/ and .specify/ exist
 func checkRepoSeeding(ctx context.Context, repoURL string, branch *string, githubToken string) (bool, map[string]interface{}, error) {
 	// Parse repo URL to get owner/repo
 	owner, repo, err := parseGitHubURL(repoURL)
@@ -142,6 +142,18 @@ func checkRepoSeeding(ctx context.Context, repoURL string, branch *string, githu
 		return false, nil, fmt.Errorf("failed to check .claude: %w", err)
 	}
 
+	// Check for .claude/commands directory (spec-kit slash commands)
+	claudeCommandsExists, err := checkGitHubPathExists(ctx, owner, repo, branchName, ".claude/commands", githubToken)
+	if err != nil {
+		return false, nil, fmt.Errorf("failed to check .claude/commands: %w", err)
+	}
+
+	// Check for .claude/agents directory
+	claudeAgentsExists, err := checkGitHubPathExists(ctx, owner, repo, branchName, ".claude/agents", githubToken)
+	if err != nil {
+		return false, nil, fmt.Errorf("failed to check .claude/agents: %w", err)
+	}
+
 	// Check for .specify directory (from spec-kit)
 	specifyExists, err := checkGitHubPathExists(ctx, owner, repo, branchName, ".specify", githubToken)
 	if err != nil {
@@ -149,11 +161,14 @@ func checkRepoSeeding(ctx context.Context, repoURL string, branch *string, githu
 	}
 
 	details := map[string]interface{}{
-		"claudeExists":  claudeExists,
-		"specifyExists": specifyExists,
+		"claudeExists":         claudeExists,
+		"claudeCommandsExists": claudeCommandsExists,
+		"claudeAgentsExists":   claudeAgentsExists,
+		"specifyExists":        specifyExists,
 	}
 
-	isSeeded := claudeExists && specifyExists
+	// Repo is properly seeded if all critical components exist
+	isSeeded := claudeCommandsExists && claudeAgentsExists && specifyExists
 	return isSeeded, details, nil
 }
 
@@ -333,11 +348,12 @@ func performRepoSeeding(ctx context.Context, wf *RFEWorkflow, githubToken, agent
 		return fmt.Errorf("failed to clone agent source: %w (output: %s)", err, string(out))
 	}
 
-	// 4. Copy agent markdown files to .claude/
+	// 4. Copy agent markdown files to .claude/agents/
 	agentSourcePath := filepath.Join(agentSrcDir, agentPath)
 	claudeDir := filepath.Join(umbrellaDir, ".claude")
-	if err := os.MkdirAll(claudeDir, 0755); err != nil {
-		return fmt.Errorf("failed to create .claude directory: %w", err)
+	claudeAgentsDir := filepath.Join(claudeDir, "agents")
+	if err := os.MkdirAll(claudeAgentsDir, 0755); err != nil {
+		return fmt.Errorf("failed to create .claude/agents directory: %w", err)
 	}
 
 	agentsCopied := 0
@@ -355,7 +371,7 @@ func performRepoSeeding(ctx context.Context, wf *RFEWorkflow, githubToken, agent
 			return nil
 		}
 
-		targetPath := filepath.Join(claudeDir, d.Name())
+		targetPath := filepath.Join(claudeAgentsDir, d.Name())
 		if err := os.WriteFile(targetPath, content, 0644); err != nil {
 			log.Printf("Failed to write agent file %s: %v", targetPath, err)
 			return nil
