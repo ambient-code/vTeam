@@ -9,6 +9,7 @@ import os
 import sys
 import logging
 import json as _json
+import re
 from pathlib import Path
 from urllib.parse import urlparse, urlunparse
 from urllib import request as _urllib_request, error as _urllib_error
@@ -567,7 +568,7 @@ class ClaudeCodeAdapter:
                     # Verify we have a valid output remote
                     logging.info(f"Verifying output remote for {name}")
                     remotes_output = await self._run_cmd(["git", "remote", "-v"], cwd=str(repo_dir), capture_stdout=True)
-                    logging.info(f"Git remotes for {name}:\n{remotes_output}")
+                    logging.info(f"Git remotes for {name}:\n{self._redact_secrets(remotes_output)}")
                     
                     if "output" not in remotes_output:
                         raise RuntimeError(f"Output remote not configured for {name}")
@@ -641,7 +642,7 @@ class ClaudeCodeAdapter:
             # Verify we have a valid output remote
             logging.info("Verifying output remote")
             remotes_output = await self._run_cmd(["git", "remote", "-v"], cwd=str(workspace), capture_stdout=True)
-            logging.info(f"Git remotes:\n{remotes_output}")
+            logging.info(f"Git remotes:\n{self._redact_secrets(remotes_output)}")
             
             if "output" not in remotes_output:
                 raise RuntimeError("Output remote not configured")
@@ -835,7 +836,10 @@ class ClaudeCodeAdapter:
 
     async def _run_cmd(self, cmd, cwd=None, capture_stdout=False, ignore_errors=False):
         """Run a subprocess command asynchronously."""
-        logging.info(f"Running command: {' '.join(cmd)}")
+        # Redact secrets from command for logging
+        cmd_safe = [self._redact_secrets(str(arg)) for arg in cmd]
+        logging.info(f"Running command: {' '.join(cmd_safe)}")
+        
         proc = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
@@ -846,14 +850,14 @@ class ClaudeCodeAdapter:
         stdout_text = stdout_data.decode("utf-8", errors="replace")
         stderr_text = stderr_data.decode("utf-8", errors="replace")
         
-        # Log output for debugging
+        # Log output for debugging (redacted)
         if stdout_text.strip():
-            logging.info(f"Command stdout: {stdout_text.strip()}")
+            logging.info(f"Command stdout: {self._redact_secrets(stdout_text.strip())}")
         if stderr_text.strip():
-            logging.info(f"Command stderr: {stderr_text.strip()}")
+            logging.info(f"Command stderr: {self._redact_secrets(stderr_text.strip())}")
             
         if proc.returncode != 0 and not ignore_errors:
-            raise RuntimeError(stderr_text or f"Command failed: {' '.join(cmd)}")
+            raise RuntimeError(stderr_text or f"Command failed: {' '.join(cmd_safe)}")
         
         logging.info(f"Command completed with return code: {proc.returncode}")
         
@@ -924,6 +928,20 @@ class ClaudeCodeAdapter:
             return urlunparse((parsed.scheme, new_netloc, parsed.path, parsed.params, parsed.query, parsed.fragment))
         except Exception:
             return url
+
+    def _redact_secrets(self, text: str) -> str:
+        """Redact tokens and secrets from text for safe logging."""
+        if not text:
+            return text
+        # Redact GitHub tokens (ghs_, ghp_, gho_, ghu_ prefixes)
+        text = re.sub(r'gh[pousr]_[a-zA-Z0-9]{36,255}', 'gh*_***REDACTED***', text)
+        # Redact x-access-token: patterns in URLs
+        text = re.sub(r'x-access-token:[^@\s]+@', 'x-access-token:***REDACTED***@', text)
+        # Redact oauth tokens in URLs
+        text = re.sub(r'oauth2:[^@\s]+@', 'oauth2:***REDACTED***@', text)
+        # Redact basic auth credentials
+        text = re.sub(r'://[^:@\s]+:[^@\s]+@', '://***REDACTED***@', text)
+        return text
 
     async def _fetch_github_token(self) -> str:
         # Try cached value from env first
