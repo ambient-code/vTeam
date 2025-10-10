@@ -36,9 +36,6 @@ var (
 	DeriveRepoFolderFromURL           func(string) string
 )
 
-// Helper functions
-func stringPtr(s string) *string { return &s }
-
 // contentListItem represents a file/directory in the workspace
 type contentListItem struct {
 	Name       string `json:"name"`
@@ -155,7 +152,7 @@ func parseSpec(spec map[string]interface{}) types.AgenticSessionSpec {
 					ng.URL = s
 				}
 				if s, ok := in["branch"].(string); ok && strings.TrimSpace(s) != "" {
-					ng.Branch = stringPtr(s)
+					ng.Branch = StringPtr(s)
 				}
 				r.Input = ng
 			}
@@ -165,13 +162,13 @@ func parseSpec(spec map[string]interface{}) types.AgenticSessionSpec {
 					og.URL = s
 				}
 				if s, ok := out["branch"].(string); ok && strings.TrimSpace(s) != "" {
-					og.Branch = stringPtr(s)
+					og.Branch = StringPtr(s)
 				}
 				r.Output = og
 			}
 			// Include per-repo status if present
 			if st, ok := m["status"].(string); ok {
-				r.Status = stringPtr(st)
+				r.Status = StringPtr(st)
 			}
 			if strings.TrimSpace(r.Input.URL) != "" {
 				repos = append(repos, r)
