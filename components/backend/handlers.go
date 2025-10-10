@@ -3130,7 +3130,7 @@ func seedProjectRFEWorkflow(c *gin.Context) {
 	}
 	specKitVersion := req.SpecKitVersion
 	if specKitVersion == "" {
-		specKitVersion = "v0.0.60"
+		specKitVersion = "v0.0.55"
 	}
 	specKitTemplate := req.SpecKitTemplate
 	if specKitTemplate == "" {
