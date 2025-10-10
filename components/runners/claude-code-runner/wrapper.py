@@ -507,6 +507,13 @@ class ClaudeCodeAdapter:
 
     async def _push_results_if_any(self):
         """Commit and push changes to output repo/branch if configured."""
+        # Get GitHub token once for all repos
+        token = os.getenv("GITHUB_TOKEN") or await self._fetch_github_token()
+        if token:
+            logging.info("GitHub token obtained for push operations")
+        else:
+            logging.warning("No GitHub token available - push may fail for private repos")
+        
         repos_cfg = self._get_repos_config()
         if repos_cfg:
             # Multi-repo flow
@@ -518,18 +525,52 @@ class ClaudeCodeAdapter:
                     repo_dir = Path(self.context.workspace_path) / name
                     status = await self._run_cmd(["git", "status", "--porcelain"], cwd=str(repo_dir), capture_stdout=True)
                     if not status.strip():
+                        logging.info(f"No changes detected for {name}, skipping push")
                         continue
+                    
                     out = r.get('output') or {}
-                    out_url = (out.get('url') or '').strip()
+                    out_url_raw = (out.get('url') or '').strip()
+                    if not out_url_raw:
+                        logging.warning(f"No output URL configured for {name}, skipping push")
+                        continue
+                    
+                    # Add token to output URL
+                    out_url = self._url_with_token(out_url_raw, token) if token else out_url_raw
+                    
                     in_ = r.get('input') or {}
                     in_branch = (in_.get('branch') or '').strip()
                     out_branch = (out.get('branch') or '').strip() or f"sessions/{self.context.session_id}"
 
                     await self._send_log(f"Pushing changes for {name}...")
+                    logging.info(f"Configuring output remote with authentication for {name}")
+                    
+                    # Reconfigure output remote with token before push
+                    await self._run_cmd(["git", "remote", "remove", "output"], cwd=str(repo_dir), ignore_errors=True)
+                    await self._run_cmd(["git", "remote", "add", "output", out_url], cwd=str(repo_dir))
+                    
+                    logging.info(f"Checking out branch {out_branch} for {name}")
                     await self._run_cmd(["git", "checkout", "-B", out_branch], cwd=str(repo_dir))
+                    
+                    logging.info(f"Staging all changes for {name}")
                     await self._run_cmd(["git", "add", "-A"], cwd=str(repo_dir))
+                    
+                    logging.info(f"Committing changes for {name}")
                     await self._run_cmd(["git", "commit", "-m", f"Session {self.context.session_id}: update"], cwd=str(repo_dir), ignore_errors=True)
+                    
+                    # Verify we have a valid output remote
+                    logging.info(f"Verifying output remote for {name}")
+                    remotes_output = await self._run_cmd(["git", "remote", "-v"], cwd=str(repo_dir), capture_stdout=True)
+                    logging.info(f"Git remotes for {name}:\n{remotes_output}")
+                    
+                    if "output" not in remotes_output:
+                        raise RuntimeError(f"Output remote not configured for {name}")
+                    
+                    logging.info(f"Pushing to output remote: {out_branch} for {name}")
+                    await self._send_log(f"Pushing {name} to {out_branch}...")
                     await self._run_cmd(["git", "push", "-u", "output", f"HEAD:{out_branch}"], cwd=str(repo_dir))
+                    
+                    logging.info(f"Push completed for {name}")
+                    await self._send_log(f"✓ Push completed for {name}")
 
                     create_pr_flag = (os.getenv("CREATE_PR", "").strip().lower() == "true")
                     if create_pr_flag and in_branch and out_branch and out_branch != in_branch and out_url:
@@ -547,9 +588,14 @@ class ClaudeCodeAdapter:
             return
 
         # Single-repo legacy flow
-        output_repo = os.getenv("OUTPUT_REPO_URL", "").strip()
-        if not output_repo:
+        output_repo_raw = os.getenv("OUTPUT_REPO_URL", "").strip()
+        if not output_repo_raw:
+            logging.info("No OUTPUT_REPO_URL configured, skipping legacy single-repo push")
             return
+        
+        # Add token to output URL
+        output_repo = self._url_with_token(output_repo_raw, token) if token else output_repo_raw
+        
         output_branch = os.getenv("OUTPUT_BRANCH", "").strip() or f"sessions/{self.context.session_id}"
         input_repo = os.getenv("INPUT_REPO_URL", "").strip()
         input_branch = os.getenv("INPUT_BRANCH", "").strip()
@@ -559,12 +605,37 @@ class ClaudeCodeAdapter:
             if not status.strip():
                 await self._send_log({"level": "system", "message": "No changes to push."})
                 return
+            
             await self._send_log("Committing and pushing changes...")
+            logging.info("Configuring output remote with authentication")
+            
+            # Reconfigure output remote with token before push
+            await self._run_cmd(["git", "remote", "remove", "output"], cwd=str(workspace), ignore_errors=True)
+            await self._run_cmd(["git", "remote", "add", "output", output_repo], cwd=str(workspace))
+            
+            logging.info(f"Checking out branch {output_branch}")
             await self._run_cmd(["git", "checkout", "-B", output_branch], cwd=str(workspace))
+            
+            logging.info("Staging all changes")
             await self._run_cmd(["git", "add", "-A"], cwd=str(workspace))
+            
+            logging.info("Committing changes")
             await self._run_cmd(["git", "commit", "-m", f"Session {self.context.session_id}: update"], cwd=str(workspace), ignore_errors=True)
+            
+            # Verify we have a valid output remote
+            logging.info("Verifying output remote")
+            remotes_output = await self._run_cmd(["git", "remote", "-v"], cwd=str(workspace), capture_stdout=True)
+            logging.info(f"Git remotes:\n{remotes_output}")
+            
+            if "output" not in remotes_output:
+                raise RuntimeError("Output remote not configured")
+            
+            logging.info(f"Pushing to output remote: {output_branch}")
+            await self._send_log(f"Pushing to {output_branch}...")
             await self._run_cmd(["git", "push", "-u", "output", f"HEAD:{output_branch}"], cwd=str(workspace))
-            await self._send_log("Push completed.")
+            
+            logging.info("Push completed")
+            await self._send_log("✓ Push completed")
 
             create_pr_flag = (os.getenv("CREATE_PR", "").strip().lower() == "true")
             if create_pr_flag and input_branch and output_branch and output_branch != input_branch:
@@ -756,10 +827,22 @@ class ClaudeCodeAdapter:
             cwd=cwd or self.context.workspace_path,
         )
         stdout_data, stderr_data = await proc.communicate()
+        stdout_text = stdout_data.decode("utf-8", errors="replace")
+        stderr_text = stderr_data.decode("utf-8", errors="replace")
+        
+        # Log output for debugging
+        if stdout_text.strip():
+            logging.info(f"Command stdout: {stdout_text.strip()}")
+        if stderr_text.strip():
+            logging.info(f"Command stderr: {stderr_text.strip()}")
+            
         if proc.returncode != 0 and not ignore_errors:
-            raise RuntimeError(stderr_data.decode("utf-8", errors="replace") or f"Command failed: {' '.join(cmd)}")
+            raise RuntimeError(stderr_text or f"Command failed: {' '.join(cmd)}")
+        
+        logging.info(f"Command completed with return code: {proc.returncode}")
+        
         if capture_stdout:
-            return stdout_data.decode("utf-8", errors="replace")
+            return stdout_text
         return ""
 
     async def _wait_for_ws_connection(self, timeout_seconds: int = 10):
@@ -830,11 +913,15 @@ class ClaudeCodeAdapter:
         # Try cached value from env first
         cached = os.getenv("GITHUB_TOKEN", "").strip()
         if cached:
+            logging.info("Using GITHUB_TOKEN from environment")
             return cached
+        
         # Build mint URL from status URL if available
         status_url = self._compute_status_url()
         if not status_url:
+            logging.warning("Cannot fetch GitHub token: status URL not available")
             return ""
+        
         try:
             from urllib.parse import urlparse as _up, urlunparse as _uu
             p = _up(status_url)
@@ -844,28 +931,43 @@ class ClaudeCodeAdapter:
             else:
                 new_path = new_path + "/github/token"
             url = _uu((p.scheme, p.netloc, new_path, '', '', ''))
-        except Exception:
+            logging.info(f"Fetching GitHub token from: {url}")
+        except Exception as e:
+            logging.error(f"Failed to construct token URL: {e}")
             return ""
+        
         req = _urllib_request.Request(url, data=b"{}", headers={'Content-Type': 'application/json'}, method='POST')
         bot = (os.getenv('BOT_TOKEN') or '').strip()
         if bot:
             req.add_header('Authorization', f'Bearer {bot}')
+            logging.debug("Using BOT_TOKEN for authentication")
+        else:
+            logging.warning("No BOT_TOKEN available for token fetch")
+        
         loop = asyncio.get_event_loop()
         def _do_req():
             try:
                 with _urllib_request.urlopen(req, timeout=10) as resp:
                     return resp.read().decode('utf-8', errors='replace')
             except Exception as e:
-                logging.debug(f"mint token failed: {e}")
+                logging.warning(f"GitHub token fetch failed: {e}")
                 return ''
+        
         resp_text = await loop.run_in_executor(None, _do_req)
         if not resp_text:
+            logging.warning("Empty response from token endpoint")
             return ""
+        
         try:
             data = _json.loads(resp_text)
             token = str(data.get('token') or '')
+            if token:
+                logging.info("Successfully fetched GitHub token from backend")
+            else:
+                logging.warning("Token endpoint returned empty token")
             return token
-        except Exception:
+        except Exception as e:
+            logging.error(f"Failed to parse token response: {e}")
             return ""
 
     async def _send_partial_output(self, output_chunk: str, *, stream_id: str, index: int):
