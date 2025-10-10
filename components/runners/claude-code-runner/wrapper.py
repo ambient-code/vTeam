@@ -399,13 +399,12 @@ class ClaudeCodeAdapter:
                         await self._run_cmd(["git", "checkout", branch], cwd=str(repo_dir))
                         await self._run_cmd(["git", "reset", "--hard", f"origin/{branch}"], cwd=str(repo_dir))
 
-                    # Git identity
-                    user_name = os.getenv("GIT_USER_NAME", "")
-                    user_email = os.getenv("GIT_USER_EMAIL", "")
-                    if user_name:
-                        await self._run_cmd(["git", "config", "user.name", user_name], cwd=str(repo_dir))
-                    if user_email:
-                        await self._run_cmd(["git", "config", "user.email", user_email], cwd=str(repo_dir))
+                    # Git identity with fallbacks
+                    user_name = os.getenv("GIT_USER_NAME", "").strip() or "Ambient Code Bot"
+                    user_email = os.getenv("GIT_USER_EMAIL", "").strip() or "bot@ambient-code.local"
+                    await self._run_cmd(["git", "config", "user.name", user_name], cwd=str(repo_dir))
+                    await self._run_cmd(["git", "config", "user.email", user_email], cwd=str(repo_dir))
+                    logging.info(f"Git identity configured: {user_name} <{user_email}>")
 
                     # Configure output remote if present
                     out = r.get('output') or {}
@@ -436,12 +435,12 @@ class ClaudeCodeAdapter:
                 await self._run_cmd(["git", "checkout", input_branch], cwd=str(workspace))
                 await self._run_cmd(["git", "reset", "--hard", f"origin/{input_branch}"], cwd=str(workspace))
 
-            user_name = os.getenv("GIT_USER_NAME", "")
-            user_email = os.getenv("GIT_USER_EMAIL", "")
-            if user_name:
-                await self._run_cmd(["git", "config", "user.name", user_name], cwd=str(workspace))
-            if user_email:
-                await self._run_cmd(["git", "config", "user.email", user_email], cwd=str(workspace))
+            # Git identity with fallbacks
+            user_name = os.getenv("GIT_USER_NAME", "").strip() or "Ambient Code Bot"
+            user_email = os.getenv("GIT_USER_EMAIL", "").strip() or "bot@ambient-code.local"
+            await self._run_cmd(["git", "config", "user.name", user_name], cwd=str(workspace))
+            await self._run_cmd(["git", "config", "user.email", user_email], cwd=str(workspace))
+            logging.info(f"Git identity configured: {user_name} <{user_email}>")
 
             if output_repo:
                 await self._send_log("Configuring output remote...")
@@ -555,7 +554,15 @@ class ClaudeCodeAdapter:
                     await self._run_cmd(["git", "add", "-A"], cwd=str(repo_dir))
                     
                     logging.info(f"Committing changes for {name}")
-                    await self._run_cmd(["git", "commit", "-m", f"Session {self.context.session_id}: update"], cwd=str(repo_dir), ignore_errors=True)
+                    try:
+                        await self._run_cmd(["git", "commit", "-m", f"Session {self.context.session_id}: update"], cwd=str(repo_dir))
+                    except RuntimeError as e:
+                        if "nothing to commit" in str(e).lower():
+                            logging.info(f"No changes to commit for {name}")
+                            continue
+                        else:
+                            logging.error(f"Commit failed for {name}: {e}")
+                            raise
                     
                     # Verify we have a valid output remote
                     logging.info(f"Verifying output remote for {name}")
@@ -620,7 +627,16 @@ class ClaudeCodeAdapter:
             await self._run_cmd(["git", "add", "-A"], cwd=str(workspace))
             
             logging.info("Committing changes")
-            await self._run_cmd(["git", "commit", "-m", f"Session {self.context.session_id}: update"], cwd=str(workspace), ignore_errors=True)
+            try:
+                await self._run_cmd(["git", "commit", "-m", f"Session {self.context.session_id}: update"], cwd=str(workspace))
+            except RuntimeError as e:
+                if "nothing to commit" in str(e).lower():
+                    logging.info("No changes to commit")
+                    await self._send_log({"level": "system", "message": "No new changes to commit."})
+                    return
+                else:
+                    logging.error(f"Commit failed: {e}")
+                    raise
             
             # Verify we have a valid output remote
             logging.info("Verifying output remote")
