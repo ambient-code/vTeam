@@ -11,6 +11,7 @@ import (
 	"ambient-code-backend/jira"
 	"ambient-code-backend/server"
 	"ambient-code-backend/types"
+	"ambient-code-backend/websocket"
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
@@ -110,6 +111,9 @@ func main() {
 	handlers.BaseKubeConfig = baseKubeConfig
 	handlers.K8sClientMw = k8sClient
 
+	// Initialize websocket package
+	websocket.StateBaseDir = stateBaseDir
+
 	// Content service mode
 	if os.Getenv("CONTENT_SERVICE_MODE") == "true" {
 		if err := server.RunContentService(registerContentRoutes); err != nil {
@@ -175,9 +179,9 @@ func registerRoutes(r *gin.Engine, jiraHandler *jira.Handler) {
 			projectGroup.POST("/rfe-workflows/:id/seed", handlers.SeedProjectRFEWorkflow)
 			projectGroup.GET("/rfe-workflows/:id/check-seeding", handlers.CheckProjectRFEWorkflowSeeding)
 
-			projectGroup.GET("/sessions/:sessionId/ws", handleSessionWebSocket)
-			projectGroup.GET("/sessions/:sessionId/messages", getSessionMessagesWS)
-			projectGroup.POST("/sessions/:sessionId/messages", postSessionMessageWS)
+			projectGroup.GET("/sessions/:sessionId/ws", websocket.HandleSessionWebSocket)
+			projectGroup.GET("/sessions/:sessionId/messages", websocket.GetSessionMessagesWS)
+			projectGroup.POST("/sessions/:sessionId/messages", websocket.PostSessionMessageWS)
 			projectGroup.POST("/rfe-workflows/:id/jira", jiraHandler.PublishWorkflowFileToJira)
 			projectGroup.GET("/rfe-workflows/:id/jira", handlers.GetWorkflowJira)
 			projectGroup.GET("/rfe-workflows/:id/sessions", handlers.ListProjectRFEWorkflowSessions)
