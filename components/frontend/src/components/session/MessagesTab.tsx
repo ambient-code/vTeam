@@ -40,9 +40,17 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chat
             <div className="border rounded-md p-3 space-y-2 bg-white">
               <textarea
                 className="w-full border rounded p-2 text-sm"
-                placeholder="Type a message to the agent..."
+                placeholder="Type a message to the agent... (Press Enter to send, Shift+Enter for new line)"
                 value={chatInput}
                 onChange={(e) => setChatInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    if (chatInput.trim()) {
+                      onSendChat();
+                    }
+                  }
+                }}
                 rows={3}
               />
               <div className="flex items-center justify-between">
