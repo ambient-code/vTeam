@@ -57,6 +57,10 @@ func parseSpec(spec map[string]interface{}) types.AgenticSessionSpec {
 		result.Interactive = interactive
 	}
 
+	if autoPushOnComplete, ok := spec["autoPushOnComplete"].(bool); ok {
+		result.AutoPushOnComplete = autoPushOnComplete
+	}
+
 	if displayName, ok := spec["displayName"].(string); ok {
 		result.DisplayName = displayName
 	}
@@ -313,6 +317,11 @@ func CreateSession(c *gin.Context) {
 	// Interactive flag
 	if req.Interactive != nil {
 		session["spec"].(map[string]interface{})["interactive"] = *req.Interactive
+	}
+
+	// AutoPushOnComplete flag
+	if req.AutoPushOnComplete != nil {
+		session["spec"].(map[string]interface{})["autoPushOnComplete"] = *req.AutoPushOnComplete
 	}
 
 	// Set multi-repo configuration on spec
