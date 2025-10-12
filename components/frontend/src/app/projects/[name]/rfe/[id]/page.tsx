@@ -12,8 +12,7 @@ import { formatDistanceToNow } from "date-fns";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AgenticSession, CreateAgenticSessionRequest, RFEWorkflow, WorkflowPhase } from "@/types/agentic-session";
 import { WORKFLOW_PHASE_LABELS } from "@/lib/agents";
-import { ArrowLeft, Play, Loader2, FolderTree, Plus, Trash2, AlertCircle, Sprout } from "lucide-react";
-import { Upload, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, Play, Loader2, FolderTree, Plus, Trash2, AlertCircle, Sprout, Upload, CheckCircle2 } from "lucide-react";
 import RepoBrowser from "@/components/RepoBrowser";
 import type { GitHubFork } from "@/types";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -38,9 +37,9 @@ export default function ProjectRFEDetailPage() {
   const [publishingPhase, setPublishingPhase] = useState<WorkflowPhase | null>(null);
   const [deleting, setDeleting] = useState<boolean>(false);
 
-  const [rfeDoc] = useState<{ exists: boolean; content: string }>({ exists: false, content: "" });
-  const [firstFeaturePath] = useState<string>("");
-  const [specKitDir] = useState<{
+  const [rfeDoc, setRfeDoc] = useState<{ exists: boolean; content: string }>({ exists: false, content: "" });
+  const [firstFeaturePath, setFirstFeaturePath] = useState<string>("");
+  const [specKitDir, setSpecKitDir] = useState<{
     spec: {
       exists: boolean;
       content: string;
@@ -120,8 +119,71 @@ export default function ProjectRFEDetailPage() {
     }
   }, [project, id, workflow?.umbrellaRepo]);
 
+  const checkPhaseDocuments = useCallback(async () => {
+    if (!project || !id || !workflow?.umbrellaRepo) return;
+
+    try {
+      const repo = workflow.umbrellaRepo.url.replace(/^https?:\/\/(?:www\.)?github.com\//i, '').replace(/\.git$/i, '');
+      const ref = workflow.umbrellaRepo.branch || 'main';
+
+      // Check for rfe.md
+      const rfeResp = await fetch(`/api/projects/${encodeURIComponent(project)}/repo/blob?repo=${encodeURIComponent(repo)}&ref=${encodeURIComponent(ref)}&path=${encodeURIComponent('rfe.md')}`);
+      setRfeDoc({ exists: rfeResp.ok, content: '' });
+
+      // Try to find specs directory structure
+      const specsTreeResp = await fetch(`/api/projects/${encodeURIComponent(project)}/repo/tree?repo=${encodeURIComponent(repo)}&ref=${encodeURIComponent(ref)}&path=${encodeURIComponent('specs')}`);
+
+      if (specsTreeResp.ok) {
+        const specsTree = await specsTreeResp.json();
+        const entries = specsTree.entries || [];
+        console.log('[checkPhaseDocuments] specsTree response:', specsTree);
+        console.log('[checkPhaseDocuments] entries:', entries);
+
+        // Check for spec.md, plan.md, tasks.md directly in specs/
+        const specResp = await fetch(`/api/projects/${encodeURIComponent(project)}/repo/blob?repo=${encodeURIComponent(repo)}&ref=${encodeURIComponent(ref)}&path=${encodeURIComponent('specs/spec.md')}`);
+        const planResp = await fetch(`/api/projects/${encodeURIComponent(project)}/repo/blob?repo=${encodeURIComponent(repo)}&ref=${encodeURIComponent(ref)}&path=${encodeURIComponent('specs/plan.md')}`);
+        const tasksResp = await fetch(`/api/projects/${encodeURIComponent(project)}/repo/blob?repo=${encodeURIComponent(repo)}&ref=${encodeURIComponent(ref)}&path=${encodeURIComponent('specs/tasks.md')}`);
+
+        let specExists = specResp.ok;
+        let planExists = planResp.ok;
+        let tasksExists = tasksResp.ok;
+
+        // If not found directly, check first subdirectory
+        if (!specExists && !planExists && !tasksExists) {
+          const firstDir = entries.find((e: { type: string; name?: string }) => e.type === 'tree');
+          if (firstDir && firstDir.name) {
+            const subPath = `specs/${firstDir.name}`;
+            setFirstFeaturePath(subPath);
+            const subSpecResp = await fetch(`/api/projects/${encodeURIComponent(project)}/repo/blob?repo=${encodeURIComponent(repo)}&ref=${encodeURIComponent(ref)}&path=${encodeURIComponent(`${subPath}/spec.md`)}`);
+            const subPlanResp = await fetch(`/api/projects/${encodeURIComponent(project)}/repo/blob?repo=${encodeURIComponent(repo)}&ref=${encodeURIComponent(ref)}&path=${encodeURIComponent(`${subPath}/plan.md`)}`);
+            const subTasksResp = await fetch(`/api/projects/${encodeURIComponent(project)}/repo/blob?repo=${encodeURIComponent(repo)}&ref=${encodeURIComponent(ref)}&path=${encodeURIComponent(`${subPath}/tasks.md`)}`);
+            specExists = subSpecResp.ok;
+            planExists = subPlanResp.ok;
+            tasksExists = subTasksResp.ok;
+          }
+        } else {
+          setFirstFeaturePath('specs');
+        }
+
+        setSpecKitDir({
+          spec: { exists: specExists, content: '' },
+          plan: { exists: planExists, content: '' },
+          tasks: { exists: tasksExists, content: '' }
+        });
+      }
+    } catch (e) {
+      // Silently fail - we only need this to discover file paths for Jira integration
+      // Button visibility is determined by session completion status
+      console.debug('Failed to check phase documents:', e);
+    }
+  }, [project, id, workflow?.umbrellaRepo]);
+
+  const refreshAll = useCallback(async () => {
+    await Promise.all([load(), loadSessions(), checkPhaseDocuments()]);
+  }, [load, loadSessions, checkPhaseDocuments]);
+
   useEffect(() => { if (project && id) { load(); loadSessions(); } }, [project, id, load, loadSessions]);
-  useEffect(() => { if (workflow) checkSeeding(); }, [workflow, checkSeeding]);
+  useEffect(() => { if (workflow) { checkSeeding(); checkPhaseDocuments(); } }, [workflow, checkSeeding, checkPhaseDocuments]);
 
   // Workspace probing removed
 
@@ -338,11 +400,18 @@ export default function ProjectRFEDetailPage() {
                         if (phase === "plan") return `${firstFeaturePath}/plan.md`;
                         return `${firstFeaturePath}/tasks.md`;
                       })();
-                      const exists = phase === "ideate" ? rfeDoc.exists : (phase === "specify" ? specKitDir.spec.exists : phase === "plan" ? specKitDir.plan.exists : phase === "tasks" ? specKitDir.tasks.exists : false);
+                      const sessionForPhase = rfeSessions.find(s => (s.metadata.labels)?.["rfe-phase"] === phase);
+                      // Check if session for this phase completed successfully
+                      const sessionCompleted = sessionForPhase?.status?.phase === "Completed";
+                      // For Jira integration, verify file actually exists in GitHub (not just session completion)
+                      const fileExistsInGitHub = phase === "ideate" ? rfeDoc.exists :
+                                                  phase === "specify" ? specKitDir.spec.exists :
+                                                  phase === "plan" ? specKitDir.plan.exists :
+                                                  phase === "tasks" ? specKitDir.tasks.exists : false;
+                      const exists = fileExistsInGitHub;
                       const linkedKey = Array.isArray(workflow.jiraLinks)
                         ? (workflow.jiraLinks || []).find(l => l.path === expected)?.jiraKey
                         : undefined;
-                      const sessionForPhase = rfeSessions.find(s => (s.metadata.labels)?.["rfe-phase"] === phase);
                       const sessionDisplay = (sessionForPhase && typeof (sessionForPhase as AgenticSession).spec?.displayName === 'string')
                         ? String((sessionForPhase as AgenticSession).spec.displayName)
                         : sessionForPhase?.metadata.name;
@@ -451,7 +520,7 @@ export default function ProjectRFEDetailPage() {
                                             body: JSON.stringify(payload),
                                           });
                                           if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-                                          await Promise.all([load(), loadSessions()]);
+                                          await refreshAll();
                                         } catch (e) {
                                           setError(e instanceof Error ? e.message : "Failed to start session");
                                         } finally {
@@ -518,7 +587,7 @@ export default function ProjectRFEDetailPage() {
                                           body: JSON.stringify(payload),
                                         });
                                         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-                                        await Promise.all([load(), loadSessions()]);
+                                        await refreshAll();
                                       } catch (e) {
                                         setError(e instanceof Error ? e.message : "Failed to start session");
                                       } finally {
@@ -529,32 +598,28 @@ export default function ProjectRFEDetailPage() {
                                       </Button>
                                 )
                             )}
-                            {exists && phase !== "ideate" && (
+                            {exists && phase !== "ideate" && phase !== "implement" && (
                               <Button size="sm" variant="secondary" onClick={async () => {
                                 try {
                                   setPublishingPhase(phase);
                                   const resp = await fetch(`/api/projects/${encodeURIComponent(project)}/rfe-workflows/${encodeURIComponent(id)}/jira`, {
                                     method: "POST",
                                     headers: { "Content-Type": "application/json" },
-                                    body: JSON.stringify({ path: expected, phase: phase }),
+                                    body: JSON.stringify({ path: expected, phase }),
                                   });
                                   const data = await resp.json().catch(() => ({}));
                                   if (!resp.ok) throw new Error(data?.error || `HTTP ${resp.status}`);
-                                  await load();
+                                  await refreshAll();
                                 } catch (e) {
                                   setError(e instanceof Error ? e.message : "Failed to publish to Jira");
                                 } finally {
                                   setPublishingPhase(null);
                                 }
                               }} disabled={publishingPhase === phase}>
-                                {publishingPhase === phase ? (
-                                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Publishing…</>
-                                ) : (
-                                  <><Upload className="mr-2 h-4 w-4" />{linkedKey ? 'Resync with Jira' : 'Publish to Jira'}</>
-                                )}
+                                {publishingPhase === phase ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" />Publishing…</>) : (<><Upload className="mr-2 h-4 w-4" />Publish to Jira</>)}
                               </Button>
                             )}
-                            {exists && linkedKey && phase !== "ideate" && (
+                            {exists && linkedKey && phase !== "ideate" && phase !== "implement" && (
                               <div className="flex items-center gap-2">
                                 <Badge variant="outline">{linkedKey}</Badge>
                                 <Button variant="link" size="sm" className="px-0 h-auto" onClick={() => openJiraForPath(expected)}>Open in Jira</Button>
