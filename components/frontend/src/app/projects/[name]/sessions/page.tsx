@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getApiUrl } from "@/lib/config";
-import { MoreVertical, Plus, RefreshCw, Square, RefreshCcw, Trash2 } from "lucide-react";
+import { MoreVertical, Plus, RefreshCw, Square, RefreshCcw, Trash2, Upload } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { ProjectSubpageHeader } from "@/components/project-subpage-header";
 import { AgenticSession } from "@/types/agentic-session";
@@ -17,6 +17,7 @@ export default function ProjectSessionsListPage({ params }: { params: Promise<{ 
   const [sessions, setSessions] = useState<AgenticSession[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [actionLoading, setActionLoading] = useState<Record<string, string>>({});
+  const [jiraSyncing, setJiraSyncing] = useState<Record<string, boolean>>({});
 
   const fetchSessions = async () => {
     if (!projectName) return;
@@ -85,6 +86,56 @@ export default function ProjectSessionsListPage({ params }: { params: Promise<{ 
       await fetchSessions();
     } finally {
       setActionLoading((prev) => {
+        const { [sessionName]: _, ...rest } = prev;
+        return rest;
+      });
+    }
+  };
+
+  const handleJiraSync = async (session: AgenticSession) => {
+    const sessionName = session.metadata?.name;
+    if (!sessionName) return;
+
+    const labels = session.metadata?.labels as Record<string, string> | undefined;
+    const rfeWorkflowId = labels?.["rfe-workflow"];
+    const rfePhase = labels?.["rfe-phase"];
+
+    if (!rfeWorkflowId || !rfePhase) {
+      alert("This session is not linked to an RFE workflow phase");
+      return;
+    }
+
+    // Determine expected path based on phase
+    let path = "";
+    if (rfePhase === "specify") {
+      path = "spec.md";
+    } else if (rfePhase === "plan") {
+      path = "plan.md";
+    } else if (rfePhase === "tasks") {
+      path = "tasks.md";
+    } else {
+      alert(`Cannot sync phase "${rfePhase}" to Jira`);
+      return;
+    }
+
+    setJiraSyncing((prev) => ({ ...prev, [sessionName]: true }));
+    try {
+      const apiUrl = getApiUrl();
+      const res = await fetch(`${apiUrl}/projects/${encodeURIComponent(projectName)}/rfe-workflows/${encodeURIComponent(rfeWorkflowId)}/jira`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path, phase: rfePhase }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.error || `HTTP ${res.status}`);
+      }
+      alert(`Successfully synced ${rfePhase} to Jira`);
+      await fetchSessions();
+    } catch (e) {
+      alert(`Failed to sync to Jira: ${e instanceof Error ? e.message : 'Unknown error'}`);
+    } finally {
+      setJiraSyncing((prev) => {
         const { [sessionName]: _, ...rest } = prev;
         return rest;
       });
@@ -210,6 +261,13 @@ export default function ProjectSessionsListPage({ params }: { params: Promise<{ 
 
                           if (phase === "Completed" || phase === "Failed" || phase === "Stopped" || phase === "Error") {
                             actions.push({ key: "restart", label: "Restart", onClick: () => handleRestart(sessionName), icon: <RefreshCcw className="h-4 w-4" />, className: "text-blue-600" });
+                          }
+
+                          // Add Jira sync option if session is linked to an RFE workflow and phase is completed
+                          const labels = session.metadata?.labels as Record<string, string> | undefined;
+                          const rfePhase = labels?.["rfe-phase"];
+                          if ((phase === "Completed") && rfePhase && (rfePhase === "specify" || rfePhase === "plan" || rfePhase === "tasks")) {
+                            actions.push({ key: "jira", label: "Push to Jira", onClick: () => handleJiraSync(session), icon: <Upload className="h-4 w-4" />, className: "text-green-600" });
                           }
 
                           if (phase !== "Running" && phase !== "Creating") {

@@ -2,10 +2,12 @@ package jira
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -132,14 +134,94 @@ func ExtractTitleFromContent(content string) string {
 	return ""
 }
 
-// POST /api/projects/:projectName/rfe-workflows/:id/jira { path }
+// AttachFileToJiraIssue attaches a file to a Jira issue
+func AttachFileToJiraIssue(ctx context.Context, jiraBase, issueKey, authHeader string, filename string, content []byte) error {
+	endpoint := fmt.Sprintf("%s/rest/api/2/issue/%s/attachments", jiraBase, url.PathEscape(issueKey))
+
+	// Create multipart form body
+	body := &bytes.Buffer{}
+	writer := NewMultipartWriter(body)
+
+	part, err := writer.CreateFormFile("file", filename)
+	if err != nil {
+		return fmt.Errorf("failed to create form file: %w", err)
+	}
+
+	if _, err := part.Write(content); err != nil {
+		return fmt.Errorf("failed to write content: %w", err)
+	}
+
+	contentType := writer.FormDataContentType()
+	if err := writer.Close(); err != nil {
+		return fmt.Errorf("failed to close writer: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", endpoint, body)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	httpReq.Header.Set("Authorization", authHeader)
+	httpReq.Header.Set("Content-Type", contentType)
+	httpReq.Header.Set("X-Atlassian-Token", "no-check")
+
+	httpClient := &http.Client{Timeout: 60 * time.Second}
+	resp, err := httpClient.Do(httpReq)
+	if err != nil {
+		return fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		respBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("Jira API error: %s (body: %s)", resp.Status, string(respBody))
+	}
+
+	return nil
+}
+
+// NewMultipartWriter creates a new multipart writer with boundary
+type MultipartWriter struct {
+	w        io.Writer
+	boundary string
+	closed   bool
+}
+
+func NewMultipartWriter(w io.Writer) *MultipartWriter {
+	boundary := fmt.Sprintf("----WebKitFormBoundary%d", time.Now().UnixNano())
+	return &MultipartWriter{w: w, boundary: boundary}
+}
+
+func (mw *MultipartWriter) FormDataContentType() string {
+	return fmt.Sprintf("multipart/form-data; boundary=%s", mw.boundary)
+}
+
+func (mw *MultipartWriter) CreateFormFile(fieldname, filename string) (io.Writer, error) {
+	h := fmt.Sprintf("--%s\r\nContent-Disposition: form-data; name=\"%s\"; filename=\"%s\"\r\nContent-Type: application/octet-stream\r\n\r\n",
+		mw.boundary, fieldname, filename)
+	_, err := mw.w.Write([]byte(h))
+	return mw.w, err
+}
+
+func (mw *MultipartWriter) Close() error {
+	if mw.closed {
+		return nil
+	}
+	mw.closed = true
+	_, err := mw.w.Write([]byte(fmt.Sprintf("\r\n--%s--\r\n", mw.boundary)))
+	return err
+}
+
+// POST /api/projects/:projectName/rfe-workflows/:id/jira { path, phase }
 // Creates or updates a Jira issue from a GitHub file and updates the RFEWorkflow CR with the linkage
+// Supports phase-specific logic: specify (Feature + rfe.md attachment), plan (Epic with artifact links), tasks (attach tasks.md)
 func (h *Handler) PublishWorkflowFileToJira(c *gin.Context) {
 	project := c.Param("projectName")
 	id := c.Param("id")
 
 	var req struct {
-		Path string `json:"path" binding:"required"`
+		Path  string `json:"path" binding:"required"`
+		Phase string `json:"phase"` // Optional: specify, plan, tasks
 	}
 	if err := c.ShouldBindJSON(&req); err != nil || strings.TrimSpace(req.Path) == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "path is required"})
@@ -261,6 +343,12 @@ func (h *Handler) PublishWorkflowFileToJira(c *gin.Context) {
 		authHeader = "Bearer " + jiraToken
 	}
 
+	// Determine issue type based on phase
+	issueType := "Feature" // default
+	if req.Phase == "plan" {
+		issueType = "Epic"
+	}
+
 	// Create or update Jira issue
 	jiraBase := strings.TrimRight(jiraURL, "/")
 	var httpReq *http.Request
@@ -273,7 +361,7 @@ func (h *Handler) PublishWorkflowFileToJira(c *gin.Context) {
 			"project":     map[string]string{"key": jiraProject},
 			"summary":     title,
 			"description": string(content),
-			"issuetype":   map[string]string{"name": "Feature"},
+			"issuetype":   map[string]string{"name": issueType},
 		}
 
 		// Add parent Outcome if specified
@@ -328,6 +416,53 @@ func (h *Handler) PublishWorkflowFileToJira(c *gin.Context) {
 		outKey = created.Key
 	} else {
 		outKey = existingKey
+	}
+
+	// Phase-specific attachment handling
+	switch req.Phase {
+	case "specify":
+		// For specify phase: attach rfe.md if it exists
+		rfeContent, err := git.ReadGitHubFile(c.Request.Context(), owner, repo, branch, "rfe.md", githubToken)
+		if err == nil && len(rfeContent) > 0 {
+			if attachErr := AttachFileToJiraIssue(c.Request.Context(), jiraBase, outKey, authHeader, "rfe.md", rfeContent); attachErr != nil {
+				log.Printf("Warning: failed to attach rfe.md to %s: %v", outKey, attachErr)
+			}
+		}
+
+	case "plan":
+		// For plan phase: Epic is created with description containing links to plan artifacts
+		// Additional plan artifacts could be attached if needed in future
+
+	case "tasks":
+		// For tasks phase: attach tasks.md to the Feature
+		// First, find the Feature key (should be in jiraLinks for spec.md)
+		featureKey := ""
+		for _, jl := range wf.JiraLinks {
+			if strings.Contains(jl.Path, "spec.md") {
+				featureKey = jl.JiraKey
+				break
+			}
+		}
+
+		if featureKey == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Cannot attach tasks.md: no Feature found (spec.md must be published first)"})
+			return
+		}
+
+		// Attach tasks.md to the Feature
+		tasksContent, err := git.ReadGitHubFile(c.Request.Context(), owner, repo, branch, req.Path, githubToken)
+		if err != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to read tasks.md from GitHub", "details": err.Error()})
+			return
+		}
+
+		if attachErr := AttachFileToJiraIssue(c.Request.Context(), jiraBase, featureKey, authHeader, "tasks.md", tasksContent); attachErr != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to attach tasks.md to Feature", "details": attachErr.Error()})
+			return
+		}
+
+		// For tasks phase, we still want to record the link
+		outKey = featureKey
 	}
 
 	// Update RFEWorkflow CR with Jira link

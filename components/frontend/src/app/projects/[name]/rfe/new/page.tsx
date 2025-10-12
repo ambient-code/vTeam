@@ -132,9 +132,9 @@ export default function ProjectNewRFEWorkflowPage() {
                 )} />
                 <FormField control={form.control} name="parentOutcome" render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Parent Outcome (Optional)</FormLabel>
+                    <FormLabel>Jira Outcome <span className="text-muted-foreground font-normal">(optional)</span></FormLabel>
                     <FormControl><Input placeholder="e.g., RHASTRAT-456" {...field} /></FormControl>
-                    <FormDescription>Optional parent Jira Outcome key that Features will link to</FormDescription>
+                    <FormDescription>Jira Outcome key that Features created from this RFE will link to</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )} />

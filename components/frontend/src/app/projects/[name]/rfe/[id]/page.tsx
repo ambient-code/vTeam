@@ -536,7 +536,7 @@ export default function ProjectRFEDetailPage() {
                                   const resp = await fetch(`/api/projects/${encodeURIComponent(project)}/rfe-workflows/${encodeURIComponent(id)}/jira`, {
                                     method: "POST",
                                     headers: { "Content-Type": "application/json" },
-                                    body: JSON.stringify({ path: expected }),
+                                    body: JSON.stringify({ path: expected, phase: phase }),
                                   });
                                   const data = await resp.json().catch(() => ({}));
                                   if (!resp.ok) throw new Error(data?.error || `HTTP ${resp.status}`);
