@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -635,10 +636,21 @@ func GetWorkflowJira(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Missing Jira configuration in runner secret (JIRA_URL, JIRA_API_TOKEN required)"})
 		return
 	}
+	// Determine auth header (Cloud vs Server/Data Center)
+	authHeader := ""
+	if strings.Contains(jiraURL, "atlassian.net") {
+		// Jira Cloud - assume token is email:api_token format
+		encoded := base64.StdEncoding.EncodeToString([]byte(jiraToken))
+		authHeader = "Basic " + encoded
+	} else {
+		// Jira Server/Data Center
+		authHeader = "Bearer " + jiraToken
+	}
+
 	jiraBase := strings.TrimRight(jiraURL, "/")
 	endpoint := fmt.Sprintf("%s/rest/api/2/issue/%s", jiraBase, url.PathEscape(key))
 	httpReq, _ := http.NewRequest("GET", endpoint, nil)
-	httpReq.Header.Set("Authorization", "Bearer "+jiraToken)
+	httpReq.Header.Set("Authorization", authHeader)
 	httpClient := &http.Client{Timeout: 30 * time.Second}
 	httpResp, httpErr := httpClient.Do(httpReq)
 	if httpErr != nil {
