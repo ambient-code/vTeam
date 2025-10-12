@@ -57,10 +57,6 @@ func parseSpec(spec map[string]interface{}) types.AgenticSessionSpec {
 		result.Interactive = interactive
 	}
 
-	if autoPushOnComplete, ok := spec["autoPushOnComplete"].(bool); ok {
-		result.AutoPushOnComplete = autoPushOnComplete
-	}
-
 	if displayName, ok := spec["displayName"].(string); ok {
 		result.DisplayName = displayName
 	}
@@ -1610,10 +1606,17 @@ func DiffSessionRepo(c *gin.Context) {
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"added": 0, "modified": 0, "deleted": 0, "renamed": 0, "untracked": 0})
+		c.JSON(http.StatusOK, gin.H{
+			"files": gin.H{
+				"added":   0,
+				"removed": 0,
+			},
+			"total_added":   0,
+			"total_removed": 0,
+		})
 		return
 	}
 	defer resp.Body.Close()
-	b, _ := ioutil.ReadAll(resp.Body)
-	c.Data(resp.StatusCode, "application/json", b)
+	bodyBytes, _ := ioutil.ReadAll(resp.Body)
+	c.Data(resp.StatusCode, resp.Header.Get("Content-Type"), bodyBytes)
 }

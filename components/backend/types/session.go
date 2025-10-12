@@ -12,7 +12,6 @@ type AgenticSession struct {
 type AgenticSessionSpec struct {
 	Prompt               string             `json:"prompt" binding:"required"`
 	Interactive          bool               `json:"interactive,omitempty"`
-	AutoPushOnComplete   bool               `json:"autoPushOnComplete,omitempty"`
 	DisplayName          string             `json:"displayName"`
 	LLMSettings          LLMSettings        `json:"llmSettings"`
 	Timeout              int                `json:"timeout"`

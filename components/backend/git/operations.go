@@ -36,13 +36,10 @@ type ProjectSettings struct {
 	RunnerSecret string
 }
 
-// DiffSummary holds summary counts from git status --porcelain
+// DiffSummary holds summary counts from git diff --numstat
 type DiffSummary struct {
-	Added     int `json:"added"`
-	Modified  int `json:"modified"`
-	Deleted   int `json:"deleted"`
-	Renamed   int `json:"renamed"`
-	Untracked int `json:"untracked"`
+	TotalAdded   int `json:"total_added"`
+	TotalRemoved int `json:"total_removed"`
 }
 
 // getProjectSettings retrieves the ProjectSettings CR for a project using the provided dynamic client
@@ -703,19 +700,19 @@ func DiffRepo(ctx context.Context, repoDir string) (*DiffSummary, error) {
 			if added != "-" {
 				var n int
 				fmt.Sscanf(added, "%d", &n)
-				summary.Added += n
+				summary.TotalAdded += n
 			}
 			// Parse deletions
 			if removed != "-" {
 				var n int
 				fmt.Sscanf(removed, "%d", &n)
-				summary.Deleted += n
+				summary.TotalRemoved += n
 			}
 		}
 	}
 
-	log.Printf("gitDiffRepo: added=%d deleted=%d",
-		summary.Added, summary.Deleted)
+	log.Printf("gitDiffRepo: total_added=%d total_removed=%d",
+		summary.TotalAdded, summary.TotalRemoved)
 	return summary, nil
 }
 

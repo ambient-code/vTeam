@@ -129,16 +129,13 @@ func ContentGitDiff(c *gin.Context) {
 
 	summary, err := GitDiffRepo(c.Request.Context(), repoDir)
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"added": 0, "modified": 0, "deleted": 0, "renamed": 0, "untracked": 0})
+		c.JSON(http.StatusOK, gin.H{"total_added": 0, "total_removed": 0})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"added":     summary.Added,
-		"modified":  summary.Modified,
-		"deleted":   summary.Deleted,
-		"renamed":   summary.Renamed,
-		"untracked": summary.Untracked,
+		"total_added":   summary.TotalAdded,
+		"total_removed": summary.TotalRemoved,
 	})
 }
 
