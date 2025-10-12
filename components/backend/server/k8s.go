@@ -66,7 +66,7 @@ func InitConfig() {
 	// Get state storage base directory
 	StateBaseDir = os.Getenv("STATE_BASE_DIR")
 	if StateBaseDir == "" {
-		StateBaseDir = "/data/state"
+		StateBaseDir = "/workspace"
 	}
 
 	// Get PVC base directory for RFE workspaces

@@ -200,7 +200,7 @@ func SeedProjectRFEWorkflow(c *gin.Context) {
 	}
 	specKitTemplate := req.SpecKitTemplate
 	if specKitTemplate == "" {
-		specKitTemplate = "spec-kit-template-cursor-sh"
+		specKitTemplate = "spec-kit-template-claude-sh"
 	}
 
 	// Perform seeding operations
@@ -225,7 +225,7 @@ func CheckProjectRFEWorkflowSeeding(c *gin.Context) {
 	// Get the workflow
 	gvr := GetRFEWorkflowResource()
 	reqK8s, reqDyn := GetK8sClientsForRequest(c)
-	if reqDyn == nil {
+	if reqDyn == nil || reqK8s == nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
 		return
 	}
