@@ -339,8 +339,8 @@ export default function ProjectRFEDetailPage() {
                         return `${firstFeaturePath}/tasks.md`;
                       })();
                       const exists = phase === "ideate" ? rfeDoc.exists : (phase === "specify" ? specKitDir.spec.exists : phase === "plan" ? specKitDir.plan.exists : phase === "tasks" ? specKitDir.tasks.exists : false);
-                      const linkedKey = Array.isArray((workflow as unknown as { jiraLinks?: Array<{ path: string; jiraKey: string }> }).jiraLinks)
-                        ? ((workflow as unknown as { jiraLinks?: Array<{ path: string; jiraKey: string }> }).jiraLinks || []).find(l => l.path === expected)?.jiraKey
+                      const linkedKey = Array.isArray(workflow.jiraLinks)
+                        ? (workflow.jiraLinks || []).find(l => l.path === expected)?.jiraKey
                         : undefined;
                       const sessionForPhase = rfeSessions.find(s => (s.metadata.labels)?.["rfe-phase"] === phase);
                       const sessionDisplay = (sessionForPhase && typeof (sessionForPhase as AgenticSession).spec?.displayName === 'string')
