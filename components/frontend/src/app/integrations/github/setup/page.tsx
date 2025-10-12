@@ -11,7 +11,6 @@ export default function GitHubSetupPage() {
   useEffect(() => {
     const url = new URL(window.location.href)
     const installationId = url.searchParams.get('installation_id')
-    const setupAction = url.searchParams.get('setup_action')
 
     if (!installationId) {
       setMessage('No installation was detected.')

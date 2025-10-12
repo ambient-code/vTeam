@@ -31,6 +31,7 @@ import {
 } from "@/types/agentic-session";
 import { CloneSessionDialog } from "@/components/clone-session-dialog";
 import type { FileTreeNode } from "@/components/file-tree";
+import { Breadcrumbs } from "@/components/breadcrumbs";
 
 import { getApiUrl } from "@/lib/config";
 import type { SessionMessage } from "@/types";
@@ -93,8 +94,14 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
     });
   }, [params]);
   // Adapter: convert transport SessionMessage shape into StreamMessage model
-  type RawWireMessage = SessionMessage & { payload?: unknown };
-  type InnerEnvelope = { type?: string; timestamp?: string; payload?: Record<string, unknown>; partial?: { id: string; index: number; total: number; data: string }; seq?: number };
+  type RawWireMessage = SessionMessage & { payload?: unknown; timestamp?: string };
+  type InnerEnvelope = {
+    type?: string;
+    timestamp?: string;
+    payload?: Record<string, unknown> | string;
+    partial?: { id: string; index: number; total: number; data: string };
+    seq?: number;
+  };
 
   const streamMessages: Array<MessageObject | ToolUseMessages> = useMemo(() => {
     const toolUseBlocks: { block: ToolUseBlock; timestamp: string }[] = [];
@@ -103,15 +110,15 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
 
     for (const raw of liveMessages as RawWireMessage[]) {
       // Some backends wrap the actual message under payload.payload (and partial under payload.partial)
-      const envelope = ((raw?.payload as InnerEnvelope) ?? (raw as unknown as InnerEnvelope)) || {};
+      const envelope: InnerEnvelope = ((raw?.payload as InnerEnvelope) ?? (raw as unknown as InnerEnvelope)) || {};
       const innerType: string = (raw as unknown as InnerEnvelope)?.type || envelope.type || "";
       // Always use the top-level timestamp for ordering/rendering
-      const innerTs: string = (raw as any)?.timestamp || new Date().toISOString();
-      const payloadAny = (envelope as any).payload;
-      const innerPayload: Record<string, unknown> = (payloadAny && typeof payloadAny === 'object')
-        ? (payloadAny as Record<string, unknown>)
+      const innerTs: string = raw?.timestamp || envelope.timestamp || new Date().toISOString();
+      const payloadValue = envelope.payload;
+      const innerPayload: Record<string, unknown> = (payloadValue && typeof payloadValue === 'object' && !Array.isArray(payloadValue))
+        ? (payloadValue as Record<string, unknown>)
         : ((typeof envelope === 'object' ? (envelope as unknown as Record<string, unknown>) : {}) as Record<string, unknown>);
-      const partial = (envelope.partial as InnerEnvelope["partial"]) || ((raw as any)?.partial as InnerEnvelope["partial"]) || undefined;
+      const partial = (envelope.partial as InnerEnvelope["partial"]) || ((raw as unknown as { partial?: InnerEnvelope["partial"] })?.partial) || undefined;
 
       switch (innerType) {
         case "message.partial": {
@@ -166,11 +173,11 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
               },
               timestamp: innerTs,
             });
-          } else if ((innerPayload as any)?.type === 'result.message') {
+          } else if ((innerPayload as Record<string, unknown>)?.type === 'result.message') {
             // Unwrap nested payloads: may be payload.payload
-            let rp: any = (innerPayload as any).payload || {};
-            if (rp && typeof rp === 'object' && 'payload' in rp && rp.payload) {
-              rp = rp.payload;
+            let rp: Record<string, unknown> = (innerPayload.payload as Record<string, unknown>) || {};
+            if (rp && typeof rp === 'object' && 'payload' in rp && rp.payload && typeof rp.payload === 'object') {
+              rp = rp.payload as Record<string, unknown>;
             }
             agenticMessages.push({
               type: "result_message",
@@ -181,27 +188,31 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
               num_turns: Number(rp.num_turns || 0),
               session_id: String(rp.session_id || ""),
               total_cost_usd: (typeof rp.total_cost_usd === 'number' ? rp.total_cost_usd : null),
-              usage: (typeof rp.usage === 'object' && rp.usage ? rp.usage as Record<string, any> : null),
+              usage: (typeof rp.usage === 'object' && rp.usage ? rp.usage as Record<string, unknown> : null),
               result: (typeof rp.result === 'string' ? rp.result : null),
               timestamp: innerTs,
-            } as any);
+            });
             if (typeof rp.result === 'string' && rp.result.trim()) {
               agenticMessages.push({
                 type: "agent_message",
                 content: { type: "text_block", text: String(rp.result) },
                 model: "claude",
                 timestamp: innerTs,
-              } as any);
+              });
             }
           } else {
             // Free-form agent message text
-            const text = (typeof (envelope as any).payload === 'string')
-              ? String((envelope as any).payload)
+            const envelopePayload = envelope.payload;
+            const contentText = (innerPayload.content as Record<string, unknown> | undefined)?.text;
+            const messageText = innerPayload.message;
+            const nestedContentText = (innerPayload.payload as Record<string, unknown> | undefined)?.content as Record<string, unknown> | undefined;
+            const text = (typeof envelopePayload === 'string')
+              ? String(envelopePayload)
               : (
                   // Prefer structured content block
-                  (typeof (innerPayload as any)?.content?.text === 'string' ? String((innerPayload as any).content.text) : undefined)
-                  || (typeof (innerPayload as any)?.message === 'string' ? String((innerPayload as any).message) : undefined)
-                  || (typeof (innerPayload as any)?.payload?.content?.text === 'string' ? String((innerPayload as any).payload.content.text) : '')
+                  (typeof contentText === 'string' ? String(contentText) : undefined)
+                  || (typeof messageText === 'string' ? String(messageText) : undefined)
+                  || (typeof nestedContentText?.text === 'string' ? String(nestedContentText.text) : '')
                 );
             if (text) {
               agenticMessages.push({
@@ -215,8 +226,8 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
           break;
         }
         case "system.message": {
-          const text = (typeof (envelope as any).payload === 'string')
-            ? String((envelope as any).payload)
+          const text = (typeof envelope.payload === 'string')
+            ? String(envelope.payload)
             : "";
           if (text) {
             agenticMessages.push({
@@ -291,8 +302,8 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
     const all = [...agenticMessages, ...toolUseMessages];
     // Sort by timestamp (ascending)
     const sorted = all.sort((a, b) => {
-      const at = new Date((a as any).timestamp || 0).getTime();
-      const bt = new Date((b as any).timestamp || 0).getTime();
+      const at = new Date(a.timestamp || 0).getTime();
+      const bt = new Date(b.timestamp || 0).getTime();
       return at - bt;
     });
     return session?.spec?.interactive ? sorted.filter((m) => m.type !== "result_message") : sorted;
@@ -300,34 +311,36 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
 
   // Derive the most recent final result text from live messages (fallback for interactive sessions)
   const latestResultText = useMemo(() => {
-    const unwrapPayload = (obj: any): any => {
-      let cur = obj;
+    const unwrapPayload = (obj: unknown): Record<string, unknown> | null => {
+      let cur: unknown = obj;
       let guard = 0;
-      while (cur && typeof cur === 'object' && 'payload' in cur && (cur as any).payload && guard < 5) {
-        cur = (cur as any).payload;
+      while (cur && typeof cur === 'object' && 'payload' in cur && (cur as Record<string, unknown>).payload && guard < 5) {
+        cur = (cur as Record<string, unknown>).payload;
         guard++;
       }
-      return cur;
+      return (cur && typeof cur === 'object') ? (cur as Record<string, unknown>) : null;
     };
 
     for (let i = liveMessages.length - 1; i >= 0; i--) {
-      const raw: any = liveMessages[i] as any;
-      const envelope: any = (raw?.payload ?? raw) || {};
-      const innerType: string = envelope?.type || (raw as any)?.type || "";
-      const innerPayload: any = (envelope && typeof envelope === 'object' && 'payload' in envelope) ? (envelope as any).payload : null;
+      const raw = liveMessages[i] as RawWireMessage;
+      const envelope: InnerEnvelope = ((raw?.payload as InnerEnvelope) ?? (raw as unknown as InnerEnvelope)) || {};
+      const innerType: string = envelope?.type || (raw as unknown as InnerEnvelope)?.type || "";
+      const innerPayload: Record<string, unknown> | null = (envelope && typeof envelope === 'object' && 'payload' in envelope && typeof envelope.payload === 'object' && !Array.isArray(envelope.payload))
+        ? (envelope.payload as Record<string, unknown>)
+        : null;
 
       if (innerType === 'agent.message') {
         const unwrapped = unwrapPayload(innerPayload);
-        const isResultMessage = (innerPayload && (innerPayload as any).type === 'result.message') || (unwrapped && typeof (unwrapped as any).result === 'string');
+        const isResultMessage = (innerPayload && innerPayload.type === 'result.message') || (unwrapped && typeof unwrapped.result === 'string');
         if (isResultMessage) {
-          const result = typeof (unwrapped as any)?.result === 'string' ? (unwrapped as any).result : null;
+          const result = typeof unwrapped?.result === 'string' ? unwrapped.result : null;
           if (result && result.trim()) return result;
         }
       }
 
       if (innerType === 'result.message') {
         const unwrapped = unwrapPayload(innerPayload ?? envelope);
-        const result = typeof (unwrapped as any)?.result === 'string' ? (unwrapped as any).result : null;
+        const result = typeof unwrapped?.result === 'string' ? unwrapped.result : null;
         if (result && result.trim()) return result;
       }
     }
@@ -353,23 +366,25 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
   };
 
   const latestResultMeta: ResultMeta | null = useMemo(() => {
-    const unwrapPayload = (obj: any): any => {
-      let cur = obj;
+    const unwrapPayload = (obj: unknown): Record<string, unknown> | null => {
+      let cur: unknown = obj;
       let guard = 0;
-      while (cur && typeof cur === 'object' && 'payload' in cur && (cur as any).payload && guard < 5) {
-        cur = (cur as any).payload;
+      while (cur && typeof cur === 'object' && 'payload' in cur && (cur as Record<string, unknown>).payload && guard < 5) {
+        cur = (cur as Record<string, unknown>).payload;
         guard++;
       }
-      return cur;
+      return (cur && typeof cur === 'object') ? (cur as Record<string, unknown>) : null;
     };
     for (let i = liveMessages.length - 1; i >= 0; i--) {
-      const raw: any = liveMessages[i] as any;
-      const envelope: any = (raw?.payload ?? raw) || {};
-      const innerType: string = envelope?.type || (raw as any)?.type || "";
-      const innerPayload: any = (envelope && typeof envelope === 'object' && 'payload' in envelope) ? (envelope as any).payload : null;
+      const raw = liveMessages[i] as RawWireMessage;
+      const envelope: InnerEnvelope = ((raw?.payload as InnerEnvelope) ?? (raw as unknown as InnerEnvelope)) || {};
+      const innerType: string = envelope?.type || (raw as unknown as InnerEnvelope)?.type || "";
+      const innerPayload: Record<string, unknown> | null = (envelope && typeof envelope === 'object' && 'payload' in envelope && typeof envelope.payload === 'object' && !Array.isArray(envelope.payload))
+        ? (envelope.payload as Record<string, unknown>)
+        : null;
       if (innerType === 'agent.message') {
         const unwrapped = unwrapPayload(innerPayload);
-        const data = (typeof unwrapped === 'object' && unwrapped) ? unwrapped as any : null;
+        const data = unwrapped;
         if (data && typeof data.result === 'string') {
           return {
             subtype: typeof data.subtype === 'string' ? data.subtype : undefined,
@@ -385,17 +400,16 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
       }
       if (innerType === 'result.message') {
         const data = unwrapPayload(innerPayload ?? envelope);
-        if (data && typeof (data as any).result === 'string') {
-          const d: any = data;
+        if (data && typeof data.result === 'string') {
           return {
-            subtype: typeof d.subtype === 'string' ? d.subtype : undefined,
-            duration_ms: typeof d.duration_ms === 'number' ? d.duration_ms : undefined,
-            duration_api_ms: typeof d.duration_api_ms === 'number' ? d.duration_api_ms : undefined,
-            is_error: Boolean(d.is_error),
-            num_turns: typeof d.num_turns === 'number' ? d.num_turns : undefined,
-            session_id: typeof d.session_id === 'string' ? d.session_id : undefined,
-            total_cost_usd: typeof d.total_cost_usd === 'number' ? d.total_cost_usd : null,
-            usage: (typeof d.usage === 'object' && d.usage) ? d.usage as Record<string, unknown> : null,
+            subtype: typeof data.subtype === 'string' ? data.subtype : undefined,
+            duration_ms: typeof data.duration_ms === 'number' ? data.duration_ms : undefined,
+            duration_api_ms: typeof data.duration_api_ms === 'number' ? data.duration_api_ms : undefined,
+            is_error: Boolean(data.is_error),
+            num_turns: typeof data.num_turns === 'number' ? data.num_turns : undefined,
+            session_id: typeof data.session_id === 'string' ? data.session_id : undefined,
+            total_cost_usd: typeof data.total_cost_usd === 'number' ? data.total_cost_usd : null,
+            usage: (typeof data.usage === 'object' && data.usage) ? data.usage as Record<string, unknown> : null,
           } as ResultMeta;
         }
       }
@@ -637,26 +651,26 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
     if (!projectName || !sessionName || !session?.spec?.repos || !Array.isArray(session.spec.repos)) return;
     try {
       const apiUrl = getApiUrl();
-      const repos = session.spec.repos as any[];
-      const counts = await Promise.all(repos.map(async (r: any, idx: number) => {
-        const url = (r?.input?.url as string) || "";
+      const repos = session.spec.repos as Array<{ input?: { url?: string } }>;
+      const counts = await Promise.all(repos.map(async (r, idx: number) => {
+        const url = r?.input?.url || "";
         if (!url) return { files: { added: 0, removed: 0 }, total_added: 0, total_removed: 0 };
         const folder = deriveRepoFolderFromUrl(url);
         const qs = new URLSearchParams({ repoIndex: String(idx), repoPath: `/sessions/${sessionName}/workspace/${folder}` });
         const resp = await fetch(`${apiUrl}/projects/${encodeURIComponent(projectName)}/agentic-sessions/${encodeURIComponent(sessionName)}/github/diff?${qs.toString()}`);
         if (!resp.ok) return { files: { added: 0, removed: 0 }, total_added: 0, total_removed: 0 };
-        const data = await resp.json();
-        return { 
-          files: { 
-            added: Number(data.files?.added || 0), 
-            removed: Number(data.files?.removed || 0) 
-          }, 
-          total_added: Number(data.total_added || 0), 
-          total_removed: Number(data.total_removed || 0) 
+        const data = await resp.json() as { files?: { added?: number; removed?: number }; total_added?: number; total_removed?: number };
+        return {
+          files: {
+            added: Number(data.files?.added || 0),
+            removed: Number(data.files?.removed || 0)
+          },
+          total_added: Number(data.total_added || 0),
+          total_removed: Number(data.total_removed || 0)
         };
       }));
       const nextTotals: Record<number, { files: { added: number; removed: number }; total_added: number; total_removed: number }> = {};
-      counts.forEach((t, i) => { nextTotals[i] = t as any });
+      counts.forEach((t, i) => { nextTotals[i] = t });
       setDiffTotals(nextTotals);
     } catch {}
   }, [projectName, sessionName, session?.spec?.repos, deriveRepoFolderFromUrl]);
@@ -835,6 +849,15 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
 
   return (
     <div className="container mx-auto p-6">
+      <Breadcrumbs
+        items={[
+          { label: 'Projects', href: '/projects' },
+          { label: projectName, href: `/projects/${projectName}` },
+          { label: 'Sessions', href: `/projects/${projectName}/sessions` },
+          { label: session.spec.displayName || session.metadata.name },
+        ]}
+        className="mb-4"
+      />
       <div className="flex items-center justify-start mb-6">
         <Link href={backHref || `/projects/${encodeURIComponent(projectName)}/sessions`}>
           <Button variant="ghost" size="sm">
@@ -932,7 +955,6 @@ export default function ProjectSessionDetailPage({ params }: { params: Promise<{
               promptExpanded={promptExpanded}
               setPromptExpanded={setPromptExpanded}
               latestLiveMessage={latestLiveMessage}
-              subagentStats={{ uniqueCount: 0, orderedTypes: [] }}
               diffTotals={diffTotals}
               onPush={async (idx) => {
                 try {

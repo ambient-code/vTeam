@@ -1,45 +1,26 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { getApiUrl } from "@/lib/config";
-
-type ProjectSummary = {
-  name: string;
-  displayName?: string;
-};
+import { useProjects } from "@/services/queries";
 
 export function ProjectSelector() {
   const router = useRouter();
   const pathname = usePathname();
-  const apiUrl = useMemo(() => getApiUrl(), []);
-  const [projects, setProjects] = useState<ProjectSummary[]>([]);
+  const { data: projects = [] } = useProjects();
   const [value, setValue] = useState<string>("");
 
-  const loadProjects = async () => {
-    try {
-      const res = await fetch(`${apiUrl}/projects`);
-      if (!res.ok) return;
-      const data = await res.json();
-      const items: ProjectSummary[] = Array.isArray(data?.items) ? data.items : [];
-      setProjects(items);
-      // Hydrate selection from URL or storage
-      const match = pathname?.match(/^\/projects\/([^\/]+)/);
-      const urlProject = match?.[1];
-      const stored = typeof window !== "undefined" ? localStorage.getItem("selectedProject") || "" : "";
-      const initial = urlProject || stored;
-      if (initial && items.some(p => p.name === initial)) {
-        setValue(initial);
-      }
-    } catch {
-      // ignore
-    }
-  };
-
   useEffect(() => {
-    loadProjects();
-  }, []);
+    // Hydrate selection from URL or storage
+    const match = pathname?.match(/^\/projects\/([^\/]+)/);
+    const urlProject = match?.[1];
+    const stored = typeof window !== "undefined" ? localStorage.getItem("selectedProject") || "" : "";
+    const initial = urlProject || stored;
+    if (initial && projects.some(p => p.name === initial)) {
+      setValue(initial);
+    }
+  }, [pathname, projects]);
 
   const onChange = (newValue: string) => {
     setValue(newValue);

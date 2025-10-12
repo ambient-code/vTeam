@@ -2,41 +2,42 @@
 
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { getApiUrl } from "@/lib/config";
-import { formatDistanceToNow } from "date-fns";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { AgenticSession, CreateAgenticSessionRequest, RFEWorkflow, WorkflowPhase } from "@/types/agentic-session";
-import { WORKFLOW_PHASE_LABELS, AVAILABLE_AGENTS } from "@/lib/agents";
-import { ArrowLeft, Play, Loader2, FolderTree, Plus, Trash2, AlertCircle, Sprout, Upload, CheckCircle2, Bot } from "lucide-react";
-import { Checkbox } from "@/components/ui/checkbox";
+import { WorkflowPhase } from "@/types/agentic-session";
+import { ArrowLeft } from "lucide-react";
 import RepoBrowser from "@/components/RepoBrowser";
 import type { GitHubFork } from "@/types";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Breadcrumbs } from "@/components/breadcrumbs";
+import { RfeSessionsTable } from "./rfe-sessions-table";
+import { RfePhaseCards } from "./rfe-phase-cards";
+import { RfeWorkspaceCard } from "./rfe-workspace-card";
+import { RfeHeader } from "./rfe-header";
+import { RfeAgentsCard } from "./rfe-agents-card";
+import { useRfeWorkflow, useRfeWorkflowSessions, useDeleteRfeWorkflow } from "@/services/queries";
 
 export default function ProjectRFEDetailPage() {
   const params = useParams();
+  const router = useRouter();
   const project = params?.name as string;
   const id = params?.id as string;
 
-  const [workflow, setWorkflow] = useState<RFEWorkflow | null>(null);
-  const [loading, setLoading] = useState(true);
+  // React Query hooks
+  const { data: workflow, isLoading: loading, refetch: load } = useRfeWorkflow(project, id);
+  const { data: rfeSessions = [], refetch: loadSessions } = useRfeWorkflowSessions(project, id);
+  const deleteWorkflowMutation = useDeleteRfeWorkflow();
+
   const [error, setError] = useState<string | null>(null);
   // const [advancing, _setAdvancing] = useState(false);
   const [startingPhase, setStartingPhase] = useState<WorkflowPhase | null>(null);
-  const [rfeSessions, setRfeSessions] = useState<AgenticSession[]>([]);
-  // const [sessionsLoading, _setSessionsLoading] = useState(false);
   // Workspace (PVC) removed: Git remote is source of truth
   const [activeTab, setActiveTab] = useState<string>("overview");
   const [selectedFork] = useState<GitHubFork | undefined>(undefined);
  
   // const [specBaseRelPath, _setSpecBaseRelPath] = useState<string>("specs");
   const [publishingPhase, setPublishingPhase] = useState<WorkflowPhase | null>(null);
-  const [deleting, setDeleting] = useState<boolean>(false);
 
   const [rfeDoc, setRfeDoc] = useState<{ exists: boolean; content: string }>({ exists: false, content: "" });
   const [firstFeaturePath, setFirstFeaturePath] = useState<string>("");
@@ -74,37 +75,6 @@ export default function ProjectRFEDetailPage() {
     isSeeded: false,
   });
   const [selectedAgents, setSelectedAgents] = useState<string[]>([]);
-  const [repoAgents, setRepoAgents] = useState<typeof AVAILABLE_AGENTS>([]);
-  const [loadingAgents, setLoadingAgents] = useState(false);
-
-  const load = useCallback(async () => {
-    try {
-      setLoading(true);
-      const resp = await fetch(`${getApiUrl()}/projects/${encodeURIComponent(project)}/rfe-workflows/${encodeURIComponent(id)}`);
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      const wf: RFEWorkflow = await resp.json();
-      setWorkflow(wf);
-      setError(null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load");
-    } finally {
-      setLoading(false);
-    }
-  }, [project, id]);
-
-  const loadSessions = useCallback(async () => {
-    if (!project || !id) return;
-    try {
-      const resp = await fetch(`${getApiUrl()}/projects/${encodeURIComponent(project)}/rfe-workflows/${encodeURIComponent(id)}/sessions`);
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      const data = await resp.json();
-      setRfeSessions(Array.isArray(data.sessions) ? data.sessions : []);
-    } catch {
-      setRfeSessions([]);
-    } finally {
-      // no-op
-    }
-  }, [project, id]);
 
   const checkSeeding = useCallback(async () => {
     if (!project || !id || !workflow?.umbrellaRepo) return;
@@ -122,55 +92,6 @@ export default function ProjectRFEDetailPage() {
       });
     }
   }, [project, id, workflow?.umbrellaRepo]);
-
-  const fetchRepoAgents = useCallback(async () => {
-    if (!project || !id || !workflow) return;
-
-    try {
-      setLoadingAgents(true);
-
-      // Create cache key based on workflow ID
-      const cacheKey = `agents:workflow:${id}`;
-
-      // Try to load from localStorage cache
-      const cached = localStorage.getItem(cacheKey);
-      if (cached) {
-        try {
-          const cachedAgents = JSON.parse(cached);
-          setRepoAgents(cachedAgents);
-          setLoadingAgents(false);
-          return;
-        } catch (e) {
-          console.debug('Failed to parse cached agents, fetching fresh', e);
-        }
-      }
-
-      // Fetch agents from backend endpoint (workflow-specific)
-      const agentsResp = await fetch(`/api/projects/${encodeURIComponent(project)}/rfe-workflows/${encodeURIComponent(id)}/agents`);
-
-      if (agentsResp.ok) {
-        const data = await agentsResp.json();
-        const fetchedAgents = data.agents || [];
-        setRepoAgents(fetchedAgents);
-
-        // Cache the results in localStorage
-        try {
-          localStorage.setItem(cacheKey, JSON.stringify(fetchedAgents));
-        } catch (e) {
-          console.debug('Failed to cache agents', e);
-        }
-      } else {
-        // No .claude/agents directory or error, fall back to default agents
-        setRepoAgents(AVAILABLE_AGENTS);
-      }
-    } catch (e) {
-      console.debug('Failed to fetch repo agents:', e);
-      // Fall back to default agents on error
-      setRepoAgents(AVAILABLE_AGENTS);
-    } finally {
-      setLoadingAgents(false);
-    }
-  }, [project, id, workflow]);
 
   const checkPhaseDocuments = useCallback(async () => {
     if (!project || !id || !workflow?.umbrellaRepo) return;
@@ -231,12 +152,7 @@ export default function ProjectRFEDetailPage() {
     }
   }, [project, id, workflow?.umbrellaRepo]);
 
-  const refreshAll = useCallback(async () => {
-    await Promise.all([load(), loadSessions(), checkPhaseDocuments(), fetchRepoAgents()]);
-  }, [load, loadSessions, checkPhaseDocuments, fetchRepoAgents]);
-
-  useEffect(() => { if (project && id) { load(); loadSessions(); } }, [project, id, load, loadSessions]);
-  useEffect(() => { if (workflow) { checkSeeding(); checkPhaseDocuments(); fetchRepoAgents(); } }, [workflow, checkSeeding, checkPhaseDocuments, fetchRepoAgents]);
+  useEffect(() => { if (workflow) { checkSeeding(); checkPhaseDocuments(); } }, [workflow, checkSeeding, checkPhaseDocuments]);
 
   // Workspace probing removed
 
@@ -263,20 +179,22 @@ export default function ProjectRFEDetailPage() {
     if (!confirm('Are you sure you want to delete this RFE workflow? This action cannot be undone.')) {
       return;
     }
-    try {
-      setDeleting(true);
-      const resp = await fetch(`${getApiUrl()}/projects/${encodeURIComponent(project)}/rfe-workflows/${encodeURIComponent(id)}`, {
-        method: 'DELETE',
-      });
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      // Navigate back to RFE list after successful deletion
-      window.location.href = `/projects/${encodeURIComponent(project)}/rfe`;
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to delete workflow');
-    } finally {
-      setDeleting(false);
-    }
-  }, [project, id]);
+    return new Promise<void>((resolve, reject) => {
+      deleteWorkflowMutation.mutate(
+        { projectName: project, workflowId: id },
+        {
+          onSuccess: () => {
+            router.push(`/projects/${encodeURIComponent(project)}/rfe`);
+            resolve();
+          },
+          onError: (err) => {
+            setError(err.message || 'Failed to delete workflow');
+            reject(err);
+          },
+        }
+      );
+    });
+  }, [project, id, deleteWorkflowMutation, router]);
 
   const seedWorkflow = useCallback(async () => {
     try {
@@ -297,27 +215,6 @@ export default function ProjectRFEDetailPage() {
     }
   }, [project, id, checkSeeding]);
 
-  // Helper function to generate agent instructions based on selected agents
-  const getAgentInstructions = useCallback(() => {
-    if (selectedAgents.length === 0) return '';
-
-    const selectedAgentDetails = selectedAgents
-      .map(persona => repoAgents.find(a => a.persona === persona))
-      .filter(Boolean);
-
-    if (selectedAgentDetails.length === 0) return '';
-
-    const agentList = selectedAgentDetails
-      .map(agent => `- ${agent!.name} (${agent!.role})`)
-      .join('\n');
-
-    return `\n\nIMPORTANT - Selected Agents for this workflow:
-The following agents have been selected to participate in this workflow. Invoke them by name to get their specialized perspectives:
-
-${agentList}
-
-You can invoke agents by using their name in your prompts. For example: "Let's get input from ${selectedAgentDetails[0]!.name} on this approach."`;
-  }, [selectedAgents, repoAgents]);
 
   if (loading) return <div className="container mx-auto py-8">Loading…</div>;
   if (error || !workflow) return (
@@ -343,180 +240,40 @@ You can invoke agents by using their name in your prompts. For example: "Let's g
   return (
     <div className="container mx-auto py-8">
       <div className="max-w-6xl mx-auto space-y-8">
-        <div className="flex items-start justify-between">
-          <div className="flex items-center gap-4">
-            <Link href={`/projects/${encodeURIComponent(project)}/rfe`}>
-              <Button variant="ghost" size="sm"><ArrowLeft className="h-4 w-4 mr-2" />Back to RFE Workspaces</Button>
-            </Link>
-            <div>
-              <h1 className="text-3xl font-bold">{workflow.title}</h1>
-              <p className="text-muted-foreground mt-1">{workflow.description}</p>
-            </div>
-          </div>
-          <Button
-            variant="destructive"
-            size="sm"
-            onClick={deleteWorkflow}
-            disabled={deleting}
-          >
-            {deleting ? (
-              <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Deleting…</>
-            ) : (
-              <><Trash2 className="mr-2 h-4 w-4" />Delete Workflow</>
-            )}
-          </Button>
-        </div>
+        <Breadcrumbs
+          items={[
+            { label: 'Projects', href: '/projects' },
+            { label: project, href: `/projects/${project}` },
+            { label: 'RFE Workspaces', href: `/projects/${project}/rfe` },
+            { label: workflow.title },
+          ]}
+          className="mb-4"
+        />
+        <RfeHeader
+          workflow={workflow}
+          projectName={project}
+          deleting={deleteWorkflowMutation.isPending}
+          onDelete={deleteWorkflow}
+        />
 
      
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2"><FolderTree className="h-5 w-5" />Workspace & Repositories</CardTitle>
-            <CardDescription>Shared workspace for this workflow and optional repos</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="text-sm text-muted-foreground">Workspace: {workflowWorkspace}</div>
-            {workflow.parentOutcome && (
-              <div className="mt-2 text-sm">
-                <span className="font-medium">Parent Outcome:</span> <Badge variant="outline">{workflow.parentOutcome}</Badge>
-              </div>
-            )}
-            {(workflow.umbrellaRepo || (workflow.supportingRepos || []).length > 0) && (
-              <div className="mt-2 space-y-1">
-                {workflow.umbrellaRepo && (
-                  <div className="text-sm">
-                    <span className="font-medium">Umbrella:</span> {workflow.umbrellaRepo.url}
-                    {workflow.umbrellaRepo.branch && <span className="text-muted-foreground"> @ {workflow.umbrellaRepo.branch}</span>}
+        <RfeWorkspaceCard
+          workflow={workflow}
+          workflowWorkspace={workflowWorkspace}
+          isSeeded={isSeeded}
+          seedingStatus={seedingStatus}
+          seedingError={seedingError}
+          seeding={seeding}
+          onSeedWorkflow={seedWorkflow}
+        />
 
-                  </div>
-                )}
-                {(workflow.supportingRepos || []).map((r: { url: string; branch?: string; clonePath?: string }, i: number) => (
-                  <div key={i} className="text-sm">
-                    <span className="font-medium">Supporting:</span> {r.url}
-                    {r.branch && <span className="text-muted-foreground"> @ {r.branch}</span>}
-
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {!isSeeded && !seedingStatus.checking && workflow.umbrellaRepo && (
-              <Alert variant="destructive" className="mt-4">
-                <AlertCircle className="h-4 w-4" />
-                <AlertTitle>Umbrella Repository Not Seeded</AlertTitle>
-                <AlertDescription className="mt-2">
-                  <p className="mb-3">
-                    Before you can start working on phases, the umbrella repository needs to be seeded with:
-                  </p>
-                  <ul className="list-disc list-inside space-y-1 mb-3 text-sm">
-                    <li>Spec-Kit template files for spec-driven development</li>
-                    <li>Agent definition files in the .claude directory</li>
-                  </ul>
-                  {seedingError && (
-                    <div className="mb-3 p-2 bg-red-100 border border-red-300 rounded text-sm text-red-800">
-                      <strong>Check Error:</strong> {seedingError}
-                    </div>
-                  )}
-                  <Button onClick={seedWorkflow} disabled={seeding} size="sm">
-                    {seeding ? (
-                      <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Seeding Repository...</>
-                    ) : (
-                      <><Sprout className="mr-2 h-4 w-4" />Seed Repository</>
-                    )}
-                  </Button>
-                </AlertDescription>
-              </Alert>
-            )}
-
-            {seedingStatus.checking && workflow.umbrellaRepo && (
-              <div className="mt-4 flex items-center gap-2 text-gray-600 bg-gray-50 p-3 rounded-lg">
-                <Loader2 className="h-5 w-5 animate-spin" />
-                <span className="text-sm">Checking repository seeding status...</span>
-              </div>
-            )}
-
-            {isSeeded && (
-              <div className="mt-4 flex items-center gap-2 text-green-700 bg-green-50 p-3 rounded-lg">
-                <CheckCircle2 className="h-5 w-5 text-green-600" />
-                <span className="text-sm font-medium">Repository seeded and ready</span>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Bot className="h-5 w-5" />
-              Agents
-            </CardTitle>
-            <CardDescription>
-              {loadingAgents ? 'Loading agents from repository...' : 'Select agents to participate in workflow sessions'}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {loadingAgents ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-              </div>
-            ) : repoAgents.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                <Bot className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                <p>No agents found in repository .claude/agents directory</p>
-                <p className="text-xs mt-1">Seed the repository to add agent definitions</p>
-              </div>
-            ) : (
-              <>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {repoAgents.map((agent) => {
-                    const isSelected = selectedAgents.includes(agent.persona);
-                    return (
-                      <div
-                        key={agent.persona}
-                        className={`p-3 rounded-lg border transition-colors ${
-                          isSelected ? 'bg-primary/5 border-primary' : 'bg-background border-border hover:border-primary/50'
-                        }`}
-                      >
-                        <label className="flex items-start gap-3 cursor-pointer">
-                          <Checkbox
-                            checked={isSelected}
-                            onCheckedChange={(checked) => {
-                              setSelectedAgents(prev =>
-                                checked
-                                  ? [...prev, agent.persona]
-                                  : prev.filter(p => p !== agent.persona)
-                              );
-                            }}
-                            className="mt-0.5"
-                          />
-                          <div className="flex-1 min-w-0">
-                            <div className="font-medium text-sm">{agent.name}</div>
-                            <div className="text-xs text-muted-foreground mt-0.5">{agent.role}</div>
-                          </div>
-                        </label>
-                      </div>
-                    );
-                  })}
-                </div>
-                {selectedAgents.length > 0 && (
-                  <div className="mt-4 pt-4 border-t">
-                    <div className="text-sm font-medium mb-2">Selected Agents ({selectedAgents.length})</div>
-                    <div className="flex flex-wrap gap-2">
-                      {selectedAgents.map(persona => {
-                        const agent = repoAgents.find(a => a.persona === persona);
-                        return agent ? (
-                          <Badge key={persona} variant="secondary">
-                            {agent.name}
-                          </Badge>
-                        ) : null;
-                      })}
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-          </CardContent>
-        </Card>
+        <RfeAgentsCard
+          projectName={project}
+          workflowId={id}
+          selectedAgents={selectedAgents}
+          onAgentsChange={setSelectedAgents}
+        />
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList>
@@ -526,335 +283,36 @@ You can invoke agents by using their name in your prompts. For example: "Let's g
           </TabsList>
 
           <TabsContent value="overview">
-            <Card>
-              <CardHeader>
-                <CardTitle>Phase Documents</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {(() => {
-                    const phaseList = ["ideate","specify","plan","tasks","implement"] as const;
-                    return phaseList.map(phase => {
-                      const expected = (() => {
-                        if (phase === "ideate") return "rfe.md";
-                        if (phase === "implement") return "implement";
-                        if (!firstFeaturePath) {
-                          // Fallback to just filename if no feature path found
-                          if (phase === "specify") return "spec.md";
-                          if (phase === "plan") return "plan.md";
-                          return "tasks.md";
-                        }
-                        // Use full path with subdirectory
-                        if (phase === "specify") return `${firstFeaturePath}/spec.md`;
-                        if (phase === "plan") return `${firstFeaturePath}/plan.md`;
-                        return `${firstFeaturePath}/tasks.md`;
-                      })();
-                      const sessionForPhase = rfeSessions.find(s => (s.metadata.labels)?.["rfe-phase"] === phase);
-                      // Check if session for this phase completed successfully
-                      const sessionCompleted = sessionForPhase?.status?.phase === "Completed";
-                      // For Jira integration, verify file actually exists in GitHub (not just session completion)
-                      const fileExistsInGitHub = phase === "ideate" ? rfeDoc.exists :
-                                                  phase === "specify" ? specKitDir.spec.exists :
-                                                  phase === "plan" ? specKitDir.plan.exists :
-                                                  phase === "tasks" ? specKitDir.tasks.exists : false;
-                      const exists = fileExistsInGitHub;
-                      const linkedKey = Array.isArray(workflow.jiraLinks)
-                        ? (workflow.jiraLinks || []).find(l => l.path === expected)?.jiraKey
-                        : undefined;
-                      const sessionDisplay = (sessionForPhase && typeof (sessionForPhase as AgenticSession).spec?.displayName === 'string')
-                        ? String((sessionForPhase as AgenticSession).spec.displayName)
-                        : sessionForPhase?.metadata.name;
-                      return (
-                        <div key={phase} className={`p-4 rounded-lg border flex items-center justify-between ${exists ? "bg-green-50 border-green-200" : ""}`}>
-                          <div className="flex flex-col gap-1">
-                            <div className="flex items-center gap-3">
-                              <Badge variant="outline">{WORKFLOW_PHASE_LABELS[phase]}</Badge>
-                              <span className="text-sm text-muted-foreground">{expected}</span>
-                            </div>
-                            {sessionForPhase && (
-                              <div className="flex items-center gap-2">
-                                <Link href={{
-                                  pathname: `/projects/${encodeURIComponent(project)}/sessions/${encodeURIComponent(sessionForPhase.metadata.name)}`,
-                                  query: {
-                                    backHref: `/projects/${encodeURIComponent(project)}/rfe/${encodeURIComponent(id)}?tab=overview`,
-                                    backLabel: `Back to RFE`
-                                  }
-                                } as unknown as { pathname: string; query: Record<string, string> } }>
-                                  <Button variant="link" size="sm" className="px-0 h-auto">{sessionDisplay}</Button>
-                                </Link>
-                                {sessionForPhase?.status?.phase && <Badge variant="outline">{sessionForPhase.status.phase}</Badge>}
-                              </div>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-3">
-                            {exists ? (
-                              <div className="flex items-center gap-2 text-green-700">
-                                <CheckCircle2 className="h-5 w-5 text-green-600" />
-                                <span className="text-sm font-medium">Ready</span>
-                              </div>
-                            ) : (
-                              <span className="text-xs text-muted-foreground italic">
-                                {phase === "plan" ? "requires spec.md" :
-                                 phase === "tasks" ? "requires plan.md" :
-                                 phase === "implement" ? "requires tasks.md" : ""}
-                              </span>
-                            )}
-                            {!exists && (
-                              phase === "ideate"
-                                ? (
-                                  (sessionForPhase && (sessionForPhase.status?.phase === "Running" || sessionForPhase.status?.phase === "Creating"))
-                                    ? (
-                                      <Link href={{
-                                        pathname: `/projects/${encodeURIComponent(project)}/sessions/${encodeURIComponent(sessionForPhase.metadata.name)}`,
-                                        query: {
-                                          backHref: `/projects/${encodeURIComponent(project)}/rfe/${encodeURIComponent(id)}?tab=overview`,
-                                          backLabel: `Back to RFE`
-                                        }
-                                      } as unknown as { pathname: string; query: Record<string, string> } }>
-                                        <Button size="sm" variant="default">
-                                          Enter Chat
-                                        </Button>
-                                      </Link>
-                                    )
-                                    : (
-                                      <Button 
-                                        size="sm" 
-                                        onClick={async () => {
-                                        try {
-                                          setStartingPhase(phase);
-                                          const basePrompt = `IMPORTANT: The result of this interactive chat session MUST produce rfe.md at the workspace root. The rfe.md should be formatted as markdown in the following way:\n\n# Feature Title\n\n**Feature Overview:**  \n*An elevator pitch (value statement) that describes the Feature in a clear, concise way. ie: Executive Summary of the user goal or problem that is being solved, why does this matter to the user? The \"What & Why\"...* \n\n* Text\n\n**Goals:**\n\n*Provide high-level goal statement, providing user context and expected user outcome(s) for this Feature. Who benefits from this Feature, and how? What is the difference between today's current state and a world with this Feature?*\n\n* Text\n\n**Out of Scope:**\n\n*High-level list of items or personas that are out of scope.*\n\n* Text\n\n**Requirements:**\n\n*A list of specific needs, capabilities, or objectives that a Feature must deliver to satisfy the Feature. Some requirements will be flagged as MVP. If an MVP gets shifted, the Feature shifts. If a non MVP requirement slips, it does not shift the feature.*\n\n* Text\n\n**Done - Acceptance Criteria:**\n\n*Acceptance Criteria articulates and defines the value proposition - what is required to meet the goal and intent of this Feature. The Acceptance Criteria provides a detailed definition of scope and the expected outcomes - from a users point of view*\n\n* Text\n\n**Use Cases - i.e. User Experience & Workflow:**\n\n*Include use case diagrams, main success scenarios, alternative flow scenarios.*\n\n* Text\n\n**Documentation Considerations:**\n\n*Provide information that needs to be considered and planned so that documentation will meet customer needs. If the feature extends existing functionality, provide a link to its current documentation..*\n\n* Text\n\n**Questions to answer:**\n\n*Include a list of refinement / architectural questions that may need to be answered before coding can begin.*\n\n* Text\n\n**Background & Strategic Fit:**\n\n*Provide any additional context is needed to frame the feature.*\n\n* Text\n\n**Customer Considerations**\n\n*Provide any additional customer-specific considerations that must be made when designing and delivering the Feature.*\n\n* Text`;
-                                          const prompt = basePrompt + getAgentInstructions();
-                                          const payload: CreateAgenticSessionRequest = {
-                                            prompt,
-                                            displayName: `${workflow.title} - ${phase}`,
-                                            interactive: true,
-                                            workspacePath: workflowWorkspace,
-                                            autoPushOnComplete: true,
-                                            environmentVariables: {
-                                              WORKFLOW_PHASE: phase,
-                                              PARENT_RFE: workflow.id,
-                                              AUTO_PUSH_ON_COMPLETE: "true",
-                                            },
-                                            labels: {
-                                              project,
-                                              "rfe-workflow": workflow.id,
-                                              "rfe-phase": phase,
-                                            },
-                                            annotations: {
-                                              "rfe-expected": expected,
-                                            },
-                                          };
-                                        // Wire unified repos[] for chat session (input + output same repo for RFE sessions)
-                                        if (workflow.umbrellaRepo) {
-                                          const repos = [
-                                            { 
-                                              input: { url: workflow.umbrellaRepo.url, branch: workflow.umbrellaRepo.branch },
-                                              output: { url: workflow.umbrellaRepo.url, branch: workflow.umbrellaRepo.branch }
-                                            },
-                                            ...((workflow.supportingRepos || []).map((r) => ({ 
-                                              input: { url: r.url, branch: r.branch },
-                                              output: { url: r.url, branch: r.branch }
-                                            })))
-                                          ];
-                                          payload.repos = repos;
-                                          payload.mainRepoIndex = 0; // umbrella repo is always first
-                                          payload.environmentVariables = {
-                                            ...(payload.environmentVariables || {}),
-                                            REPOS_JSON: JSON.stringify(repos),
-                                            MAIN_REPO_INDEX: "0",
-                                          };
-                                        }
-                                          const resp = await fetch(`${getApiUrl()}/projects/${encodeURIComponent(project)}/agentic-sessions`, {
-                                            method: "POST",
-                                            headers: { "Content-Type": "application/json" },
-                                            body: JSON.stringify(payload),
-                                          });
-                                          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-                                          await refreshAll();
-                                        } catch (e) {
-                                          setError(e instanceof Error ? e.message : "Failed to start session");
-                                        } finally {
-                                          setStartingPhase(null);
-                                        }
-                                      }} disabled={startingPhase === phase || !isSeeded}>
-                                        {startingPhase === phase ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" />Starting…</>) : (<><Play className="mr-2 h-4 w-4" />Start Chat</>)}
-                                      </Button>
-                                    )
-                                )
-                                : (
-                                    <Button
-                                      size="sm"
-                                      onClick={async () => {
-                                      try {
-                                        setStartingPhase(phase);
-                                        const isSpecify = phase === "specify";
-                                        const basePrompt = isSpecify
-                                          ? `/specify Develop a new feature based on rfe.md or if that does not exist, follow these feature requirements: ${workflow.description}`
-                                          : `/${phase}`;
-                                        const prompt = basePrompt + getAgentInstructions();
-                                        const payload: CreateAgenticSessionRequest = {
-                                          prompt,
-                                          displayName: `${workflow.title} - ${phase}`,
-                                          interactive: false,
-                                          workspacePath: workflowWorkspace,
-                                          autoPushOnComplete: true,
-                                          environmentVariables: {
-                                            WORKFLOW_PHASE: phase,
-                                            PARENT_RFE: workflow.id,
-                                            AUTO_PUSH_ON_COMPLETE: "true",
-                                          },
-                                          labels: {
-                                            project,
-                                            "rfe-workflow": workflow.id,
-                                            "rfe-phase": phase,
-                                          },
-                                          annotations: {
-                                            "rfe-expected": expected,
-                                          },
-                                        };
-                                        // Wire unified repos[] for non-interactive generation (input + output same repo for RFE sessions)
-                                        if (workflow.umbrellaRepo) {
-                                          const repos = [
-                                            { 
-                                              input: { url: workflow.umbrellaRepo.url, branch: workflow.umbrellaRepo.branch },
-                                              output: { url: workflow.umbrellaRepo.url, branch: workflow.umbrellaRepo.branch }
-                                            },
-                                            ...((workflow.supportingRepos || []).map((r) => ({ 
-                                              input: { url: r.url, branch: r.branch },
-                                              output: { url: r.url, branch: r.branch }
-                                            })))
-                                          ];
-                                          payload.repos = repos;
-                                          payload.mainRepoIndex = 0; // umbrella repo is always first
-                                          payload.environmentVariables = {
-                                            ...(payload.environmentVariables || {}),
-                                            REPOS_JSON: JSON.stringify(repos),
-                                            MAIN_REPO_INDEX: "0",
-                                          };
-                                        }
-                                        const resp = await fetch(`${getApiUrl()}/projects/${encodeURIComponent(project)}/agentic-sessions`, {
-                                          method: "POST",
-                                          headers: { "Content-Type": "application/json" },
-                                          body: JSON.stringify(payload),
-                                        });
-                                        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-                                        await refreshAll();
-                                      } catch (e) {
-                                        setError(e instanceof Error ? e.message : "Failed to start session");
-                                      } finally {
-                                        setStartingPhase(null);
-                                      }
-                                      }} disabled={startingPhase === phase || !isSeeded}>
-                                        {startingPhase === phase ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" />Starting…</>) : (<><Play className="mr-2 h-4 w-4" />Generate</>)}
-                                      </Button>
-                                )
-                            )}
-                            {exists && phase !== "ideate" && phase !== "implement" && (
-                              <Button size="sm" variant="secondary" onClick={async () => {
-                                try {
-                                  setPublishingPhase(phase);
-                                  const resp = await fetch(`/api/projects/${encodeURIComponent(project)}/rfe-workflows/${encodeURIComponent(id)}/jira`, {
-                                    method: "POST",
-                                    headers: { "Content-Type": "application/json" },
-                                    body: JSON.stringify({ path: expected, phase }),
-                                  });
-                                  const data = await resp.json().catch(() => ({}));
-                                  if (!resp.ok) throw new Error(data?.error || `HTTP ${resp.status}`);
-                                  await refreshAll();
-                                } catch (e) {
-                                  setError(e instanceof Error ? e.message : "Failed to publish to Jira");
-                                } finally {
-                                  setPublishingPhase(null);
-                                }
-                              }} disabled={publishingPhase === phase}>
-                                {publishingPhase === phase ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" />Publishing…</>) : (<><Upload className="mr-2 h-4 w-4" />Publish to Jira</>)}
-                              </Button>
-                            )}
-                            {exists && linkedKey && phase !== "ideate" && phase !== "implement" && (
-                              <div className="flex items-center gap-2">
-                                <Badge variant="outline">{linkedKey}</Badge>
-                                <Button variant="link" size="sm" className="px-0 h-auto" onClick={() => openJiraForPath(expected)}>Open in Jira</Button>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    });
-                  })()}
-                </div>
-              </CardContent>
-            </Card>
+            <RfePhaseCards
+              workflow={workflow}
+              rfeSessions={rfeSessions}
+              rfeDoc={rfeDoc}
+              specKitDir={specKitDir}
+              firstFeaturePath={firstFeaturePath}
+              projectName={project}
+              rfeId={id}
+              workflowWorkspace={workflowWorkspace}
+              isSeeded={isSeeded}
+              startingPhase={startingPhase}
+              publishingPhase={publishingPhase}
+              selectedAgents={selectedAgents}
+              onStartPhase={setStartingPhase}
+              onPublishPhase={setPublishingPhase}
+              onLoad={async () => { await load(); }}
+              onLoadSessions={async () => { await loadSessions(); }}
+              onError={setError}
+              onOpenJira={openJiraForPath}
+            />
           </TabsContent>
 
           <TabsContent value="sessions">
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle>Agentic Sessions ({rfeSessions.length})</CardTitle>
-                    <CardDescription>Sessions scoped to this RFE</CardDescription>
-                  </div>
-                  <Link href={`/projects/${encodeURIComponent(project)}/sessions/new?workspacePath=${encodeURIComponent(workflowWorkspace)}&rfeWorkflow=${encodeURIComponent(workflow.id)}`}>
-                    <Button variant="default" size="sm">
-                      <Plus className="w-4 h-4 mr-2" />
-                      Create Session
-                    </Button>
-                  </Link>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="min-w-[220px]">Name</TableHead>
-                        <TableHead>Stage</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead className="hidden md:table-cell">Model</TableHead>
-                        <TableHead className="hidden lg:table-cell">Created</TableHead>
-                        <TableHead className="hidden xl:table-cell">Cost</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {rfeSessions.length === 0 ? (
-                        <TableRow><TableCell colSpan={6} className="py-6 text-center text-muted-foreground">No agent sessions yet</TableCell></TableRow>
-                      ) : (
-                        rfeSessions.map((s) => {
-                          const labels = (s.metadata.labels || {}) as Record<string, unknown>;
-                          const name = s.metadata.name;
-                          const display = s.spec?.displayName || name;
-                          const rfePhase = typeof labels["rfe-phase"] === "string" ? String(labels["rfe-phase"]) : '';
-                          const model = s.spec?.llmSettings?.model;
-                          const created = s.metadata?.creationTimestamp ? formatDistanceToNow(new Date(s.metadata.creationTimestamp), { addSuffix: true }) : '';
-                          const cost = s.status?.total_cost_usd;
-                          return (
-                            <TableRow key={name}>
-                              <TableCell className="font-medium min-w-[180px]">
-                                <Link href={{
-                                  pathname: `/projects/${encodeURIComponent(project)}/sessions/${encodeURIComponent(name)}`,
-                                  query: {
-                                    backHref: `/projects/${encodeURIComponent(project)}/rfe/${encodeURIComponent(id)}?tab=sessions`,
-                                    backLabel: `Back to RFE`
-                                  }
-                                } as unknown as { pathname: string; query: Record<string, string> } } className="text-blue-600 hover:underline hover:text-blue-800 transition-colors block">
-                                  <div className="font-medium">{display}</div>
-                                  {display !== name && (<div className="text-xs text-gray-500">{name}</div>)}
-                                </Link>
-                              </TableCell>
-                              <TableCell>{WORKFLOW_PHASE_LABELS[rfePhase as WorkflowPhase] || rfePhase || '—'}</TableCell>
-                              <TableCell><span className="text-sm">{s.status?.phase || 'Pending'}</span></TableCell>
-                              <TableCell className="hidden md:table-cell"><span className="text-sm text-gray-600 truncate max-w-[160px] block">{model || '—'}</span></TableCell>
-                              <TableCell className="hidden lg:table-cell">{created || <span className="text-gray-400">—</span>}</TableCell>
-                              <TableCell className="hidden xl:table-cell">{cost ? <span className="text-sm font-mono">${cost.toFixed?.(4) ?? cost}</span> : <span className="text-gray-400">—</span>}</TableCell>
-                            </TableRow>
-                          );
-                        })
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
-              </CardContent>
-            </Card>
+            <RfeSessionsTable
+              sessions={rfeSessions}
+              projectName={project}
+              rfeId={id}
+              workspacePath={workflowWorkspace}
+              workflowId={workflow.id}
+            />
           </TabsContent>
 
       

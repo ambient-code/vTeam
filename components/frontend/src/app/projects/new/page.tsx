@@ -17,6 +17,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { CreateProjectRequest } from "@/types/project";
 import { ArrowLeft, Save, Loader2 } from "lucide-react";
 import { getApiUrl } from "@/lib/config";
+import { successToast, errorToast } from "@/hooks/use-toast";
+import { Breadcrumbs } from "@/components/breadcrumbs";
 
 // Project type selection removed
 
@@ -104,9 +106,12 @@ export default function NewProjectPage() {
       if (!projectName) {
         throw new Error("Create project succeeded but response didn't include a project name");
       }
+      successToast(`Project "${formData.displayName}" created successfully`);
       router.push(`/projects/${projectName}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create project");
+      const message = err instanceof Error ? err.message : "Failed to create project";
+      setError(message);
+      errorToast(message);
     } finally {
       setLoading(false);
     }
@@ -114,6 +119,13 @@ export default function NewProjectPage() {
 
   return (
     <div className="container mx-auto p-6 max-w-2xl">
+      <Breadcrumbs
+        items={[
+          { label: 'Projects', href: '/projects' },
+          { label: 'New Project' },
+        ]}
+        className="mb-4"
+      />
       <div className="flex items-center gap-4 mb-6">
         <Link href="/projects">
           <Button variant="ghost" size="sm">

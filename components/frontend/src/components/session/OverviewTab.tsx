@@ -5,16 +5,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Brain, Clock, RefreshCw, Sparkle, ExternalLink } from "lucide-react";
-import { format, formatDistanceToNow } from "date-fns";
+import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import type { AgenticSession } from "@/types/agentic-session";
+import type { SessionMessage } from "@/types";
 
 type Props = {
   session: AgenticSession;
   promptExpanded: boolean;
   setPromptExpanded: (v: boolean) => void;
-  latestLiveMessage: any;
-  subagentStats: { uniqueCount: number; orderedTypes: string[] };
+  latestLiveMessage: SessionMessage | null;
   diffTotals: Record<number, { total_added: number; total_removed: number }>;
   onPush: (repoIndex: number) => Promise<void>;
   onAbandon: (repoIndex: number) => Promise<void>;
@@ -23,7 +23,7 @@ type Props = {
   onRefreshDiff: () => Promise<void>;
 };
 
-export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromptExpanded, latestLiveMessage, subagentStats, diffTotals, onPush, onAbandon, busyRepo, buildGithubCompareUrl, onRefreshDiff }) => {
+export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromptExpanded, latestLiveMessage, diffTotals, onPush, onAbandon, busyRepo, buildGithubCompareUrl, onRefreshDiff }) => {
   const [refreshingDiff, setRefreshingDiff] = React.useState(false);
   return (
     <div className="space-y-6">

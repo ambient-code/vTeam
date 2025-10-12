@@ -2,11 +2,12 @@
 
 import React from "react";
 import { Button } from "@/components/ui/button";
-import { RefreshCw } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { RefreshCw, FolderOpen, FileText } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { FileTree, type FileTreeNode } from "@/components/file-tree";
 import type { AgenticSession } from "@/types/agentic-session";
+import { EmptyState } from "@/components/empty-state";
 
 export type WorkspaceTabProps = {
   session: AgenticSession;
@@ -60,7 +61,15 @@ const WorkspaceTab: React.FC<WorkspaceTabProps> = ({ session, wsLoading, wsUnava
           </Button>
         </div>
         <div className="p-2">
-          <FileTree nodes={wsTree} selectedPath={wsSelectedPath} onSelect={onSelect} onToggle={onToggle} />
+          {wsTree.length === 0 ? (
+            <EmptyState
+              icon={FolderOpen}
+              title="No files yet"
+              description="The workspace is empty. Files will appear here as the session progresses."
+            />
+          ) : (
+            <FileTree nodes={wsTree} selectedPath={wsSelectedPath} onSelect={onSelect} onToggle={onToggle} />
+          )}
         </div>
       </div>
       <div className="overflow-auto">
@@ -84,7 +93,11 @@ const WorkspaceTab: React.FC<WorkspaceTabProps> = ({ session, wsLoading, wsUnava
                 />
               </>
             ) : (
-              <div className="text-sm text-muted-foreground p-4">Select a file to preview</div>
+              <EmptyState
+                icon={FileText}
+                title="No file selected"
+                description="Select a file from the tree to view and edit its contents."
+              />
             )}
           </CardContent>
         </Card>

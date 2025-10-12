@@ -8,7 +8,7 @@ import { apiClient } from '@/utils/api';
 import { RepoEntry, RepoBlob } from '@/types';
 import { FileTree, type FileTreeNode } from '@/components/file-tree';
 
-interface RepoBrowserProps {
+type RepoBrowserProps = {
   projectName: string;
   repoUrl: string;
   defaultRef?: string;

@@ -55,12 +55,12 @@ export type ToolUseBlock = {
 	type: "tool_use_block";
 	id: string;
 	name: string;
-	input: Record<string, any>;
+	input: Record<string, unknown>;
 }
 export type ToolResultBlock = {
 	type: "tool_result_block";
 	tool_use_id: string;
-	content?: string | Array<Record<string, any>> | null;
+	content?: string | Array<Record<string, unknown>> | null;
 	is_error?: boolean | null;
 };
 
@@ -101,7 +101,7 @@ export type AgentMessage = {
 export type SystemMessage = {
 	type: "system_message";
 	subtype: string;
-	data: Record<string, any>;
+	data: Record<string, unknown>;
 	timestamp: string;
 }
 export type ResultMessage = {
@@ -113,7 +113,7 @@ export type ResultMessage = {
 	num_turns: number;
 	session_id: string;
 	total_cost_usd?: number | null;
-	usage?: Record<string, any> | null;
+	usage?: Record<string, unknown> | null;
 	result?: string | null;
 	timestamp: string;
 }
@@ -136,7 +136,7 @@ export type AgenticSessionStatus = {
 	num_turns?: number;
 	session_id?: string;
 	total_cost_usd?: number | null;
-	usage?: Record<string, any> | null;
+	usage?: Record<string, unknown> | null;
 	result?: string | null;
 };
 

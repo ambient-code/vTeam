@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -32,8 +32,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { AgenticSession } from "@/types/agentic-session";
-import type { Project } from "@/types/project";
-import { getApiUrl } from "@/lib/config";
+import { useProjects, useCloneSession } from "@/services/queries";
 
 const formSchema = z.object({
   project: z.string().min(1, "Please select a project"),
@@ -55,10 +54,10 @@ export function CloneSessionDialog({
   projectName,
 }: CloneSessionDialogProps) {
   const [open, setOpen] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [loadingProjects, setLoadingProjects] = useState(!projectName);
+
+  const { data: projects = [], isLoading: loadingProjects } = useProjects();
+  const cloneSessionMutation = useCloneSession();
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -67,66 +66,29 @@ export function CloneSessionDialog({
     },
   });
 
-  // Fetch projects when dialog opens, unless projectName is fixed
-  useEffect(() => {
-    if (open && !projectName) {
-      const fetchProjects = async () => {
-        try {
-          const apiUrl = getApiUrl();
-          const response = await fetch(`${apiUrl}/projects`);
-          if (response.ok) {
-            const data = await response.json();
-            setProjects(Array.isArray(data.items) ? data.items : []);
-          } else {
-            console.error('Failed to fetch projects');
-            setError('Failed to load projects');
-          }
-        } catch (err) {
-          console.error('Error fetching projects:', err);
-          setError('Failed to load projects');
-        } finally {
-          setLoadingProjects(false);
-        }
-      };
-
-      fetchProjects();
-    }
-  }, [open, projectName]);
-
   const onSubmit = async (values: FormValues) => {
-    setIsSubmitting(true);
     setError(null);
+    const targetProject = projectName || values.project;
 
-    try {
-      const cloneRequest = {
-        targetProject: projectName || values.project,
-        newSessionName: session.metadata.name,
-      };
-
-      const apiUrl = getApiUrl();
-      const response = await fetch(`${apiUrl}/projects/${encodeURIComponent(projectName || values.project)}/agentic-sessions/${encodeURIComponent(session.metadata.name)}/clone`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(cloneRequest),
-      });
-
-      if (!response.ok) {
-        const errorData = await response
-          .json()
-          .catch(() => ({ message: "Unknown error" }));
-        throw new Error(
-          errorData.message || "Failed to clone agentic session"
-        );
+    cloneSessionMutation.mutate(
+      {
+        projectName: targetProject,
+        sessionName: session.metadata.name,
+        data: {
+          targetProject: targetProject,
+          newSessionName: `${session.metadata.name}-clone-${Date.now()}`,
+        },
+      },
+      {
+        onSuccess: () => {
+          setOpen(false);
+          onSuccess?.();
+        },
+        onError: (err) => {
+          setError(err.message || "Failed to clone session");
+        },
       }
-
-      // Success - close dialog and notify parent
-      setOpen(false);
-      onSuccess?.();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error");
-    } finally {
-      setIsSubmitting(false);
-    }
+    );
   };
 
   const handleOpenChange = (newOpen: boolean) => {
@@ -135,7 +97,6 @@ export function CloneSessionDialog({
       // Reset form and state when closing
       form.reset();
       setError(null);
-      setLoadingProjects(!projectName);
     }
   };
 
@@ -172,7 +133,7 @@ export function CloneSessionDialog({
                   <Select
                     onValueChange={field.onChange}
                     defaultValue={field.value}
-                    disabled={loadingProjects || isSubmitting}
+                    disabled={loadingProjects || cloneSessionMutation.isPending}
                   >
                     <FormControl>
                       <SelectTrigger>
@@ -212,15 +173,15 @@ export function CloneSessionDialog({
                 type="button"
                 variant="outline"
                 onClick={() => setOpen(false)}
-                disabled={isSubmitting}
+                disabled={cloneSessionMutation.isPending}
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={isSubmitting || (!projectName && loadingProjects)}>
-                {isSubmitting && (
+              <Button type="submit" disabled={cloneSessionMutation.isPending || (!projectName && loadingProjects)}>
+                {cloneSessionMutation.isPending && (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 )}
-                {isSubmitting ? "Cloning..." : "Clone Session"}
+                {cloneSessionMutation.isPending ? "Cloning..." : "Clone Session"}
               </Button>
             </DialogFooter>
           </form>

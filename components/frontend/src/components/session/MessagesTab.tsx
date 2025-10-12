@@ -4,11 +4,11 @@ import React from "react";
 import { Button } from "@/components/ui/button";
 import { Brain } from "lucide-react";
 import { StreamMessage } from "@/components/ui/stream-message";
-import type { AgenticSession } from "@/types/agentic-session";
+import type { AgenticSession, MessageObject, ToolUseMessages } from "@/types/agentic-session";
 
 export type MessagesTabProps = {
   session: AgenticSession;
-  streamMessages: any[];
+  streamMessages: Array<MessageObject | ToolUseMessages>;
   chatInput: string;
   setChatInput: (v: string) => void;
   onSendChat: () => Promise<void>;

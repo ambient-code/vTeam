@@ -1,4 +1,4 @@
-import { APIError, RepoBlob, RepoTree, Workspace } from '@/types';
+import { APIError, RepoBlob, RepoTree } from '@/types';
 
 const API_BASE = '/api';
 
@@ -46,27 +46,6 @@ class APIClient {
   ): Promise<RepoBlob> {
     const params = new URLSearchParams({ project: projectName, repo, ref, path });
     return this.request(`/repo/blob?${params}`);
-  }
-
-  // Workspace management
-  async listWorkspaces(projectName: string): Promise<{ workflows: Workspace[] }> {
-    return this.request(`/projects/${projectName}/rfe-workflows`);
-  }
-
-  // WebSocket connection
-  createWebSocketConnection(projectName: string, sessionId: string, wsBase?: string): WebSocket {
-    let wsUrl: string;
-    if (wsBase) {
-      const base = wsBase.replace(/\/$/, '');
-      wsUrl = `${base}/projects/${projectName}/sessions/${sessionId}/ws`;
-    } else if (typeof window !== 'undefined') {
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      wsUrl = `${protocol}//${window.location.host}/api/projects/${projectName}/sessions/${sessionId}/ws`;
-    } else {
-      // SSR fallback (not used by browser)
-      wsUrl = `/api/projects/${projectName}/sessions/${sessionId}/ws`;
-    }
-    return new WebSocket(wsUrl);
   }
 }
 
