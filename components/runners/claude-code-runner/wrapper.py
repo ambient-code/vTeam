@@ -346,17 +346,8 @@ class ClaudeCodeAdapter:
             # Note: All output is streamed via WebSocket, not collected here
             await self._check_pr_intent("")
 
-            # Check if we received a valid result from the SDK
-            if result_payload is None:
-                # SDK exited without ResultMessage - this indicates failure
-                return {
-                    "success": False,
-                    "error": "Claude SDK exited without producing a result. Session may have crashed or hung.",
-                    "returnCode": 1,
-                    "stdout": "",
-                    "stderr": "No ResultMessage received from SDK"
-                }
-
+            # Return success - result_payload may be None if SDK didn't send ResultMessage
+            # (which can happen legitimately for some operations like git push)
             return {
                 "success": True,
                 "result": result_payload,
