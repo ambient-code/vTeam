@@ -11,8 +11,9 @@ import { getApiUrl } from "@/lib/config";
 import { formatDistanceToNow } from "date-fns";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AgenticSession, CreateAgenticSessionRequest, RFEWorkflow, WorkflowPhase } from "@/types/agentic-session";
-import { WORKFLOW_PHASE_LABELS } from "@/lib/agents";
-import { ArrowLeft, Play, Loader2, FolderTree, Plus, Trash2, AlertCircle, Sprout, Upload, CheckCircle2 } from "lucide-react";
+import { WORKFLOW_PHASE_LABELS, AVAILABLE_AGENTS } from "@/lib/agents";
+import { ArrowLeft, Play, Loader2, FolderTree, Plus, Trash2, AlertCircle, Sprout, Upload, CheckCircle2, Bot } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import RepoBrowser from "@/components/RepoBrowser";
 import type { GitHubFork } from "@/types";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -72,6 +73,9 @@ export default function ProjectRFEDetailPage() {
     checking: true,
     isSeeded: false,
   });
+  const [selectedAgents, setSelectedAgents] = useState<string[]>([]);
+  const [repoAgents, setRepoAgents] = useState<typeof AVAILABLE_AGENTS>([]);
+  const [loadingAgents, setLoadingAgents] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -118,6 +122,55 @@ export default function ProjectRFEDetailPage() {
       });
     }
   }, [project, id, workflow?.umbrellaRepo]);
+
+  const fetchRepoAgents = useCallback(async () => {
+    if (!project || !id || !workflow) return;
+
+    try {
+      setLoadingAgents(true);
+
+      // Create cache key based on workflow ID
+      const cacheKey = `agents:workflow:${id}`;
+
+      // Try to load from localStorage cache
+      const cached = localStorage.getItem(cacheKey);
+      if (cached) {
+        try {
+          const cachedAgents = JSON.parse(cached);
+          setRepoAgents(cachedAgents);
+          setLoadingAgents(false);
+          return;
+        } catch (e) {
+          console.debug('Failed to parse cached agents, fetching fresh', e);
+        }
+      }
+
+      // Fetch agents from backend endpoint (workflow-specific)
+      const agentsResp = await fetch(`/api/projects/${encodeURIComponent(project)}/rfe-workflows/${encodeURIComponent(id)}/agents`);
+
+      if (agentsResp.ok) {
+        const data = await agentsResp.json();
+        const fetchedAgents = data.agents || [];
+        setRepoAgents(fetchedAgents);
+
+        // Cache the results in localStorage
+        try {
+          localStorage.setItem(cacheKey, JSON.stringify(fetchedAgents));
+        } catch (e) {
+          console.debug('Failed to cache agents', e);
+        }
+      } else {
+        // No .claude/agents directory or error, fall back to default agents
+        setRepoAgents(AVAILABLE_AGENTS);
+      }
+    } catch (e) {
+      console.debug('Failed to fetch repo agents:', e);
+      // Fall back to default agents on error
+      setRepoAgents(AVAILABLE_AGENTS);
+    } finally {
+      setLoadingAgents(false);
+    }
+  }, [project, id, workflow]);
 
   const checkPhaseDocuments = useCallback(async () => {
     if (!project || !id || !workflow?.umbrellaRepo) return;
@@ -179,11 +232,11 @@ export default function ProjectRFEDetailPage() {
   }, [project, id, workflow?.umbrellaRepo]);
 
   const refreshAll = useCallback(async () => {
-    await Promise.all([load(), loadSessions(), checkPhaseDocuments()]);
-  }, [load, loadSessions, checkPhaseDocuments]);
+    await Promise.all([load(), loadSessions(), checkPhaseDocuments(), fetchRepoAgents()]);
+  }, [load, loadSessions, checkPhaseDocuments, fetchRepoAgents]);
 
   useEffect(() => { if (project && id) { load(); loadSessions(); } }, [project, id, load, loadSessions]);
-  useEffect(() => { if (workflow) { checkSeeding(); checkPhaseDocuments(); } }, [workflow, checkSeeding, checkPhaseDocuments]);
+  useEffect(() => { if (workflow) { checkSeeding(); checkPhaseDocuments(); fetchRepoAgents(); } }, [workflow, checkSeeding, checkPhaseDocuments, fetchRepoAgents]);
 
   // Workspace probing removed
 
@@ -243,6 +296,28 @@ export default function ProjectRFEDetailPage() {
       setSeeding(false);
     }
   }, [project, id, checkSeeding]);
+
+  // Helper function to generate agent instructions based on selected agents
+  const getAgentInstructions = useCallback(() => {
+    if (selectedAgents.length === 0) return '';
+
+    const selectedAgentDetails = selectedAgents
+      .map(persona => repoAgents.find(a => a.persona === persona))
+      .filter(Boolean);
+
+    if (selectedAgentDetails.length === 0) return '';
+
+    const agentList = selectedAgentDetails
+      .map(agent => `- ${agent!.name} (${agent!.role})`)
+      .join('\n');
+
+    return `\n\nIMPORTANT - Selected Agents for this workflow:
+The following agents have been selected to participate in this workflow. Invoke them by name to get their specialized perspectives:
+
+${agentList}
+
+You can invoke agents by using their name in your prompts. For example: "Let's get input from ${selectedAgentDetails[0]!.name} on this approach."`;
+  }, [selectedAgents, repoAgents]);
 
   if (loading) return <div className="container mx-auto py-8">Loading…</div>;
   if (error || !workflow) return (
@@ -369,6 +444,80 @@ export default function ProjectRFEDetailPage() {
           </CardContent>
         </Card>
 
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Bot className="h-5 w-5" />
+              Agents
+            </CardTitle>
+            <CardDescription>
+              {loadingAgents ? 'Loading agents from repository...' : 'Select agents to participate in workflow sessions'}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {loadingAgents ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : repoAgents.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <Bot className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                <p>No agents found in repository .claude/agents directory</p>
+                <p className="text-xs mt-1">Seed the repository to add agent definitions</p>
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {repoAgents.map((agent) => {
+                    const isSelected = selectedAgents.includes(agent.persona);
+                    return (
+                      <div
+                        key={agent.persona}
+                        className={`p-3 rounded-lg border transition-colors ${
+                          isSelected ? 'bg-primary/5 border-primary' : 'bg-background border-border hover:border-primary/50'
+                        }`}
+                      >
+                        <label className="flex items-start gap-3 cursor-pointer">
+                          <Checkbox
+                            checked={isSelected}
+                            onCheckedChange={(checked) => {
+                              setSelectedAgents(prev =>
+                                checked
+                                  ? [...prev, agent.persona]
+                                  : prev.filter(p => p !== agent.persona)
+                              );
+                            }}
+                            className="mt-0.5"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium text-sm">{agent.name}</div>
+                            <div className="text-xs text-muted-foreground mt-0.5">{agent.role}</div>
+                          </div>
+                        </label>
+                      </div>
+                    );
+                  })}
+                </div>
+                {selectedAgents.length > 0 && (
+                  <div className="mt-4 pt-4 border-t">
+                    <div className="text-sm font-medium mb-2">Selected Agents ({selectedAgents.length})</div>
+                    <div className="flex flex-wrap gap-2">
+                      {selectedAgents.map(persona => {
+                        const agent = repoAgents.find(a => a.persona === persona);
+                        return agent ? (
+                          <Badge key={persona} variant="secondary">
+                            {agent.name}
+                          </Badge>
+                        ) : null;
+                      })}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </CardContent>
+        </Card>
+
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList>
             <TabsTrigger value="overview">Overview</TabsTrigger>
@@ -473,7 +622,8 @@ export default function ProjectRFEDetailPage() {
                                         onClick={async () => {
                                         try {
                                           setStartingPhase(phase);
-                                          const prompt = `IMPORTANT: The result of this interactive chat session MUST produce rfe.md at the workspace root. The rfe.md should be formatted as markdown in the following way:\n\n# Feature Title\n\n**Feature Overview:**  \n*An elevator pitch (value statement) that describes the Feature in a clear, concise way. ie: Executive Summary of the user goal or problem that is being solved, why does this matter to the user? The \"What & Why\"...* \n\n* Text\n\n**Goals:**\n\n*Provide high-level goal statement, providing user context and expected user outcome(s) for this Feature. Who benefits from this Feature, and how? What is the difference between today's current state and a world with this Feature?*\n\n* Text\n\n**Out of Scope:**\n\n*High-level list of items or personas that are out of scope.*\n\n* Text\n\n**Requirements:**\n\n*A list of specific needs, capabilities, or objectives that a Feature must deliver to satisfy the Feature. Some requirements will be flagged as MVP. If an MVP gets shifted, the Feature shifts. If a non MVP requirement slips, it does not shift the feature.*\n\n* Text\n\n**Done - Acceptance Criteria:**\n\n*Acceptance Criteria articulates and defines the value proposition - what is required to meet the goal and intent of this Feature. The Acceptance Criteria provides a detailed definition of scope and the expected outcomes - from a users point of view*\n\n* Text\n\n**Use Cases - i.e. User Experience & Workflow:**\n\n*Include use case diagrams, main success scenarios, alternative flow scenarios.*\n\n* Text\n\n**Documentation Considerations:**\n\n*Provide information that needs to be considered and planned so that documentation will meet customer needs. If the feature extends existing functionality, provide a link to its current documentation..*\n\n* Text\n\n**Questions to answer:**\n\n*Include a list of refinement / architectural questions that may need to be answered before coding can begin.*\n\n* Text\n\n**Background & Strategic Fit:**\n\n*Provide any additional context is needed to frame the feature.*\n\n* Text\n\n**Customer Considerations**\n\n*Provide any additional customer-specific considerations that must be made when designing and delivering the Feature.*\n\n* Text`;
+                                          const basePrompt = `IMPORTANT: The result of this interactive chat session MUST produce rfe.md at the workspace root. The rfe.md should be formatted as markdown in the following way:\n\n# Feature Title\n\n**Feature Overview:**  \n*An elevator pitch (value statement) that describes the Feature in a clear, concise way. ie: Executive Summary of the user goal or problem that is being solved, why does this matter to the user? The \"What & Why\"...* \n\n* Text\n\n**Goals:**\n\n*Provide high-level goal statement, providing user context and expected user outcome(s) for this Feature. Who benefits from this Feature, and how? What is the difference between today's current state and a world with this Feature?*\n\n* Text\n\n**Out of Scope:**\n\n*High-level list of items or personas that are out of scope.*\n\n* Text\n\n**Requirements:**\n\n*A list of specific needs, capabilities, or objectives that a Feature must deliver to satisfy the Feature. Some requirements will be flagged as MVP. If an MVP gets shifted, the Feature shifts. If a non MVP requirement slips, it does not shift the feature.*\n\n* Text\n\n**Done - Acceptance Criteria:**\n\n*Acceptance Criteria articulates and defines the value proposition - what is required to meet the goal and intent of this Feature. The Acceptance Criteria provides a detailed definition of scope and the expected outcomes - from a users point of view*\n\n* Text\n\n**Use Cases - i.e. User Experience & Workflow:**\n\n*Include use case diagrams, main success scenarios, alternative flow scenarios.*\n\n* Text\n\n**Documentation Considerations:**\n\n*Provide information that needs to be considered and planned so that documentation will meet customer needs. If the feature extends existing functionality, provide a link to its current documentation..*\n\n* Text\n\n**Questions to answer:**\n\n*Include a list of refinement / architectural questions that may need to be answered before coding can begin.*\n\n* Text\n\n**Background & Strategic Fit:**\n\n*Provide any additional context is needed to frame the feature.*\n\n* Text\n\n**Customer Considerations**\n\n*Provide any additional customer-specific considerations that must be made when designing and delivering the Feature.*\n\n* Text`;
+                                          const prompt = basePrompt + getAgentInstructions();
                                           const payload: CreateAgenticSessionRequest = {
                                             prompt,
                                             displayName: `${workflow.title} - ${phase}`,
@@ -538,9 +688,10 @@ export default function ProjectRFEDetailPage() {
                                       try {
                                         setStartingPhase(phase);
                                         const isSpecify = phase === "specify";
-                                        const prompt = isSpecify
+                                        const basePrompt = isSpecify
                                           ? `/specify Develop a new feature based on rfe.md or if that does not exist, follow these feature requirements: ${workflow.description}`
-                                          : `/${phase}`
+                                          : `/${phase}`;
+                                        const prompt = basePrompt + getAgentInstructions();
                                         const payload: CreateAgenticSessionRequest = {
                                           prompt,
                                           displayName: `${workflow.title} - ${phase}`,
