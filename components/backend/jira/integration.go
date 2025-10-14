@@ -134,6 +134,36 @@ func ExtractTitleFromContent(content string) string {
 	return ""
 }
 
+// StripExecutionFlow removes the "Execution Flow" section from markdown content
+// This section is typically found in spec.md and plan.md artifacts
+func StripExecutionFlow(content string) string {
+	lines := strings.Split(content, "\n")
+	var result []string
+	inExecutionFlow := false
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+
+		// Check if this is the start of the Execution Flow section
+		if strings.HasPrefix(trimmed, "##") && strings.Contains(strings.ToLower(trimmed), "execution flow") {
+			inExecutionFlow = true
+			continue
+		}
+
+		// Check if we've hit the next section (another ## heading)
+		if inExecutionFlow && strings.HasPrefix(trimmed, "##") {
+			inExecutionFlow = false
+		}
+
+		// Add line if not in Execution Flow section
+		if !inExecutionFlow {
+			result = append(result, line)
+		}
+	}
+
+	return strings.Join(result, "\n")
+}
+
 // AttachFileToJiraIssue attaches a file to a Jira issue
 func AttachFileToJiraIssue(ctx context.Context, jiraBase, issueKey, authHeader string, filename string, content []byte) error {
 	endpoint := fmt.Sprintf("%s/rest/api/2/issue/%s/attachments", jiraBase, url.PathEscape(issueKey))
@@ -323,6 +353,12 @@ func (h *Handler) PublishWorkflowFileToJira(c *gin.Context) {
 		title = wf.Title // Fallback to workflow title
 	}
 
+	// Strip Execution Flow section from spec.md and plan.md
+	processedContent := content
+	if req.Phase == "specify" || req.Phase == "plan" {
+		processedContent = []byte(StripExecutionFlow(string(content)))
+	}
+
 	// Check if Jira link already exists for this path
 	existingKey := ""
 	for _, jl := range wf.JiraLinks {
@@ -344,8 +380,11 @@ func (h *Handler) PublishWorkflowFileToJira(c *gin.Context) {
 	}
 
 	// Determine issue type based on phase
+	// specify -> Feature Request, plan -> Feature, tasks -> Epic
 	issueType := "Feature" // default
-	if req.Phase == "plan" {
+	if req.Phase == "specify" {
+		issueType = "Feature Request"
+	} else if req.Phase == "tasks" {
 		issueType = "Epic"
 	}
 
@@ -360,13 +399,29 @@ func (h *Handler) PublishWorkflowFileToJira(c *gin.Context) {
 		fields := map[string]interface{}{
 			"project":     map[string]string{"key": jiraProject},
 			"summary":     title,
-			"description": string(content),
+			"description": string(processedContent),
 			"issuetype":   map[string]string{"name": issueType},
 		}
 
-		// Add parent Outcome if specified
-		if wf.ParentOutcome != nil && *wf.ParentOutcome != "" {
-			fields["parent"] = map[string]string{"key": *wf.ParentOutcome}
+		// Determine parent based on phase
+		parentKey := ""
+		if req.Phase == "tasks" {
+			// For tasks phase (Epic): link to Feature (plan.md)
+			for _, jl := range wf.JiraLinks {
+				if strings.Contains(jl.Path, "plan.md") {
+					parentKey = jl.JiraKey
+					break
+				}
+			}
+		} else {
+			// For other phases: use parent Outcome if specified
+			if wf.ParentOutcome != nil && *wf.ParentOutcome != "" {
+				parentKey = *wf.ParentOutcome
+			}
+		}
+
+		if parentKey != "" {
+			fields["parent"] = map[string]string{"key": parentKey}
 		}
 
 		reqBody := map[string]interface{}{"fields": fields}
@@ -378,7 +433,7 @@ func (h *Handler) PublishWorkflowFileToJira(c *gin.Context) {
 		reqBody := map[string]interface{}{
 			"fields": map[string]interface{}{
 				"summary":     title,
-				"description": string(content),
+				"description": string(processedContent),
 			},
 		}
 		payload, _ := json.Marshal(reqBody)
@@ -421,7 +476,7 @@ func (h *Handler) PublishWorkflowFileToJira(c *gin.Context) {
 	// Phase-specific attachment handling
 	switch req.Phase {
 	case "specify":
-		// For specify phase: attach rfe.md if it exists
+		// For specify phase (Feature Request): attach rfe.md if it exists
 		rfeContent, err := git.ReadGitHubFile(c.Request.Context(), owner, repo, branch, "rfe.md", githubToken)
 		if err == nil && len(rfeContent) > 0 {
 			if attachErr := AttachFileToJiraIssue(c.Request.Context(), jiraBase, outKey, authHeader, "rfe.md", rfeContent); attachErr != nil {
@@ -430,39 +485,37 @@ func (h *Handler) PublishWorkflowFileToJira(c *gin.Context) {
 		}
 
 	case "plan":
-		// For plan phase: Epic is created with description containing links to plan artifacts
-		// Additional plan artifacts could be attached if needed in future
+		// For plan phase (Feature): attach supporting documents if they exist
+		// Extract directory path from plan.md path (e.g., "specs/001-feature/plan.md" -> "specs/001-feature")
+		pathParts := strings.Split(req.Path, "/")
+		var dirPath string
+		if len(pathParts) > 1 {
+			dirPath = strings.Join(pathParts[:len(pathParts)-1], "/")
+		}
 
-	case "tasks":
-		// For tasks phase: attach tasks.md to the Feature
-		// First, find the Feature key (should be in jiraLinks for spec.md)
-		featureKey := ""
-		for _, jl := range wf.JiraLinks {
-			if strings.Contains(jl.Path, "spec.md") {
-				featureKey = jl.JiraKey
-				break
+		// List of supporting documents to attach (if they exist)
+		supportingDocs := []string{"data-model.md", "quickstart.md", "research.md"}
+
+		for _, docName := range supportingDocs {
+			docPath := docName
+			if dirPath != "" {
+				docPath = dirPath + "/" + docName
+			}
+
+			// Try to read the file - skip silently if it doesn't exist
+			docContent, err := git.ReadGitHubFile(c.Request.Context(), owner, repo, branch, docPath, githubToken)
+			if err == nil && len(docContent) > 0 {
+				if attachErr := AttachFileToJiraIssue(c.Request.Context(), jiraBase, outKey, authHeader, docName, docContent); attachErr != nil {
+					log.Printf("Warning: failed to attach %s to %s: %v", docName, outKey, attachErr)
+				} else {
+					log.Printf("Successfully attached %s to %s", docName, outKey)
+				}
 			}
 		}
 
-		if featureKey == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Cannot attach tasks.md: no Feature found (spec.md must be published first)"})
-			return
-		}
-
-		// Attach tasks.md to the Feature
-		tasksContent, err := git.ReadGitHubFile(c.Request.Context(), owner, repo, branch, req.Path, githubToken)
-		if err != nil {
-			c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to read tasks.md from GitHub", "details": err.Error()})
-			return
-		}
-
-		if attachErr := AttachFileToJiraIssue(c.Request.Context(), jiraBase, featureKey, authHeader, "tasks.md", tasksContent); attachErr != nil {
-			c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to attach tasks.md to Feature", "details": attachErr.Error()})
-			return
-		}
-
-		// For tasks phase, we still want to record the link
-		outKey = featureKey
+	case "tasks":
+		// For tasks phase: Epic is created and linked to the Feature (plan.md)
+		// No additional attachment handling needed - Epic is standalone with parent link
 	}
 
 	// Update RFEWorkflow CR with Jira link
