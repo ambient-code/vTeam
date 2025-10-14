@@ -258,6 +258,8 @@ func (h *Handler) PublishWorkflowFileToJira(c *gin.Context) {
 		return
 	}
 
+	log.Printf("DEBUG JIRA: Received phase='%s' for path='%s'", req.Phase, req.Path)
+
 	// Load runner secrets for Jira config
 	_, reqDyn := h.GetK8sClientsForRequest(c)
 	reqK8s, _ := h.GetK8sClientsForRequest(c)
@@ -353,10 +355,30 @@ func (h *Handler) PublishWorkflowFileToJira(c *gin.Context) {
 		title = wf.Title // Fallback to workflow title
 	}
 
+	// Build GitHub URL for the file
+	githubURL := fmt.Sprintf("https://github.com/%s/%s/blob/%s/%s", owner, repo, branch, req.Path)
+
 	// Strip Execution Flow section from spec.md and plan.md
 	processedContent := content
-	if req.Phase == "specify" || req.Phase == "plan" {
-		processedContent = []byte(StripExecutionFlow(string(content)))
+	if req.Phase == "specify" || req.Phase == "plan" || req.Phase == "tasks" {
+		stripped := StripExecutionFlow(string(content))
+
+		// For tasks phase (Epic), add reference to parent Feature if it exists
+		featureReference := ""
+		if req.Phase == "tasks" {
+			for _, jl := range wf.JiraLinks {
+				if strings.Contains(jl.Path, "plan.md") {
+					featureReference = fmt.Sprintf("\n\n**Implements Feature:** %s\n\n---", jl.JiraKey)
+					break
+				}
+			}
+		}
+
+		// Prepend GitHub URL reference at the top
+		processedContent = []byte(fmt.Sprintf("**Source:** %s%s\n\n---\n\n%s", githubURL, featureReference, stripped))
+	} else {
+		// For other files, just prepend the GitHub URL
+		processedContent = []byte(fmt.Sprintf("**Source:** %s\n\n---\n\n%s", githubURL, string(content)))
 	}
 
 	// Check if Jira link already exists for this path
@@ -403,18 +425,11 @@ func (h *Handler) PublishWorkflowFileToJira(c *gin.Context) {
 			"issuetype":   map[string]string{"name": issueType},
 		}
 
-		// Determine parent based on phase
+		// TODO: decide correct hierarchy for parent/children jira objects
+		// For Epic (tasks phase), the Feature reference is added to the description instead
 		parentKey := ""
-		if req.Phase == "tasks" {
-			// For tasks phase (Epic): link to Feature (plan.md)
-			for _, jl := range wf.JiraLinks {
-				if strings.Contains(jl.Path, "plan.md") {
-					parentKey = jl.JiraKey
-					break
-				}
-			}
-		} else {
-			// For other phases: use parent Outcome if specified
+		if req.Phase != "tasks" {
+			// For non-Epic phases: use parent Outcome if specified
 			if wf.ParentOutcome != nil && *wf.ParentOutcome != "" {
 				parentKey = *wf.ParentOutcome
 			}
@@ -426,6 +441,7 @@ func (h *Handler) PublishWorkflowFileToJira(c *gin.Context) {
 
 		reqBody := map[string]interface{}{"fields": fields}
 		payload, _ := json.Marshal(reqBody)
+		log.Printf("DEBUG JIRA: Creating issue with type '%s', payload: %s", issueType, string(payload))
 		httpReq, _ = http.NewRequestWithContext(c.Request.Context(), "POST", jiraEndpoint, bytes.NewReader(payload))
 	} else {
 		// UPDATE existing issue

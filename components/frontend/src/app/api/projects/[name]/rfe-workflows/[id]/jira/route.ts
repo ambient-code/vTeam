@@ -56,7 +56,7 @@ export async function POST(
     const backendResp = await fetch(`${BACKEND_URL}/projects/${encodeURIComponent(name)}/rfe-workflows/${encodeURIComponent(id)}/jira`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...headers },
-      body: JSON.stringify({ path })
+      body: JSON.stringify({ path, phase })
     })
     const text = await backendResp.text()
     return new Response(text, { status: backendResp.status, headers: { 'Content-Type': 'application/json' } })
