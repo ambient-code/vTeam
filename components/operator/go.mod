@@ -1,4 +1,4 @@
-module research-operator
+module ambient-code-operator
 
 go 1.24.0
 
