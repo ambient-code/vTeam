@@ -328,13 +328,85 @@ vTeam/
 
 ## Contributing
 
+We welcome contributions! Please follow these guidelines to ensure code quality and consistency.
+
+### Development Workflow
+
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/amazing-feature`)
 3. Make your changes following the existing patterns
-4. Add tests if applicable
-5. Commit with conventional commit messages
-6. Push to the branch (`git push origin feature/amazing-feature`)
-7. Open a Pull Request
+4. Run code quality checks (see below)
+5. Add tests if applicable
+6. Commit with conventional commit messages
+7. Push to the branch (`git push origin feature/amazing-feature`)
+8. Open a Pull Request
+
+### Code Quality Standards
+
+#### Go Code (Backend & Operator)
+
+Before committing Go code, run these checks locally:
+
+```bash
+# Backend
+cd components/backend
+gofmt -l .                    # Check formatting
+go vet ./...                  # Run go vet
+golangci-lint run            # Run full linting suite
+
+# Operator
+cd components/operator
+gofmt -l .                    # Check formatting
+go vet ./...                  # Run go vet
+golangci-lint run            # Run full linting suite
+```
+
+**Install golangci-lint:**
+```bash
+go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+```
+
+**Auto-format your code:**
+```bash
+# Format all Go files
+gofmt -w components/backend components/operator
+```
+
+**CI/CD:** All pull requests automatically run these checks via GitHub Actions. Your PR must pass all linting checks before merging.
+
+#### Frontend Code
+
+```bash
+cd components/frontend
+npm run lint                  # ESLint checks
+npm run type-check            # TypeScript checks (if available)
+npm run format                # Prettier formatting
+```
+
+### Testing
+
+```bash
+# Backend tests
+cd components/backend
+make test                     # Run all tests
+make test-unit                # Unit tests only
+make test-integration         # Integration tests
+
+# Operator tests
+cd components/operator
+go test ./... -v              # Run all tests
+
+# Frontend tests
+cd components/frontend
+npm test                      # Run test suite
+```
+
+### Documentation
+
+- Update relevant documentation when changing functionality
+- Follow existing documentation style (Markdown)
+- Add code comments for complex logic
+- Update CLAUDE.md if adding new patterns or standards
 
 ## Support & Documentation
 

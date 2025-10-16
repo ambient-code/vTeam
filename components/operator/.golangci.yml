@@ -1,0 +1,44 @@
+# golangci-lint configuration for vTeam operator
+# Compatible with golangci-lint v2+
+#
+# Pragmatic configuration for Kubernetes operator development.
+
+version: 2
+
+run:
+  timeout: 5m
+
+linters:
+  enable:
+    - govet         # Reports suspicious constructs
+    - ineffassign   # Detect ineffectual assignments
+    - staticcheck   # Advanced static analysis
+    - unused        # Check for unused constants, variables, functions
+    - misspell      # Find commonly misspelled words
+  disable:
+    - errcheck      # Disabled: too many false positives with defer cleanup
+
+linters-settings:
+  staticcheck:
+    checks: ["all", "-SA1019", "-QF1001", "-QF1003", "-QF1008", "-QF1012"]  # Disable deprecation warnings and style suggestions
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+  exclude-rules:
+    # Exclude linters from test files
+    - path: _test\.go
+      linters:
+        - staticcheck
+        - govet
+
+    # Allow type assertions in K8s reconciliation (intentional pattern)
+    - path: internal/handlers/
+      text: "type assertion"
+
+    # Allow existing code patterns (not worth changing)
+    - path: internal/handlers/sessions\.go
+      text: "QF1001"  # De Morgan's law
+
+  new: false

@@ -1,0 +1,121 @@
+name: Go Lint and Format
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  detect-go-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      operator: ${{ steps.filter.outputs.operator }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Check for Go changes
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'components/backend/**/*.go'
+              - 'components/backend/go.mod'
+              - 'components/backend/go.sum'
+            operator:
+              - 'components/operator/**/*.go'
+              - 'components/operator/go.mod'
+              - 'components/operator/go.sum'
+
+  lint-backend:
+    runs-on: ubuntu-latest
+    needs: detect-go-changes
+    if: needs.detect-go-changes.outputs.backend == 'true' || github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'components/backend/go.mod'
+          cache-dependency-path: 'components/backend/go.sum'
+
+      - name: Check gofmt
+        run: |
+          cd components/backend
+          UNFORMATTED=$(gofmt -l .)
+          if [ -n "$UNFORMATTED" ]; then
+            echo "The following files are not formatted:"
+            echo "$UNFORMATTED"
+            echo ""
+            echo "Run 'gofmt -w .' to format them."
+            exit 1
+          fi
+
+      - name: Run go vet
+        run: |
+          cd components/backend
+          go vet ./...
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          working-directory: components/backend
+          args: --timeout=5m
+
+  lint-operator:
+    runs-on: ubuntu-latest
+    needs: detect-go-changes
+    if: needs.detect-go-changes.outputs.operator == 'true' || github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'components/operator/go.mod'
+          cache-dependency-path: 'components/operator/go.sum'
+
+      - name: Check gofmt
+        run: |
+          cd components/operator
+          UNFORMATTED=$(gofmt -l .)
+          if [ -n "$UNFORMATTED" ]; then
+            echo "The following files are not formatted:"
+            echo "$UNFORMATTED"
+            echo ""
+            echo "Run 'gofmt -w .' to format them."
+            exit 1
+          fi
+
+      - name: Run go vet
+        run: |
+          cd components/operator
+          go vet ./...
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          working-directory: components/operator
+          args: --timeout=5m
+
+  lint-summary:
+    runs-on: ubuntu-latest
+    needs: [detect-go-changes, lint-backend, lint-operator]
+    if: always()
+    steps:
+      - name: Check overall status
+        run: |
+          if [ "${{ needs.lint-backend.result }}" == "failure" ] || [ "${{ needs.lint-operator.result }}" == "failure" ]; then
+            echo "Go linting failed"
+            exit 1
+          fi
+          echo "All Go linting checks passed!"

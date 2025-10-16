@@ -27,9 +27,9 @@ import (
 
 // Handler dependencies
 type Handler struct {
-	GetK8sClientsForRequest     func(*gin.Context) (*kubernetes.Clientset, dynamic.Interface)
-	GetProjectSettingsResource  func() schema.GroupVersionResource
-	GetRFEWorkflowResource      func() schema.GroupVersionResource
+	GetK8sClientsForRequest    func(*gin.Context) (*kubernetes.Clientset, dynamic.Interface)
+	GetProjectSettingsResource func() schema.GroupVersionResource
+	GetRFEWorkflowResource     func() schema.GroupVersionResource
 }
 
 // RFEFromUnstructured converts an unstructured RFEWorkflow CR into our RFEWorkflow struct

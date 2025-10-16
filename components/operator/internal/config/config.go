@@ -13,8 +13,8 @@ import (
 
 // Package-level variables (exported for use by handlers and services)
 var (
-	K8sClient      *kubernetes.Clientset
-	DynamicClient  dynamic.Interface
+	K8sClient     *kubernetes.Clientset
+	DynamicClient dynamic.Interface
 )
 
 // Config holds the operator configuration
