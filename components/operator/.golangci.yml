@@ -3,8 +3,6 @@
 #
 # Pragmatic configuration for Kubernetes operator development.
 
-version: 2
-
 run:
   timeout: 5m
 
@@ -20,7 +18,7 @@ linters:
 
 linters-settings:
   staticcheck:
-    checks: ["all", "-SA1019", "-QF1001", "-QF1003", "-QF1008", "-QF1012"]  # Disable deprecation warnings and style suggestions
+    checks: ["all", "-SA1019"]  # Disable deprecation warnings only
 
 issues:
   max-issues-per-linter: 0
@@ -36,9 +34,5 @@ issues:
     # Allow type assertions in K8s reconciliation (intentional pattern)
     - path: internal/handlers/
       text: "type assertion"
-
-    # Allow existing code patterns (not worth changing)
-    - path: internal/handlers/sessions\.go
-      text: "QF1001"  # De Morgan's law
 
   new: false

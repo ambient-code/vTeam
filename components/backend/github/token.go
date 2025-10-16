@@ -9,7 +9,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"os"
 	"strings"
@@ -91,15 +91,6 @@ func parsePrivateKeyPEM(keyData []byte) (*rsa.PrivateKey, error) {
 	return key, nil
 }
 
-// loadPrivateKey loads the RSA private key from a PEM file
-func loadPrivateKey(path string) (*rsa.PrivateKey, error) {
-	keyData, err := ioutil.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	return parsePrivateKeyPEM(keyData)
-}
-
 // GenerateJWT generates a JWT for GitHub App authentication
 func (m *TokenManager) GenerateJWT() (string, error) {
 	now := time.Now()
@@ -162,7 +153,7 @@ func (m *TokenManager) MintInstallationTokenForHost(ctx context.Context, install
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := ioutil.ReadAll(resp.Body)
+		body, _ := io.ReadAll(resp.Body)
 		return "", time.Time{}, fmt.Errorf("GitHub token mint failed: %s", string(body))
 	}
 	var parsed struct {
@@ -228,7 +219,7 @@ func (m *TokenManager) ValidateInstallationAccess(ctx context.Context, installat
 		return fmt.Errorf("installation does not have access to repository or repo not found")
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := ioutil.ReadAll(resp.Body)
+		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("unexpected GitHub response: %s", string(body))
 	}
 	return nil

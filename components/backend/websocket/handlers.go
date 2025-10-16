@@ -128,16 +128,13 @@ func handleWebSocketPing(conn *SessionConnection) {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
-	for {
-		select {
-		case <-ticker.C:
-			// Lock write mutex before writing ping
-			conn.writeMu.Lock()
-			err := conn.Conn.WriteMessage(websocket.PingMessage, nil)
-			conn.writeMu.Unlock()
-			if err != nil {
-				return
-			}
+	for range ticker.C {
+		// Lock write mutex before writing ping
+		conn.writeMu.Lock()
+		err := conn.Conn.WriteMessage(websocket.PingMessage, nil)
+		conn.writeMu.Unlock()
+		if err != nil {
+			return
 		}
 	}
 }

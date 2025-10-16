@@ -28,7 +28,6 @@ var (
 	dynamicClient  dynamic.Interface
 	namespace      string
 	stateBaseDir   string
-	pvcBaseDir     string
 	baseKubeConfig *rest.Config
 )
 
@@ -56,7 +55,6 @@ func main() {
 	dynamicClient = server.DynamicClient
 	namespace = server.Namespace
 	stateBaseDir = server.StateBaseDir
-	pvcBaseDir = server.PvcBaseDir
 	baseKubeConfig = server.BaseKubeConfig
 
 	// Initialize git package

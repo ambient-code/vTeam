@@ -539,7 +539,8 @@ func PushRepo(ctx context.Context, repoDir, commitMessage, outputRepoURL, branch
 		resp, err := http.DefaultClient.Do(req)
 		if err == nil {
 			defer resp.Body.Close()
-			if resp.StatusCode == 200 {
+			switch resp.StatusCode {
+			case 200:
 				var ghUser struct {
 					Login string `json:"login"`
 					Name  string `json:"name"`
@@ -556,9 +557,9 @@ func PushRepo(ctx context.Context, repoDir, commitMessage, outputRepoURL, branch
 					}
 					log.Printf("gitPushRepo: fetched GitHub user name=%q email=%q", gitUserName, gitUserEmail)
 				}
-			} else if resp.StatusCode == 403 {
+			case 403:
 				log.Printf("gitPushRepo: GitHub API /user returned 403 (token lacks 'read:user' scope, using fallback identity)")
-			} else {
+			default:
 				log.Printf("gitPushRepo: GitHub API /user returned status %d", resp.StatusCode)
 			}
 		} else {

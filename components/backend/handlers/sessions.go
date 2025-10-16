@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -1287,7 +1287,7 @@ func ListSessionWorkspace(c *gin.Context) {
 		return
 	}
 	defer resp.Body.Close()
-	b, _ := ioutil.ReadAll(resp.Body)
+	b, _ := io.ReadAll(resp.Body)
 	c.Data(resp.StatusCode, resp.Header.Get("Content-Type"), b)
 }
 
@@ -1318,7 +1318,7 @@ func GetSessionWorkspaceFile(c *gin.Context) {
 		return
 	}
 	defer resp.Body.Close()
-	b, _ := ioutil.ReadAll(resp.Body)
+	b, _ := io.ReadAll(resp.Body)
 	c.Data(resp.StatusCode, resp.Header.Get("Content-Type"), b)
 }
 
@@ -1337,7 +1337,7 @@ func PutSessionWorkspaceFile(c *gin.Context) {
 		base = "http://ambient-content-%s.%s.svc:8080"
 	}
 	endpoint := fmt.Sprintf(base, session, project)
-	payload, _ := ioutil.ReadAll(c.Request.Body)
+	payload, _ := io.ReadAll(c.Request.Body)
 	wreq := struct {
 		Path     string `json:"path"`
 		Content  string `json:"content"`
@@ -1356,7 +1356,7 @@ func PutSessionWorkspaceFile(c *gin.Context) {
 		return
 	}
 	defer resp.Body.Close()
-	rb, _ := ioutil.ReadAll(resp.Body)
+	rb, _ := io.ReadAll(resp.Body)
 	c.Data(resp.StatusCode, resp.Header.Get("Content-Type"), rb)
 }
 
@@ -1493,7 +1493,7 @@ func PushSessionRepo(c *gin.Context) {
 		return
 	}
 	defer resp.Body.Close()
-	bodyBytes, _ := ioutil.ReadAll(resp.Body)
+	bodyBytes, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		log.Printf("pushSessionRepo: content returned status=%d body.snip=%q", resp.StatusCode, func() string {
 			s := string(bodyBytes)
@@ -1561,7 +1561,7 @@ func AbandonSessionRepo(c *gin.Context) {
 		return
 	}
 	defer resp.Body.Close()
-	bodyBytes, _ := ioutil.ReadAll(resp.Body)
+	bodyBytes, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		log.Printf("abandonSessionRepo: content returned status=%d body=%s", resp.StatusCode, string(bodyBytes))
 		c.Data(resp.StatusCode, "application/json", bodyBytes)
@@ -1617,6 +1617,6 @@ func DiffSessionRepo(c *gin.Context) {
 		return
 	}
 	defer resp.Body.Close()
-	bodyBytes, _ := ioutil.ReadAll(resp.Body)
+	bodyBytes, _ := io.ReadAll(resp.Body)
 	c.Data(resp.StatusCode, resp.Header.Get("Content-Type"), bodyBytes)
 }

@@ -825,15 +825,20 @@ Enforces Go code quality standards for backend and operator components:
 - Backend: `components/backend/.golangci.yml`
 - Operator: `components/operator/.golangci.yml`
 
-**Enabled Linters** (15 total):
-- `errcheck` - Unchecked error detection
-- `gosec` - Security vulnerability scanning
-- `staticcheck` - Advanced static analysis
-- `gofmt`, `goimports` - Code formatting and import ordering
-- `gosimple`, `unused`, `ineffassign` - Code optimization
-- `revive`, `misspell` - Code style and typo detection
-- `errname`, `errorlint` - Error handling best practices
-- `typecheck`, `unconvert`, `unparam` - Type safety
+**Enabled Linters**:
+- `govet` - Reports suspicious constructs
+- `ineffassign` - Detect ineffectual assignments
+- `staticcheck` - Advanced static analysis (all checks except SA1019 deprecation warnings)
+- `unused` - Check for unused constants, variables, functions
+- `misspell` - Find commonly misspelled words
+
+**Disabled Linters**:
+- `errcheck` - Too many false positives with defer cleanup patterns
+
+**staticcheck Configuration**:
+- Only SA1019 (deprecation warnings) is excluded
+- All code quality checks (QF*) are enabled and enforced
+- All style checks (ST*) are enabled and enforced
 
 **Local Testing** (run before committing):
 ```bash

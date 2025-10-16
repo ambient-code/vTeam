@@ -674,7 +674,7 @@ func monitorJob(jobName, sessionName, sessionNamespace string) {
 						}
 						st, _ := m["status"].(string)
 						st = strings.ToLower(strings.TrimSpace(st))
-						if !(st == "pushed" || st == "abandoned") {
+						if st != "pushed" && st != "abandoned" {
 							allFinal = false
 							break
 						}

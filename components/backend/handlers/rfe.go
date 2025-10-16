@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
@@ -105,7 +104,7 @@ func CreateProjectRFEWorkflow(c *gin.Context) {
 	project := c.Param("projectName")
 	var req CreateRFEWorkflowRequest
 	bodyBytes, _ := c.GetRawData()
-	c.Request.Body = ioutil.NopCloser(strings.NewReader(string(bodyBytes)))
+	c.Request.Body = io.NopCloser(strings.NewReader(string(bodyBytes)))
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Validation failed: " + err.Error()})
 		return
@@ -369,7 +368,7 @@ func GetProjectRFEWorkflowSummary(c *gin.Context) {
 		s, p, t := scanFor(specsItems)
 		hasSpec, hasPlan, hasTasks = s, p, t
 		// If not found, check first subfolder under specs/
-		if !(hasSpec || hasPlan || hasTasks) {
+		if !hasSpec && !hasPlan && !hasTasks {
 			for _, it := range specsItems {
 				if it.IsDir {
 					subItems := []contentListItem{}
