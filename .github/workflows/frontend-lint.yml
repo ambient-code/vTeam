@@ -1,0 +1,81 @@
+name: Frontend Lint and Type Check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  detect-frontend-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      frontend: ${{ steps.filter.outputs.frontend }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Check for Frontend changes
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            frontend:
+              - 'components/frontend/**/*.ts'
+              - 'components/frontend/**/*.tsx'
+              - 'components/frontend/**/*.js'
+              - 'components/frontend/**/*.jsx'
+              - 'components/frontend/package.json'
+              - 'components/frontend/package-lock.json'
+              - 'components/frontend/tsconfig.json'
+              - 'components/frontend/eslint.config.mjs'
+
+  lint-frontend:
+    runs-on: ubuntu-latest
+    needs: detect-frontend-changes
+    if: needs.detect-frontend-changes.outputs.frontend == 'true' || github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: 'components/frontend/package.json'
+          cache: 'npm'
+          cache-dependency-path: 'components/frontend/package-lock.json'
+
+      - name: Install dependencies
+        run: |
+          cd components/frontend
+          npm ci
+
+      - name: Run ESLint
+        run: |
+          cd components/frontend
+          npm run lint
+
+      - name: Run TypeScript type check
+        run: |
+          cd components/frontend
+          npx tsc --noEmit
+
+      - name: Build check
+        run: |
+          cd components/frontend
+          npm run build
+
+  lint-summary:
+    runs-on: ubuntu-latest
+    needs: [detect-frontend-changes, lint-frontend]
+    if: always()
+    steps:
+      - name: Check overall status
+        run: |
+          if [ "${{ needs.lint-frontend.result }}" == "failure" ]; then
+            echo "Frontend linting failed"
+            exit 1
+          fi
+          echo "All frontend linting checks passed!"
+
