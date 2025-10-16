@@ -25,10 +25,10 @@ export default function RootLayout({
       <head>
         <meta name="backend-ws-base" content={wsBase} />
       </head>
-      <body className={`${inter.className} min-h-screen flex flex-col overflow-hidden`}>
+      <body className={`${inter.className} min-h-screen flex flex-col`}>
         <QueryProvider>
           <Navigation />
-          <main className="flex-1 bg-background overflow-hidden">{children}</main>
+          <main className="flex-1 bg-background overflow-auto">{children}</main>
           <Toaster />
         </QueryProvider>
       </body>
