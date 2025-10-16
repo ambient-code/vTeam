@@ -107,6 +107,54 @@ export function useSessionGitHubDiff(
 }
 
 /**
+ * Hook to fetch all GitHub diffs for session repos
+ */
+export function useAllSessionGitHubDiffs(
+  projectName: string,
+  sessionName: string,
+  repos: Array<{ input: { url: string; branch: string }; output?: { url: string; branch: string } }> | undefined,
+  deriveRepoFolder: (url: string) => string,
+  options?: { enabled?: boolean }
+) {
+  const queryClient = useQueryClient();
+
+  return useQuery({
+    queryKey: [...workspaceKeys.diffs(), projectName, sessionName, 'all'],
+    queryFn: async () => {
+      if (!repos || repos.length === 0) return {};
+
+      const diffs = await Promise.all(
+        repos.map(async (repo, idx) => {
+          const url = repo?.input?.url || "";
+          if (!url) return { idx, diff: { files: { added: 0, removed: 0 }, total_added: 0, total_removed: 0 } };
+
+          const folder = deriveRepoFolder(url);
+          const repoPath = `/sessions/${sessionName}/workspace/${folder}`;
+
+          try {
+            const diff = await queryClient.fetchQuery({
+              queryKey: workspaceKeys.diff(projectName, sessionName, idx),
+              queryFn: () => workspaceApi.getSessionGitHubDiff(projectName, sessionName, idx, repoPath),
+            });
+            return { idx, diff };
+          } catch {
+            return { idx, diff: { files: { added: 0, removed: 0 }, total_added: 0, total_removed: 0 } };
+          }
+        })
+      );
+
+      const totals: Record<number, { files: { added: number; removed: number }; total_added: number; total_removed: number }> = {};
+      diffs.forEach(({ idx, diff }) => {
+        totals[idx] = diff;
+      });
+      return totals;
+    },
+    enabled: !!projectName && !!sessionName && !!repos && (options?.enabled ?? true),
+    staleTime: 10 * 1000, // 10 seconds
+  });
+}
+
+/**
  * Hook to push session changes to GitHub
  */
 export function usePushSessionToGitHub() {

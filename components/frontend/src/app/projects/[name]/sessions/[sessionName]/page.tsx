@@ -34,8 +34,14 @@ import {
   useSendControlMessage,
   usePushSessionToGitHub,
   useAbandonSessionChanges,
+  useWorkspaceList,
+  useWriteWorkspaceFile,
+  useAllSessionGitHubDiffs,
+  workspaceKeys,
 } from "@/services/queries";
 import { successToast, errorToast } from "@/hooks/use-toast";
+import { workspaceApi } from "@/services/api";
+import { useQueryClient } from "@tanstack/react-query";
 
 export default function ProjectSessionDetailPage({
   params,
@@ -43,6 +49,7 @@ export default function ProjectSessionDetailPage({
   params: Promise<{ name: string; sessionName: string }>;
 }) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [projectName, setProjectName] = useState<string>("");
   const [sessionName, setSessionName] = useState<string>("");
   const [activeTab, setActiveTab] = useState<string>("overview");
@@ -73,17 +80,63 @@ export default function ProjectSessionDetailPage({
   const sendControlMutation = useSendControlMessage();
   const pushToGitHubMutation = usePushSessionToGitHub();
   const abandonChangesMutation = useAbandonSessionChanges();
+  const writeWorkspaceFileMutation = useWriteWorkspaceFile();
 
-  // Workspace state (simplified - can be further refactored)
-  const [wsTree, setWsTree] = useState<FileTreeNode[]>([]);
+  // Workspace state
   const [wsSelectedPath, setWsSelectedPath] = useState<string | undefined>();
   const [wsFileContent, setWsFileContent] = useState<string>("");
-  const wsLoading = false;
+  const [wsTree, setWsTree] = useState<FileTreeNode[]>([]);
+  
+  // Fetch workspace root directory
+  const { data: workspaceItems = [], isLoading: wsLoading } = useWorkspaceList(
+    projectName,
+    sessionName,
+    undefined,
+    { enabled: activeTab === 'workspace' }
+  );
+
+  // Update tree when workspace items change
+  useEffect(() => {
+    if (workspaceItems.length > 0) {
+      const treeNodes: FileTreeNode[] = workspaceItems.map(item => ({
+        name: item.name,
+        path: item.path,
+        type: item.isDir ? 'folder' : 'file',
+        expanded: false,
+        sizeKb: item.isDir ? undefined : item.size / 1024,
+      }));
+      setWsTree(treeNodes);
+    }
+  }, [workspaceItems]);
+
   const wsUnavailable = false;
 
-  // GitHub diff state  
-  const [diffTotals, setDiffTotals] = useState<Record<number, { files: { added: number; removed: number }; total_added: number; total_removed: number }>>({});
+  // GitHub diff state
   const [busyRepo, setBusyRepo] = useState<Record<number, 'push' | 'abandon' | null>>({});
+  
+  // Helper to derive repo folder from URL
+  const deriveRepoFolderFromUrl = useCallback((url: string): string => {
+    try {
+      const cleaned = url.replace(/^git@([^:]+):/, "https://$1/");
+      const u = new URL(cleaned);
+      const segs = u.pathname.split('/').filter(Boolean);
+      const last = segs[segs.length - 1] || "repo";
+      return last.replace(/\.git$/i, "");
+    } catch {
+      const parts = url.split('/');
+      const last = parts[parts.length - 1] || "repo";
+      return last.replace(/\.git$/i, "");
+    }
+  }, []);
+
+  // Fetch all repo diffs using React Query hook
+  const { data: diffTotals = {}, refetch: refetchDiffs } = useAllSessionGitHubDiffs(
+    projectName,
+    sessionName,
+    session?.spec?.repos as Array<{ input: { url: string; branch: string }; output?: { url: string; branch: string } }> | undefined,
+    deriveRepoFolderFromUrl,
+    { enabled: !!session?.spec?.repos && activeTab === 'overview' }
+  );
 
   // Adapter: convert SessionMessage to StreamMessage
   type RawWireMessage = SessionMessage & { payload?: unknown; timestamp?: string };
@@ -330,24 +383,64 @@ export default function ProjectSessionDetailPage({
     sendControlMutation.mutate({ projectName, sessionName, type: 'end_session' });
   };
 
-  // Workspace operations (simplified - full implementation available)
+  // Workspace operations - using React Query with queryClient for imperative fetching
   const onWsToggle = useCallback(async (node: FileTreeNode) => {
     if (node.type !== "folder") return;
-    // TODO: Call workspace API to list folder contents and update tree
+    
+    // Toggle expansion
     node.expanded = !node.expanded;
+    
+    // If expanding, fetch children using React Query
+    if (node.expanded && !node.children) {
+      try {
+        const items = await queryClient.fetchQuery({
+          queryKey: workspaceKeys.list(projectName, sessionName, node.path),
+          queryFn: () => workspaceApi.listWorkspace(projectName, sessionName, node.path),
+        });
+        node.children = items.map(item => ({
+          name: item.name,
+          path: item.path,
+          type: item.isDir ? 'folder' : 'file',
+          expanded: false,
+          sizeKb: item.isDir ? undefined : item.size / 1024,
+        }));
+      } catch {
+        errorToast('Failed to load folder contents');
+      }
+    }
+    
     setWsTree([...wsTree]);
-  }, [wsTree]);
+  }, [wsTree, projectName, sessionName, queryClient]);
 
   const onWsSelect = useCallback(async (node: FileTreeNode) => {
     if (node.type !== "file") return;
     setWsSelectedPath(node.path);
-    // TODO: Use useWorkspaceFile hook to fetch content
-  }, []);
+    
+    try {
+      const content = await queryClient.fetchQuery({
+        queryKey: workspaceKeys.file(projectName, sessionName, node.path),
+        queryFn: () => workspaceApi.readWorkspaceFile(projectName, sessionName, node.path),
+      });
+      setWsFileContent(content);
+    } catch {
+      errorToast('Failed to read file');
+    }
+  }, [projectName, sessionName, queryClient]);
 
   const writeWsFile = useCallback(async (rel: string, content: string) => {
-    // TODO: Use useWriteWorkspaceFile mutation
-    setWsFileContent(content);
-  }, []);
+    writeWorkspaceFileMutation.mutate(
+      { projectName, sessionName, path: rel, content },
+      {
+        onSuccess: () => {
+          setWsFileContent(content);
+          successToast('File saved successfully');
+        },
+        onError: (err) => {
+          errorToast(err instanceof Error ? err.message : 'Failed to save file');
+        },
+      }
+    );
+  }, [projectName, sessionName, writeWorkspaceFileMutation]);
 
   const buildGithubCompareUrl = useCallback((inputUrl: string, inputBranch?: string, outputUrl?: string, outputBranch?: string): string | null => {
     if (!inputUrl || !outputUrl) return null;
@@ -369,19 +462,6 @@ export default function ProjectSessionDetailPage({
     return `https://github.com/${inOrg.owner}/${inOrg.repo}/compare/${encodeURIComponent(base)}...${encodeURIComponent(outOrg.owner + ':' + head)}`;
   }, []);
 
-  const deriveRepoFolderFromUrl = useCallback((url: string): string => {
-    try {
-      const cleaned = url.replace(/^git@([^:]+):/, "https://$1/");
-      const u = new URL(cleaned);
-      const segs = u.pathname.split('/').filter(Boolean);
-      const last = segs[segs.length - 1] || "repo";
-      return last.replace(/\.git$/i, "");
-    } catch {
-      const parts = url.split('/');
-      const last = parts[parts.length - 1] || "repo";
-      return last.replace(/\.git$/i, "");
-    }
-  }, []);
 
   const latestLiveMessage = useMemo(() => {
     if (messages.length === 0) return null;
@@ -552,7 +632,7 @@ export default function ProjectSessionDetailPage({
                   { projectName, sessionName, repoIndex: idx, repoPath },
                   {
                     onSuccess: () => {
-                      setDiffTotals((m) => ({ ...m, [idx]: { files: { added: 0, removed: 0 }, total_added: 0, total_removed: 0 } }));
+                      refetchDiffs();
                       successToast('Changes pushed to GitHub');
                     },
                     onError: (err) => errorToast(err instanceof Error ? err.message : 'Failed to push changes'),
@@ -572,7 +652,7 @@ export default function ProjectSessionDetailPage({
                   { projectName, sessionName, repoIndex: idx, repoPath },
                   {
                     onSuccess: () => {
-                      setDiffTotals((m) => ({ ...m, [idx]: { files: { added: 0, removed: 0 }, total_added: 0, total_removed: 0 } }));
+                      refetchDiffs();
                       successToast('Changes abandoned');
                     },
                     onError: (err) => errorToast(err instanceof Error ? err.message : 'Failed to abandon changes'),
@@ -582,9 +662,7 @@ export default function ProjectSessionDetailPage({
               }}
               busyRepo={busyRepo}
               buildGithubCompareUrl={buildGithubCompareUrl}
-              onRefreshDiff={async () => {
-                // TODO: Fetch diffs for all repos
-              }}
+              onRefreshDiff={async () => { await refetchDiffs(); }}
             />
           </TabsContent>
 

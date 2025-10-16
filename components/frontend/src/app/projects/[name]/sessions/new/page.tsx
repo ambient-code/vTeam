@@ -64,7 +64,6 @@ export default function NewProjectSessionPage({ params }: { params: Promise<{ na
   const [projectName, setProjectName] = useState<string>("");
   const [prefillWorkspacePath, setPrefillWorkspacePath] = useState<string | undefined>(undefined);
   const [rfeWorkflowId, setRfeWorkflowId] = useState<string | undefined>(undefined);
-  const selectedAgents: string[] = []; // TODO: Implement multi-agent selection
   const [editingRepoIndex, setEditingRepoIndex] = useState<number | null>(null);
   const [repoDialogOpen, setRepoDialogOpen] = useState(false);
   const [tempRepo, setTempRepo] = useState<{ input: { url: string; branch: string }; output?: { url: string; branch: string } }>({ input: { url: "", branch: "main" } });
@@ -158,21 +157,6 @@ export default function NewProjectSessionPage({ params }: { params: Promise<{ na
         };
       }
 
-      // No Git user/auth; repositories managed via input/output env vars only
-
-      // Inject selected agents via environment variables
-      if (selectedAgents.length > 0) {
-        request.environmentVariables = {
-          ...(request.environmentVariables || {}),
-          AGENT_PERSONAS: selectedAgents.join(","),
-        };
-      } else if (values.agentPersona) {
-        // Fallback to single-agent support if provided
-        request.environmentVariables = {
-          ...(request.environmentVariables || {}),
-          AGENT_PERSONA: values.agentPersona,
-        };
-      }
 
       // Multi-repo configuration
       type RepoConfig = { input: { url: string; branch?: string }; output?: { url: string; branch?: string } };
