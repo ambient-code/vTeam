@@ -73,13 +73,10 @@ export function RepositoryList({
                       {repo.input.branch}
                     </Badge>
                   )}
-                  {idx === mainRepoIndex && (
-                    <Badge className="text-xs">Main</Badge>
-                  )}
                 </div>
                 {repo.output?.url && (
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <span className="text-sm">Output:</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium">Output:</span>
                     <ArrowRight className="w-3 h-3" />
                     <code className="text-xs bg-muted px-1.5 py-0.5 rounded">{repo.output.url}</code>
                     {repo.output.branch && (
@@ -91,15 +88,18 @@ export function RepositoryList({
                 )}
               </div>
               <div className="flex items-center gap-1">
+                {idx === mainRepoIndex && (
+                  <Badge className="text-xs">Working Directory</Badge>
+                )}
                 {idx !== mainRepoIndex && (
                   <Button
                     type="button"
                     variant="ghost"
                     size="sm"
                     onClick={() => onSetMainRepo(idx)}
-                    title="Set as main repository"
+                    title="Set as working directory"
                   >
-                    <span className="text-xs">Set Main</span>
+                    <span className="text-xs">Set as Working Directory</span>
                   </Button>
                 )}
                 <Button type="button" variant="ghost" size="sm" onClick={() => onEditRepo(idx)}>

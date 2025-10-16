@@ -50,12 +50,18 @@ export async function disconnectGitHub(): Promise<string> {
 /**
  * List user's GitHub forks
  */
-export async function listGitHubForks(projectName?: string): Promise<GitHubFork[]> {
+export async function listGitHubForks(
+  projectName?: string,
+  upstreamRepo?: string
+): Promise<GitHubFork[]> {
   if (!projectName) {
     throw new Error('projectName is required for listGitHubForks');
   }
+  if (!upstreamRepo) {
+    throw new Error('upstreamRepo is required for listGitHubForks');
+  }
   const response = await apiClient.get<ListForksResponse>(
-    `/projects/${projectName}/users/forks`
+    `/projects/${projectName}/users/forks?upstreamRepo=${encodeURIComponent(upstreamRepo)}`
   );
   return response.forks;
 }

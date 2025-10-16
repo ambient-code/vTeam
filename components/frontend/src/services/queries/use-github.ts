@@ -17,8 +17,8 @@ export const githubKeys = {
   all: ['github'] as const,
   status: () => [...githubKeys.all, 'status'] as const,
   forks: () => [...githubKeys.all, 'forks'] as const,
-  forksForProject: (projectName: string) =>
-    [...githubKeys.forks(), projectName] as const,
+  forksForProject: (projectName: string, upstreamRepo?: string) =>
+    [...githubKeys.forks(), projectName, upstreamRepo] as const,
   diff: (owner: string, repo: string, prNumber: number) =>
     [...githubKeys.all, 'diff', owner, repo, prNumber] as const,
 };
@@ -38,12 +38,12 @@ export function useGitHubStatus() {
 /**
  * Hook to fetch GitHub forks
  */
-export function useGitHubForks(projectName?: string) {
+export function useGitHubForks(projectName?: string, upstreamRepo?: string) {
   return useQuery({
-    queryKey: projectName
-      ? githubKeys.forksForProject(projectName)
-      : githubKeys.forks(),
-    queryFn: () => githubApi.listGitHubForks(projectName),
+    queryKey: githubKeys.forksForProject(projectName || '', upstreamRepo),
+    queryFn: () => githubApi.listGitHubForks(projectName, upstreamRepo),
+    // Only fetch if both projectName and upstreamRepo are provided
+    enabled: !!projectName && !!upstreamRepo,
     // Forks don't change often
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
@@ -114,7 +114,7 @@ export function useCreateGitHubFork() {
       projectName?: string;
     }) => githubApi.createGitHubFork(data, projectName),
     onSuccess: (_fork, { projectName }) => {
-      // Invalidate forks list to show new fork
+      // Invalidate all forks queries for this project
       if (projectName) {
         queryClient.invalidateQueries({
           queryKey: githubKeys.forksForProject(projectName),

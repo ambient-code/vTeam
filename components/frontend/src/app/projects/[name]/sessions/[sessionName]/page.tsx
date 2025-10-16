@@ -87,6 +87,17 @@ export default function ProjectSessionDetailPage({
   const [wsFileContent, setWsFileContent] = useState<string>("");
   const [wsTree, setWsTree] = useState<FileTreeNode[]>([]);
   
+  // Helper to convert absolute workspace path to relative path
+  const toRelativePath = useCallback((absPath: string): string => {
+    // Strip /sessions/<sessionName>/workspace/ prefix to get relative path
+    const prefix = `/sessions/${sessionName}/workspace/`;
+    if (absPath.startsWith(prefix)) {
+      return absPath.substring(prefix.length);
+    }
+    // If no prefix, assume it's already relative
+    return absPath;
+  }, [sessionName]);
+  
   // Fetch workspace root directory
   const { data: workspaceItems = [], isLoading: wsLoading } = useWorkspaceList(
     projectName,
@@ -100,7 +111,7 @@ export default function ProjectSessionDetailPage({
     if (workspaceItems.length > 0) {
       const treeNodes: FileTreeNode[] = workspaceItems.map(item => ({
         name: item.name,
-        path: item.path,
+        path: item.path, // Keep the original path for display/reference
         type: item.isDir ? 'folder' : 'file',
         expanded: false,
         sizeKb: item.isDir ? undefined : item.size / 1024,
@@ -135,7 +146,10 @@ export default function ProjectSessionDetailPage({
     sessionName,
     session?.spec?.repos as Array<{ input: { url: string; branch: string }; output?: { url: string; branch: string } }> | undefined,
     deriveRepoFolderFromUrl,
-    { enabled: !!session?.spec?.repos && activeTab === 'overview' }
+    { 
+      enabled: !!session?.spec?.repos && activeTab === 'overview',
+      sessionPhase: session?.status?.phase 
+    }
   );
 
   // Adapter: convert SessionMessage to StreamMessage
@@ -393,9 +407,11 @@ export default function ProjectSessionDetailPage({
     // If expanding, fetch children using React Query
     if (node.expanded && !node.children) {
       try {
+        // Convert to relative path for API call
+        const relativePath = toRelativePath(node.path);
         const items = await queryClient.fetchQuery({
-          queryKey: workspaceKeys.list(projectName, sessionName, node.path),
-          queryFn: () => workspaceApi.listWorkspace(projectName, sessionName, node.path),
+          queryKey: workspaceKeys.list(projectName, sessionName, relativePath),
+          queryFn: () => workspaceApi.listWorkspace(projectName, sessionName, relativePath),
         });
         node.children = items.map(item => ({
           name: item.name,
@@ -410,26 +426,30 @@ export default function ProjectSessionDetailPage({
     }
     
     setWsTree([...wsTree]);
-  }, [wsTree, projectName, sessionName, queryClient]);
+  }, [wsTree, projectName, sessionName, queryClient, toRelativePath]);
 
   const onWsSelect = useCallback(async (node: FileTreeNode) => {
     if (node.type !== "file") return;
     setWsSelectedPath(node.path);
     
     try {
+      // Convert to relative path for API call
+      const relativePath = toRelativePath(node.path);
       const content = await queryClient.fetchQuery({
-        queryKey: workspaceKeys.file(projectName, sessionName, node.path),
-        queryFn: () => workspaceApi.readWorkspaceFile(projectName, sessionName, node.path),
+        queryKey: workspaceKeys.file(projectName, sessionName, relativePath),
+        queryFn: () => workspaceApi.readWorkspaceFile(projectName, sessionName, relativePath),
       });
       setWsFileContent(content);
     } catch {
       errorToast('Failed to read file');
     }
-  }, [projectName, sessionName, queryClient]);
+  }, [projectName, sessionName, queryClient, toRelativePath]);
 
-  const writeWsFile = useCallback(async (rel: string, content: string) => {
+  const writeWsFile = useCallback(async (path: string, content: string) => {
+    // Convert to relative path for API call
+    const relativePath = toRelativePath(path);
     writeWorkspaceFileMutation.mutate(
-      { projectName, sessionName, path: rel, content },
+      { projectName, sessionName, path: relativePath, content },
       {
         onSuccess: () => {
           setWsFileContent(content);
@@ -440,7 +460,7 @@ export default function ProjectSessionDetailPage({
         },
       }
     );
-  }, [projectName, sessionName, writeWorkspaceFileMutation]);
+  }, [projectName, sessionName, writeWorkspaceFileMutation, toRelativePath]);
 
   const buildGithubCompareUrl = useCallback((inputUrl: string, inputBranch?: string, outputUrl?: string, outputBranch?: string): string | null => {
     if (!inputUrl || !outputUrl) return null;

@@ -34,8 +34,8 @@ export function RepositoryDialog({
   const [forkOptions, setForkOptions] = useState<Array<{ fullName: string; url: string }>>([]);
   const [outputBranchMode, setOutputBranchMode] = useState<"same" | "auto">("auto");
 
-  // Fetch forks using React Query
-  const { data: forksData } = useGitHubForks(projectName);
+  // Fetch forks using React Query - only when we have an input URL
+  const { data: forksData } = useGitHubForks(projectName, repo.input.url);
   
   useEffect(() => {
     if (open && repo.input.url && forksData) {

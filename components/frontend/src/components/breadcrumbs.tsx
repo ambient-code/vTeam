@@ -1,3 +1,5 @@
+"use client";
+
 /**
  * Breadcrumbs Component
  * Navigation breadcrumbs for hierarchical navigation

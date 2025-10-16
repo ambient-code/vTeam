@@ -114,7 +114,7 @@ export function useAllSessionGitHubDiffs(
   sessionName: string,
   repos: Array<{ input: { url: string; branch: string }; output?: { url: string; branch: string } }> | undefined,
   deriveRepoFolder: (url: string) => string,
-  options?: { enabled?: boolean }
+  options?: { enabled?: boolean; sessionPhase?: string }
 ) {
   const queryClient = useQueryClient();
 
@@ -151,6 +151,14 @@ export function useAllSessionGitHubDiffs(
     },
     enabled: !!projectName && !!sessionName && !!repos && (options?.enabled ?? true),
     staleTime: 10 * 1000, // 10 seconds
+    // Poll for diff updates when session is running
+    refetchInterval: () => {
+      const isRunning =
+        options?.sessionPhase === 'Running' ||
+        options?.sessionPhase === 'Creating' ||
+        options?.sessionPhase === 'Pending';
+      return isRunning ? 10000 : false; // Poll every 10 seconds if running
+    },
   });
 }
 
