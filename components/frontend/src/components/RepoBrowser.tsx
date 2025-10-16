@@ -65,7 +65,10 @@ export default function RepoBrowser({
     setSelectedPath(undefined);
     try {
       const response = await repoApi.getRepoTree(projectName, { repo: repoUrl, ref: currentRef, path: '' });
-      const rootNodes = (response.entries || []).map((e) => entryToNode(e));
+      const rootNodes = (response.entries || [])
+        .filter((e): e is Required<typeof e> & { name: string; type: 'blob' | 'tree' } => 
+          !!e.name && (e.type === 'blob' || e.type === 'tree'))
+        .map((e) => entryToNode(e));
       setNodes(rootNodes);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to load repository tree';
@@ -84,7 +87,10 @@ export default function RepoBrowser({
     if (node.type !== 'folder') return;
     try {
       const response = await repoApi.getRepoTree(projectName, { repo: repoUrl, ref: currentRef, path: node.path });
-      const children = (response.entries || []).map((e) => entryToNode(e, node.path));
+      const children = (response.entries || [])
+        .filter((e): e is Required<typeof e> & { name: string; type: 'blob' | 'tree' } => 
+          !!e.name && (e.type === 'blob' || e.type === 'tree'))
+        .map((e) => entryToNode(e, node.path));
       setNodes((prev) => updateChildrenByPath(prev, node.path, children));
     } catch {
       // ignore toggle error; keep previous state
