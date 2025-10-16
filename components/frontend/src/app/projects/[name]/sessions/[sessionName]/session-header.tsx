@@ -3,26 +3,8 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { RefreshCw, Square, Trash2, Copy } from 'lucide-react';
 import { CloneSessionDialog } from '@/components/clone-session-dialog';
-import type { AgenticSession, AgenticSessionPhase } from '@/types/agentic-session';
-
-const getPhaseColor = (phase: AgenticSessionPhase) => {
-  switch (phase) {
-    case "Pending":
-      return "bg-yellow-100 text-yellow-800";
-    case "Creating":
-    case "Running":
-      return "bg-blue-100 text-blue-800";
-    case "Completed":
-      return "bg-green-100 text-green-800";
-    case "Failed":
-    case "Error":
-      return "bg-red-100 text-red-800";
-    case "Stopped":
-      return "bg-gray-100 text-gray-800";
-    default:
-      return "bg-gray-100 text-gray-800";
-  }
-};
+import type { AgenticSession } from '@/types/agentic-session';
+import { getPhaseColor } from '@/utils/session-helpers';
 
 type SessionHeaderProps = {
   session: AgenticSession;

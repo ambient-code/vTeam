@@ -81,6 +81,18 @@ export async function stopSession(
 }
 
 /**
+ * Start/restart a session
+ */
+export async function startSession(
+  projectName: string,
+  sessionName: string
+): Promise<{ message: string }> {
+  return apiClient.post<{ message: string }>(
+    `/projects/${projectName}/agentic-sessions/${sessionName}/start`
+  );
+}
+
+/**
  * Clone an existing session
  */
 export async function cloneSession(
@@ -116,4 +128,32 @@ export async function deleteSession(
   sessionName: string
 ): Promise<void> {
   await apiClient.delete(`/projects/${projectName}/agentic-sessions/${sessionName}`);
+}
+
+/**
+ * Send a chat message to an interactive session
+ */
+export async function sendChatMessage(
+  projectName: string,
+  sessionName: string,
+  content: string
+): Promise<void> {
+  await apiClient.post<void, { content: string }>(
+    `/projects/${projectName}/agentic-sessions/${sessionName}/messages`,
+    { content }
+  );
+}
+
+/**
+ * Send a control message (interrupt, end_session) to a session
+ */
+export async function sendControlMessage(
+  projectName: string,
+  sessionName: string,
+  type: 'interrupt' | 'end_session'
+): Promise<void> {
+  await apiClient.post<void, { type: string }>(
+    `/projects/${projectName}/agentic-sessions/${sessionName}/messages`,
+    { type }
+  );
 }

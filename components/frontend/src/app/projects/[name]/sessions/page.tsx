@@ -15,7 +15,7 @@ import { ErrorMessage } from '@/components/error-message';
 import { SessionPhaseBadge } from '@/components/status-badge';
 import { Breadcrumbs } from '@/components/breadcrumbs';
 
-import { useSessions, useStopSession, useDeleteSession } from '@/services/queries';
+import { useSessions, useStopSession, useStartSession, useDeleteSession } from '@/services/queries';
 import { successToast, errorToast } from '@/hooks/use-toast';
 
 export default function ProjectSessionsListPage() {
@@ -25,6 +25,7 @@ export default function ProjectSessionsListPage() {
   // React Query hooks replace all manual state management
   const { data: sessions = [], isLoading, error, refetch } = useSessions(projectName);
   const stopSessionMutation = useStopSession();
+  const startSessionMutation = useStartSession();
   const deleteSessionMutation = useDeleteSession();
 
   const handleStop = async (sessionName: string) => {
@@ -42,17 +43,17 @@ export default function ProjectSessionsListPage() {
   };
 
   const handleRestart = async (sessionName: string) => {
-    // Restart is handled via start API - using stop mutation pattern
-    try {
-      const apiUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8080/api';
-      await fetch(
-        `${apiUrl}/projects/${encodeURIComponent(projectName)}/agentic-sessions/${encodeURIComponent(sessionName)}/start`,
-        { method: 'POST' }
-      );
-      refetch();
-    } catch (err) {
-      console.error('Failed to restart session:', err);
-    }
+    startSessionMutation.mutate(
+      { projectName, sessionName },
+      {
+        onSuccess: () => {
+          successToast(`Session "${sessionName}" restarted successfully`);
+        },
+        onError: (error) => {
+          errorToast(error instanceof Error ? error.message : 'Failed to restart session');
+        },
+      }
+    );
   };
 
   const handleDelete = async (sessionName: string) => {

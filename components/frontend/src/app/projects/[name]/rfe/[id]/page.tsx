@@ -16,7 +16,7 @@ import { RfePhaseCards } from "./rfe-phase-cards";
 import { RfeWorkspaceCard } from "./rfe-workspace-card";
 import { RfeHeader } from "./rfe-header";
 import { RfeAgentsCard } from "./rfe-agents-card";
-import { useRfeWorkflow, useRfeWorkflowSessions, useDeleteRfeWorkflow } from "@/services/queries";
+import { useRfeWorkflow, useRfeWorkflowSessions, useDeleteRfeWorkflow, useRfeWorkflowSeeding, useSeedRfeWorkflow, useRepoBlob, useRepoTree, useOpenJiraIssue } from "@/services/queries";
 
 export default function ProjectRFEDetailPage() {
   const params = useParams();
@@ -28,6 +28,49 @@ export default function ProjectRFEDetailPage() {
   const { data: workflow, isLoading: loading, refetch: load } = useRfeWorkflow(project, id);
   const { data: rfeSessions = [], refetch: loadSessions } = useRfeWorkflowSessions(project, id);
   const deleteWorkflowMutation = useDeleteRfeWorkflow();
+  const { data: seedingData, isLoading: checkingSeeding, error: seedingQueryError } = useRfeWorkflowSeeding(project, id);
+  const seedWorkflowMutation = useSeedRfeWorkflow();
+  const { openJiraForPath } = useOpenJiraIssue(project, id);
+
+  // Extract repo info from workflow
+  const repo = workflow?.umbrellaRepo?.url.replace(/^https?:\/\/(?:www\.)?github.com\//i, '').replace(/\.git$/i, '') || '';
+  const ref = workflow?.umbrellaRepo?.branch || 'main';
+  const hasRepoInfo = !!workflow?.umbrellaRepo && !!repo;
+
+  // Fetch rfe.md
+  const { data: rfeBlob } = useRepoBlob(
+    project,
+    { repo, ref, path: 'rfe.md' },
+    { enabled: hasRepoInfo }
+  );
+
+  // Fetch specs directory tree
+  const { data: specsTree } = useRepoTree(
+    project,
+    { repo, ref, path: 'specs' },
+    { enabled: hasRepoInfo }
+  );
+
+  // Find first subdirectory in specs tree
+  const firstSubDir = specsTree?.entries?.find((e: { type: string; name?: string }) => e.type === 'tree')?.name || '';
+  const subPath = firstSubDir ? `specs/${firstSubDir}` : '';
+  
+  // Fetch spec files from subdirectory (files are always in subdirs, never in root specs/)
+  const { data: specBlob } = useRepoBlob(
+    project,
+    { repo, ref, path: subPath ? `${subPath}/spec.md` : '' },
+    { enabled: hasRepoInfo && !!subPath }
+  );
+  const { data: planBlob } = useRepoBlob(
+    project,
+    { repo, ref, path: subPath ? `${subPath}/plan.md` : '' },
+    { enabled: hasRepoInfo && !!subPath }
+  );
+  const { data: tasksBlob } = useRepoBlob(
+    project,
+    { repo, ref, path: subPath ? `${subPath}/tasks.md` : '' },
+    { enabled: hasRepoInfo && !!subPath }
+  );
 
   const [error, setError] = useState<string | null>(null);
   // const [advancing, _setAdvancing] = useState(false);
@@ -39,141 +82,54 @@ export default function ProjectRFEDetailPage() {
   // const [specBaseRelPath, _setSpecBaseRelPath] = useState<string>("specs");
   const [publishingPhase, setPublishingPhase] = useState<WorkflowPhase | null>(null);
 
-  const [rfeDoc, setRfeDoc] = useState<{ exists: boolean; content: string }>({ exists: false, content: "" });
-  const [firstFeaturePath, setFirstFeaturePath] = useState<string>("");
-  const [specKitDir, setSpecKitDir] = useState<{
-    spec: {
-      exists: boolean;
-      content: string;
-    },
-    plan: {
-      exists: boolean;
-      content: string;
-    },
-    tasks: {
-      exists: boolean;
-      content: string;
-    }
-  }>({
-    spec: {
-      exists: false,
-      content: "",
-    },
-    plan: {
-      exists: false,
-      content: "",
-    },
-    tasks: {
-      exists: false,
-      content: "",
-    }
-  });
-
-  const [seeding, setSeeding] = useState<boolean>(false);
-  const [seedingStatus, setSeedingStatus] = useState<{ checking: boolean; isSeeded: boolean; error?: string }>({
-    checking: true,
-    isSeeded: false,
-  });
   const [selectedAgents, setSelectedAgents] = useState<string[]>([]);
 
-  const checkSeeding = useCallback(async () => {
-    if (!project || !id || !workflow?.umbrellaRepo) return;
-    try {
-      setSeedingStatus({ checking: true, isSeeded: false });
-      const resp = await fetch(`/api/projects/${encodeURIComponent(project)}/rfe-workflows/${encodeURIComponent(id)}/check-seeding`);
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      const data = await resp.json();
-      setSeedingStatus({ checking: false, isSeeded: data.isSeeded });
-    } catch (e) {
-      setSeedingStatus({ 
-        checking: false, 
-        isSeeded: false, 
-        error: e instanceof Error ? e.message : 'Failed to check seeding' 
-      });
-    }
-  }, [project, id, workflow?.umbrellaRepo]);
-
-  const checkPhaseDocuments = useCallback(async () => {
-    if (!project || !id || !workflow?.umbrellaRepo) return;
-
-    try {
-      const repo = workflow.umbrellaRepo.url.replace(/^https?:\/\/(?:www\.)?github.com\//i, '').replace(/\.git$/i, '');
-      const ref = workflow.umbrellaRepo.branch || 'main';
-
-      // Check for rfe.md
-      const rfeResp = await fetch(`/api/projects/${encodeURIComponent(project)}/repo/blob?repo=${encodeURIComponent(repo)}&ref=${encodeURIComponent(ref)}&path=${encodeURIComponent('rfe.md')}`);
-      setRfeDoc({ exists: rfeResp.ok, content: '' });
-
-      // Try to find specs directory structure
-      const specsTreeResp = await fetch(`/api/projects/${encodeURIComponent(project)}/repo/tree?repo=${encodeURIComponent(repo)}&ref=${encodeURIComponent(ref)}&path=${encodeURIComponent('specs')}`);
-
-      if (specsTreeResp.ok) {
-        const specsTree = await specsTreeResp.json();
-        const entries = specsTree.entries || [];
-        console.log('[checkPhaseDocuments] specsTree response:', specsTree);
-        console.log('[checkPhaseDocuments] entries:', entries);
-
-        // Check for spec.md, plan.md, tasks.md directly in specs/
-        const specResp = await fetch(`/api/projects/${encodeURIComponent(project)}/repo/blob?repo=${encodeURIComponent(repo)}&ref=${encodeURIComponent(ref)}&path=${encodeURIComponent('specs/spec.md')}`);
-        const planResp = await fetch(`/api/projects/${encodeURIComponent(project)}/repo/blob?repo=${encodeURIComponent(repo)}&ref=${encodeURIComponent(ref)}&path=${encodeURIComponent('specs/plan.md')}`);
-        const tasksResp = await fetch(`/api/projects/${encodeURIComponent(project)}/repo/blob?repo=${encodeURIComponent(repo)}&ref=${encodeURIComponent(ref)}&path=${encodeURIComponent('specs/tasks.md')}`);
-
-        let specExists = specResp.ok;
-        let planExists = planResp.ok;
-        let tasksExists = tasksResp.ok;
-
-        // If not found directly, check first subdirectory
-        if (!specExists && !planExists && !tasksExists) {
-          const firstDir = entries.find((e: { type: string; name?: string }) => e.type === 'tree');
-          if (firstDir && firstDir.name) {
-            const subPath = `specs/${firstDir.name}`;
-            setFirstFeaturePath(subPath);
-            const subSpecResp = await fetch(`/api/projects/${encodeURIComponent(project)}/repo/blob?repo=${encodeURIComponent(repo)}&ref=${encodeURIComponent(ref)}&path=${encodeURIComponent(`${subPath}/spec.md`)}`);
-            const subPlanResp = await fetch(`/api/projects/${encodeURIComponent(project)}/repo/blob?repo=${encodeURIComponent(repo)}&ref=${encodeURIComponent(ref)}&path=${encodeURIComponent(`${subPath}/plan.md`)}`);
-            const subTasksResp = await fetch(`/api/projects/${encodeURIComponent(project)}/repo/blob?repo=${encodeURIComponent(repo)}&ref=${encodeURIComponent(ref)}&path=${encodeURIComponent(`${subPath}/tasks.md`)}`);
-            specExists = subSpecResp.ok;
-            planExists = subPlanResp.ok;
-            tasksExists = subTasksResp.ok;
-          }
-        } else {
-          setFirstFeaturePath('specs');
-        }
-
-        setSpecKitDir({
-          spec: { exists: specExists, content: '' },
-          plan: { exists: planExists, content: '' },
-          tasks: { exists: tasksExists, content: '' }
-        });
+  // Process rfe.md blob data
+  const [rfeDoc, setRfeDoc] = useState<{ exists: boolean; content: string }>({ exists: false, content: "" });
+  useEffect(() => {
+    if (!rfeBlob) return;
+    
+    (async () => {
+      if (rfeBlob.ok) {
+        const content = await rfeBlob.clone().text();
+        setRfeDoc({ exists: true, content });
+      } else {
+        setRfeDoc({ exists: false, content: '' });
       }
-    } catch (e) {
-      // Silently fail - we only need this to discover file paths for Jira integration
-      // Button visibility is determined by session completion status
-      console.debug('Failed to check phase documents:', e);
-    }
-  }, [project, id, workflow?.umbrellaRepo]);
+    })();
+  }, [rfeBlob]);
 
-  useEffect(() => { if (workflow) { checkSeeding(); checkPhaseDocuments(); } }, [workflow, checkSeeding, checkPhaseDocuments]);
+  // Process spec kit blobs from subdirectory
+  const [specKitDir, setSpecKitDir] = useState<{
+    spec: { exists: boolean; content: string; },
+    plan: { exists: boolean; content: string; },
+    tasks: { exists: boolean; content: string; }
+  }>({
+    spec: { exists: false, content: '' },
+    plan: { exists: false, content: '' },
+    tasks: { exists: false, content: '' }
+  });
 
-  // Workspace probing removed
+  useEffect(() => {
+    (async () => {
+      const specData = specBlob?.ok
+        ? { exists: true, content: await specBlob.clone().text() }
+        : { exists: false, content: '' };
+      
+      const planData = planBlob?.ok
+        ? { exists: true, content: await planBlob.clone().text() }
+        : { exists: false, content: '' };
+      
+      const tasksData = tasksBlob?.ok
+        ? { exists: true, content: await tasksBlob.clone().text() }
+        : { exists: false, content: '' };
 
-  // Workspace browse handlers removed
+      setSpecKitDir({ spec: specData, plan: planData, tasks: tasksData });
+    })();
+  }, [specBlob, planBlob, tasksBlob]);
 
-  const openJiraForPath = useCallback(async (relPath: string) => {
-    try {
-      const resp = await fetch(`/api/projects/${encodeURIComponent(project)}/rfe-workflows/${encodeURIComponent(id)}/jira?path=${encodeURIComponent(relPath)}`);
-      if (!resp.ok) return;
-      const data = await resp.json().catch(() => null);
-      if (!data) return;
-      const selfUrl = typeof data.self === 'string' ? data.self : '';
-      const key = typeof data.key === 'string' ? data.key : '';
-      if (selfUrl && key) {
-        const origin = (() => { try { return new URL(selfUrl).origin; } catch { return ''; } })();
-        if (origin) window.open(`${origin}/browse/${encodeURIComponent(key)}`, '_blank');
-      }
-    } catch {
-      // noop
-    }
-  }, [project, id]);
+  const firstFeaturePath = subPath;
+
 
   const deleteWorkflow = useCallback(async () => {
     if (!confirm('Are you sure you want to delete this RFE workflow? This action cannot be undone.')) {
@@ -197,23 +153,21 @@ export default function ProjectRFEDetailPage() {
   }, [project, id, deleteWorkflowMutation, router]);
 
   const seedWorkflow = useCallback(async () => {
-    try {
-      setSeeding(true);
-      const resp = await fetch(`/api/projects/${encodeURIComponent(project)}/rfe-workflows/${encodeURIComponent(id)}/seed`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      });
-      if (!resp.ok) {
-        const data = await resp.json().catch(() => ({}));
-        throw new Error(data?.error || `HTTP ${resp.status}`);
-      }
-      await checkSeeding(); // Re-check seeding status
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to start seeding');
-    } finally {
-      setSeeding(false);
-    }
-  }, [project, id, checkSeeding]);
+    return new Promise<void>((resolve, reject) => {
+      seedWorkflowMutation.mutate(
+        { projectName: project, workflowId: id },
+        {
+          onSuccess: () => {
+            resolve();
+          },
+          onError: (err) => {
+            setError(err.message || 'Failed to start seeding');
+            reject(err);
+          },
+        }
+      );
+    });
+  }, [project, id, seedWorkflowMutation]);
 
 
   if (loading) return <div className="container mx-auto py-8">Loading…</div>;
@@ -233,9 +187,14 @@ export default function ProjectRFEDetailPage() {
   const workflowWorkspace = workflow.workspacePath || `/rfe-workflows/${id}/workspace`;
   const upstreamRepo = workflow?.umbrellaRepo?.url || "";
 
-  // Seeding status is checked on-the-fly
-  const isSeeded = seedingStatus.isSeeded;
-  const seedingError = seedingStatus.error;
+  // Seeding status from React Query
+  const isSeeded = seedingData?.isSeeded || false;
+  const seedingError = seedingQueryError?.message;
+  const seedingStatus = {
+    checking: checkingSeeding,
+    isSeeded,
+    error: seedingError,
+  };
 
   return (
     <div className="container mx-auto py-8">
@@ -264,7 +223,7 @@ export default function ProjectRFEDetailPage() {
           isSeeded={isSeeded}
           seedingStatus={seedingStatus}
           seedingError={seedingError}
-          seeding={seeding}
+          seeding={seedWorkflowMutation.isPending}
           onSeedWorkflow={seedWorkflow}
         />
 

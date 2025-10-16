@@ -167,3 +167,61 @@ export async function getRfeWorkflowAgents(
   );
   return response.agents;
 }
+
+/**
+ * Check if an RFE workflow has been seeded
+ */
+export async function checkRfeWorkflowSeeding(
+  projectName: string,
+  workflowId: string
+): Promise<{ isSeeded: boolean }> {
+  return apiClient.get<{ isSeeded: boolean }>(
+    `/projects/${projectName}/rfe-workflows/${workflowId}/check-seeding`
+  );
+}
+
+/**
+ * Seed an RFE workflow
+ */
+export async function seedRfeWorkflow(
+  projectName: string,
+  workflowId: string
+): Promise<void> {
+  await apiClient.post<void>(
+    `/projects/${projectName}/rfe-workflows/${workflowId}/seed`
+  );
+}
+
+/**
+ * Get Jira issue for a workflow path
+ */
+export async function getWorkflowJiraIssue(
+  projectName: string,
+  workflowId: string,
+  path: string
+): Promise<{ self: string; key: string } | null> {
+  try {
+    return await apiClient.get<{ self: string; key: string }>(
+      `/projects/${projectName}/rfe-workflows/${workflowId}/jira`,
+      {
+        params: { path },
+      }
+    );
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Publish a workflow path to Jira (create or update issue)
+ */
+export async function publishWorkflowPathToJira(
+  projectName: string,
+  workflowId: string,
+  path: string
+): Promise<{ self: string; key: string }> {
+  return apiClient.post<{ self: string; key: string }, { path: string }>(
+    `/projects/${projectName}/rfe-workflows/${workflowId}/jira`,
+    { path }
+  );
+}

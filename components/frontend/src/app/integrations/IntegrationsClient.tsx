@@ -1,48 +1,16 @@
 'use client'
 
-import React, { useEffect, useState } from 'react'
+import React from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-
-type GitHubStatus = {
-  installed: boolean
-  installationId?: number
-  githubUserId?: string
-  userId?: string
-  host?: string
-  updatedAt?: string
-}
+import { useGitHubStatus, useDisconnectGitHub } from '@/services/queries'
+import { successToast, errorToast } from '@/hooks/use-toast'
 
 type Props = { appSlug?: string }
 
 export default function IntegrationsClient({ appSlug }: Props) {
-  const [status, setStatus] = useState<GitHubStatus | null>(null)
-  const [loading, setLoading] = useState(false)
-
-  const refresh = async () => {
-    setLoading(true)
-    try {
-      const resp = await fetch('/api/auth/github/status', { cache: 'no-store' })
-      const data = await resp.json().catch(() => ({}))
-      const mapped: GitHubStatus = {
-        installed: !!data.installed,
-        installationId: data.installationId,
-        githubUserId: data.githubUserId,
-        userId: data.userId,
-        host: data.host,
-        updatedAt: data.updatedAt,
-      }
-      setStatus(mapped)
-    } catch {
-      setStatus({ installed: false })
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    refresh()
-  }, [])
+  const { data: status, isLoading, refetch } = useGitHubStatus()
+  const disconnectMutation = useDisconnectGitHub()
 
   const handleConnect = () => {
     if (!appSlug) return
@@ -53,13 +21,15 @@ export default function IntegrationsClient({ appSlug }: Props) {
   }
 
   const handleDisconnect = async () => {
-    setLoading(true)
-    try {
-      await fetch('/api/auth/github/disconnect', { method: 'POST' })
-      await refresh()
-    } finally {
-      setLoading(false)
-    }
+    disconnectMutation.mutate(undefined, {
+      onSuccess: () => {
+        successToast('GitHub disconnected successfully')
+        refetch()
+      },
+      onError: (error) => {
+        errorToast(error instanceof Error ? error.message : 'Failed to disconnect GitHub')
+      },
+    })
   }
 
   const handleManage = () => {
@@ -89,11 +59,11 @@ export default function IntegrationsClient({ appSlug }: Props) {
             )}
           </div>
           <div className="flex gap-2">
-            <Button variant="ghost" onClick={handleManage} disabled={loading}>Manage in GitHub</Button>
+            <Button variant="ghost" onClick={handleManage} disabled={isLoading || disconnectMutation.isPending}>Manage in GitHub</Button>
             {status?.installed ? (
-              <Button variant="destructive" onClick={handleDisconnect} disabled={loading}>Disconnect</Button>
+              <Button variant="destructive" onClick={handleDisconnect} disabled={isLoading || disconnectMutation.isPending}>Disconnect</Button>
             ) : (
-              <Button onClick={handleConnect} disabled={loading || !appSlug}>Connect</Button>
+              <Button onClick={handleConnect} disabled={isLoading || !appSlug}>Connect</Button>
             )}
           </div>
         </CardContent>

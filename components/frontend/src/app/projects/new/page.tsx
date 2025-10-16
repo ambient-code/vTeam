@@ -16,15 +16,15 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { CreateProjectRequest } from "@/types/project";
 import { ArrowLeft, Save, Loader2 } from "lucide-react";
-import { getApiUrl } from "@/lib/config";
 import { successToast, errorToast } from "@/hooks/use-toast";
 import { Breadcrumbs } from "@/components/breadcrumbs";
+import { useCreateProject } from "@/services/queries";
 
 // Project type selection removed
 
 export default function NewProjectPage() {
   const router = useRouter();
-  const [loading, setLoading] = useState(false);
+  const createProjectMutation = useCreateProject();
   const [error, setError] = useState<string | null>(null);
   const [formData, setFormData] = useState<CreateProjectRequest>({
     name: "",
@@ -74,47 +74,26 @@ export default function NewProjectPage() {
       return;
     }
 
-    setLoading(true);
     setError(null);
 
-    try {
-      const apiUrl = getApiUrl();
+    // Prepare the request payload
+    const payload: CreateProjectRequest = {
+      name: formData.name,
+      displayName: formData.displayName.trim(),
+      ...(formData.description?.trim() && { description: formData.description.trim() }),
+    };
 
-      // Prepare the request payload
-      const payload: CreateProjectRequest = {
-        name: formData.name,
-        displayName: formData.displayName.trim(),
-        ...(formData.description?.trim() && { description: formData.description.trim() }),
-        // projectType and resourceQuota removed
-      };
-
-      const response = await fetch(`${apiUrl}/projects`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: "Unknown error" }));
-        throw new Error(errorData.message || errorData.error || "Failed to create project");
-      }
-
-      const project = await response.json();
-      const projectName = project?.name;
-      if (!projectName) {
-        throw new Error("Create project succeeded but response didn't include a project name");
-      }
-      successToast(`Project "${formData.displayName}" created successfully`);
-      router.push(`/projects/${projectName}`);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to create project";
-      setError(message);
-      errorToast(message);
-    } finally {
-      setLoading(false);
-    }
+    createProjectMutation.mutate(payload, {
+      onSuccess: (project) => {
+        successToast(`Project "${formData.displayName}" created successfully`);
+        router.push(`/projects/${encodeURIComponent(project.name)}`);
+      },
+      onError: (err) => {
+        const message = err instanceof Error ? err.message : "Failed to create project";
+        setError(message);
+        errorToast(message);
+      },
+    });
   };
 
   return (
@@ -206,8 +185,8 @@ export default function NewProjectPage() {
             )}
 
             <div className="flex gap-4 pt-4">
-              <Button type="submit" disabled={loading || !!nameError}>
-                {loading ? (
+              <Button type="submit" disabled={createProjectMutation.isPending || !!nameError}>
+                {createProjectMutation.isPending ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                     Creating...
@@ -220,7 +199,7 @@ export default function NewProjectPage() {
                 )}
               </Button>
               <Link href="/projects">
-                <Button type="button" variant="outline" disabled={loading}>
+                <Button type="button" variant="outline" disabled={createProjectMutation.isPending}>
                   Cancel
                 </Button>
               </Link>

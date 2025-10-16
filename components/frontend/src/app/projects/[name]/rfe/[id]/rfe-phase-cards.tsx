@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CheckCircle2, Loader2, Play, Upload } from "lucide-react";
 import type { AgenticSession, CreateAgenticSessionRequest, RFEWorkflow, WorkflowPhase } from "@/types/agentic-session";
 import { WORKFLOW_PHASE_LABELS, AVAILABLE_AGENTS } from "@/lib/agents";
-import { useCreateSession } from "@/services/queries";
+import { useCreateSession, usePublishToJira } from "@/services/queries";
 
 type RfePhaseCardsProps = {
   workflow: RFEWorkflow;
@@ -55,6 +55,7 @@ export function RfePhaseCards({
   onOpenJira,
 }: RfePhaseCardsProps) {
   const createSessionMutation = useCreateSession();
+  const publishToJiraMutation = usePublishToJira();
   const phaseList = ["ideate", "specify", "plan", "tasks", "implement"] as const;
 
   // Helper function to generate agent instructions based on selected agents
@@ -135,11 +136,11 @@ You can invoke agents by using their name in your prompts. For example: "Let's g
             return (
               <div
                 key={phase}
-                className={`p-4 rounded-lg border flex items-center justify-between ${
+                className={`p-4 rounded-lg border flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 ${
                   exists ? "bg-green-50 border-green-200" : ""
                 }`}
               >
-                <div className="flex flex-col gap-1">
+                <div className="flex flex-col gap-1 flex-1 min-w-0">
                   <div className="flex items-center gap-3">
                     <Badge variant="outline">{WORKFLOW_PHASE_LABELS[phase]}</Badge>
                     <span className="text-sm text-muted-foreground">{expected}</span>
@@ -167,7 +168,7 @@ You can invoke agents by using their name in your prompts. For example: "Let's g
                     </div>
                   )}
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center flex-wrap gap-3">
                   {exists ? (
                     <div className="flex items-center gap-2 text-green-700">
                       <CheckCircle2 className="h-5 w-5 text-green-600" />
@@ -387,25 +388,24 @@ You can invoke agents by using their name in your prompts. For example: "Let's g
                     <Button
                       size="sm"
                       variant="secondary"
-                      onClick={async () => {
-                        try {
-                          onPublishPhase(phase);
-                          const resp = await fetch(
-                            `/api/projects/${encodeURIComponent(projectName)}/rfe-workflows/${encodeURIComponent(rfeId)}/jira`,
-                            {
-                              method: "POST",
-                              headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify({ path: expected }),
-                            }
-                          );
-                          const data = await resp.json().catch(() => ({}));
-                          if (!resp.ok) throw new Error(data?.error || `HTTP ${resp.status}`);
-                          await onLoad();
-                        } catch (e) {
-                          onError(e instanceof Error ? e.message : "Failed to publish to Jira");
-                        } finally {
-                          onPublishPhase(null);
-                        }
+                      onClick={() => {
+                        onPublishPhase(phase);
+                        publishToJiraMutation.mutate(
+                          { projectName, workflowId: rfeId, path: expected },
+                          {
+                            onSuccess: async () => {
+                              try {
+                                await onLoad();
+                              } finally {
+                                onPublishPhase(null);
+                              }
+                            },
+                            onError: (err) => {
+                              onError(err.message || "Failed to publish to Jira");
+                              onPublishPhase(null);
+                            },
+                          }
+                        );
                       }}
                       disabled={publishingPhase === phase}
                     >

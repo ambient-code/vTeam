@@ -9,3 +9,6 @@ export * as sessionsApi from './sessions';
 export * as rfeApi from './rfe';
 export * as githubApi from './github';
 export * as keysApi from './keys';
+export * as repoApi from './repo';
+export * as workspaceApi from './workspace';
+export * as authApi from './auth';

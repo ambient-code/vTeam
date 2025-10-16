@@ -3,10 +3,12 @@
 import React, { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { useConnectGitHub } from '@/services/queries'
 
 export default function GitHubSetupPage() {
   const [message, setMessage] = useState<string>('Finalizing GitHub connection...')
   const [error, setError] = useState<string | null>(null)
+  const connectMutation = useConnectGitHub()
 
   useEffect(() => {
     const url = new URL(window.location.href)
@@ -17,26 +19,21 @@ export default function GitHubSetupPage() {
       return
     }
 
-    const link = async () => {
-      try {
-        const resp = await fetch('/api/auth/github/install', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ installationId: Number(installationId) }),
-        })
-        if (!resp.ok) {
-          const t = await resp.text().catch(() => '')
-          throw new Error(t || `Link failed (${resp.status})`)
-        }
-        setMessage('GitHub connected. Redirecting...')
-        setTimeout(() => {
-          window.location.replace('/integrations')
-        }, 800)
-      } catch (e) {
-        setError(e instanceof Error ? e.message : 'Failed to complete setup')
+    connectMutation.mutate(
+      { installationId: Number(installationId) },
+      {
+        onSuccess: () => {
+          setMessage('GitHub connected. Redirecting...')
+          setTimeout(() => {
+            window.location.replace('/integrations')
+          }, 800)
+        },
+        onError: (err) => {
+          setError(err instanceof Error ? err.message : 'Failed to complete setup')
+        },
       }
-    }
-    link()
+    )
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   return (

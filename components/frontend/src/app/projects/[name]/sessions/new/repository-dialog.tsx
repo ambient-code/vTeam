@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { getApiUrl } from "@/lib/config";
+import { useGitHubForks } from "@/services/queries";
 
 type Repo = {
   input: { url: string; branch: string };
@@ -34,15 +34,19 @@ export function RepositoryDialog({
   const [forkOptions, setForkOptions] = useState<Array<{ fullName: string; url: string }>>([]);
   const [outputBranchMode, setOutputBranchMode] = useState<"same" | "auto">("auto");
 
+  // Fetch forks using React Query
+  const { data: forksData } = useGitHubForks(projectName);
+  
   useEffect(() => {
-    if (open && repo.input.url && projectName) {
-      const apiUrl = getApiUrl();
-      fetch(`${apiUrl}/projects/${encodeURIComponent(projectName)}/users/forks?url=${encodeURIComponent(repo.input.url)}`)
-        .then(r => r.ok ? r.json() : Promise.resolve({ forks: [] }))
-        .then(data => setForkOptions(data.forks || []))
-        .catch(() => setForkOptions([]));
+    if (open && repo.input.url && forksData) {
+      // Filter forks based on the input URL
+      const filtered = forksData.filter(fork => {
+        // Match fork URL with input URL
+        return fork.url === repo.input.url || fork.fullName.includes(repo.input.url.split('/').pop() || '');
+      });
+      setForkOptions(filtered);
     }
-  }, [open, repo.input.url, projectName]);
+  }, [open, repo.input.url, forksData]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

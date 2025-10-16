@@ -3,7 +3,14 @@
  */
 
 export type GitHubStatus = {
-  connected: boolean;
+  installed: boolean;
+  installationId?: number;
+  githubUserId?: string;
+  userId?: string;
+  host?: string;
+  updatedAt?: string;
+  // Legacy OAuth fields (deprecated)
+  connected?: boolean;
   username?: string;
   scopes?: string[];
 };
@@ -69,7 +76,9 @@ export type CreatePRResponse = {
 };
 
 export type GitHubConnectRequest = {
-  code: string;
+  installationId: number;
+  // Legacy OAuth fields (deprecated)
+  code?: string;
   state?: string;
 };
 

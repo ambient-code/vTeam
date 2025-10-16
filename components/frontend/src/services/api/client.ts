@@ -169,4 +169,41 @@ export const apiClient = {
   delete: <T>(path: string, config?: RequestConfig): Promise<T> => {
     return request<T>(path, { ...config, method: 'DELETE' });
   },
+
+  /**
+   * GET request that returns raw Response (for blob/text content)
+   */
+  getRaw: async (path: string, config?: RequestConfig): Promise<Response> => {
+    const { params, ...fetchConfig } = config || {};
+    const url = buildUrl(path, params);
+    const headers = {
+      ...fetchConfig.headers,
+    };
+    return fetch(url, {
+      ...fetchConfig,
+      method: 'GET',
+      headers,
+    });
+  },
+
+  /**
+   * PUT request with raw text body
+   */
+  putText: async (path: string, content: string, config?: RequestConfig): Promise<void> => {
+    const url = buildUrl(path, config?.params);
+    const response = await fetch(url, {
+      ...config,
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'text/plain; charset=utf-8',
+        ...config?.headers,
+      },
+      body: content,
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => 'Unknown error');
+      throw new ApiClientError(errorText || `HTTP ${response.status}`);
+    }
+  },
 };

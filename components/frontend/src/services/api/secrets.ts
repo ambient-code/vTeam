@@ -1,4 +1,9 @@
-import { getApiUrl } from '@/lib/config';
+/**
+ * Secrets API service
+ * Handles runner secrets and secret configuration
+ */
+
+import { apiClient } from './client';
 
 export type Secret = {
   key: string;
@@ -13,75 +18,63 @@ export type SecretsConfig = {
   secretName: string;
 };
 
+export type SecretsValuesResponse = {
+  data: Record<string, string>;
+};
+
+/**
+ * Get list of available secrets (K8s secrets)
+ */
 export async function getSecretsList(projectName: string): Promise<SecretList> {
-  const apiUrl = getApiUrl();
-  const response = await fetch(
-    `${apiUrl}/projects/${encodeURIComponent(projectName)}/secrets`
+  return apiClient.get<SecretList>(
+    `/projects/${projectName}/secrets`
   );
-  if (!response.ok) {
-    throw new Error('Failed to fetch secrets list');
-  }
-  return response.json();
 }
 
+/**
+ * Get runner secrets configuration
+ */
 export async function getSecretsConfig(projectName: string): Promise<SecretsConfig> {
-  const apiUrl = getApiUrl();
-  const response = await fetch(
-    `${apiUrl}/projects/${encodeURIComponent(projectName)}/runner-secrets/config`
+  return apiClient.get<SecretsConfig>(
+    `/projects/${projectName}/runner-secrets/config`
   );
-  if (!response.ok) {
-    throw new Error('Failed to fetch secrets config');
-  }
-  return response.json();
 }
 
+/**
+ * Get runner secrets values
+ */
 export async function getSecretsValues(projectName: string): Promise<Secret[]> {
-  const apiUrl = getApiUrl();
-  const response = await fetch(
-    `${apiUrl}/projects/${encodeURIComponent(projectName)}/runner-secrets`
+  const response = await apiClient.get<SecretsValuesResponse>(
+    `/projects/${projectName}/runner-secrets`
   );
-  if (!response.ok) {
-    throw new Error('Failed to fetch secrets values');
-  }
-  const data = await response.json();
-  return Object.entries<string>(data.data || {}).map(([key, value]) => ({ key, value }));
+  return Object.entries<string>(response.data || {}).map(([key, value]) => ({ key, value }));
 }
 
+/**
+ * Update runner secrets configuration
+ */
 export async function updateSecretsConfig(
   projectName: string,
   secretName: string
 ): Promise<void> {
-  const apiUrl = getApiUrl();
-  const response = await fetch(
-    `${apiUrl}/projects/${encodeURIComponent(projectName)}/runner-secrets/config`,
-    {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ secretName }),
-    }
+  await apiClient.put<void, { secretName: string }>(
+    `/projects/${projectName}/runner-secrets/config`,
+    { secretName }
   );
-  if (!response.ok) {
-    throw new Error('Failed to update secrets config');
-  }
 }
 
+/**
+ * Update runner secrets values
+ */
 export async function updateSecrets(
   projectName: string,
   secrets: Secret[]
 ): Promise<void> {
-  const apiUrl = getApiUrl();
   const data: Record<string, string> = Object.fromEntries(
     secrets.map(s => [s.key, s.value])
   );
-  const response = await fetch(
-    `${apiUrl}/projects/${encodeURIComponent(projectName)}/runner-secrets`,
-    {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ data }),
-    }
+  await apiClient.put<void, { data: Record<string, string> }>(
+    `/projects/${projectName}/runner-secrets`,
+    { data }
   );
-  if (!response.ok) {
-    throw new Error('Failed to update secrets');
-  }
 }

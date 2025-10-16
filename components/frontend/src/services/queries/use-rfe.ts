@@ -31,6 +31,10 @@ export const rfeKeys = {
     [...rfeKeys.detail(projectName, workflowId), 'sessions'] as const,
   agents: (projectName: string, workflowId: string) =>
     [...rfeKeys.detail(projectName, workflowId), 'agents'] as const,
+  seeding: (projectName: string, workflowId: string) =>
+    [...rfeKeys.detail(projectName, workflowId), 'seeding'] as const,
+  jira: (projectName: string, workflowId: string, path: string) =>
+    [...rfeKeys.detail(projectName, workflowId), 'jira', path] as const,
 };
 
 /**
@@ -224,4 +228,120 @@ export function useStartWorkflowPhase() {
       });
     },
   });
+}
+
+/**
+ * Hook to check if an RFE workflow has been seeded
+ */
+export function useRfeWorkflowSeeding(projectName: string, workflowId: string) {
+  return useQuery({
+    queryKey: rfeKeys.seeding(projectName, workflowId),
+    queryFn: () => rfeApi.checkRfeWorkflowSeeding(projectName, workflowId),
+    enabled: !!projectName && !!workflowId,
+  });
+}
+
+/**
+ * Hook to seed an RFE workflow
+ */
+export function useSeedRfeWorkflow() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      projectName,
+      workflowId,
+    }: {
+      projectName: string;
+      workflowId: string;
+    }) => rfeApi.seedRfeWorkflow(projectName, workflowId),
+    onSuccess: (_data, { projectName, workflowId }) => {
+      // Invalidate seeding status to refetch
+      queryClient.invalidateQueries({
+        queryKey: rfeKeys.seeding(projectName, workflowId),
+      });
+    },
+  });
+}
+
+/**
+ * Hook to get Jira issue for a workflow path
+ */
+export function useWorkflowJiraIssue(
+  projectName: string,
+  workflowId: string,
+  path: string,
+  options?: { enabled?: boolean }
+) {
+  return useQuery({
+    queryKey: rfeKeys.jira(projectName, workflowId, path),
+    queryFn: () => rfeApi.getWorkflowJiraIssue(projectName, workflowId, path),
+    enabled: !!projectName && !!workflowId && !!path && (options?.enabled ?? true),
+    staleTime: 10 * 60 * 1000, // 10 minutes - Jira issues don't change frequently
+  });
+}
+
+/**
+ * Hook to publish workflow path to Jira
+ */
+export function usePublishToJira() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      projectName,
+      workflowId,
+      path,
+    }: {
+      projectName: string;
+      workflowId: string;
+      path: string;
+    }) => rfeApi.publishWorkflowPathToJira(projectName, workflowId, path),
+    onSuccess: (_data, { projectName, workflowId }) => {
+      // Invalidate workflow to refetch updated jiraLinks
+      queryClient.invalidateQueries({
+        queryKey: rfeKeys.detail(projectName, workflowId),
+      });
+      // Invalidate Jira queries
+      queryClient.invalidateQueries({
+        queryKey: [...rfeKeys.detail(projectName, workflowId), 'jira'],
+      });
+    },
+  });
+}
+
+/**
+ * Hook to open Jira issue in browser (imperative)
+ */
+export function useOpenJiraIssue(projectName: string, workflowId: string) {
+  const queryClient = useQueryClient();
+
+  return {
+    /**
+     * Fetch Jira issue and open it in a new tab
+     */
+    openJiraForPath: async (path: string) => {
+      try {
+        const data = await queryClient.fetchQuery({
+          queryKey: rfeKeys.jira(projectName, workflowId, path),
+          queryFn: () => rfeApi.getWorkflowJiraIssue(projectName, workflowId, path),
+          staleTime: 10 * 60 * 1000,
+        });
+
+        if (!data) return;
+
+        const { self: selfUrl, key } = data;
+        if (selfUrl && key) {
+          try {
+            const origin = new URL(selfUrl).origin;
+            window.open(`${origin}/browse/${encodeURIComponent(key)}`, '_blank');
+          } catch {
+            // Invalid URL, skip
+          }
+        }
+      } catch {
+        // Silent fail - user can retry if needed
+      }
+    },
+  };
 }

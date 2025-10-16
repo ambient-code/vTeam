@@ -122,6 +122,33 @@ export function useStopSession() {
 }
 
 /**
+ * Hook to start/restart a session
+ */
+export function useStartSession() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      projectName,
+      sessionName,
+    }: {
+      projectName: string;
+      sessionName: string;
+    }) => sessionsApi.startSession(projectName, sessionName),
+    onSuccess: (_response, { projectName, sessionName }) => {
+      // Invalidate session details to refetch status
+      queryClient.invalidateQueries({
+        queryKey: sessionKeys.detail(projectName, sessionName),
+      });
+      // Invalidate list to update session count
+      queryClient.invalidateQueries({
+        queryKey: sessionKeys.list(projectName),
+      });
+    },
+  });
+}
+
+/**
  * Hook to clone a session
  */
 export function useCloneSession() {
@@ -168,6 +195,64 @@ export function useDeleteSession() {
       // Invalidate list
       queryClient.invalidateQueries({
         queryKey: sessionKeys.list(projectName),
+      });
+    },
+  });
+}
+
+/**
+ * Hook to send chat message to interactive session
+ */
+export function useSendChatMessage() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      projectName,
+      sessionName,
+      content,
+    }: {
+      projectName: string;
+      sessionName: string;
+      content: string;
+    }) => sessionsApi.sendChatMessage(projectName, sessionName, content),
+    onSuccess: (_data, { projectName, sessionName }) => {
+      // Invalidate messages to refetch
+      queryClient.invalidateQueries({
+        queryKey: sessionKeys.messages(projectName, sessionName),
+      });
+      // Invalidate session to update status
+      queryClient.invalidateQueries({
+        queryKey: sessionKeys.detail(projectName, sessionName),
+      });
+    },
+  });
+}
+
+/**
+ * Hook to send control message (interrupt, end_session)
+ */
+export function useSendControlMessage() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      projectName,
+      sessionName,
+      type,
+    }: {
+      projectName: string;
+      sessionName: string;
+      type: 'interrupt' | 'end_session';
+    }) => sessionsApi.sendControlMessage(projectName, sessionName, type),
+    onSuccess: (_data, { projectName, sessionName }) => {
+      // Invalidate messages to refetch
+      queryClient.invalidateQueries({
+        queryKey: sessionKeys.messages(projectName, sessionName),
+      });
+      // Invalidate session to update status
+      queryClient.invalidateQueries({
+        queryKey: sessionKeys.detail(projectName, sessionName),
       });
     },
   });

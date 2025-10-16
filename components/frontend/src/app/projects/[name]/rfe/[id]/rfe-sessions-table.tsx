@@ -2,12 +2,14 @@
 
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Plus } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
-import { AgenticSession, WorkflowPhase } from "@/types/agentic-session";
+import { AgenticSession, AgenticSessionPhase, WorkflowPhase } from "@/types/agentic-session";
 import { WORKFLOW_PHASE_LABELS } from "@/lib/agents";
+import { getPhaseColor } from "@/utils/session-helpers";
 
 type RfeSessionsTableProps = {
   sessions: AgenticSession[];
@@ -97,7 +99,9 @@ export function RfeSessionsTable({
                         {WORKFLOW_PHASE_LABELS[rfePhase as WorkflowPhase] || rfePhase || "—"}
                       </TableCell>
                       <TableCell>
-                        <span className="text-sm">{s.status?.phase || "Pending"}</span>
+                        <Badge className={getPhaseColor(s.status?.phase as AgenticSessionPhase || "Pending")}>
+                          {s.status?.phase || "Pending"}
+                        </Badge>
                       </TableCell>
                       <TableCell className="hidden md:table-cell">
                         <span className="text-sm text-gray-600 truncate max-w-[160px] block">
