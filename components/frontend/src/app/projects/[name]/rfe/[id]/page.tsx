@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { WorkflowPhase } from "@/types/agentic-session";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Loader2 } from "lucide-react";
 import RepoBrowser from "@/components/RepoBrowser";
 import type { GitHubFork } from "@/types";
 import { Breadcrumbs } from "@/components/breadcrumbs";
@@ -170,7 +170,11 @@ export default function ProjectRFEDetailPage() {
   }, [project, id, seedWorkflowMutation]);
 
 
-  if (loading) return <div className="container mx-auto py-8">Loading…</div>;
+  if (loading) return (
+    <div className="flex items-center justify-center min-h-screen">
+      <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+    </div>
+  );
   if (error || !workflow) return (
     <div className="container mx-auto py-8">
       <Card className="border-red-200 bg-red-50">
