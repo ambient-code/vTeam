@@ -38,6 +38,8 @@ export function useUpdateSecretsConfig() {
     }) => secretsApi.updateSecretsConfig(projectName, secretName),
     onSuccess: (_, { projectName }) => {
       queryClient.invalidateQueries({ queryKey: ['secrets', 'config', projectName] });
+      // Also invalidate values since they come from the configured secret
+      queryClient.invalidateQueries({ queryKey: ['secrets', 'values', projectName] });
     },
   });
 }

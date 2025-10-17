@@ -46,7 +46,7 @@ export function EmptyState({
         </p>
       )}
       {action && (
-        <Button onClick={action.onClick}>{action.label}</Button>
+        <Button type="button" onClick={action.onClick}>{action.label}</Button>
       )}
     </div>
   );

@@ -122,6 +122,17 @@ export default function ProjectSessionDetailPage({
 
   const wsUnavailable = false;
 
+  // Handler to refresh workspace
+  const handleRefreshWorkspace = useCallback(async () => {
+    // Invalidate all workspace queries to force fresh fetch
+    await queryClient.invalidateQueries({
+      queryKey: workspaceKeys.lists(),
+    });
+    await queryClient.invalidateQueries({
+      queryKey: workspaceKeys.files(),
+    });
+  }, [queryClient]);
+
   // GitHub diff state
   const [busyRepo, setBusyRepo] = useState<Record<number, 'push' | 'abandon' | null>>({});
   
@@ -151,6 +162,16 @@ export default function ProjectSessionDetailPage({
       sessionPhase: session?.status?.phase 
     }
   );
+
+  // Handler to refresh diffs by invalidating cache first
+  const handleRefreshDiff = useCallback(async () => {
+    // Invalidate all diff queries to force fresh fetch
+    await queryClient.invalidateQueries({
+      queryKey: workspaceKeys.diffs(),
+    });
+    // Then refetch
+    await refetchDiffs();
+  }, [queryClient, refetchDiffs]);
 
   // Adapter: convert SessionMessage to StreamMessage
   type RawWireMessage = SessionMessage & { payload?: unknown; timestamp?: string };
@@ -496,8 +517,8 @@ export default function ProjectSessionDetailPage({
 
   const subagentStats = useMemo(() => ({ uniqueCount: 0, orderedTypes: [], counts: {} as Record<string, number> }), []);
 
-  // Loading state
-  if (isLoading) {
+  // Loading state - also check if params are loaded
+  if (isLoading || !projectName || !sessionName) {
     return (
       <div className="container mx-auto p-6">
         <div className="flex items-center justify-center h-64">
@@ -682,7 +703,7 @@ export default function ProjectSessionDetailPage({
               }}
               busyRepo={busyRepo}
               buildGithubCompareUrl={buildGithubCompareUrl}
-              onRefreshDiff={async () => { await refetchDiffs(); }}
+              onRefreshDiff={handleRefreshDiff}
             />
           </TabsContent>
 
@@ -707,7 +728,7 @@ export default function ProjectSessionDetailPage({
               wsTree={wsTree}
               wsSelectedPath={wsSelectedPath}
               wsFileContent={wsFileContent}
-              onRefresh={() => Promise.resolve()}
+              onRefresh={handleRefreshWorkspace}
               onSelect={onWsSelect}
               onToggle={onWsToggle}
               onSave={writeWsFile}

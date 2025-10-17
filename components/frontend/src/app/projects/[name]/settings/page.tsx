@@ -41,7 +41,7 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ name
   const { data: project, isLoading: projectLoading, refetch: refetchProject } = useProject(projectName);
   const { data: secretsList } = useSecretsList(projectName);
   const { data: secretsConfig } = useSecretsConfig(projectName);
-  const { data: secretsValues, refetch: refetchSecretsValues } = useSecretsValues(projectName);
+  const { data: secretsValues } = useSecretsValues(projectName);
   const updateProjectMutation = useUpdateProject();
   const updateSecretsConfigMutation = useUpdateSecretsConfig();
   const updateSecretsMutation = useUpdateSecrets();
@@ -73,7 +73,7 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ name
 
   // Sync secrets values to state
   useEffect(() => {
-    if (secretsValues && secretsValues.length > 0) {
+    if (secretsValues) {
       const byKey: Record<string, string> = Object.fromEntries(secretsValues.map(s => [s.key, s.value]));
       setAnthropicApiKey(byKey["ANTHROPIC_API_KEY"] || "");
       setGitUserName(byKey["GIT_USER_NAME"] || "");
@@ -269,10 +269,7 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ name
                   {(secretsList?.items?.length ?? 0) > 0 && (
                     <Select
                       value={secretName}
-                      onValueChange={(val) => {
-                        setSecretName(val);
-                        void refetchSecretsValues();
-                      }}
+                      onValueChange={setSecretName}
                     >
                       <SelectTrigger className="w-80">
                         <SelectValue placeholder="Select a secret..." />

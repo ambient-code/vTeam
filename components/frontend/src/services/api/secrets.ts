@@ -18,10 +18,6 @@ export type SecretsConfig = {
   secretName: string;
 };
 
-export type SecretsValuesResponse = {
-  data: Record<string, string>;
-};
-
 /**
  * Get list of available secrets (K8s secrets)
  */
@@ -44,10 +40,11 @@ export async function getSecretsConfig(projectName: string): Promise<SecretsConf
  * Get runner secrets values
  */
 export async function getSecretsValues(projectName: string): Promise<Secret[]> {
-  const response = await apiClient.get<SecretsValuesResponse>(
+  // apiClient.get already unwraps the 'data' field from the response
+  const data = await apiClient.get<Record<string, string>>(
     `/projects/${projectName}/runner-secrets`
   );
-  return Object.entries<string>(response.data || {}).map(([key, value]) => ({ key, value }));
+  return Object.entries<string>(data || {}).map(([key, value]) => ({ key, value }));
 }
 
 /**
