@@ -1231,19 +1231,54 @@ func StopSession(c *gin.Context) {
 
 	// Get job name from status
 	jobName, jobExists := status["jobName"].(string)
-	if jobExists && jobName != "" {
-		// Delete the job
-		err := reqK8s.BatchV1().Jobs(project).Delete(context.TODO(), jobName, v1.DeleteOptions{})
-		if err != nil && !errors.IsNotFound(err) {
+	if !jobExists || jobName == "" {
+		// Try to derive job name if not in status
+		jobName = fmt.Sprintf("%s-job", sessionName)
+		log.Printf("Job name not in status, trying derived name: %s", jobName)
+	}
+
+	// Delete the job and its pods
+	log.Printf("Attempting to delete job %s for session %s", jobName, sessionName)
+
+	// First, explicitly delete all pods for this job (by job-name label)
+	podSelector := fmt.Sprintf("job-name=%s", jobName)
+	log.Printf("Deleting pods with job-name selector: %s", podSelector)
+	err = reqK8s.CoreV1().Pods(project).DeleteCollection(context.TODO(), v1.DeleteOptions{}, v1.ListOptions{
+		LabelSelector: podSelector,
+	})
+	if err != nil && !errors.IsNotFound(err) {
+		log.Printf("Failed to delete pods for job %s: %v (continuing anyway)", jobName, err)
+	} else {
+		log.Printf("Successfully deleted pods for job %s", jobName)
+	}
+
+	// Also delete any pods labeled with this session (in case owner refs are lost)
+	sessionPodSelector := fmt.Sprintf("agentic-session=%s", sessionName)
+	log.Printf("Deleting pods with agentic-session selector: %s", sessionPodSelector)
+	err = reqK8s.CoreV1().Pods(project).DeleteCollection(context.TODO(), v1.DeleteOptions{}, v1.ListOptions{
+		LabelSelector: sessionPodSelector,
+	})
+	if err != nil && !errors.IsNotFound(err) {
+		log.Printf("Failed to delete session pods: %v (continuing anyway)", err)
+	} else {
+		log.Printf("Successfully deleted session-labeled pods")
+	}
+
+	// Then delete the job itself with foreground propagation
+	deletePolicy := v1.DeletePropagationForeground
+	err = reqK8s.BatchV1().Jobs(project).Delete(context.TODO(), jobName, v1.DeleteOptions{
+		PropagationPolicy: &deletePolicy,
+	})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			log.Printf("Job %s not found (may have already completed or been deleted)", jobName)
+		} else {
 			log.Printf("Failed to delete job %s: %v", jobName, err)
 			// Don't fail the request if job deletion fails - continue with status update
 			log.Printf("Continuing with status update despite job deletion failure")
-		} else {
-			log.Printf("Deleted job %s for agentic session %s", jobName, sessionName)
 		}
 	} else {
-		// Handle case where job was never created or jobName is missing
-		log.Printf("No job found to delete for agentic session %s", sessionName)
+		log.Printf("Successfully deleted job %s for agentic session %s", jobName, sessionName)
 	}
 
 	// Update status to Stopped
@@ -1622,6 +1657,12 @@ func GetSessionK8sResources(c *gin.Context) {
 		}
 		result["jobStatus"] = jobStatus
 		result["jobConditions"] = job.Status.Conditions
+	} else if errors.IsNotFound(err) {
+		// Job not found - may have been deleted or not created yet
+		result["jobStatus"] = "NotFound"
+	} else {
+		// Other error
+		result["jobStatus"] = "Error"
 	}
 
 	// Get Pods for this job

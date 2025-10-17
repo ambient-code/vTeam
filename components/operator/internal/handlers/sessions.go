@@ -115,6 +115,63 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 
 	log.Printf("Processing AgenticSession %s with phase %s", name, phase)
 
+	// Handle Stopped phase - clean up running job if it exists
+	if phase == "Stopped" {
+		log.Printf("Session %s is stopped, checking for running job to clean up", name)
+		jobName := fmt.Sprintf("%s-job", name)
+
+		job, err := config.K8sClient.BatchV1().Jobs(sessionNamespace).Get(context.TODO(), jobName, v1.GetOptions{})
+		if err == nil {
+			// Job exists, check if it's still running or needs cleanup
+			if job.Status.Active > 0 || (job.Status.Succeeded == 0 && job.Status.Failed == 0) {
+				log.Printf("Job %s is still active, cleaning up job and pods", jobName)
+
+				// First, explicitly delete all pods for this job (by job-name label)
+				podSelector := fmt.Sprintf("job-name=%s", jobName)
+				log.Printf("Deleting pods with job-name selector: %s", podSelector)
+				err = config.K8sClient.CoreV1().Pods(sessionNamespace).DeleteCollection(context.TODO(), v1.DeleteOptions{}, v1.ListOptions{
+					LabelSelector: podSelector,
+				})
+				if err != nil && !errors.IsNotFound(err) {
+					log.Printf("Failed to delete pods for job %s: %v (continuing anyway)", jobName, err)
+				} else {
+					log.Printf("Successfully deleted pods for job %s", jobName)
+				}
+
+				// Also delete any pods labeled with this session (in case owner refs are lost)
+				sessionPodSelector := fmt.Sprintf("agentic-session=%s", name)
+				log.Printf("Deleting pods with agentic-session selector: %s", sessionPodSelector)
+				err = config.K8sClient.CoreV1().Pods(sessionNamespace).DeleteCollection(context.TODO(), v1.DeleteOptions{}, v1.ListOptions{
+					LabelSelector: sessionPodSelector,
+				})
+				if err != nil && !errors.IsNotFound(err) {
+					log.Printf("Failed to delete session-labeled pods: %v (continuing anyway)", err)
+				} else {
+					log.Printf("Successfully deleted session-labeled pods")
+				}
+
+				// Then delete the job itself with foreground propagation
+				deletePolicy := v1.DeletePropagationForeground
+				err = config.K8sClient.BatchV1().Jobs(sessionNamespace).Delete(context.TODO(), jobName, v1.DeleteOptions{
+					PropagationPolicy: &deletePolicy,
+				})
+				if err != nil && !errors.IsNotFound(err) {
+					log.Printf("Failed to delete job %s: %v", jobName, err)
+				} else {
+					log.Printf("Successfully deleted job %s for stopped session", jobName)
+				}
+			} else {
+				log.Printf("Job %s already completed (Succeeded: %d, Failed: %d), no cleanup needed", jobName, job.Status.Succeeded, job.Status.Failed)
+			}
+		} else if !errors.IsNotFound(err) {
+			log.Printf("Error checking job %s: %v", jobName, err)
+		} else {
+			log.Printf("Job %s not found, already cleaned up", jobName)
+		}
+
+		return nil
+	}
+
 	// Only process if status is Pending
 	if phase != "Pending" {
 		return nil
@@ -284,6 +341,8 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 				},
 				Spec: corev1.PodSpec{
 					RestartPolicy: corev1.RestartPolicyNever,
+					// Explicitly set service account for pod creation permissions
+					AutomountServiceAccountToken: boolPtr(false),
 					Volumes: []corev1.Volume{
 						{
 							Name: "workspace",
@@ -542,6 +601,9 @@ func monitorJob(jobName, sessionName, sessionNamespace string) {
 	// Main is now the content container to keep service alive
 	mainContainerName := "ambient-content"
 
+	// Track if we've verified owner references
+	ownerRefsChecked := false
+
 	for {
 		time.Sleep(5 * time.Second)
 
@@ -564,6 +626,30 @@ func monitorJob(jobName, sessionName, sessionNamespace string) {
 			}
 			log.Printf("Error getting job %s: %v", jobName, err)
 			continue
+		}
+
+		// Verify pod owner references once (diagnostic)
+		if !ownerRefsChecked && job.Status.Active > 0 {
+			pods, err := config.K8sClient.CoreV1().Pods(sessionNamespace).List(context.TODO(), v1.ListOptions{
+				LabelSelector: fmt.Sprintf("job-name=%s", jobName),
+			})
+			if err == nil && len(pods.Items) > 0 {
+				for _, pod := range pods.Items {
+					hasJobOwner := false
+					for _, ownerRef := range pod.OwnerReferences {
+						if ownerRef.Kind == "Job" && ownerRef.Name == jobName {
+							hasJobOwner = true
+							break
+						}
+					}
+					if !hasJobOwner {
+						log.Printf("WARNING: Pod %s does NOT have Job %s as owner reference! This will prevent automatic cleanup.", pod.Name, jobName)
+					} else {
+						log.Printf("✓ Pod %s has correct Job owner reference", pod.Name)
+					}
+				}
+				ownerRefsChecked = true
+			}
 		}
 
 		// If K8s already marked the Job as succeeded, mark session Completed but defer cleanup

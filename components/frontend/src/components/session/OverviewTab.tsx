@@ -77,6 +77,7 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
     if (lower.includes('succeeded') || lower.includes('completed')) return 'bg-green-100 text-green-800 border-green-300';
     if (lower.includes('failed') || lower.includes('error')) return 'bg-red-100 text-red-800 border-red-300';
     if (lower.includes('waiting') || lower.includes('pending')) return 'bg-yellow-100 text-yellow-800 border-yellow-300';
+    if (lower.includes('notfound') || lower.includes('not found')) return 'bg-orange-100 text-orange-800 border-orange-300';
     return 'bg-gray-100 text-gray-800 border-gray-300';
   };
   
@@ -237,11 +238,9 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                               <span className="font-mono text-xs">{k8sResources.jobName}</span>
                             );
                           })()}
-                          {k8sResources.jobStatus && (
-                            <Badge className={`text-xs ${getStatusColor(k8sResources.jobStatus)}`}>
-                              {k8sResources.jobStatus}
-                            </Badge>
-                          )}
+                          <Badge className={`text-xs ${getStatusColor(k8sResources.jobStatus || 'Unknown')}`}>
+                            {k8sResources.jobStatus || 'Unknown'}
+                          </Badge>
                         </div>
                         
                         {/* Pods */}
