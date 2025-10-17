@@ -232,7 +232,21 @@ func GetSessionMessagesClaudeFormat(c *gin.Context) {
 		return
 	}
 
-	claudeMessages := transformToClaudeFormat(messages)
+	log.Printf("GetSessionMessagesClaudeFormat: retrieved %d messages for session %s", len(messages), sessionID)
+
+	// Filter to only conversational messages (user and agent)
+	conversationalMessages := []SessionMessage{}
+	for _, msg := range messages {
+		if msg.Type == "user_message" || msg.Type == "agent_message" {
+			conversationalMessages = append(conversationalMessages, msg)
+		} else {
+			log.Printf("GetSessionMessagesClaudeFormat: filtering out message type=%s", msg.Type)
+		}
+	}
+
+	log.Printf("GetSessionMessagesClaudeFormat: filtered to %d conversational messages", len(conversationalMessages))
+
+	claudeMessages := transformToClaudeFormat(conversationalMessages)
 
 	c.JSON(http.StatusOK, gin.H{
 		"session_id": sessionID,
@@ -245,6 +259,8 @@ func transformToClaudeFormat(messages []SessionMessage) []map[string]interface{}
 	result := []map[string]interface{}{}
 
 	for _, msg := range messages {
+		log.Printf("transformToClaudeFormat: processing message type=%s", msg.Type)
+
 		switch msg.Type {
 		case "user_message":
 			content := extractUserContent(msg.Payload)
@@ -253,6 +269,9 @@ func transformToClaudeFormat(messages []SessionMessage) []map[string]interface{}
 					"role":    "user",
 					"content": content,
 				})
+				log.Printf("transformToClaudeFormat: added user message, content length=%d", len(content))
+			} else {
+				log.Printf("transformToClaudeFormat: skipping user_message with empty content")
 			}
 
 		case "agent_message":
@@ -263,6 +282,7 @@ func transformToClaudeFormat(messages []SessionMessage) []map[string]interface{}
 						{"type": "text", "text": text},
 					},
 				})
+				log.Printf("transformToClaudeFormat: added assistant text message")
 			} else if tool, input, id := extractToolUse(msg.Payload); tool != "" {
 				result = append(result, map[string]interface{}{
 					"role": "assistant",
@@ -270,6 +290,7 @@ func transformToClaudeFormat(messages []SessionMessage) []map[string]interface{}
 						{"type": "tool_use", "id": id, "name": tool, "input": input},
 					},
 				})
+				log.Printf("transformToClaudeFormat: added assistant tool_use message, tool=%s", tool)
 			} else if toolResult := extractToolResult(msg.Payload); toolResult != nil {
 				result = append(result, map[string]interface{}{
 					"role": "user",
@@ -277,11 +298,33 @@ func transformToClaudeFormat(messages []SessionMessage) []map[string]interface{}
 						toolResult,
 					},
 				})
+				log.Printf("transformToClaudeFormat: added tool_result message")
+			} else {
+				log.Printf("transformToClaudeFormat: skipping agent_message with no recognizable content")
 			}
+
+		default:
+			log.Printf("transformToClaudeFormat: skipping message with unknown type=%s", msg.Type)
 		}
 	}
 
-	return result
+	// Validate all messages have proper structure before returning
+	validated := []map[string]interface{}{}
+	for i, msg := range result {
+		role, hasRole := msg["role"].(string)
+		if !hasRole || (role != "user" && role != "assistant") {
+			log.Printf("transformToClaudeFormat: INVALID message at index %d - missing or invalid role: %v", i, msg)
+			continue
+		}
+		if msg["content"] == nil {
+			log.Printf("transformToClaudeFormat: INVALID message at index %d - missing content", i)
+			continue
+		}
+		validated = append(validated, msg)
+	}
+
+	log.Printf("transformToClaudeFormat: returning %d validated messages (filtered from %d)", len(validated), len(result))
+	return validated
 }
 
 func extractUserContent(payload map[string]interface{}) string {

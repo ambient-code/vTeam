@@ -355,6 +355,21 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 						},
 					},
 
+					// InitContainer to ensure workspace directory structure exists
+					InitContainers: []corev1.Container{
+						{
+							Name:  "init-workspace",
+							Image: "registry.access.redhat.com/ubi8/ubi-minimal:latest",
+							Command: []string{
+								"sh", "-c",
+								fmt.Sprintf("mkdir -p /workspace/sessions/%s/workspace && chmod 777 /workspace/sessions/%s/workspace && echo 'Workspace initialized'", name, name),
+							},
+							VolumeMounts: []corev1.VolumeMount{
+								{Name: "workspace", MountPath: "/workspace"},
+							},
+						},
+					},
+
 					// Flip roles so the content writer is the main container that keeps the pod alive
 					Containers: []corev1.Container{
 						{

@@ -1196,22 +1196,34 @@ func StartSession(c *gin.Context) {
 		}
 	}
 
-	// Set parent session annotation for continuation (reference itself)
-	// This tells the runner to fetch message history from this session
-	annotations := item.GetAnnotations()
-	if annotations == nil {
-		annotations = make(map[string]string)
+	// Check if this is a continuation (has completion time from previous run)
+	isActualContinuation := false
+	if currentStatus, ok := item.Object["status"].(map[string]interface{}); ok {
+		if _, hasCompletionTime := currentStatus["completionTime"]; hasCompletionTime {
+			isActualContinuation = true
+		}
 	}
-	annotations["vteam.ambient-code/parent-session-id"] = sessionName
-	item.SetAnnotations(annotations)
-	log.Printf("StartSession: Set parent-session-id annotation to %s for continuation", sessionName)
 
-	// Update the metadata first and get the updated object
-	item, err = reqDyn.Resource(gvr).Namespace(project).Update(context.TODO(), item, v1.UpdateOptions{})
-	if err != nil {
-		log.Printf("Failed to update agentic session metadata %s in project %s: %v", sessionName, project, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update session metadata"})
-		return
+	// Only set parent session annotation if this is an actual continuation
+	// Don't set it on first start, even though StartSession can be called for initial creation
+	if isActualContinuation {
+		annotations := item.GetAnnotations()
+		if annotations == nil {
+			annotations = make(map[string]string)
+		}
+		annotations["vteam.ambient-code/parent-session-id"] = sessionName
+		item.SetAnnotations(annotations)
+		log.Printf("StartSession: Set parent-session-id annotation to %s for continuation (has completion time)", sessionName)
+
+		// Update the metadata to persist the annotation
+		item, err = reqDyn.Resource(gvr).Namespace(project).Update(context.TODO(), item, v1.UpdateOptions{})
+		if err != nil {
+			log.Printf("Failed to update agentic session metadata %s in project %s: %v", sessionName, project, err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update session metadata"})
+			return
+		}
+	} else {
+		log.Printf("StartSession: Not setting parent-session-id (first run, no completion time)")
 	}
 
 	// Now update status to trigger start (using the fresh object from Update)
@@ -1698,13 +1710,14 @@ func GetSessionK8sResources(c *gin.Context) {
 		jobName = fmt.Sprintf("%s-job", sessionName)
 	}
 
-	result := map[string]interface{}{
-		"jobName": jobName,
-	}
+	result := map[string]interface{}{}
 
 	// Get Job status
 	job, err := reqK8s.BatchV1().Jobs(project).Get(c.Request.Context(), jobName, v1.GetOptions{})
-	if err == nil {
+	jobExists := err == nil
+
+	if jobExists {
+		result["jobName"] = jobName
 		jobStatus := "Unknown"
 		if job.Status.Active > 0 {
 			jobStatus = "Active"
@@ -1716,47 +1729,62 @@ func GetSessionK8sResources(c *gin.Context) {
 		result["jobStatus"] = jobStatus
 		result["jobConditions"] = job.Status.Conditions
 	} else if errors.IsNotFound(err) {
-		// Job not found - may have been deleted or not created yet
-		result["jobStatus"] = "NotFound"
+		// Job not found - don't return job info at all
+		log.Printf("GetSessionK8sResources: Job %s not found, omitting from response", jobName)
+		// Don't include jobName or jobStatus in result
 	} else {
-		// Other error
+		// Other error - still show job name but with error status
+		result["jobName"] = jobName
 		result["jobStatus"] = "Error"
+		log.Printf("GetSessionK8sResources: Error getting job %s: %v", jobName, err)
 	}
 
-	// Get Pods for this job
-	pods, err := reqK8s.CoreV1().Pods(project).List(c.Request.Context(), v1.ListOptions{
-		LabelSelector: fmt.Sprintf("job-name=%s", jobName),
-	})
+	// Get Pods for this job (only if job exists)
 	podInfos := []map[string]interface{}{}
-	if err == nil {
-		for _, pod := range pods.Items {
-			containerInfos := []map[string]interface{}{}
-			for _, cs := range pod.Status.ContainerStatuses {
-				state := "Unknown"
-				var exitCode *int32
-				var reason string
-				if cs.State.Running != nil {
-					state = "Running"
-				} else if cs.State.Terminated != nil {
-					state = "Terminated"
-					exitCode = &cs.State.Terminated.ExitCode
-					reason = cs.State.Terminated.Reason
-				} else if cs.State.Waiting != nil {
-					state = "Waiting"
-					reason = cs.State.Waiting.Reason
+	if jobExists {
+		pods, err := reqK8s.CoreV1().Pods(project).List(c.Request.Context(), v1.ListOptions{
+			LabelSelector: fmt.Sprintf("job-name=%s", jobName),
+		})
+		if err == nil {
+			for _, pod := range pods.Items {
+				// Check if pod is terminating (has DeletionTimestamp)
+				podPhase := string(pod.Status.Phase)
+				if pod.DeletionTimestamp != nil {
+					podPhase = "Terminating"
 				}
-				containerInfos = append(containerInfos, map[string]interface{}{
-					"name":     cs.Name,
-					"state":    state,
-					"exitCode": exitCode,
-					"reason":   reason,
+
+				containerInfos := []map[string]interface{}{}
+				for _, cs := range pod.Status.ContainerStatuses {
+					state := "Unknown"
+					var exitCode *int32
+					var reason string
+					if cs.State.Running != nil {
+						state = "Running"
+						// If pod is terminating but container still shows running, mark it as terminating
+						if pod.DeletionTimestamp != nil {
+							state = "Terminating"
+						}
+					} else if cs.State.Terminated != nil {
+						state = "Terminated"
+						exitCode = &cs.State.Terminated.ExitCode
+						reason = cs.State.Terminated.Reason
+					} else if cs.State.Waiting != nil {
+						state = "Waiting"
+						reason = cs.State.Waiting.Reason
+					}
+					containerInfos = append(containerInfos, map[string]interface{}{
+						"name":     cs.Name,
+						"state":    state,
+						"exitCode": exitCode,
+						"reason":   reason,
+					})
+				}
+				podInfos = append(podInfos, map[string]interface{}{
+					"name":       pod.Name,
+					"phase":      podPhase,
+					"containers": containerInfos,
 				})
 			}
-			podInfos = append(podInfos, map[string]interface{}{
-				"name":       pod.Name,
-				"phase":      string(pod.Status.Phase),
-				"containers": containerInfos,
-			})
 		}
 	}
 
@@ -1764,6 +1792,11 @@ func GetSessionK8sResources(c *gin.Context) {
 	tempPodName := fmt.Sprintf("temp-content-%s", sessionName)
 	tempPod, err := reqK8s.CoreV1().Pods(project).Get(c.Request.Context(), tempPodName, v1.GetOptions{})
 	if err == nil {
+		tempPodPhase := string(tempPod.Status.Phase)
+		if tempPod.DeletionTimestamp != nil {
+			tempPodPhase = "Terminating"
+		}
+
 		containerInfos := []map[string]interface{}{}
 		for _, cs := range tempPod.Status.ContainerStatuses {
 			state := "Unknown"
@@ -1771,6 +1804,10 @@ func GetSessionK8sResources(c *gin.Context) {
 			var reason string
 			if cs.State.Running != nil {
 				state = "Running"
+				// If pod is terminating but container still shows running, mark as terminating
+				if tempPod.DeletionTimestamp != nil {
+					state = "Terminating"
+				}
 			} else if cs.State.Terminated != nil {
 				state = "Terminated"
 				exitCode = &cs.State.Terminated.ExitCode
@@ -1788,7 +1825,7 @@ func GetSessionK8sResources(c *gin.Context) {
 		}
 		podInfos = append(podInfos, map[string]interface{}{
 			"name":       tempPod.Name,
-			"phase":      string(tempPod.Status.Phase),
+			"phase":      tempPodPhase,
 			"containers": containerInfos,
 			"isTempPod":  true,
 		})
@@ -1945,6 +1982,15 @@ func ListSessionWorkspace(c *gin.Context) {
 	}
 	defer resp.Body.Close()
 	b, _ := io.ReadAll(resp.Body)
+
+	// If content service returns 404, check if it's because workspace doesn't exist yet
+	if resp.StatusCode == http.StatusNotFound {
+		log.Printf("ListSessionWorkspace: workspace not found (may not be created yet by runner)")
+		// Return empty list instead of error for better UX during session startup
+		c.JSON(http.StatusOK, gin.H{"items": []any{}})
+		return
+	}
+
 	c.Data(resp.StatusCode, resp.Header.Get("Content-Type"), b)
 }
 
