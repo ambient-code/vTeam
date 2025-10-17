@@ -360,6 +360,11 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 									{Name: "WEBSOCKET_URL", Value: fmt.Sprintf("ws://backend-service.%s.svc.cluster.local:8080/api/projects/%s/sessions/%s/ws", appConfig.BackendNamespace, sessionNamespace, name)},
 									// S3 disabled; backend persists messages
 								}
+								// Add PARENT_SESSION_ID if this is a continuation
+								if parentSessionID != "" {
+									base = append(base, corev1.EnvVar{Name: "PARENT_SESSION_ID", Value: parentSessionID})
+									log.Printf("Session %s: passing PARENT_SESSION_ID=%s to runner", name, parentSessionID)
+								}
 								// If backend annotated the session with a runner token secret, inject only BOT_TOKEN
 								// Secret contains: 'k8s-token' (for CR updates)
 								// Prefer annotated secret name; fallback to deterministic name

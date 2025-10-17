@@ -1138,7 +1138,25 @@ func StartSession(c *gin.Context) {
 		}
 	}
 
-	// Update status to trigger start
+	// Set parent session annotation for continuation (reference itself)
+	// This tells the runner to fetch message history from this session
+	annotations := item.GetAnnotations()
+	if annotations == nil {
+		annotations = make(map[string]string)
+	}
+	annotations["vteam.ambient-code/parent-session-id"] = sessionName
+	item.SetAnnotations(annotations)
+	log.Printf("StartSession: Set parent-session-id annotation to %s for continuation", sessionName)
+
+	// Update the metadata first
+	_, err = reqDyn.Resource(gvr).Namespace(project).Update(context.TODO(), item, v1.UpdateOptions{})
+	if err != nil {
+		log.Printf("Failed to update agentic session metadata %s in project %s: %v", sessionName, project, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update session metadata"})
+		return
+	}
+
+	// Now update status to trigger start
 	if item.Object["status"] == nil {
 		item.Object["status"] = make(map[string]interface{})
 	}
@@ -1146,7 +1164,7 @@ func StartSession(c *gin.Context) {
 	status := item.Object["status"].(map[string]interface{})
 	// Set to Pending so operator will process it (operator only acts on Pending phase)
 	status["phase"] = "Pending"
-	status["message"] = "Session start requested"
+	status["message"] = "Session restart requested"
 	// Clear completion time from previous run
 	delete(status, "completionTime")
 	// Update start time for this run

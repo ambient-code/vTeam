@@ -318,24 +318,36 @@ class ClaudeCodeAdapter:
                     await process_response_stream(client)
 
                 # If continuing, replay message history first
+                logging.info(f"Checking continuation: is_continuation={is_continuation}, parent_session_id={parent_session_id[:8] if parent_session_id else 'None'}")
                 if is_continuation and parent_session_id:
-                    await self._send_log(f"Continuing from session {parent_session_id[:8]}...")
+                    await self._send_log(f"🔄 Continuing from session {parent_session_id[:8]}...")
+                    logging.info(f"Fetching message history for parent session: {parent_session_id}")
                     try:
                         message_history = await self._fetch_session_history(parent_session_id)
                         if message_history and len(message_history) > 0:
-                            await self._send_log(f"Restoring {len(message_history)} messages...")
+                            await self._send_log(f"📚 Restoring {len(message_history)} messages...")
+                            logging.info(f"Seeding Claude client with {len(message_history)} historical messages")
                             
                             async def message_stream():
-                                for msg in message_history:
+                                for idx, msg in enumerate(message_history):
+                                    logging.debug(f"Seeding message {idx + 1}/{len(message_history)}: {msg.get('role', 'unknown')}")
                                     yield msg
                             
                             await client.connect(message_stream())
-                            await self._send_log("✓ Session context restored")
+                            await self._send_log("✅ Session context restored successfully")
+                            logging.info("Session history seeded successfully into Claude client")
                         else:
-                            await self._send_log("⚠ No history found, starting fresh")
+                            await self._send_log("⚠️ No history found, starting fresh session")
+                            logging.warning(f"No message history returned for parent session {parent_session_id}")
                     except Exception as e:
-                        logging.warning(f"Failed to restore session history: {e}")
-                        await self._send_log(f"⚠ Could not restore history: {e}")
+                        logging.error(f"Failed to restore session history: {e}", exc_info=True)
+                        await self._send_log(f"⚠️ Could not restore history: {e}")
+                else:
+                    if parent_session_id and not is_continuation:
+                        logging.warning(f"PARENT_SESSION_ID set ({parent_session_id[:8]}) but continuation flag is false")
+                    elif is_continuation and not parent_session_id:
+                        logging.warning("Continuation flag is true but PARENT_SESSION_ID not set")
+                    logging.info("Starting new session (not a continuation)")
 
                 # Initial prompt (if any)
                 if prompt and prompt.strip():
@@ -394,8 +406,11 @@ class ClaudeCodeAdapter:
         # Check if reusing workspace from previous session
         parent_session_id = self.context.get_env('PARENT_SESSION_ID', '').strip()
         reusing_workspace = bool(parent_session_id)
+        
+        logging.info(f"Workspace preparation: parent_session_id={parent_session_id[:8] if parent_session_id else 'None'}, reusing={reusing_workspace}")
         if reusing_workspace:
-            await self._send_log(f"Reusing workspace from session {parent_session_id[:8]}")
+            await self._send_log(f"♻️ Reusing workspace from session {parent_session_id[:8]}")
+            logging.info("Preserving existing workspace state for continuation")
 
         repos_cfg = self._get_repos_config()
         if repos_cfg:
@@ -410,22 +425,32 @@ class ClaudeCodeAdapter:
                         continue
                     repo_dir = workspace / name
                     
-                    if not repo_dir.exists():
-                        await self._send_log(f"Cloning {name}...")
+                    # Check if repo already exists
+                    repo_exists = repo_dir.exists() and (repo_dir / ".git").exists()
+                    
+                    if not repo_exists:
+                        # Clone fresh copy
+                        await self._send_log(f"📥 Cloning {name}...")
+                        logging.info(f"Cloning {name} from {url} (branch: {branch})")
                         clone_url = self._url_with_token(url, token) if token else url
                         await self._run_cmd(["git", "clone", "--branch", branch, "--single-branch", clone_url, str(repo_dir)], cwd=str(workspace))
-                    elif reusing_workspace and (repo_dir / ".git").exists():
+                        logging.info(f"Successfully cloned {name}")
+                    elif reusing_workspace:
                         # Reusing workspace - preserve local changes from previous session
-                        await self._send_log(f"Preserving workspace state for {name}")
+                        await self._send_log(f"✓ Preserving {name} (continuation)")
+                        logging.info(f"Repo {name} exists and reusing workspace - preserving all local changes")
+                        # Update remote URL in case credentials changed
                         await self._run_cmd(["git", "remote", "set-url", "origin", self._url_with_token(url, token) if token else url], cwd=str(repo_dir), ignore_errors=True)
-                        # Don't reset - keep all changes!
+                        # Don't fetch, don't reset - keep all changes!
                     else:
-                        # Repo exists but not reusing - reset to clean state
-                        await self._send_log(f"Resetting {name} to clean state")
+                        # Repo exists but NOT reusing - reset to clean state
+                        await self._send_log(f"🔄 Resetting {name} to clean state")
+                        logging.info(f"Repo {name} exists but not reusing - resetting to clean state")
                         await self._run_cmd(["git", "remote", "set-url", "origin", self._url_with_token(url, token) if token else url], cwd=str(repo_dir), ignore_errors=True)
                         await self._run_cmd(["git", "fetch", "origin", branch], cwd=str(repo_dir))
                         await self._run_cmd(["git", "checkout", branch], cwd=str(repo_dir))
                         await self._run_cmd(["git", "reset", "--hard", f"origin/{branch}"], cwd=str(repo_dir))
+                        logging.info(f"Reset {name} to origin/{branch}")
 
                     # Git identity with fallbacks
                     user_name = os.getenv("GIT_USER_NAME", "").strip() or "Ambient Code Bot"
@@ -449,26 +474,37 @@ class ClaudeCodeAdapter:
         # Single-repo legacy flow
         input_repo = os.getenv("INPUT_REPO_URL", "").strip()
         if not input_repo:
+            logging.info("No INPUT_REPO_URL configured, skipping single-repo setup")
             return
         input_branch = os.getenv("INPUT_BRANCH", "").strip() or "main"
         output_repo = os.getenv("OUTPUT_REPO_URL", "").strip()
+        
+        workspace_has_git = (workspace / ".git").exists()
+        logging.info(f"Single-repo setup: workspace_has_git={workspace_has_git}, reusing={reusing_workspace}")
+        
         try:
-            if not (workspace / ".git").exists():
-                await self._send_log("Cloning input repository...")
+            if not workspace_has_git:
+                # Clone fresh copy
+                await self._send_log("📥 Cloning input repository...")
+                logging.info(f"Cloning from {input_repo} (branch: {input_branch})")
                 clone_url = self._url_with_token(input_repo, token) if token else input_repo
                 await self._run_cmd(["git", "clone", "--branch", input_branch, "--single-branch", clone_url, str(workspace)], cwd=str(workspace.parent))
+                logging.info("Successfully cloned repository")
             elif reusing_workspace:
                 # Reusing workspace - preserve local changes from previous session
-                await self._send_log("Preserving workspace state from previous session")
+                await self._send_log("✓ Preserving workspace (continuation)")
+                logging.info("Workspace exists and reusing - preserving all local changes")
                 await self._run_cmd(["git", "remote", "set-url", "origin", self._url_with_token(input_repo, token) if token else input_repo], cwd=str(workspace), ignore_errors=True)
-                # Don't reset - keep all changes!
+                # Don't fetch, don't reset - keep all changes!
             else:
                 # Reset to clean state
-                await self._send_log("Resetting workspace to clean state")
+                await self._send_log("🔄 Resetting workspace to clean state")
+                logging.info("Workspace exists but not reusing - resetting to clean state")
                 await self._run_cmd(["git", "remote", "set-url", "origin", self._url_with_token(input_repo, token) if token else input_repo], cwd=str(workspace))
                 await self._run_cmd(["git", "fetch", "origin", input_branch], cwd=str(workspace))
                 await self._run_cmd(["git", "checkout", input_branch], cwd=str(workspace))
                 await self._run_cmd(["git", "reset", "--hard", f"origin/{input_branch}"], cwd=str(workspace))
+                logging.info(f"Reset workspace to origin/{input_branch}")
 
             # Git identity with fallbacks
             user_name = os.getenv("GIT_USER_NAME", "").strip() or "Ambient Code Bot"
