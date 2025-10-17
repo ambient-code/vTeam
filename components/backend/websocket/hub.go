@@ -108,7 +108,11 @@ func (h *SessionWebSocketHub) run() {
 					err := sessionConn.Conn.WriteMessage(websocket.TextMessage, messageData)
 					sessionConn.writeMu.Unlock()
 					if err != nil {
-						h.unregister <- sessionConn
+						// Unregister in goroutine to avoid deadlock - hub select loop
+						// can only process one case at a time, so blocking send would hang
+						go func(conn *SessionConnection) {
+							h.unregister <- conn
+						}(sessionConn)
 					}
 				}
 			}
