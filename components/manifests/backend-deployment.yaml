@@ -32,6 +32,10 @@ spec:
           value: "8080"
         - name: STATE_BASE_DIR
           value: "/workspace"
+        - name: CONTENT_SERVICE_IMAGE
+          value: "quay.io/ambient_code/vteam_backend:latest"
+        - name: IMAGE_PULL_POLICY
+          value: "Always"
         # GitHub App authentication (optional - use this OR git-secret)
         - name: GITHUB_APP_ID
           valueFrom:

@@ -217,3 +217,177 @@ func PostSessionMessageWS(c *gin.Context) {
 
 	c.JSON(http.StatusAccepted, gin.H{"status": "queued"})
 }
+
+// GetSessionMessagesClaudeFormat handles GET /projects/:projectName/sessions/:sessionId/messages/claude-format
+// Transforms stored messages into Claude SDK format for session continuation
+func GetSessionMessagesClaudeFormat(c *gin.Context) {
+	sessionID := c.Param("sessionId")
+
+	messages, err := retrieveMessagesFromS3(sessionID)
+	if err != nil {
+		log.Printf("GetSessionMessagesClaudeFormat: retrieve failed: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": fmt.Sprintf("failed to retrieve messages: %v", err),
+		})
+		return
+	}
+
+	log.Printf("GetSessionMessagesClaudeFormat: retrieved %d messages for session %s", len(messages), sessionID)
+
+	// Filter to only conversational messages (user and agent)
+	// Exclude: system_message, waiting_for_input, agent_running, result_message, etc.
+	conversationalMessages := []SessionMessage{}
+	for _, msg := range messages {
+		msgType := strings.ToLower(strings.TrimSpace(msg.Type))
+		// Only include actual conversation messages
+		if msgType == "user_message" || msgType == "agent_message" {
+			// Additional validation - ensure payload is not empty
+			if msg.Payload == nil || len(msg.Payload) == 0 {
+				log.Printf("GetSessionMessagesClaudeFormat: filtering out %s with empty payload", msg.Type)
+				continue
+			}
+			conversationalMessages = append(conversationalMessages, msg)
+		} else {
+			log.Printf("GetSessionMessagesClaudeFormat: filtering out non-conversational message type=%s", msg.Type)
+		}
+	}
+
+	log.Printf("GetSessionMessagesClaudeFormat: filtered to %d conversational messages", len(conversationalMessages))
+
+	claudeMessages := transformToClaudeFormat(conversationalMessages)
+
+	c.JSON(http.StatusOK, gin.H{
+		"session_id": sessionID,
+		"messages":   claudeMessages,
+	})
+}
+
+// transformToClaudeFormat converts SessionMessage to Claude SDK message format
+func transformToClaudeFormat(messages []SessionMessage) []map[string]interface{} {
+	result := []map[string]interface{}{}
+
+	for _, msg := range messages {
+		log.Printf("transformToClaudeFormat: processing message type=%s", msg.Type)
+
+		switch msg.Type {
+		case "user_message":
+			content := extractUserContent(msg.Payload)
+			if content != "" {
+				result = append(result, map[string]interface{}{
+					"role":    "user",
+					"content": content,
+				})
+				log.Printf("transformToClaudeFormat: added user message, content length=%d", len(content))
+			} else {
+				log.Printf("transformToClaudeFormat: skipping user_message with empty content")
+			}
+
+		case "agent_message":
+			if text := extractTextBlock(msg.Payload); text != "" {
+				result = append(result, map[string]interface{}{
+					"role": "assistant",
+					"content": []map[string]interface{}{
+						{"type": "text", "text": text},
+					},
+				})
+				log.Printf("transformToClaudeFormat: added assistant text message")
+			} else if tool, input, id := extractToolUse(msg.Payload); tool != "" {
+				result = append(result, map[string]interface{}{
+					"role": "assistant",
+					"content": []map[string]interface{}{
+						{"type": "tool_use", "id": id, "name": tool, "input": input},
+					},
+				})
+				log.Printf("transformToClaudeFormat: added assistant tool_use message, tool=%s", tool)
+			} else if toolResult := extractToolResult(msg.Payload); toolResult != nil {
+				result = append(result, map[string]interface{}{
+					"role": "user",
+					"content": []map[string]interface{}{
+						toolResult,
+					},
+				})
+				log.Printf("transformToClaudeFormat: added tool_result message")
+			} else {
+				log.Printf("transformToClaudeFormat: skipping agent_message with no recognizable content")
+			}
+
+		default:
+			log.Printf("transformToClaudeFormat: skipping message with unknown type=%s", msg.Type)
+		}
+	}
+
+	// Validate all messages have proper structure before returning
+	validated := []map[string]interface{}{}
+	for i, msg := range result {
+		role, hasRole := msg["role"].(string)
+		if !hasRole || (role != "user" && role != "assistant") {
+			log.Printf("transformToClaudeFormat: INVALID message at index %d - missing or invalid role: %v", i, msg)
+			continue
+		}
+		if msg["content"] == nil {
+			log.Printf("transformToClaudeFormat: INVALID message at index %d - missing content", i)
+			continue
+		}
+		validated = append(validated, msg)
+	}
+
+	log.Printf("transformToClaudeFormat: returning %d validated messages (filtered from %d)", len(validated), len(result))
+	return validated
+}
+
+func extractUserContent(payload map[string]interface{}) string {
+	if content, ok := payload["content"].(string); ok {
+		return content
+	}
+	if text, ok := payload["text"].(string); ok {
+		return text
+	}
+	return ""
+}
+
+func extractTextBlock(payload map[string]interface{}) string {
+	if content, ok := payload["content"].(map[string]interface{}); ok {
+		if text, ok := content["text"].(string); ok {
+			return text
+		}
+	}
+	if text, ok := payload["text"].(string); ok {
+		return text
+	}
+	if msgType, ok := payload["type"].(string); ok && msgType == "text_block" {
+		if text, ok := payload["text"].(string); ok {
+			return text
+		}
+	}
+	return ""
+}
+
+func extractToolUse(payload map[string]interface{}) (tool string, input map[string]interface{}, id string) {
+	toolName, hasTool := payload["tool"].(string)
+	toolInput, hasInput := payload["input"].(map[string]interface{})
+	toolID, _ := payload["id"].(string)
+
+	if hasTool && hasInput {
+		return toolName, toolInput, toolID
+	}
+	return "", nil, ""
+}
+
+func extractToolResult(payload map[string]interface{}) map[string]interface{} {
+	if toolResult, ok := payload["tool_result"].(map[string]interface{}); ok {
+		result := map[string]interface{}{
+			"type": "tool_result",
+		}
+		if toolUseID, ok := toolResult["tool_use_id"].(string); ok {
+			result["tool_use_id"] = toolUseID
+		}
+		if content := toolResult["content"]; content != nil {
+			result["content"] = content
+		}
+		if isError, ok := toolResult["is_error"].(bool); ok {
+			result["is_error"] = isError
+		}
+		return result
+	}
+	return nil
+}

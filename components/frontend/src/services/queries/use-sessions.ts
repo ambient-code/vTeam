@@ -59,13 +59,21 @@ export function useSession(projectName: string, sessionName: string) {
 /**
  * Hook to fetch session messages
  */
-export function useSessionMessages(projectName: string, sessionName: string) {
+export function useSessionMessages(projectName: string, sessionName: string, sessionPhase?: string) {
   return useQuery({
     queryKey: sessionKeys.messages(projectName, sessionName),
     queryFn: () => sessionsApi.getSessionMessages(projectName, sessionName),
     enabled: !!projectName && !!sessionName,
     // Messages are typically handled via WebSocket, so longer stale time
-    staleTime: 30 * 1000, // 30 seconds
+    staleTime: 5 * 1000, // 5 seconds
+    // Poll for message updates on running sessions
+    refetchInterval: () => {
+      const isRunning =
+        sessionPhase === 'Running' ||
+        sessionPhase === 'Creating' ||
+        sessionPhase === 'Pending';
+      return isRunning ? 5000 : false; // Poll every 5 seconds if running
+    },
   });
 }
 
@@ -84,9 +92,10 @@ export function useCreateSession() {
       data: CreateAgenticSessionRequest;
     }) => sessionsApi.createSession(projectName, data),
     onSuccess: (_session, { projectName }) => {
-      // Invalidate sessions list to refetch
+      // Invalidate and refetch sessions list
       queryClient.invalidateQueries({
         queryKey: sessionKeys.list(projectName),
+        refetchType: 'all', // Refetch both active and inactive queries
       });
     },
   });
@@ -112,10 +121,12 @@ export function useStopSession() {
       // Invalidate session details to refetch status
       queryClient.invalidateQueries({
         queryKey: sessionKeys.detail(projectName, sessionName),
+        refetchType: 'all',
       });
       // Invalidate list to update session count
       queryClient.invalidateQueries({
         queryKey: sessionKeys.list(projectName),
+        refetchType: 'all',
       });
     },
   });
@@ -139,10 +150,12 @@ export function useStartSession() {
       // Invalidate session details to refetch status
       queryClient.invalidateQueries({
         queryKey: sessionKeys.detail(projectName, sessionName),
+        refetchType: 'all',
       });
       // Invalidate list to update session count
       queryClient.invalidateQueries({
         queryKey: sessionKeys.list(projectName),
+        refetchType: 'all',
       });
     },
   });
@@ -165,9 +178,10 @@ export function useCloneSession() {
       data: CloneAgenticSessionRequest;
     }) => sessionsApi.cloneSession(projectName, sessionName, data),
     onSuccess: (_session, { projectName }) => {
-      // Invalidate sessions list to show new cloned session
+      // Invalidate and refetch sessions list to show new cloned session
       queryClient.invalidateQueries({
         queryKey: sessionKeys.list(projectName),
+        refetchType: 'all', // Refetch both active and inactive queries
       });
     },
   });
@@ -195,6 +209,7 @@ export function useDeleteSession() {
       // Invalidate list
       queryClient.invalidateQueries({
         queryKey: sessionKeys.list(projectName),
+        refetchType: 'all',
       });
     },
   });
@@ -253,6 +268,50 @@ export function useSendControlMessage() {
       // Invalidate session to update status
       queryClient.invalidateQueries({
         queryKey: sessionKeys.detail(projectName, sessionName),
+      });
+    },
+  });
+}
+
+/**
+ * Hook to fetch K8s resources (job, pods, PVC) for a session
+ */
+export function useSessionK8sResources(projectName: string, sessionName: string) {
+  return useQuery({
+    queryKey: [...sessionKeys.detail(projectName, sessionName), 'k8s-resources'] as const,
+    queryFn: () => sessionsApi.getSessionK8sResources(projectName, sessionName),
+    enabled: !!projectName && !!sessionName,
+    refetchInterval: 5000, // Poll every 5 seconds
+  });
+}
+
+/**
+ * Hook to continue a session (restarts the existing session)
+ */
+export function useContinueSession() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      projectName,
+      parentSessionName,
+    }: {
+      projectName: string;
+      parentSessionName: string;
+    }) => {
+      // Restart the existing session by updating its status to Creating
+      return sessionsApi.startSession(projectName, parentSessionName);
+    },
+    onSuccess: (_response, { projectName, parentSessionName }) => {
+      // Invalidate session details to refetch status
+      queryClient.invalidateQueries({
+        queryKey: sessionKeys.detail(projectName, parentSessionName),
+        refetchType: 'all',
+      });
+      // Invalidate list to update session count
+      queryClient.invalidateQueries({
+        queryKey: sessionKeys.list(projectName),
+        refetchType: 'all',
       });
     },
   });
