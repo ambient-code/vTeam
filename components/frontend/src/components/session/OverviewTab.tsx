@@ -41,9 +41,35 @@ type Props = {
   };
 };
 
+// Utility to generate OpenShift console URLs
+const getOpenShiftConsoleUrl = (namespace: string, resourceType: 'Job' | 'Pod' | 'PVC', resourceName: string): string | null => {
+  // Try to derive console URL from current window location
+  // OpenShift console is typically at console-openshift-console.apps.<cluster-domain>
+  const hostname = window.location.hostname;
+  
+  // Check if we're on an OpenShift route (apps.*)
+  if (hostname.includes('.apps.')) {
+    const clusterDomain = hostname.split('.apps.')[1];
+    const consoleUrl = `https://console-openshift-console.apps.${clusterDomain}`;
+    
+    const resourceMap = {
+      'Job': 'batch~v1~Job',
+      'Pod': 'core~v1~Pod',
+      'PVC': 'core~v1~PersistentVolumeClaim',
+    };
+    
+    return `${consoleUrl}/k8s/ns/${namespace}/${resourceMap[resourceType]}/${resourceName}`;
+  }
+  
+  // Fallback: For local development or non-standard setups, return null
+  return null;
+};
+
 export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromptExpanded, latestLiveMessage, diffTotals, onPush, onAbandon, busyRepo, buildGithubCompareUrl, onRefreshDiff, k8sResources }) => {
   const [refreshingDiff, setRefreshingDiff] = React.useState(false);
   const [expandedPods, setExpandedPods] = React.useState<Record<string, boolean>>({});
+  
+  const projectNamespace = session.metadata?.namespace || '';
   
   const getStatusColor = (status: string) => {
     const lower = status.toLowerCase();
@@ -195,7 +221,22 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                             <Box className="w-3 h-3 mr-1" />
                             Job
                           </Badge>
-                          <span className="font-mono text-xs">{k8sResources.jobName}</span>
+                          {(() => {
+                            const consoleUrl = getOpenShiftConsoleUrl(projectNamespace, 'Job', k8sResources.jobName);
+                            return consoleUrl ? (
+                              <a
+                                href={consoleUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="font-mono text-xs text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1"
+                              >
+                                {k8sResources.jobName}
+                                <ExternalLink className="w-3 h-3" />
+                              </a>
+                            ) : (
+                              <span className="font-mono text-xs">{k8sResources.jobName}</span>
+                            );
+                          })()}
                           {k8sResources.jobStatus && (
                             <Badge className={`text-xs ${getStatusColor(k8sResources.jobStatus)}`}>
                               {k8sResources.jobStatus}
@@ -223,9 +264,25 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                                     <Container className="w-3 h-3 mr-1" />
                                     Pod
                                   </Badge>
-                                  <span className="font-mono text-xs truncate max-w-[200px]" title={pod.name}>
-                                    {pod.name}
-                                  </span>
+                                  {(() => {
+                                    const consoleUrl = getOpenShiftConsoleUrl(projectNamespace, 'Pod', pod.name);
+                                    return consoleUrl ? (
+                                      <a
+                                        href={consoleUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="font-mono text-xs text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1 truncate max-w-[200px]"
+                                        title={pod.name}
+                                      >
+                                        {pod.name}
+                                        <ExternalLink className="w-3 h-3 flex-shrink-0" />
+                                      </a>
+                                    ) : (
+                                      <span className="font-mono text-xs truncate max-w-[200px]" title={pod.name}>
+                                        {pod.name}
+                                      </span>
+                                    );
+                                  })()}
                                   <Badge className={`text-xs ${getStatusColor(pod.phase)}`}>
                                     {pod.phase}
                                   </Badge>
@@ -269,7 +326,22 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                               <HardDrive className="w-3 h-3 mr-1" />
                               PVC
                             </Badge>
-                            <span className="font-mono text-xs">{k8sResources.pvcName}</span>
+                            {(() => {
+                              const consoleUrl = getOpenShiftConsoleUrl(projectNamespace, 'PVC', k8sResources.pvcName);
+                              return consoleUrl ? (
+                                <a
+                                  href={consoleUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="font-mono text-xs text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1"
+                                >
+                                  {k8sResources.pvcName}
+                                  <ExternalLink className="w-3 h-3" />
+                                </a>
+                              ) : (
+                                <span className="font-mono text-xs">{k8sResources.pvcName}</span>
+                              );
+                            })()}
                             <Badge className={`text-xs ${k8sResources.pvcExists ? 'bg-green-100 text-green-800 border-green-300' : 'bg-red-100 text-red-800 border-red-300'}`}>
                               {k8sResources.pvcExists ? 'Exists' : 'Not Found'}
                             </Badge>
