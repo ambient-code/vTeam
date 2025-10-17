@@ -1107,6 +1107,58 @@ func CloneSession(c *gin.Context) {
 	c.JSON(http.StatusCreated, session)
 }
 
+// ensureRunnerRolePermissions updates the runner role to ensure it has all required permissions
+// This is useful for existing sessions that were created before we added new permissions
+func ensureRunnerRolePermissions(c *gin.Context, reqK8s *kubernetes.Clientset, project string, sessionName string) error {
+	roleName := fmt.Sprintf("ambient-session-%s-role", sessionName)
+
+	// Get existing role
+	existingRole, err := reqK8s.RbacV1().Roles(project).Get(c.Request.Context(), roleName, v1.GetOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			log.Printf("Role %s not found for session %s - will be created by operator", roleName, sessionName)
+			return nil
+		}
+		return fmt.Errorf("get role: %w", err)
+	}
+
+	// Check if role has selfsubjectaccessreviews permission
+	hasSelfSubjectAccessReview := false
+	for _, rule := range existingRole.Rules {
+		for _, apiGroup := range rule.APIGroups {
+			if apiGroup == "authorization.k8s.io" {
+				for _, resource := range rule.Resources {
+					if resource == "selfsubjectaccessreviews" {
+						hasSelfSubjectAccessReview = true
+						break
+					}
+				}
+			}
+		}
+	}
+
+	if hasSelfSubjectAccessReview {
+		log.Printf("Role %s already has selfsubjectaccessreviews permission", roleName)
+		return nil
+	}
+
+	// Add missing permission
+	log.Printf("Updating role %s to add selfsubjectaccessreviews permission", roleName)
+	existingRole.Rules = append(existingRole.Rules, rbacv1.PolicyRule{
+		APIGroups: []string{"authorization.k8s.io"},
+		Resources: []string{"selfsubjectaccessreviews"},
+		Verbs:     []string{"create"},
+	})
+
+	_, err = reqK8s.RbacV1().Roles(project).Update(c.Request.Context(), existingRole, v1.UpdateOptions{})
+	if err != nil {
+		return fmt.Errorf("update role: %w", err)
+	}
+
+	log.Printf("Successfully updated role %s with selfsubjectaccessreviews permission", roleName)
+	return nil
+}
+
 func StartSession(c *gin.Context) {
 	project := c.GetString("project")
 	sessionName := c.Param("sessionName")
@@ -1123,6 +1175,12 @@ func StartSession(c *gin.Context) {
 		log.Printf("Failed to get agentic session %s in project %s: %v", sessionName, project, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get agentic session"})
 		return
+	}
+
+	// Ensure runner role has required permissions (update if needed for existing sessions)
+	if err := ensureRunnerRolePermissions(c, reqK8s, project, sessionName); err != nil {
+		log.Printf("Warning: failed to ensure runner role permissions for %s: %v", sessionName, err)
+		// Non-fatal - continue with restart
 	}
 
 	// Clean up temp-content pod if it exists to free the PVC
