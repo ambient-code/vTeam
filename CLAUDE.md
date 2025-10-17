@@ -362,6 +362,7 @@ backend/
 ├── k8s/               # K8s resource templates
 ├── git/, github/      # External integrations
 ├── websocket/         # Real-time messaging
+├── routes.go          # HTTP route registration
 └── main.go            # Wiring, dependency injection
 ```
 
@@ -790,6 +791,7 @@ Study these files to understand established patterns:
 - `components/backend/handlers/helpers.go` - Utility functions (StringPtr, BoolPtr)
 - `components/backend/types/common.go` - Type definitions
 - `components/backend/server/server.go` - Server setup, middleware chain, token redaction
+- `components/backend/routes.go` - HTTP route definitions and registration
 
 **Operator**:
 - `components/operator/internal/handlers/sessions.go` - Watch loop, reconciliation, status updates

@@ -31,7 +31,6 @@ import (
 var (
 	GetAgenticSessionV1Alpha1Resource func() schema.GroupVersionResource
 	DynamicClient                     dynamic.Interface
-	ParseStatus                       func(map[string]interface{}) *types.AgenticSessionStatus
 	GetGitHubToken                    func(context.Context, *kubernetes.Clientset, dynamic.Interface, string, string) (string, error)
 	DeriveRepoFolderFromURL           func(string) string
 )
@@ -184,6 +183,61 @@ func parseSpec(spec map[string]interface{}) types.AgenticSessionSpec {
 	return result
 }
 
+// parseStatus parses AgenticSessionStatus with v1alpha1 fields
+func parseStatus(status map[string]interface{}) *types.AgenticSessionStatus {
+	result := &types.AgenticSessionStatus{}
+
+	if phase, ok := status["phase"].(string); ok {
+		result.Phase = phase
+	}
+
+	if message, ok := status["message"].(string); ok {
+		result.Message = message
+	}
+
+	if startTime, ok := status["startTime"].(string); ok {
+		result.StartTime = &startTime
+	}
+
+	if completionTime, ok := status["completionTime"].(string); ok {
+		result.CompletionTime = &completionTime
+	}
+
+	if jobName, ok := status["jobName"].(string); ok {
+		result.JobName = jobName
+	}
+
+	// New: result summary fields (top-level in status)
+	if st, ok := status["subtype"].(string); ok {
+		result.Subtype = st
+	}
+
+	if ie, ok := status["is_error"].(bool); ok {
+		result.IsError = ie
+	}
+	if nt, ok := status["num_turns"].(float64); ok {
+		result.NumTurns = int(nt)
+	}
+	if sid, ok := status["session_id"].(string); ok {
+		result.SessionID = sid
+	}
+	if tcu, ok := status["total_cost_usd"].(float64); ok {
+		result.TotalCostUSD = &tcu
+	}
+	if usage, ok := status["usage"].(map[string]interface{}); ok {
+		result.Usage = usage
+	}
+	if res, ok := status["result"].(string); ok {
+		result.Result = &res
+	}
+
+	if stateDir, ok := status["stateDir"].(string); ok {
+		result.StateDir = stateDir
+	}
+
+	return result
+}
+
 // V2 API Handlers - Multi-tenant session management
 
 func ListSessions(c *gin.Context) {
@@ -212,7 +266,7 @@ func ListSessions(c *gin.Context) {
 		}
 
 		if status, ok := item.Object["status"].(map[string]interface{}); ok {
-			session.Status = ParseStatus(status)
+			session.Status = parseStatus(status)
 		}
 
 		sessions = append(sessions, session)
@@ -615,7 +669,7 @@ func GetSession(c *gin.Context) {
 	}
 
 	if status, ok := item.Object["status"].(map[string]interface{}); ok {
-		session.Status = ParseStatus(status)
+		session.Status = parseStatus(status)
 	}
 
 	c.JSON(http.StatusOK, session)
@@ -801,7 +855,7 @@ func UpdateSession(c *gin.Context) {
 	}
 
 	if status, ok := updated.Object["status"].(map[string]interface{}); ok {
-		session.Status = ParseStatus(status)
+		session.Status = parseStatus(status)
 	}
 
 	c.JSON(http.StatusOK, session)
@@ -862,7 +916,7 @@ func UpdateSessionDisplayName(c *gin.Context) {
 		session.Spec = parseSpec(s)
 	}
 	if st, ok := updated.Object["status"].(map[string]interface{}); ok {
-		session.Status = ParseStatus(st)
+		session.Status = parseStatus(st)
 	}
 
 	c.JSON(http.StatusOK, session)
@@ -1009,7 +1063,7 @@ func CloneSession(c *gin.Context) {
 	}
 
 	if status, ok := created.Object["status"].(map[string]interface{}); ok {
-		session.Status = ParseStatus(status)
+		session.Status = parseStatus(status)
 	}
 
 	c.JSON(http.StatusCreated, session)
@@ -1064,7 +1118,7 @@ func StartSession(c *gin.Context) {
 	}
 
 	if status, ok := updated.Object["status"].(map[string]interface{}); ok {
-		session.Status = ParseStatus(status)
+		session.Status = parseStatus(status)
 	}
 
 	c.JSON(http.StatusAccepted, session)
@@ -1151,7 +1205,7 @@ func StopSession(c *gin.Context) {
 	}
 
 	if status, ok := updated.Object["status"].(map[string]interface{}); ok {
-		session.Status = ParseStatus(status)
+		session.Status = parseStatus(status)
 	}
 
 	log.Printf("Successfully stopped agentic session %s", sessionName)
