@@ -218,7 +218,7 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 		},
 		Spec: batchv1.JobSpec{
 			BackoffLimit:          int32Ptr(3),
-			ActiveDeadlineSeconds: int64Ptr(1800), // 30 minute timeout for safety
+			ActiveDeadlineSeconds: int64Ptr(14400), // 4 hour timeout for safety
 			// Auto-cleanup finished Jobs if TTL controller is enabled in the cluster
 			TTLSecondsAfterFinished: int32Ptr(600),
 			Template: corev1.PodTemplateSpec{
