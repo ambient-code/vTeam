@@ -14,14 +14,9 @@ export function Navigation() {
   const router = useRouter();
 
   const handleLogout = () => {
-    // Clear all cookies
-    document.cookie.split(";").forEach((c) => {
-      document.cookie = c
-        .replace(/^ +/, "")
-        .replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
-    });
-    // Redirect to home page
-    router.push("/");
+    // Redirect to oauth-proxy logout endpoint  
+    // This clears the OpenShift OAuth session and redirects back to login  
+    window.location.href = '/oauth/sign_out';  
   };
 
   return (
