@@ -27,11 +27,17 @@ func main() {
 	// Content service mode - minimal initialization, no K8s access needed
 	if os.Getenv("CONTENT_SERVICE_MODE") == "true" {
 		log.Println("Starting in CONTENT_SERVICE_MODE (no K8s client initialization)")
+
+		// Initialize config to set StateBaseDir from environment
+		server.InitConfig()
+
 		// Only initialize what content service needs
 		handlers.StateBaseDir = server.StateBaseDir
 		handlers.GitPushRepo = git.PushRepo
 		handlers.GitAbandonRepo = git.AbandonRepo
 		handlers.GitDiffRepo = git.DiffRepo
+
+		log.Printf("Content service using StateBaseDir: %s", server.StateBaseDir)
 
 		if err := server.RunContentService(registerContentRoutes); err != nil {
 			log.Fatalf("Content service error: %v", err)

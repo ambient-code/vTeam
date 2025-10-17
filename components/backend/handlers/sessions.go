@@ -1206,15 +1206,15 @@ func StartSession(c *gin.Context) {
 	item.SetAnnotations(annotations)
 	log.Printf("StartSession: Set parent-session-id annotation to %s for continuation", sessionName)
 
-	// Update the metadata first
-	_, err = reqDyn.Resource(gvr).Namespace(project).Update(context.TODO(), item, v1.UpdateOptions{})
+	// Update the metadata first and get the updated object
+	item, err = reqDyn.Resource(gvr).Namespace(project).Update(context.TODO(), item, v1.UpdateOptions{})
 	if err != nil {
 		log.Printf("Failed to update agentic session metadata %s in project %s: %v", sessionName, project, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update session metadata"})
 		return
 	}
 
-	// Now update status to trigger start
+	// Now update status to trigger start (using the fresh object from Update)
 	if item.Object["status"] == nil {
 		item.Object["status"] = make(map[string]interface{})
 	}

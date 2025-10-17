@@ -180,8 +180,9 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 	// Check for session continuation (parent session ID)
 	parentSessionID := ""
 	// Check annotations first
-	if annotations, ok := currentObj.GetAnnotations()["vteam.ambient-code/parent-session-id"]; ok {
-		parentSessionID = strings.TrimSpace(annotations)
+	annotations := currentObj.GetAnnotations()
+	if val, ok := annotations["vteam.ambient-code/parent-session-id"]; ok {
+		parentSessionID = strings.TrimSpace(val)
 	}
 	// Check environmentVariables as fallback
 	if parentSessionID == "" {
