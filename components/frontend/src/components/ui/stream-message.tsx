@@ -1,3 +1,5 @@
+"use client";
+
 import React from "react";
 import { MessageObject, ToolUseMessages } from "@/types/agentic-session";
 import { LoadingDots, Message } from "@/components/ui/message";

@@ -20,7 +20,7 @@ type ResultMeta = {
 type Props = {
   result?: string | null;
   meta?: ResultMeta | null;
-  components?: any;
+  components?: Record<string, React.ComponentType<unknown>>;
 };
 
 const ResultsTab: React.FC<Props> = ({ result, meta, components }) => {

@@ -4,11 +4,11 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { GitBranch } from 'lucide-react';
-import { apiClient } from '@/utils/api';
+import * as repoApi from '@/services/api/repo';
 import { RepoEntry, RepoBlob } from '@/types';
 import { FileTree, type FileTreeNode } from '@/components/file-tree';
 
-interface RepoBrowserProps {
+type RepoBrowserProps = {
   projectName: string;
   repoUrl: string;
   defaultRef?: string;
@@ -64,8 +64,11 @@ export default function RepoBrowser({
     setFileContent(null);
     setSelectedPath(undefined);
     try {
-      const response = await apiClient.getRepoTree(projectName, repoUrl, currentRef, '');
-      const rootNodes = (response.entries || []).map((e) => entryToNode(e));
+      const response = await repoApi.getRepoTree(projectName, { repo: repoUrl, ref: currentRef, path: '' });
+      const rootNodes = (response.entries || [])
+        .filter((e): e is Required<typeof e> & { name: string; type: 'blob' | 'tree' } => 
+          !!e.name && (e.type === 'blob' || e.type === 'tree'))
+        .map((e) => entryToNode(e));
       setNodes(rootNodes);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to load repository tree';
@@ -83,8 +86,11 @@ export default function RepoBrowser({
   const onToggle = useCallback(async (node: FileTreeNode) => {
     if (node.type !== 'folder') return;
     try {
-      const response = await apiClient.getRepoTree(projectName, repoUrl, currentRef, node.path);
-      const children = (response.entries || []).map((e) => entryToNode(e, node.path));
+      const response = await repoApi.getRepoTree(projectName, { repo: repoUrl, ref: currentRef, path: node.path });
+      const children = (response.entries || [])
+        .filter((e): e is Required<typeof e> & { name: string; type: 'blob' | 'tree' } => 
+          !!e.name && (e.type === 'blob' || e.type === 'tree'))
+        .map((e) => entryToNode(e, node.path));
       setNodes((prev) => updateChildrenByPath(prev, node.path, children));
     } catch {
       // ignore toggle error; keep previous state
@@ -97,10 +103,35 @@ export default function RepoBrowser({
     setLoading(true);
     setError(null);
     try {
-      const response = await apiClient.getRepoBlob(projectName, repoUrl, currentRef, node.path);
-      setFileContent(response);
-      if (onFileSelect) {
-        onFileSelect(node.path, response.content);
+      const response = await repoApi.getRepoBlob(projectName, { repo: repoUrl, ref: currentRef, path: node.path });
+      if (response.ok) {
+        const text = await response.text();
+        // Try to parse as JSON to get the blob structure
+        try {
+          const parsed = JSON.parse(text);
+          const blobData: RepoBlob = {
+            content: parsed.content || text,
+            encoding: parsed.encoding || 'utf-8',
+            size: parsed.size || text.length,
+          };
+          setFileContent(blobData);
+          if (onFileSelect) {
+            onFileSelect(node.path, blobData.content);
+          }
+        } catch {
+          // If not JSON, treat as plain text
+          const blobData: RepoBlob = {
+            content: text,
+            encoding: 'utf-8',
+            size: text.length,
+          };
+          setFileContent(blobData);
+          if (onFileSelect) {
+            onFileSelect(node.path, text);
+          }
+        }
+      } else {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to load file content';

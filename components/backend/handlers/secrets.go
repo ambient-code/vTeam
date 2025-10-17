@@ -44,7 +44,7 @@ func ListNamespaceSecrets(c *gin.Context) {
 		}
 		it := Item{Name: s.Name, Type: string(s.Type)}
 		if !s.CreationTimestamp.IsZero() {
-			it.CreatedAt = s.CreationTimestamp.Time.Format(time.RFC3339)
+			it.CreatedAt = s.CreationTimestamp.Format(time.RFC3339)
 		}
 		items = append(items, it)
 	}

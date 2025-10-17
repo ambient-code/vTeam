@@ -1,3 +1,5 @@
+"use client";
+
 import React from "react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -106,7 +108,7 @@ export const LoadingDots = () => {
 
 export const Message = React.forwardRef<HTMLDivElement, MessageProps>(
   (
-    { role, content, isLoading, name, className, components, borderless, actions, ...props },
+    { role, content, isLoading, className, components, borderless, actions, ...props },
     ref
   ) => {
     const isBot = role === "bot";

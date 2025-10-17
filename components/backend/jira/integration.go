@@ -27,9 +27,9 @@ import (
 
 // Handler dependencies
 type Handler struct {
-	GetK8sClientsForRequest     func(*gin.Context) (*kubernetes.Clientset, dynamic.Interface)
-	GetProjectSettingsResource  func() schema.GroupVersionResource
-	GetRFEWorkflowResource      func() schema.GroupVersionResource
+	GetK8sClientsForRequest    func(*gin.Context) (*kubernetes.Clientset, dynamic.Interface)
+	GetProjectSettingsResource func() schema.GroupVersionResource
+	GetRFEWorkflowResource     func() schema.GroupVersionResource
 }
 
 // RFEFromUnstructured converts an unstructured RFEWorkflow CR into our RFEWorkflow struct
@@ -204,7 +204,7 @@ func AttachFileToJiraIssue(ctx context.Context, jiraBase, issueKey, authHeader s
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		respBody, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("Jira API error: %s (body: %s)", resp.Status, string(respBody))
+		return fmt.Errorf("jira API error: %s (body: %s)", resp.Status, string(respBody))
 	}
 
 	return nil
@@ -238,7 +238,7 @@ func (mw *MultipartWriter) Close() error {
 		return nil
 	}
 	mw.closed = true
-	_, err := mw.w.Write([]byte(fmt.Sprintf("\r\n--%s--\r\n", mw.boundary)))
+	_, err := fmt.Fprintf(mw.w, "\r\n--%s--\r\n", mw.boundary)
 	return err
 }
 
@@ -359,7 +359,7 @@ func (h *Handler) PublishWorkflowFileToJira(c *gin.Context) {
 	githubURL := fmt.Sprintf("https://github.com/%s/%s/blob/%s/%s", owner, repo, branch, req.Path)
 
 	// Strip Execution Flow section from spec.md and plan.md
-	processedContent := content
+	var processedContent []byte
 	if req.Phase == "specify" || req.Phase == "plan" || req.Phase == "tasks" {
 		stripped := StripExecutionFlow(string(content))
 
@@ -404,9 +404,10 @@ func (h *Handler) PublishWorkflowFileToJira(c *gin.Context) {
 	// Determine issue type based on phase
 	// specify -> Feature Request, plan -> Feature, tasks -> Epic
 	issueType := "Feature" // default
-	if req.Phase == "specify" {
+	switch req.Phase {
+	case "specify":
 		issueType = "Feature Request"
-	} else if req.Phase == "tasks" {
+	case "tasks":
 		issueType = "Epic"
 	}
 

@@ -284,7 +284,7 @@ func ListProjectKeys(c *gin.Context) {
 	for _, sa := range sas.Items {
 		ki := KeyInfo{ID: sa.Name, Name: sa.Annotations["ambient-code.io/key-name"], Description: sa.Annotations["ambient-code.io/description"], Role: roleBySA[sa.Name]}
 		if t := sa.CreationTimestamp; !t.IsZero() {
-			ki.CreatedAt = t.Time.Format(time.RFC3339)
+			ki.CreatedAt = t.Format(time.RFC3339)
 		}
 		if lu := sa.Annotations["ambient-code.io/last-used-at"]; lu != "" {
 			ki.LastUsedAt = lu

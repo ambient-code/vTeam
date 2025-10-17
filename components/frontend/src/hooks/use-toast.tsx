@@ -7,8 +7,8 @@ import type {
   ToastProps,
 } from "@/components/ui/toast"
 
-const TOAST_LIMIT = 1
-const TOAST_REMOVE_DELAY = 1000000
+const TOAST_LIMIT = 3
+const TOAST_REMOVE_DELAY = 5000
 
 type ToasterToast = ToastProps & {
   id: string
@@ -42,9 +42,9 @@ type Action =
       toastId?: ToasterToast["id"]
     }
 
-interface State {
+type State = {
   toasts: ToasterToast[]
-}
+};
 
 const toastTimeouts = new Map<string, ReturnType<typeof setTimeout>>()
 
@@ -179,4 +179,21 @@ function useToast() {
   }
 }
 
-export { useToast, toast }
+// Helper functions for common toast patterns
+const successToast = (message: string) => {
+  return toast({
+    variant: "success",
+    title: "Success",
+    description: message,
+  })
+}
+
+const errorToast = (message: string) => {
+  return toast({
+    variant: "destructive",
+    title: "Error",
+    description: message,
+  })
+}
+
+export { useToast, toast, successToast, errorToast }

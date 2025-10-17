@@ -3,7 +3,6 @@ package handlers
 import (
 	"context"
 	"encoding/base64"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -171,7 +170,7 @@ func ContentWrite(c *gin.Context) {
 	} else {
 		data = []byte(req.Content)
 	}
-	if err := ioutil.WriteFile(abs, data, 0644); err != nil {
+	if err := os.WriteFile(abs, data, 0644); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to write file"})
 		return
 	}
@@ -186,7 +185,7 @@ func ContentRead(c *gin.Context) {
 		return
 	}
 	abs := filepath.Join(StateBaseDir, path)
-	b, err := ioutil.ReadFile(abs)
+	b, err := os.ReadFile(abs)
 	if err != nil {
 		if os.IsNotExist(err) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
@@ -226,19 +225,20 @@ func ContentList(c *gin.Context) {
 		}}})
 		return
 	}
-	entries, err := ioutil.ReadDir(abs)
+	entries, err := os.ReadDir(abs)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "readdir failed"})
 		return
 	}
 	items := make([]gin.H, 0, len(entries))
 	for _, e := range entries {
+		info, _ := e.Info()
 		items = append(items, gin.H{
 			"name":       e.Name(),
 			"path":       filepath.Join(path, e.Name()),
 			"isDir":      e.IsDir(),
-			"size":       e.Size(),
-			"modifiedAt": e.ModTime().UTC().Format(time.RFC3339),
+			"size":       info.Size(),
+			"modifiedAt": info.ModTime().UTC().Format(time.RFC3339),
 		})
 	}
 	c.JSON(http.StatusOK, gin.H{"items": items})

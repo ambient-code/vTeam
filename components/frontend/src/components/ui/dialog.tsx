@@ -4,11 +4,11 @@ import * as React from "react";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-interface DialogProps {
+type DialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   children: React.ReactNode;
-}
+};
 
 const DialogContext = React.createContext<{
   open: boolean;

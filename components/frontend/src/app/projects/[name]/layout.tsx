@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Home, KeyRound, Settings, Users, Sparkles, ArrowLeft, GitBranch } from "lucide-react";
 
-export default function ProjectSectionLayout({ children, params }: { children: React.ReactNode; params: Promise<{ name: string }> }) {
+export default function ProjectSectionLayout({ children }: { children: React.ReactNode; params: Promise<{ name: string }> }) {
   const pathname = usePathname();
 
   const base = pathname?.split("/").slice(0, 3).join("/") || "/projects";

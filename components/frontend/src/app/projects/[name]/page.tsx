@@ -1,79 +1,33 @@
-"use client";
+'use client';
 
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { formatDistanceToNow } from "date-fns";
-import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-// Status/phase UI removed
-import { Label } from "@/components/ui/label";
-// Removed inline edit form; editing moved to Settings page
-import { Project } from "@/types/project";
-import { RefreshCw } from "lucide-react";
-import { getApiUrl } from "@/lib/config";
-import { ProjectSubpageHeader } from "@/components/project-subpage-header";
+import { useCallback } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import { formatDistanceToNow } from 'date-fns';
+import { RefreshCw } from 'lucide-react';
 
-// Project type selection removed
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Label } from '@/components/ui/label';
+import { ProjectSubpageHeader } from '@/components/project-subpage-header';
+import { ErrorMessage } from '@/components/error-message';
+import { Breadcrumbs } from '@/components/breadcrumbs';
 
-export default function ProjectDetailsPage({ params }: { params: Promise<{ name: string }> }) {
+import { useProject } from '@/services/queries';
+
+export default function ProjectDetailsPage() {
+  const params = useParams();
   const router = useRouter();
-  // Sessions state
-  const [projectName, setProjectName] = useState<string>('');
-  const [project, setProject] = useState<Project | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const projectName = params?.name as string;
 
+  // React Query hook replaces all manual state management
+  const { data: project, isLoading, error, refetch } = useProject(projectName);
 
-  const fetchProject = async () => {
-    if (!projectName) return;
-    try {
-      const apiUrl = getApiUrl();
-      const response = await fetch(`${apiUrl}/projects/${projectName}`);
-      if (!response.ok) {
-        if (response.status === 404) {
-          throw new Error("Project not found");
-        }
-        throw new Error("Failed to fetch project");
-      }
-      const data: Project = await response.json();
-      setProject(data);
+  const handleRefresh = useCallback(() => {
+    refetch();
+  }, [refetch]);
 
-     
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    params.then(({ name }) => setProjectName(name));
-  }, [params]);
-
-  // tabs removed
-
-  useEffect(() => {
-    if (projectName) {
-      fetchProject();
-      // Poll for updates every 30 seconds
-      const interval = setInterval(fetchProject, 30000);
-      return () => clearInterval(interval);
-    }
-  }, [projectName]);
-
-
-
-  const handleRefresh = () => {
-    setLoading(true);
-    fetchProject();
-  };
-
-  if (!projectName || (loading && !project)) {
+  // Loading state
+  if (!projectName || (isLoading && !project)) {
     return (
       <div className="container mx-auto p-6">
         <div className="flex items-center justify-center h-64">
@@ -84,19 +38,18 @@ export default function ProjectDetailsPage({ params }: { params: Promise<{ name:
     );
   }
 
+  // Error state (no project loaded)
   if (error && !project) {
     return (
       <div className="container mx-auto p-6">
         <Card className="border-red-200 bg-red-50">
           <CardContent className="pt-6">
-            <p className="text-red-700">{error}</p>
+            <p className="text-red-700">{error instanceof Error ? error.message : 'Failed to load project'}</p>
             <div className="mt-4 flex gap-4">
-              <Button onClick={() => router.push("/projects")} variant="outline">
+              <Button onClick={() => router.push('/projects')} variant="outline">
                 Back to Projects
               </Button>
-              <Button onClick={fetchProject}>
-                Try Again
-              </Button>
+              <Button onClick={handleRefresh}>Try Again</Button>
             </div>
           </CardContent>
         </Card>
@@ -108,60 +61,57 @@ export default function ProjectDetailsPage({ params }: { params: Promise<{ name:
 
   return (
     <div className="container mx-auto p-6">
+      <Breadcrumbs
+        items={[
+          { label: 'Projects', href: '/projects' },
+          { label: project.displayName || project.name },
+        ]}
+        className="mb-4"
+      />
       <ProjectSubpageHeader
         title={<>{project.displayName || project.name}</>}
         description={<>{projectName}</>}
         actions={
-          <Button variant="outline" onClick={handleRefresh} disabled={loading}>
-            <RefreshCw className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`} />
+          <Button variant="outline" onClick={handleRefresh} disabled={isLoading}>
+            <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
             Refresh
           </Button>
         }
       />
 
-      {error && (
+      {/* Error state (with project loaded) */}
+      {error && project && (
         <div className="px-6">
-          <Card className="mb-4 border-red-200 bg-red-50">
-            <CardContent className="pt-6">
-              <p className="text-red-700">Error: {error}</p>
-            </CardContent>
-          </Card>
+          <ErrorMessage error={error} onRetry={handleRefresh} />
         </div>
       )}
 
       <div className="pt-2">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {/* Project Info */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Project Information</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <Label className="text-sm font-medium">Description</Label>
-                  <p className="text-sm text-muted-foreground">
-                    {project.description || "No description provided"}
-                  </p>
-                </div>
-                {/* Project type removed */}
-                <div>
-                  <Label className="text-sm font-medium">Created</Label>
-                  <p className="text-sm text-muted-foreground">
-                    {project.creationTimestamp &&
-                      formatDistanceToNow(new Date(project.creationTimestamp), {
-                        addSuffix: true,
-                      })}
-                  </p>
-                </div>
-                {/* Last Reconciled not available in DTO */}
-              </CardContent>
-            </Card>
-
-          
-            {/* Status Conditions removed */}
-          </div>
-
-          {/* Editing moved to Settings page */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* Project Info */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Project Information</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <Label className="text-sm font-medium">Description</Label>
+                <p className="text-sm text-muted-foreground">
+                  {project.description || 'No description provided'}
+                </p>
+              </div>
+              <div>
+                <Label className="text-sm font-medium">Created</Label>
+                <p className="text-sm text-muted-foreground">
+                  {project.creationTimestamp &&
+                    formatDistanceToNow(new Date(project.creationTimestamp), {
+                      addSuffix: true,
+                    })}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </div>
   );

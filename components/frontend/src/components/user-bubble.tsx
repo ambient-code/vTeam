@@ -1,32 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-
-type Me = {
-  authenticated: boolean;
-  userId?: string;
-  email?: string;
-  username?: string;
-  displayName?: string;
-};
+import { useCurrentUser } from "@/services/queries";
 
 export function UserBubble() {
-  const [me, setMe] = useState<Me | null>(null);
-
-  useEffect(() => {
-    const run = async () => {
-      try {
-        const res = await fetch("/api/me", { cache: "no-store" });
-        const data = await res.json();
-        setMe(data);
-      } catch {
-        setMe({ authenticated: false });
-      }
-    };
-    run();
-  }, []);
+  const { data: me, isLoading } = useCurrentUser();
 
   const initials = (me?.displayName || me?.username || me?.email || "?")
     .split(/[\s@._-]+/)
@@ -35,7 +14,7 @@ export function UserBubble() {
     .map((s) => s[0]?.toUpperCase())
     .join("");
 
-  if (!me) return <div className="w-8 h-8 rounded-full bg-muted animate-pulse" />;
+  if (isLoading || !me) return <div className="w-8 h-8 rounded-full bg-muted animate-pulse" />;
 
   if (!me.authenticated) {
     return (

@@ -50,7 +50,7 @@ export async function POST(
       const errText = await blobResp.text()
       return new Response(errText, { status: blobResp.status, headers: { 'Content-Type': 'application/json' } })
     }
-    const blobData = await blobResp.json().catch(async () => ({ content: await blobResp.text() }))
+    await blobResp.json().catch(async () => ({ content: await blobResp.text() }))
 
     // 3) Delegate to backend to create Jira and update CR (now that content can be validated server-side if needed)
     const backendResp = await fetch(`${BACKEND_URL}/projects/${encodeURIComponent(name)}/rfe-workflows/${encodeURIComponent(id)}/jira`, {

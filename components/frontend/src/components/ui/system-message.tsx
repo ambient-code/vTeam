@@ -1,11 +1,18 @@
+"use client";
+
 import React from "react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Info } from "lucide-react";
 
+type SystemMessageData = {
+  message?: string;
+  [key: string]: unknown;
+};
+
 export type SystemMessageProps = {
   subtype: string;
-  data: Record<string, any>;
+  data: SystemMessageData;
   className?: string;
   borderless?: boolean;
 };

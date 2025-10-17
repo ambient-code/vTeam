@@ -89,7 +89,7 @@ export interface SessionMessage {
   seq: number;
   type: string;
   timestamp: string;
-  payload: Record<string, any>;
+  payload: Record<string, unknown>;
   partial?: {
     id: string;
     index: number;
@@ -108,5 +108,5 @@ export interface UserAccess {
 export interface APIError {
   error: string;
   code?: string;
-  details?: Record<string, any>;
+  details?: Record<string, unknown>;
 }
