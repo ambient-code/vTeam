@@ -235,12 +235,20 @@ func GetSessionMessagesClaudeFormat(c *gin.Context) {
 	log.Printf("GetSessionMessagesClaudeFormat: retrieved %d messages for session %s", len(messages), sessionID)
 
 	// Filter to only conversational messages (user and agent)
+	// Exclude: system_message, waiting_for_input, agent_running, result_message, etc.
 	conversationalMessages := []SessionMessage{}
 	for _, msg := range messages {
-		if msg.Type == "user_message" || msg.Type == "agent_message" {
+		msgType := strings.ToLower(strings.TrimSpace(msg.Type))
+		// Only include actual conversation messages
+		if msgType == "user_message" || msgType == "agent_message" {
+			// Additional validation - ensure payload is not empty
+			if msg.Payload == nil || len(msg.Payload) == 0 {
+				log.Printf("GetSessionMessagesClaudeFormat: filtering out %s with empty payload", msg.Type)
+				continue
+			}
 			conversationalMessages = append(conversationalMessages, msg)
 		} else {
-			log.Printf("GetSessionMessagesClaudeFormat: filtering out message type=%s", msg.Type)
+			log.Printf("GetSessionMessagesClaudeFormat: filtering out non-conversational message type=%s", msg.Type)
 		}
 	}
 

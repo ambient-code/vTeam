@@ -325,17 +325,34 @@ class ClaudeCodeAdapter:
                     try:
                         message_history = await self._fetch_session_history(parent_session_id)
                         if message_history and len(message_history) > 0:
-                            await self._send_log(f"📚 Restoring {len(message_history)} messages...")
-                            logging.info(f"Seeding Claude client with {len(message_history)} historical messages")
+                            # Validate messages before seeding
+                            valid_messages = []
+                            for idx, msg in enumerate(message_history):
+                                role = msg.get('role')
+                                content = msg.get('content')
+                                if role not in ('user', 'assistant'):
+                                    logging.warning(f"Skipping message {idx} with invalid role: {role}")
+                                    continue
+                                if content is None or (isinstance(content, str) and not content.strip()):
+                                    logging.warning(f"Skipping message {idx} with empty content")
+                                    continue
+                                valid_messages.append(msg)
                             
-                            async def message_stream():
-                                for idx, msg in enumerate(message_history):
-                                    logging.debug(f"Seeding message {idx + 1}/{len(message_history)}: {msg.get('role', 'unknown')}")
-                                    yield msg
-                            
-                            await client.connect(message_stream())
-                            await self._send_log("✅ Session context restored successfully")
-                            logging.info("Session history seeded successfully into Claude client")
+                            if valid_messages:
+                                await self._send_log(f"📚 Restoring {len(valid_messages)} messages (filtered from {len(message_history)})...")
+                                logging.info(f"Seeding Claude client with {len(valid_messages)} validated historical messages")
+                                
+                                async def message_stream():
+                                    for idx, msg in enumerate(valid_messages):
+                                        logging.debug(f"Seeding message {idx + 1}/{len(valid_messages)}: {msg.get('role', 'unknown')}")
+                                        yield msg
+                                
+                                await client.connect(message_stream())
+                                await self._send_log("✅ Session context restored successfully")
+                                logging.info("Session history seeded successfully into Claude client")
+                            else:
+                                await self._send_log("⚠️ No valid messages in history, starting fresh")
+                                logging.warning(f"All {len(message_history)} messages were invalid/filtered out")
                         else:
                             await self._send_log("⚠️ No history found, starting fresh session")
                             logging.warning(f"No message history returned for parent session {parent_session_id}")

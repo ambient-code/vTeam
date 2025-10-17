@@ -213,11 +213,77 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                   </div>
                 </div>
 
-                {k8sResources?.jobName && (
+                {k8sResources && (
                   <div>
                     <div className="text-xs font-semibold text-muted-foreground mb-2">Kubernetes Resources</div>
                     <div className="space-y-2">
-                      {/* Job & Pods */}
+                      {/* PVC - Always shown at root level (owned by AgenticSession CR) */}
+                      {k8sResources.pvcName && (
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline" className="text-xs">
+                            <HardDrive className="w-3 h-3 mr-1" />
+                            PVC
+                          </Badge>
+                          {(() => {
+                            const consoleUrl = getOpenShiftConsoleUrl(projectNamespace, 'PVC', k8sResources.pvcName);
+                            return consoleUrl ? (
+                              <a
+                                href={consoleUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="font-mono text-xs text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1"
+                              >
+                                {k8sResources.pvcName}
+                                <ExternalLink className="w-3 h-3" />
+                              </a>
+                            ) : (
+                              <span className="font-mono text-xs">{k8sResources.pvcName}</span>
+                            );
+                          })()}
+                          <Badge className={`text-xs ${k8sResources.pvcExists ? 'bg-green-100 text-green-800 border-green-300' : 'bg-red-100 text-red-800 border-red-300'}`}>
+                            {k8sResources.pvcExists ? 'Exists' : 'Not Found'}
+                          </Badge>
+                          {k8sResources.pvcSize && <span className="text-xs text-gray-500">{k8sResources.pvcSize}</span>}
+                        </div>
+                      )}
+                      
+                      {/* Temp Content Pods - Always at root level (for completed sessions) */}
+                      {k8sResources.pods && k8sResources.pods.filter(p => p.isTempPod).map((pod) => (
+                        <div key={pod.name} className="flex items-center gap-2">
+                          <Badge variant="outline" className="text-xs">
+                            <Container className="w-3 h-3 mr-1" />
+                            Temp Pod
+                          </Badge>
+                          {(() => {
+                            const consoleUrl = getOpenShiftConsoleUrl(projectNamespace, 'Pod', pod.name);
+                            return consoleUrl ? (
+                              <a
+                                href={consoleUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="font-mono text-xs text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1 truncate max-w-[250px]"
+                                title={pod.name}
+                              >
+                                {pod.name}
+                                <ExternalLink className="w-3 h-3 flex-shrink-0" />
+                              </a>
+                            ) : (
+                              <span className="font-mono text-xs truncate max-w-[250px]" title={pod.name}>
+                                {pod.name}
+                              </span>
+                            );
+                          })()}
+                          <Badge className={`text-xs ${getStatusColor(pod.phase)}`}>
+                            {pod.phase}
+                          </Badge>
+                          <Badge variant="outline" className="text-xs bg-purple-50 text-purple-700 border-purple-200">
+                            Workspace viewer
+                          </Badge>
+                        </div>
+                      ))}
+                      
+                      {/* Job - Only shown when job exists */}
+                      {k8sResources.jobName && (
                       <div className="text-xs space-y-1">
                         <div className="flex items-center gap-2">
                           <Badge variant="outline" className="text-xs">
@@ -245,10 +311,10 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                           </Badge>
                         </div>
                         
-                        {/* Pods */}
-                        {k8sResources.pods && k8sResources.pods.length > 0 && (
+                        {/* Job Pods - Only non-temp pods */}
+                        {k8sResources.pods && k8sResources.pods.filter(p => !p.isTempPod).length > 0 && (
                           <div className="ml-4 space-y-1 border-l-2 border-gray-200 pl-3">
-                            {k8sResources.pods.map((pod) => (
+                            {k8sResources.pods.filter(p => !p.isTempPod).map((pod) => (
                               <div key={pod.name} className="space-y-1">
                                 <div className="flex items-center gap-2">
                                   <button
@@ -319,37 +385,8 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                             ))}
                           </div>
                         )}
-                        
-                        {/* PVC */}
-                        {k8sResources.pvcName && (
-                          <div className="flex items-center gap-2">
-                            <Badge variant="outline" className="text-xs">
-                              <HardDrive className="w-3 h-3 mr-1" />
-                              PVC
-                            </Badge>
-                            {(() => {
-                              const consoleUrl = getOpenShiftConsoleUrl(projectNamespace, 'PVC', k8sResources.pvcName);
-                              return consoleUrl ? (
-                                <a
-                                  href={consoleUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="font-mono text-xs text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1"
-                                >
-                                  {k8sResources.pvcName}
-                                  <ExternalLink className="w-3 h-3" />
-                                </a>
-                              ) : (
-                                <span className="font-mono text-xs">{k8sResources.pvcName}</span>
-                              );
-                            })()}
-                            <Badge className={`text-xs ${k8sResources.pvcExists ? 'bg-green-100 text-green-800 border-green-300' : 'bg-red-100 text-red-800 border-red-300'}`}>
-                              {k8sResources.pvcExists ? 'Exists' : 'Not Found'}
-                            </Badge>
-                            {k8sResources.pvcSize && <span className="text-xs text-gray-500">{k8sResources.pvcSize}</span>}
-                          </div>
-                        )}
                       </div>
+                      )}
                     </div>
                   </div>
                 )}
