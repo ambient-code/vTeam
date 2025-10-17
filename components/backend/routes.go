@@ -47,6 +47,10 @@ func registerRoutes(r *gin.Engine, jiraHandler *jira.Handler) {
 			projectGroup.POST("/agentic-sessions/:sessionName/github/push", handlers.PushSessionRepo)
 			projectGroup.POST("/agentic-sessions/:sessionName/github/abandon", handlers.AbandonSessionRepo)
 			projectGroup.GET("/agentic-sessions/:sessionName/github/diff", handlers.DiffSessionRepo)
+			projectGroup.GET("/agentic-sessions/:sessionName/k8s-resources", handlers.GetSessionK8sResources)
+			projectGroup.POST("/agentic-sessions/:sessionName/spawn-content-pod", handlers.SpawnContentPod)
+			projectGroup.GET("/agentic-sessions/:sessionName/content-pod-status", handlers.GetContentPodStatus)
+			projectGroup.DELETE("/agentic-sessions/:sessionName/content-pod", handlers.DeleteContentPod)
 
 			projectGroup.GET("/rfe-workflows", handlers.ListProjectRFEWorkflows)
 			projectGroup.POST("/rfe-workflows", handlers.CreateProjectRFEWorkflow)
@@ -60,6 +64,7 @@ func registerRoutes(r *gin.Engine, jiraHandler *jira.Handler) {
 
 			projectGroup.GET("/sessions/:sessionId/ws", websocket.HandleSessionWebSocket)
 			projectGroup.GET("/sessions/:sessionId/messages", websocket.GetSessionMessagesWS)
+			projectGroup.GET("/sessions/:sessionId/messages/claude-format", websocket.GetSessionMessagesClaudeFormat)
 			projectGroup.POST("/sessions/:sessionId/messages", websocket.PostSessionMessageWS)
 			projectGroup.POST("/rfe-workflows/:id/jira", jiraHandler.PublishWorkflowFileToJira)
 			projectGroup.GET("/rfe-workflows/:id/jira", handlers.GetWorkflowJira)

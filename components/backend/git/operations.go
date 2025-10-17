@@ -40,6 +40,8 @@ type ProjectSettings struct {
 type DiffSummary struct {
 	TotalAdded   int `json:"total_added"`
 	TotalRemoved int `json:"total_removed"`
+	FilesAdded   int `json:"files_added"`
+	FilesRemoved int `json:"files_removed"`
 }
 
 // getProjectSettings retrieves the ProjectSettings CR for a project using the provided dynamic client
@@ -871,7 +873,7 @@ func DiffRepo(ctx context.Context, repoDir string) (*DiffSummary, error) {
 
 	summary := &DiffSummary{}
 
-	// Get numstat for modified files (working tree vs HEAD)
+	// Get numstat for modified tracked files (working tree vs HEAD)
 	numstatOut, err := run("git", "diff", "--numstat", "HEAD")
 	if err == nil && strings.TrimSpace(numstatOut) != "" {
 		lines := strings.Split(strings.TrimSpace(numstatOut), "\n")
@@ -896,11 +898,37 @@ func DiffRepo(ctx context.Context, repoDir string) (*DiffSummary, error) {
 				fmt.Sscanf(removed, "%d", &n)
 				summary.TotalRemoved += n
 			}
+			// If file was deleted (0 added, all removed), count as removed file
+			if added == "0" && removed != "0" {
+				summary.FilesRemoved++
+			}
 		}
 	}
 
-	log.Printf("gitDiffRepo: total_added=%d total_removed=%d",
-		summary.TotalAdded, summary.TotalRemoved)
+	// Get untracked files (new files not yet added to git)
+	untrackedOut, err := run("git", "ls-files", "--others", "--exclude-standard")
+	if err == nil && strings.TrimSpace(untrackedOut) != "" {
+		untrackedFiles := strings.Split(strings.TrimSpace(untrackedOut), "\n")
+		for _, filePath := range untrackedFiles {
+			if filePath == "" {
+				continue
+			}
+			// Count lines in the untracked file
+			fullPath := filepath.Join(repoDir, filePath)
+			if data, err := os.ReadFile(fullPath); err == nil {
+				// Count lines (all lines in a new file are "added")
+				lineCount := strings.Count(string(data), "\n")
+				if len(data) > 0 && !strings.HasSuffix(string(data), "\n") {
+					lineCount++ // Count last line if it doesn't end with newline
+				}
+				summary.TotalAdded += lineCount
+				summary.FilesAdded++
+			}
+		}
+	}
+
+	log.Printf("gitDiffRepo: files_added=%d files_removed=%d total_added=%d total_removed=%d",
+		summary.FilesAdded, summary.FilesRemoved, summary.TotalAdded, summary.TotalRemoved)
 	return summary, nil
 }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Brain, Loader2 } from "lucide-react";
 import { StreamMessage } from "@/components/ui/stream-message";
@@ -15,10 +15,52 @@ export type MessagesTabProps = {
   onInterrupt: () => Promise<void>;
   onEndSession: () => Promise<void>;
   onGoToResults?: () => void;
-  isEndingSession?: boolean;
+  onContinue: () => void;
 };
 
-const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chatInput, setChatInput, onSendChat, onInterrupt, onEndSession, onGoToResults, isEndingSession }) => {
+
+const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chatInput, setChatInput, onSendChat, onInterrupt, onEndSession, onGoToResults, onContinue}) => {
+  const [sendingChat, setSendingChat] = useState(false);
+  const [interrupting, setInterrupting] = useState(false);
+  const [ending, setEnding] = useState(false);
+
+  const phase = session?.status?.phase || "";
+  const isInteractive = session?.spec?.interactive;
+  
+  // Only show chat interface when session is interactive AND in Running state
+  const showChatInterface = isInteractive && phase === "Running";
+  
+  // Determine if session is in a terminal state
+  const isTerminalState = ["Completed", "Failed", "Stopped"].includes(phase);
+  const isCreating = ["Creating", "Pending"].includes(phase);
+
+  const handleSendChat = async () => {
+    setSendingChat(true);
+    try {
+      await onSendChat();
+    } finally {
+      setSendingChat(false);
+    }
+  };
+
+  const handleInterrupt = async () => {
+    setInterrupting(true);
+    try {
+      await onInterrupt();
+    } finally {
+      setInterrupting(false);
+    }
+  };
+
+  const handleEndSession = async () => {
+    setEnding(true);
+    try {
+      await onEndSession();
+    } finally {
+      setEnding(false);
+    }
+  };
+
   return (
     <div className="flex flex-col gap-2 max-h-[60vh] overflow-y-auto pr-1">
       {streamMessages.map((m, idx) => (
@@ -30,12 +72,18 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chat
           <Brain className="w-8 h-8 mx-auto mb-2 opacity-50" />
           <p className="text-sm">No messages yet</p>
           <p className="text-xs mt-1">
-            {session.spec?.interactive ? "Start by sending a message below." : "This session is not interactive."}
+            {isInteractive 
+              ? isCreating 
+                ? "Session is starting..."
+                : isTerminalState
+                ? `Session has ${phase.toLowerCase()}.`
+                : "Start by sending a message below."
+              : "This session is not interactive."}
           </p>
         </div>
       )}
 
-      {session.spec?.interactive && (
+      {showChatInterface && (
         <div className="sticky bottom-0 border-t bg-white">
           <div className="p-3">
             <div className="border rounded-md p-3 space-y-2 bg-white">
@@ -47,25 +95,73 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chat
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
-                    if (chatInput.trim()) {
-                      onSendChat();
+                    if (chatInput.trim() && !sendingChat) {
+                      handleSendChat();
                     }
                   }
                 }}
                 rows={3}
+                disabled={sendingChat}
               />
               <div className="flex items-center justify-between">
                 <div className="text-xs text-muted-foreground">Interactive session</div>
                 <div className="flex gap-2">
-                  <Button variant="outline" size="sm" onClick={onInterrupt}>Interrupt agent</Button>
-                  <Button variant="secondary" size="sm" onClick={onEndSession} disabled={isEndingSession}>
-                    {isEndingSession && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                    {isEndingSession ? "Ending session..." : "End session"}
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={handleInterrupt}
+                    disabled={interrupting || sendingChat || ending}
+                  >
+                    {interrupting && <Loader2 className="w-3 h-3 mr-1 animate-spin" />}
+                    Interrupt agent
                   </Button>
-                  <Button size="sm" onClick={onSendChat} disabled={!chatInput.trim()}>Send</Button>
+                  <Button 
+                    variant="secondary" 
+                    size="sm" 
+                    onClick={handleEndSession}
+                    disabled={ending || sendingChat || interrupting}
+                  >
+                    {ending && <Loader2 className="w-3 h-3 mr-1 animate-spin" />}
+                    End session
+                  </Button>
+                  <Button 
+                    size="sm" 
+                    onClick={handleSendChat} 
+                    disabled={!chatInput.trim() || sendingChat || interrupting || ending}
+                  >
+                    {sendingChat && <Loader2 className="w-3 h-3 mr-1 animate-spin" />}
+                    Send
+                  </Button>
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {isInteractive && !showChatInterface && streamMessages.length > 0 && (
+        <div className="sticky bottom-0 border-t bg-gray-50">
+          <div className="p-3 text-center">
+            <p className="text-sm text-muted-foreground">
+              {isCreating && "Chat will be available once the session is running..."}
+              {isTerminalState && (
+                <>
+                  This session has {phase.toLowerCase()}. Chat is no longer available.
+                  {onContinue && (
+                    <>
+                      {" "}
+                      <button
+                        onClick={onContinue}
+                        className="text-blue-600 hover:underline font-medium"
+                      >
+                        Continue this session
+                      </button>
+                      {" "}to restart it.
+                    </>
+                  )}
+                </>
+              )}
+            </p>
           </div>
         </div>
       )}

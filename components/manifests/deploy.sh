@@ -133,6 +133,8 @@ DEFAULT_BACKEND_IMAGE="${DEFAULT_BACKEND_IMAGE:-${CONTAINER_REGISTRY}/vteam_back
 DEFAULT_FRONTEND_IMAGE="${DEFAULT_FRONTEND_IMAGE:-${CONTAINER_REGISTRY}/vteam_frontend:${IMAGE_TAG}}"
 DEFAULT_OPERATOR_IMAGE="${DEFAULT_OPERATOR_IMAGE:-${CONTAINER_REGISTRY}/vteam_operator:${IMAGE_TAG}}"
 DEFAULT_RUNNER_IMAGE="${DEFAULT_RUNNER_IMAGE:-${CONTAINER_REGISTRY}/vteam_claude_runner:${IMAGE_TAG}}"
+# Content service image (defaults to same as backend, but can be overridden)
+CONTENT_SERVICE_IMAGE="${CONTENT_SERVICE_IMAGE:-${DEFAULT_BACKEND_IMAGE}}"
 
 # Handle uninstall/clean command early
 if [ "${1:-}" = "uninstall" ] || [ "${1:-}" = "clean" ]; then
@@ -229,6 +231,7 @@ echo -e "Backend Image: ${GREEN}${DEFAULT_BACKEND_IMAGE}${NC}"
 echo -e "Frontend Image: ${GREEN}${DEFAULT_FRONTEND_IMAGE}${NC}"
 echo -e "Operator Image: ${GREEN}${DEFAULT_OPERATOR_IMAGE}${NC}"
 echo -e "Runner Image: ${GREEN}${DEFAULT_RUNNER_IMAGE}${NC}"
+echo -e "Content Service Image: ${GREEN}${CONTENT_SERVICE_IMAGE}${NC}"
 echo ""
 
 # Check prerequisites
@@ -338,6 +341,10 @@ fi
 # Update operator deployment with custom runner image
 echo -e "${BLUE}Updating operator with custom runner image...${NC}"
 oc patch deployment agentic-operator -n ${NAMESPACE} -p "{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"agentic-operator\",\"env\":[{\"name\":\"AMBIENT_CODE_RUNNER_IMAGE\",\"value\":\"${DEFAULT_RUNNER_IMAGE}\"}]}]}}}}" --type=strategic
+
+# Update backend deployment with content service image
+echo -e "${BLUE}Updating backend with content service image...${NC}"
+oc patch deployment backend-api -n ${NAMESPACE} -p "{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"backend-api\",\"env\":[{\"name\":\"CONTENT_SERVICE_IMAGE\",\"value\":\"${CONTENT_SERVICE_IMAGE}\"},{\"name\":\"IMAGE_PULL_POLICY\",\"value\":\"Always\"}]}]}}}}" --type=strategic
 
 echo ""
 echo -e "${GREEN}✅ Deployment completed!${NC}"

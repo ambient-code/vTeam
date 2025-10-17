@@ -217,3 +217,313 @@ func PostSessionMessageWS(c *gin.Context) {
 
 	c.JSON(http.StatusAccepted, gin.H{"status": "queued"})
 }
+
+// GetSessionMessagesClaudeFormat handles GET /projects/:projectName/sessions/:sessionId/messages/claude-format
+// Transforms stored messages into Claude SDK format for session continuation
+func GetSessionMessagesClaudeFormat(c *gin.Context) {
+	sessionID := c.Param("sessionId")
+
+	messages, err := retrieveMessagesFromS3(sessionID)
+	if err != nil {
+		log.Printf("GetSessionMessagesClaudeFormat: retrieve failed: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": fmt.Sprintf("failed to retrieve messages: %v", err),
+		})
+		return
+	}
+
+	log.Printf("GetSessionMessagesClaudeFormat: retrieved %d messages for session %s", len(messages), sessionID)
+
+	// Filter to only conversational messages (user and agent)
+	// Exclude: system.message, agent.waiting, agent.running, etc.
+	conversationalMessages := []SessionMessage{}
+	for _, msg := range messages {
+		msgType := strings.ToLower(strings.TrimSpace(msg.Type))
+		// Normalize dots to underscores for comparison (stored as "agent.message" but we check "agent_message")
+		normalizedType := strings.ReplaceAll(msgType, ".", "_")
+
+		// Only include actual conversation messages
+		if normalizedType == "user_message" || normalizedType == "agent_message" {
+			// Additional validation - ensure payload is not empty
+			if len(msg.Payload) == 0 {
+				log.Printf("GetSessionMessagesClaudeFormat: filtering out %s with empty payload", msg.Type)
+				continue
+			}
+			conversationalMessages = append(conversationalMessages, msg)
+			log.Printf("GetSessionMessagesClaudeFormat: keeping message type=%s", msg.Type)
+		} else {
+			log.Printf("GetSessionMessagesClaudeFormat: filtering out non-conversational message type=%s", msg.Type)
+		}
+	}
+
+	log.Printf("GetSessionMessagesClaudeFormat: filtered to %d conversational messages", len(conversationalMessages))
+
+	claudeMessages := transformToClaudeFormat(conversationalMessages)
+
+	c.JSON(http.StatusOK, gin.H{
+		"session_id": sessionID,
+		"messages":   claudeMessages,
+	})
+}
+
+// transformToClaudeFormat converts SessionMessage to Claude SDK control protocol format
+// The SDK's connect() uses a control protocol that wraps API messages in an envelope
+//
+// Required format (from client.py lines 184-190):
+//
+//	{
+//	  "type": "user",
+//	  "message": {"role": "user", "content": "..."},
+//	  "parent_tool_use_id": "tool_abc123"  // optional: links message to tool call chain
+//	}
+//
+// For tool results, there are TWO levels of tool linking:
+//  1. Message-level: "parent_tool_use_id" - links this message to the tool call chain
+//  2. Content-level: Inside tool_result blocks - {"type": "tool_result", "tool_use_id": "...", "content": "..."}
+//
+// Only user messages are accepted - the SDK replays the conversation from user inputs
+// This is different from the standard Messages API which uses simpler {"role": "user", "content": "..."}
+func transformToClaudeFormat(messages []SessionMessage) []map[string]interface{} {
+	result := []map[string]interface{}{}
+
+	for _, msg := range messages {
+		log.Printf("transformToClaudeFormat: processing message type=%s", msg.Type)
+
+		// Normalize message type (stored as "agent.message" but we check "agent_message")
+		msgType := strings.ToLower(strings.TrimSpace(msg.Type))
+		normalizedType := strings.ReplaceAll(msgType, ".", "_")
+
+		switch normalizedType {
+		case "user_message":
+			// Extract user content - can be text or tool_result blocks
+			content := extractUserMessageContent(msg.Payload)
+			if content != nil {
+				// Extract parent_tool_use_id if present (for tool result chaining)
+				parentToolUseID := extractParentToolUseID(msg.Payload)
+
+				// SDK control protocol format: wraps API messages in envelope
+				message := map[string]interface{}{
+					"type": "user",
+					"message": map[string]interface{}{
+						"role":    "user",
+						"content": content,
+					},
+				}
+				// Only include parent_tool_use_id if it exists
+				if parentToolUseID != "" {
+					message["parent_tool_use_id"] = parentToolUseID
+				}
+
+				result = append(result, message)
+				log.Printf("transformToClaudeFormat: added user message (parent_tool_use_id=%s)", parentToolUseID)
+			} else {
+				log.Printf("transformToClaudeFormat: skipping user_message with empty content")
+			}
+
+		case "agent_message":
+			// Skip assistant messages - SDK connect() only accepts user messages
+			// The SDK will replay the conversation and regenerate assistant responses
+			log.Printf("transformToClaudeFormat: skipping agent_message (SDK only accepts user messages)")
+
+		default:
+			log.Printf("transformToClaudeFormat: skipping message with unknown type=%s (normalized=%s)", msg.Type, normalizedType)
+		}
+	}
+
+	// Validate all messages have proper structure
+	// SDK connect() only accepts type: "user" or "control"
+	validated := []map[string]interface{}{}
+	for i, msg := range result {
+		msgType, hasType := msg["type"].(string)
+		if !hasType || (msgType != "user" && msgType != "control") {
+			log.Printf("transformToClaudeFormat: INVALID message at index %d - type must be 'user' or 'control', got: %v", i, msgType)
+			continue
+		}
+		if msg["content"] == nil {
+			log.Printf("transformToClaudeFormat: INVALID message at index %d - missing content", i)
+			continue
+		}
+		validated = append(validated, msg)
+	}
+
+	log.Printf("transformToClaudeFormat: returning %d validated user messages (SDK will replay conversation)", len(validated))
+	return validated
+}
+
+// extractUserMessageContent extracts content from user message payload
+// Returns content as string (simple text) or []interface{} (content blocks with tool_result)
+func extractUserMessageContent(payload map[string]interface{}) interface{} {
+	// Check if payload already has properly formatted content
+	if content, ok := payload["content"]; ok {
+		// Content is already in correct format (string or array of blocks)
+		switch v := content.(type) {
+		case string:
+			if v != "" {
+				return v
+			}
+		case []interface{}:
+			if len(v) > 0 {
+				return v
+			}
+		}
+	}
+
+	// Check for tool_result block - must be in array format
+	if toolResult := extractToolResult(payload); toolResult != nil {
+		return []interface{}{toolResult}
+	}
+
+	// Try to extract simple text content
+	if text, ok := payload["text"].(string); ok && text != "" {
+		return text
+	}
+
+	// Check for text_block format from runner
+	if msgType, ok := payload["type"].(string); ok && msgType == "text_block" {
+		if text, ok := payload["text"].(string); ok && text != "" {
+			return text
+		}
+	}
+
+	return nil
+}
+
+// extractAssistantMessageContent extracts content from assistant message payload
+// Returns content as array of content blocks (text, thinking, tool_use, etc.)
+// Assistant messages must have content as an array, not a simple string
+// Supports SDK types: TextBlock, ThinkingBlock, ToolUseBlock
+func extractAssistantMessageContent(payload map[string]interface{}) interface{} {
+	// Check if payload already has properly formatted content array
+	if content, ok := payload["content"].([]interface{}); ok && len(content) > 0 {
+		return content
+	}
+
+	// Build content blocks array from various payload formats
+	var contentBlocks []map[string]interface{}
+
+	// Check for thinking block (extended thinking)
+	if thinking, signature := extractThinkingBlock(payload); thinking != "" {
+		block := map[string]interface{}{
+			"type":     "thinking",
+			"thinking": thinking,
+		}
+		if signature != "" {
+			block["signature"] = signature
+		}
+		contentBlocks = append(contentBlocks, block)
+	}
+
+	// Check for text block
+	if text := extractTextBlock(payload); text != "" {
+		contentBlocks = append(contentBlocks, map[string]interface{}{
+			"type": "text",
+			"text": text,
+		})
+	}
+
+	// Check for tool_use block
+	if tool, input, id := extractToolUse(payload); tool != "" {
+		block := map[string]interface{}{
+			"type":  "tool_use",
+			"name":  tool,
+			"input": input,
+		}
+		if id != "" {
+			block["id"] = id
+		}
+		contentBlocks = append(contentBlocks, block)
+	}
+
+	if len(contentBlocks) > 0 {
+		// Convert to []interface{} for JSON marshaling
+		result := make([]interface{}, len(contentBlocks))
+		for i, block := range contentBlocks {
+			result[i] = block
+		}
+		return result
+	}
+
+	return nil
+}
+
+func extractParentToolUseID(payload map[string]interface{}) string {
+	// Check for parent_tool_use_id at top level
+	if parentID, ok := payload["parent_tool_use_id"].(string); ok && parentID != "" {
+		return parentID
+	}
+
+	// Check if this is a tool_result and extract the tool_use_id as parent
+	if toolResult, ok := payload["tool_result"].(map[string]interface{}); ok {
+		if toolUseID, ok := toolResult["tool_use_id"].(string); ok {
+			return toolUseID
+		}
+	}
+
+	return ""
+}
+
+func extractThinkingBlock(payload map[string]interface{}) (thinking string, signature string) {
+	// Check if this is a thinking block
+	if msgType, ok := payload["type"].(string); ok && msgType == "thinking" {
+		thinking, _ = payload["thinking"].(string)
+		signature, _ = payload["signature"].(string)
+		return thinking, signature
+	}
+
+	// Check nested content for thinking block
+	if content, ok := payload["content"].(map[string]interface{}); ok {
+		if thinking, ok := content["thinking"].(string); ok {
+			signature, _ := content["signature"].(string)
+			return thinking, signature
+		}
+	}
+
+	return "", ""
+}
+
+func extractTextBlock(payload map[string]interface{}) string {
+	if content, ok := payload["content"].(map[string]interface{}); ok {
+		if text, ok := content["text"].(string); ok {
+			return text
+		}
+	}
+	if text, ok := payload["text"].(string); ok {
+		return text
+	}
+	if msgType, ok := payload["type"].(string); ok && msgType == "text_block" {
+		if text, ok := payload["text"].(string); ok {
+			return text
+		}
+	}
+	return ""
+}
+
+func extractToolUse(payload map[string]interface{}) (tool string, input map[string]interface{}, id string) {
+	toolName, hasTool := payload["tool"].(string)
+	toolInput, hasInput := payload["input"].(map[string]interface{})
+	toolID, _ := payload["id"].(string)
+
+	if hasTool && hasInput {
+		return toolName, toolInput, toolID
+	}
+	return "", nil, ""
+}
+
+func extractToolResult(payload map[string]interface{}) map[string]interface{} {
+	if toolResult, ok := payload["tool_result"].(map[string]interface{}); ok {
+		result := map[string]interface{}{
+			"type": "tool_result",
+		}
+		if toolUseID, ok := toolResult["tool_use_id"].(string); ok {
+			result["tool_use_id"] = toolUseID
+		}
+		if content := toolResult["content"]; content != nil {
+			result["content"] = content
+		}
+		if isError, ok := toolResult["is_error"].(bool); ok {
+			result["is_error"] = isError
+		}
+		return result
+	}
+	return nil
+}

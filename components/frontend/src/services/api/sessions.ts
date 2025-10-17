@@ -157,3 +157,59 @@ export async function sendControlMessage(
     { type }
   );
 }
+
+/**
+ * Get K8s resource information (job, pods, PVC) for a session
+ */
+export async function getSessionK8sResources(
+  projectName: string,
+  sessionName: string
+): Promise<{
+  jobName: string;
+  jobStatus?: string;
+  pods?: Array<{
+    name: string;
+    phase: string;
+    containers: Array<{
+      name: string;
+      state: string;
+      exitCode?: number;
+      reason?: string;
+    }>;
+  }>;
+  pvcName: string;
+  pvcExists: boolean;
+  pvcSize?: string;
+}> {
+  return apiClient.get(`/projects/${projectName}/agentic-sessions/${sessionName}/k8s-resources`);
+}
+
+/**
+ * Spawn temporary content pod for workspace access
+ */
+export async function spawnContentPod(
+  projectName: string,
+  sessionName: string
+): Promise<{ status: string; podName: string; ready?: boolean }> {
+  return apiClient.post(`/projects/${projectName}/agentic-sessions/${sessionName}/spawn-content-pod`);
+}
+
+/**
+ * Check temporary content pod status
+ */
+export async function getContentPodStatus(
+  projectName: string,
+  sessionName: string
+): Promise<{ status: string; ready: boolean; podName: string; createdAt?: string }> {
+  return apiClient.get(`/projects/${projectName}/agentic-sessions/${sessionName}/content-pod-status`);
+}
+
+/**
+ * Delete temporary content pod
+ */
+export async function deleteContentPod(
+  projectName: string,
+  sessionName: string
+): Promise<void> {
+  await apiClient.delete(`/projects/${projectName}/agentic-sessions/${sessionName}/content-pod`);
+}
