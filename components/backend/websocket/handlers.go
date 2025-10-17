@@ -217,3 +217,126 @@ func PostSessionMessageWS(c *gin.Context) {
 
 	c.JSON(http.StatusAccepted, gin.H{"status": "queued"})
 }
+
+// GetSessionMessagesClaudeFormat handles GET /projects/:projectName/sessions/:sessionId/messages/claude-format
+// Transforms stored messages into Claude SDK format for session continuation
+func GetSessionMessagesClaudeFormat(c *gin.Context) {
+	sessionID := c.Param("sessionId")
+
+	messages, err := retrieveMessagesFromS3(sessionID)
+	if err != nil {
+		log.Printf("GetSessionMessagesClaudeFormat: retrieve failed: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": fmt.Sprintf("failed to retrieve messages: %v", err),
+		})
+		return
+	}
+
+	claudeMessages := transformToClaudeFormat(messages)
+
+	c.JSON(http.StatusOK, gin.H{
+		"session_id": sessionID,
+		"messages":   claudeMessages,
+	})
+}
+
+// transformToClaudeFormat converts SessionMessage to Claude SDK message format
+func transformToClaudeFormat(messages []SessionMessage) []map[string]interface{} {
+	result := []map[string]interface{}{}
+
+	for _, msg := range messages {
+		switch msg.Type {
+		case "user_message":
+			content := extractUserContent(msg.Payload)
+			if content != "" {
+				result = append(result, map[string]interface{}{
+					"role":    "user",
+					"content": content,
+				})
+			}
+
+		case "agent_message":
+			if text := extractTextBlock(msg.Payload); text != "" {
+				result = append(result, map[string]interface{}{
+					"role": "assistant",
+					"content": []map[string]interface{}{
+						{"type": "text", "text": text},
+					},
+				})
+			} else if tool, input, id := extractToolUse(msg.Payload); tool != "" {
+				result = append(result, map[string]interface{}{
+					"role": "assistant",
+					"content": []map[string]interface{}{
+						{"type": "tool_use", "id": id, "name": tool, "input": input},
+					},
+				})
+			} else if toolResult := extractToolResult(msg.Payload); toolResult != nil {
+				result = append(result, map[string]interface{}{
+					"role": "user",
+					"content": []map[string]interface{}{
+						toolResult,
+					},
+				})
+			}
+		}
+	}
+
+	return result
+}
+
+func extractUserContent(payload map[string]interface{}) string {
+	if content, ok := payload["content"].(string); ok {
+		return content
+	}
+	if text, ok := payload["text"].(string); ok {
+		return text
+	}
+	return ""
+}
+
+func extractTextBlock(payload map[string]interface{}) string {
+	if content, ok := payload["content"].(map[string]interface{}); ok {
+		if text, ok := content["text"].(string); ok {
+			return text
+		}
+	}
+	if text, ok := payload["text"].(string); ok {
+		return text
+	}
+	if msgType, ok := payload["type"].(string); ok && msgType == "text_block" {
+		if text, ok := payload["text"].(string); ok {
+			return text
+		}
+	}
+	return ""
+}
+
+func extractToolUse(payload map[string]interface{}) (tool string, input map[string]interface{}, id string) {
+	toolName, hasTool := payload["tool"].(string)
+	toolInput, hasInput := payload["input"].(map[string]interface{})
+	toolID, _ := payload["id"].(string)
+
+	if hasTool && hasInput {
+		return toolName, toolInput, toolID
+	}
+	return "", nil, ""
+}
+
+func extractToolResult(payload map[string]interface{}) map[string]interface{} {
+	if toolResult, ok := payload["tool_result"].(map[string]interface{}); ok {
+		result := map[string]interface{}{
+			"type": "tool_result",
+		}
+		if toolUseID, ok := toolResult["tool_use_id"].(string); ok {
+			result["tool_use_id"] = toolUseID
+		}
+		if content := toolResult["content"]; content != nil {
+			result["content"] = content
+		}
+		if isError, ok := toolResult["is_error"].(bool); ok {
+			result["is_error"] = isError
+		}
+		return result
+	}
+	return nil
+}

@@ -99,6 +99,7 @@ export type CreateAgenticSessionRequest = {
   displayName?: string;
   timeout?: number;
   project?: string;
+  parent_session_id?: string;
   environmentVariables?: Record<string, string>;
   interactive?: boolean;
   workspacePath?: string;

@@ -120,21 +120,73 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 		return nil
 	}
 
-	// Ensure a per-session workspace PVC exists for this job to avoid multi-attach
-	pvcName := fmt.Sprintf("ambient-workspace-%s", name)
-	ownerRefs := []v1.OwnerReference{
-		{
-			APIVersion: "vteam.ambient-code/v1",
-			Kind:       "AgenticSession",
-			Name:       currentObj.GetName(),
-			UID:        currentObj.GetUID(),
-			Controller: boolPtr(true),
-			// BlockOwnerDeletion intentionally omitted to avoid permission issues
-		},
+	// Check for session continuation (parent session ID)
+	parentSessionID := ""
+	// Check annotations first
+	if annotations, ok := currentObj.GetAnnotations()["vteam.ambient-code/parent-session-id"]; ok {
+		parentSessionID = strings.TrimSpace(annotations)
 	}
-	if err := services.EnsureSessionWorkspacePVC(sessionNamespace, pvcName, ownerRefs); err != nil {
-		log.Printf("Failed to ensure session PVC %s in %s: %v", pvcName, sessionNamespace, err)
-		// Continue; job may still run with ephemeral storage
+	// Check environmentVariables as fallback
+	if parentSessionID == "" {
+		spec, _, _ := unstructured.NestedMap(currentObj.Object, "spec")
+		if envVars, found, _ := unstructured.NestedStringMap(spec, "environmentVariables"); found {
+			if val, ok := envVars["PARENT_SESSION_ID"]; ok {
+				parentSessionID = strings.TrimSpace(val)
+			}
+		}
+	}
+
+	// Determine PVC name and owner references
+	var pvcName string
+	var ownerRefs []v1.OwnerReference
+	reusing_pvc := false
+
+	if parentSessionID != "" {
+		// Continuation: reuse parent's PVC
+		pvcName = fmt.Sprintf("ambient-workspace-%s", parentSessionID)
+		reusing_pvc = true
+		log.Printf("Session continuation: reusing PVC %s from parent session %s", pvcName, parentSessionID)
+		// No owner refs - we don't own the parent's PVC
+	} else {
+		// New session: create fresh PVC with owner refs
+		pvcName = fmt.Sprintf("ambient-workspace-%s", name)
+		ownerRefs = []v1.OwnerReference{
+			{
+				APIVersion: "vteam.ambient-code/v1",
+				Kind:       "AgenticSession",
+				Name:       currentObj.GetName(),
+				UID:        currentObj.GetUID(),
+				Controller: boolPtr(true),
+				// BlockOwnerDeletion intentionally omitted to avoid permission issues
+			},
+		}
+	}
+
+	// Ensure PVC exists (skip for continuation if parent's PVC should exist)
+	if !reusing_pvc {
+		if err := services.EnsureSessionWorkspacePVC(sessionNamespace, pvcName, ownerRefs); err != nil {
+			log.Printf("Failed to ensure session PVC %s in %s: %v", pvcName, sessionNamespace, err)
+			// Continue; job may still run with ephemeral storage
+		}
+	} else {
+		// Verify parent's PVC exists
+		if _, err := config.K8sClient.CoreV1().PersistentVolumeClaims(sessionNamespace).Get(context.TODO(), pvcName, v1.GetOptions{}); err != nil {
+			log.Printf("Warning: Parent PVC %s not found for continuation session %s: %v", pvcName, name, err)
+			// Fall back to creating new PVC with current session's owner refs
+			pvcName = fmt.Sprintf("ambient-workspace-%s", name)
+			ownerRefs = []v1.OwnerReference{
+				{
+					APIVersion: "vteam.ambient-code/v1",
+					Kind:       "AgenticSession",
+					Name:       currentObj.GetName(),
+					UID:        currentObj.GetUID(),
+					Controller: boolPtr(true),
+				},
+			}
+			if err := services.EnsureSessionWorkspacePVC(sessionNamespace, pvcName, ownerRefs); err != nil {
+				log.Printf("Failed to create fallback PVC %s: %v", pvcName, err)
+			}
+		}
 	}
 
 	// Load config for this session
@@ -550,11 +602,24 @@ func monitorJob(jobName, sessionName, sessionNamespace string) {
 					}
 				}
 			}
-			_ = updateAgenticSessionStatus(sessionNamespace, sessionName, map[string]interface{}{
-				"phase":          "Failed",
-				"message":        failureMsg,
-				"completionTime": time.Now().Format(time.RFC3339),
-			})
+
+			// Only update to Failed if not already in a terminal state
+			gvr := types.GetAgenticSessionResource()
+			if currentObj, err := config.DynamicClient.Resource(gvr).Namespace(sessionNamespace).Get(context.TODO(), sessionName, v1.GetOptions{}); err == nil {
+				currentPhase := ""
+				if status, found, _ := unstructured.NestedMap(currentObj.Object, "status"); found {
+					if v, ok := status["phase"].(string); ok {
+						currentPhase = v
+					}
+				}
+				if currentPhase != "Failed" && currentPhase != "Completed" && currentPhase != "Stopped" {
+					_ = updateAgenticSessionStatus(sessionNamespace, sessionName, map[string]interface{}{
+						"phase":          "Failed",
+						"message":        failureMsg,
+						"completionTime": time.Now().Format(time.RFC3339),
+					})
+				}
+			}
 			_ = deleteJobAndPerJobService(sessionNamespace, jobName, sessionName)
 			return
 		}
@@ -565,10 +630,96 @@ func monitorJob(jobName, sessionName, sessionNamespace string) {
 			log.Printf("Error listing pods for job %s: %v", jobName, err)
 			continue
 		}
+
+		// Check for job with no active pods (pod evicted/preempted/deleted)
+		if len(pods.Items) == 0 && job.Status.Active == 0 && job.Status.Succeeded == 0 && job.Status.Failed == 0 {
+			// Check current phase to see if this is unexpected
+			gvr := types.GetAgenticSessionResource()
+			if currentObj, err := config.DynamicClient.Resource(gvr).Namespace(sessionNamespace).Get(context.TODO(), sessionName, v1.GetOptions{}); err == nil {
+				currentPhase := ""
+				if status, found, _ := unstructured.NestedMap(currentObj.Object, "status"); found {
+					if v, ok := status["phase"].(string); ok {
+						currentPhase = v
+					}
+				}
+				// If session is Running but pod is gone, mark as Failed
+				if currentPhase == "Running" || currentPhase == "Creating" {
+					log.Printf("Job %s has no pods but session is %s, marking as Failed", jobName, currentPhase)
+					_ = updateAgenticSessionStatus(sessionNamespace, sessionName, map[string]interface{}{
+						"phase":          "Failed",
+						"message":        "Job pod was deleted or evicted unexpectedly",
+						"completionTime": time.Now().Format(time.RFC3339),
+					})
+					_ = deleteJobAndPerJobService(sessionNamespace, jobName, sessionName)
+					return
+				}
+			}
+			continue
+		}
+
 		if len(pods.Items) == 0 {
 			continue
 		}
 		pod := pods.Items[0]
+
+		// Check for pod-level failures (ImagePullBackOff, CrashLoopBackOff, etc.)
+		if pod.Status.Phase == corev1.PodFailed {
+			gvr := types.GetAgenticSessionResource()
+			if currentObj, err := config.DynamicClient.Resource(gvr).Namespace(sessionNamespace).Get(context.TODO(), sessionName, v1.GetOptions{}); err == nil {
+				currentPhase := ""
+				if status, found, _ := unstructured.NestedMap(currentObj.Object, "status"); found {
+					if v, ok := status["phase"].(string); ok {
+						currentPhase = v
+					}
+				}
+				// Only update if not already in terminal state
+				if currentPhase != "Failed" && currentPhase != "Completed" && currentPhase != "Stopped" {
+					failureMsg := fmt.Sprintf("Pod failed: %s - %s", pod.Status.Reason, pod.Status.Message)
+					log.Printf("Job %s pod in Failed phase, updating session to Failed: %s", jobName, failureMsg)
+					_ = updateAgenticSessionStatus(sessionNamespace, sessionName, map[string]interface{}{
+						"phase":          "Failed",
+						"message":        failureMsg,
+						"completionTime": time.Now().Format(time.RFC3339),
+					})
+					_ = deleteJobAndPerJobService(sessionNamespace, jobName, sessionName)
+					return
+				}
+			}
+		}
+
+		// Check for containers in waiting state with errors (ImagePullBackOff, CrashLoopBackOff, etc.)
+		for _, cs := range pod.Status.ContainerStatuses {
+			if cs.State.Waiting != nil {
+				waiting := cs.State.Waiting
+				// Check for error states that indicate permanent failure
+				errorStates := []string{"ImagePullBackOff", "ErrImagePull", "CrashLoopBackOff", "CreateContainerConfigError", "InvalidImageName"}
+				for _, errState := range errorStates {
+					if waiting.Reason == errState {
+						gvr := types.GetAgenticSessionResource()
+						if currentObj, err := config.DynamicClient.Resource(gvr).Namespace(sessionNamespace).Get(context.TODO(), sessionName, v1.GetOptions{}); err == nil {
+							currentPhase := ""
+							if status, found, _ := unstructured.NestedMap(currentObj.Object, "status"); found {
+								if v, ok := status["phase"].(string); ok {
+									currentPhase = v
+								}
+							}
+							// Only update if not already in terminal state and we've been in this state for a while
+							if currentPhase == "Running" || currentPhase == "Creating" {
+								failureMsg := fmt.Sprintf("Container %s failed: %s - %s", cs.Name, waiting.Reason, waiting.Message)
+								log.Printf("Job %s container in error state, updating session to Failed: %s", jobName, failureMsg)
+								_ = updateAgenticSessionStatus(sessionNamespace, sessionName, map[string]interface{}{
+									"phase":          "Failed",
+									"message":        failureMsg,
+									"completionTime": time.Now().Format(time.RFC3339),
+								})
+								_ = deleteJobAndPerJobService(sessionNamespace, jobName, sessionName)
+								return
+							}
+						}
+					}
+				}
+			}
+		}
 
 		// If main container is running and phase hasn't been set to Running yet, update
 		if cs := getContainerStatusByName(&pod, mainContainerName); cs != nil {
@@ -621,13 +772,20 @@ func monitorJob(jobName, sessionName, sessionNamespace string) {
 				}
 			}
 
-			// If wrapper already set status to Completed, respect that (don't override)
-			if currentPhase == "Completed" {
-				log.Printf("Runner exited for job %s; status already set to Completed by wrapper", jobName)
-				continue
+			// If wrapper already set status to Completed, clean up immediately
+			if currentPhase == "Completed" || currentPhase == "Failed" {
+				log.Printf("Runner exited for job %s with phase %s", jobName, currentPhase)
+
+				// Clean up Job/Service immediately
+				_ = deleteJobAndPerJobService(sessionNamespace, jobName, sessionName)
+
+				// Keep PVC - it will be deleted via garbage collection when session CR is deleted
+				// This allows users to restart completed sessions and reuse the workspace
+				log.Printf("Session %s completed, keeping PVC for potential restart", sessionName)
+				return
 			}
 
-			// Runner exit code 0 = success
+			// Runner exit code 0 = success (fallback if wrapper didn't set status)
 			if term.ExitCode == 0 {
 				_ = updateAgenticSessionStatus(sessionNamespace, sessionName, map[string]interface{}{
 					"phase":          "Completed",
@@ -635,10 +793,11 @@ func monitorJob(jobName, sessionName, sessionNamespace string) {
 					"completionTime": time.Now().Format(time.RFC3339),
 				})
 				log.Printf("Runner container exited successfully for job %s", jobName)
+				// Will cleanup on next iteration
 				continue
 			}
 
-			// Runner non-zero exit = failure (only if not already Completed)
+			// Runner non-zero exit = failure
 			msg := term.Message
 			if msg == "" {
 				msg = fmt.Sprintf("Runner container exited with code %d", term.ExitCode)
@@ -648,45 +807,12 @@ func monitorJob(jobName, sessionName, sessionNamespace string) {
 				"message": msg,
 			})
 			log.Printf("Runner container failed for job %s: %s", jobName, msg)
+			// Will cleanup on next iteration
 			continue
 		}
 
-		// Check CR repo statuses; if session marked Completed/Stopped and all repos are finalized, cleanup
-		{
-			gvr := types.GetAgenticSessionResource()
-			obj, err := config.DynamicClient.Resource(gvr).Namespace(sessionNamespace).Get(context.TODO(), sessionName, v1.GetOptions{})
-			if err == nil && obj != nil {
-				status, _, _ := unstructured.NestedMap(obj.Object, "status")
-				phase := ""
-				if v, ok := status["phase"].(string); ok {
-					phase = v
-				}
-				spec, _, _ := unstructured.NestedMap(obj.Object, "spec")
-				repos, _, _ := unstructured.NestedSlice(spec, "repos")
-				// Only finalize when there is at least one repo and ALL are in a final state
-				allFinal := false
-				if len(repos) > 0 {
-					allFinal = true
-					for _, r := range repos {
-						m, ok := r.(map[string]interface{})
-						if !ok {
-							continue
-						}
-						st, _ := m["status"].(string)
-						st = strings.ToLower(strings.TrimSpace(st))
-						if st != "pushed" && st != "abandoned" {
-							allFinal = false
-							break
-						}
-					}
-				}
-				if (phase == "Completed" || phase == "Stopped") && allFinal {
-					log.Printf("All repos finalized for %s; cleaning up job and service", sessionName)
-					_ = deleteJobAndPerJobService(sessionNamespace, jobName, sessionName)
-					return
-				}
-			}
-		}
+		// Note: Job/Pod cleanup now happens immediately when runner exits (see above)
+		// This loop continues to monitor until cleanup happens
 	}
 }
 
@@ -715,7 +841,7 @@ func deleteJobAndPerJobService(namespace, jobName, sessionName string) error {
 		return err
 	}
 
-	// Proactively delete Pods for this Job before removing PVC
+	// Proactively delete Pods for this Job
 	if pods, err := config.K8sClient.CoreV1().Pods(namespace).List(context.TODO(), v1.ListOptions{LabelSelector: fmt.Sprintf("job-name=%s", jobName)}); err == nil {
 		for i := range pods.Items {
 			p := pods.Items[i]
@@ -727,11 +853,9 @@ func deleteJobAndPerJobService(namespace, jobName, sessionName string) error {
 		log.Printf("Failed to list pods for job %s/%s: %v", namespace, jobName, err)
 	}
 
-	// Delete the per-session workspace PVC
-	pvcName := fmt.Sprintf("ambient-workspace-%s", sessionName)
-	if err := config.K8sClient.CoreV1().PersistentVolumeClaims(namespace).Delete(context.TODO(), pvcName, v1.DeleteOptions{}); err != nil && !errors.IsNotFound(err) {
-		log.Printf("Failed to delete per-session PVC %s/%s: %v", namespace, pvcName, err)
-	}
+	// NOTE: PVC is kept for all sessions and only deleted via garbage collection
+	// when the session CR is deleted. This allows sessions to be restarted.
+
 	return nil
 }
 
@@ -769,6 +893,54 @@ func updateAgenticSessionStatus(sessionNamespace, name string, statusUpdate map[
 	}
 
 	return nil
+}
+
+// CleanupExpiredTempContentPods removes temporary content pods that have exceeded their TTL
+func CleanupExpiredTempContentPods() {
+	log.Println("Starting temp content pod cleanup goroutine")
+	for {
+		time.Sleep(1 * time.Minute)
+
+		// List all temp content pods across all namespaces
+		pods, err := config.K8sClient.CoreV1().Pods("").List(context.TODO(), v1.ListOptions{
+			LabelSelector: "app=temp-content-service",
+		})
+		if err != nil {
+			log.Printf("Failed to list temp content pods: %v", err)
+			continue
+		}
+
+		for _, pod := range pods.Items {
+			// Check TTL annotation
+			createdAtStr := pod.Annotations["vteam.ambient-code/created-at"]
+			ttlStr := pod.Annotations["vteam.ambient-code/ttl"]
+
+			if createdAtStr == "" || ttlStr == "" {
+				continue
+			}
+
+			createdAt, err := time.Parse(time.RFC3339, createdAtStr)
+			if err != nil {
+				log.Printf("Failed to parse created-at for pod %s: %v", pod.Name, err)
+				continue
+			}
+
+			ttlSeconds := int64(0)
+			if _, err := fmt.Sscanf(ttlStr, "%d", &ttlSeconds); err != nil {
+				log.Printf("Failed to parse TTL for pod %s: %v", pod.Name, err)
+				continue
+			}
+
+			ttlDuration := time.Duration(ttlSeconds) * time.Second
+			if time.Since(createdAt) > ttlDuration {
+				log.Printf("Deleting expired temp content pod: %s/%s (age: %v, ttl: %v)",
+					pod.Namespace, pod.Name, time.Since(createdAt), ttlDuration)
+				if err := config.K8sClient.CoreV1().Pods(pod.Namespace).Delete(context.TODO(), pod.Name, v1.DeleteOptions{}); err != nil && !errors.IsNotFound(err) {
+					log.Printf("Failed to delete expired temp pod %s/%s: %v", pod.Namespace, pod.Name, err)
+				}
+			}
+		}
+	}
 }
 
 // Helper functions

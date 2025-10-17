@@ -82,7 +82,6 @@ class ClaudeCodeAdapter:
 
             # Send completion
             await self._send_log("Claude Code session completed")
-            
 
             # Optional auto-push on completion (default: disabled)
             try:
@@ -157,6 +156,10 @@ class ClaudeCodeAdapter:
             api_key = self.context.get_env('ANTHROPIC_API_KEY', '')
             if not api_key:
                 raise RuntimeError("ANTHROPIC_API_KEY is required for Claude Code SDK")
+
+            # Check if continuing from previous session
+            parent_session_id = self.context.get_env('PARENT_SESSION_ID', '').strip()
+            is_continuation = bool(parent_session_id)
 
             # Determine cwd and additional dirs from multi-repo config
             repos_cfg = self._get_repos_config()
@@ -314,6 +317,26 @@ class ClaudeCodeAdapter:
                     await client.query(text)
                     await process_response_stream(client)
 
+                # If continuing, replay message history first
+                if is_continuation and parent_session_id:
+                    await self._send_log(f"Continuing from session {parent_session_id[:8]}...")
+                    try:
+                        message_history = await self._fetch_session_history(parent_session_id)
+                        if message_history and len(message_history) > 0:
+                            await self._send_log(f"Restoring {len(message_history)} messages...")
+                            
+                            async def message_stream():
+                                for msg in message_history:
+                                    yield msg
+                            
+                            await client.connect(message_stream())
+                            await self._send_log("✓ Session context restored")
+                        else:
+                            await self._send_log("⚠ No history found, starting fresh")
+                    except Exception as e:
+                        logging.warning(f"Failed to restore session history: {e}")
+                        await self._send_log(f"⚠ Could not restore history: {e}")
+
                 # Initial prompt (if any)
                 if prompt and prompt.strip():
                     await process_one_prompt(prompt)
@@ -368,6 +391,12 @@ class ClaudeCodeAdapter:
         workspace = Path(self.context.workspace_path)
         workspace.mkdir(parents=True, exist_ok=True)
 
+        # Check if reusing workspace from previous session
+        parent_session_id = self.context.get_env('PARENT_SESSION_ID', '').strip()
+        reusing_workspace = bool(parent_session_id)
+        if reusing_workspace:
+            await self._send_log(f"Reusing workspace from session {parent_session_id[:8]}")
+
         repos_cfg = self._get_repos_config()
         if repos_cfg:
             # Multi-repo: clone each into workspace/<name>
@@ -380,12 +409,19 @@ class ClaudeCodeAdapter:
                     if not name or not url:
                         continue
                     repo_dir = workspace / name
+                    
                     if not repo_dir.exists():
                         await self._send_log(f"Cloning {name}...")
                         clone_url = self._url_with_token(url, token) if token else url
                         await self._run_cmd(["git", "clone", "--branch", branch, "--single-branch", clone_url, str(repo_dir)], cwd=str(workspace))
+                    elif reusing_workspace and (repo_dir / ".git").exists():
+                        # Reusing workspace - preserve local changes from previous session
+                        await self._send_log(f"Preserving workspace state for {name}")
+                        await self._run_cmd(["git", "remote", "set-url", "origin", self._url_with_token(url, token) if token else url], cwd=str(repo_dir), ignore_errors=True)
+                        # Don't reset - keep all changes!
                     else:
-                        # Fetch/reset existing repo
+                        # Repo exists but not reusing - reset to clean state
+                        await self._send_log(f"Resetting {name} to clean state")
                         await self._run_cmd(["git", "remote", "set-url", "origin", self._url_with_token(url, token) if token else url], cwd=str(repo_dir), ignore_errors=True)
                         await self._run_cmd(["git", "fetch", "origin", branch], cwd=str(repo_dir))
                         await self._run_cmd(["git", "checkout", branch], cwd=str(repo_dir))
@@ -421,7 +457,14 @@ class ClaudeCodeAdapter:
                 await self._send_log("Cloning input repository...")
                 clone_url = self._url_with_token(input_repo, token) if token else input_repo
                 await self._run_cmd(["git", "clone", "--branch", input_branch, "--single-branch", clone_url, str(workspace)], cwd=str(workspace.parent))
+            elif reusing_workspace:
+                # Reusing workspace - preserve local changes from previous session
+                await self._send_log("Preserving workspace state from previous session")
+                await self._run_cmd(["git", "remote", "set-url", "origin", self._url_with_token(input_repo, token) if token else input_repo], cwd=str(workspace), ignore_errors=True)
+                # Don't reset - keep all changes!
             else:
+                # Reset to clean state
+                await self._send_log("Resetting workspace to clean state")
                 await self._run_cmd(["git", "remote", "set-url", "origin", self._url_with_token(input_repo, token) if token else input_repo], cwd=str(workspace))
                 await self._run_cmd(["git", "fetch", "origin", input_branch], cwd=str(workspace))
                 await self._run_cmd(["git", "checkout", input_branch], cwd=str(workspace))
@@ -933,6 +976,65 @@ class ClaudeCodeAdapter:
         # Redact basic auth credentials
         text = re.sub(r'://[^:@\s]+:[^@\s]+@', '://***REDACTED***@', text)
         return text
+
+    async def _fetch_session_history(self, session_id: str) -> list[dict] | None:
+        """Fetch message history from backend in Claude SDK format."""
+        status_url = self._compute_status_url()
+        if not status_url:
+            logging.warning("Cannot fetch session history: status URL not available")
+            return None
+        
+        try:
+            from urllib.parse import urlparse as _up, urlunparse as _uu
+            p = _up(status_url)
+            path_parts = [pt for pt in p.path.split('/') if pt]
+            
+            if 'projects' in path_parts and 'agentic-sessions' in path_parts:
+                proj_idx = path_parts.index('projects')
+                project = path_parts[proj_idx + 1] if len(path_parts) > proj_idx + 1 else ''
+                new_path = f"/api/projects/{project}/sessions/{session_id}/messages/claude-format"
+                url = _uu((p.scheme, p.netloc, new_path, '', '', ''))
+                logging.info(f"Fetching session history from: {url}")
+            else:
+                logging.error("Could not parse project path from status URL")
+                return None
+        except Exception as e:
+            logging.error(f"Failed to construct history URL: {e}")
+            return None
+        
+        req = _urllib_request.Request(url, headers={'Content-Type': 'application/json'}, method='GET')
+        bot = (os.getenv('BOT_TOKEN') or '').strip()
+        if bot:
+            req.add_header('Authorization', f'Bearer {bot}')
+        
+        loop = asyncio.get_event_loop()
+        def _do_req():
+            try:
+                with _urllib_request.urlopen(req, timeout=15) as resp:
+                    return resp.read().decode('utf-8', errors='replace')
+            except _urllib_error.HTTPError as he:
+                logging.warning(f"Session history fetch HTTP {he.code}")
+                return ''
+            except Exception as e:
+                logging.warning(f"Session history fetch failed: {e}")
+                return ''
+        
+        resp_text = await loop.run_in_executor(None, _do_req)
+        if not resp_text:
+            return None
+        
+        try:
+            data = _json.loads(resp_text)
+            messages = data.get('messages', [])
+            if not messages:
+                logging.info("No message history found for continuation")
+                return None
+            
+            logging.info(f"Fetched {len(messages)} messages for session continuation")
+            return messages
+        except Exception as e:
+            logging.error(f"Failed to parse session history: {e}")
+            return None
 
     async def _fetch_github_token(self) -> str:
         # Try cached value from env first

@@ -61,12 +61,13 @@ type AgenticSessionStatus struct {
 }
 
 type CreateAgenticSessionRequest struct {
-	Prompt        string       `json:"prompt" binding:"required"`
-	DisplayName   string       `json:"displayName,omitempty"`
-	LLMSettings   *LLMSettings `json:"llmSettings,omitempty"`
-	Timeout       *int         `json:"timeout,omitempty"`
-	Interactive   *bool        `json:"interactive,omitempty"`
-	WorkspacePath string       `json:"workspacePath,omitempty"`
+	Prompt          string       `json:"prompt" binding:"required"`
+	DisplayName     string       `json:"displayName,omitempty"`
+	LLMSettings     *LLMSettings `json:"llmSettings,omitempty"`
+	Timeout         *int         `json:"timeout,omitempty"`
+	Interactive     *bool        `json:"interactive,omitempty"`
+	WorkspacePath   string       `json:"workspacePath,omitempty"`
+	ParentSessionID string       `json:"parent_session_id,omitempty"`
 	// Multi-repo support (unified mapping)
 	Repos                []SessionRepoMapping `json:"repos,omitempty"`
 	MainRepoIndex        *int                 `json:"mainRepoIndex,omitempty"`

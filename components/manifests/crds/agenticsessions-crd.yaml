@@ -51,12 +51,6 @@ spec:
                           type: string
                           description: "Output branch to push to"
                           default: "main"
-                    status:
-                      type: string
-                      description: "Per-repo state: pushed, abandoned"
-                      enum:
-                      - "pushed"
-                      - "abandoned"
               mainRepoIndex:
                 type: integer
                 description: "Index of the repo in repos array treated as the main repo (Claude working dir). Defaults to 0 (first repo)."
@@ -158,6 +152,36 @@ spec:
               result:
                 type: string
                 description: "Final result text as reported by the runner"
+              has_workspace_changes:
+                type: boolean
+                description: "Whether workspace has uncommitted changes (for cleanup decisions)"
+              repos:
+                type: array
+                description: "Per-repo status tracking"
+                items:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                      description: "Repository name (derived from URL or spec.repos[].name)"
+                    status:
+                      type: string
+                      description: "Repository state"
+                      enum:
+                      - "pushed"
+                      - "abandoned"
+                      - "diff"
+                      - "nodiff"
+                    last_updated:
+                      type: string
+                      format: date-time
+                      description: "Last time this repo status was updated"
+                    total_added:
+                      type: integer
+                      description: "Total lines added (from git diff)"
+                    total_removed:
+                      type: integer
+                      description: "Total lines removed (from git diff)"
     additionalPrinterColumns:
     - name: Phase
       type: string

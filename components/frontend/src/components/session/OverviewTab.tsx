@@ -4,7 +4,7 @@ import React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Brain, Clock, RefreshCw, Sparkle, ExternalLink } from "lucide-react";
+import { Brain, Clock, RefreshCw, Sparkle, ExternalLink, ChevronRight, ChevronDown, Box, Container, HardDrive } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import type { AgenticSession } from "@/types/agentic-session";
@@ -21,10 +21,39 @@ type Props = {
   busyRepo: Record<number, 'push' | 'abandon' | null>;
   buildGithubCompareUrl: (inUrl: string, inBranch?: string, outUrl?: string, outBranch?: string) => string | null;
   onRefreshDiff: () => Promise<void>;
+  k8sResources?: {
+    jobName?: string;
+    jobStatus?: string;
+    pods?: Array<{
+      name: string;
+      phase: string;
+      containers: Array<{
+        name: string;
+        state: string;
+        exitCode?: number;
+        reason?: string;
+      }>;
+      isTempPod?: boolean;
+    }>;
+    pvcName?: string;
+    pvcExists?: boolean;
+    pvcSize?: string;
+  };
 };
 
-export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromptExpanded, latestLiveMessage, diffTotals, onPush, onAbandon, busyRepo, buildGithubCompareUrl, onRefreshDiff }) => {
+export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromptExpanded, latestLiveMessage, diffTotals, onPush, onAbandon, busyRepo, buildGithubCompareUrl, onRefreshDiff, k8sResources }) => {
   const [refreshingDiff, setRefreshingDiff] = React.useState(false);
+  const [expandedPods, setExpandedPods] = React.useState<Record<string, boolean>>({});
+  
+  const getStatusColor = (status: string) => {
+    const lower = status.toLowerCase();
+    if (lower.includes('running') || lower.includes('active')) return 'bg-blue-100 text-blue-800 border-blue-300';
+    if (lower.includes('succeeded') || lower.includes('completed')) return 'bg-green-100 text-green-800 border-green-300';
+    if (lower.includes('failed') || lower.includes('error')) return 'bg-red-100 text-red-800 border-red-300';
+    if (lower.includes('waiting') || lower.includes('pending')) return 'bg-yellow-100 text-yellow-800 border-yellow-300';
+    return 'bg-gray-100 text-gray-800 border-gray-300';
+  };
+  
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -154,6 +183,103 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                     </div>
                   </div>
                 </div>
+
+                {k8sResources?.jobName && (
+                  <div>
+                    <div className="text-xs font-semibold text-muted-foreground mb-2">Kubernetes Resources</div>
+                    <div className="space-y-2">
+                      {/* Job & Pods */}
+                      <div className="text-xs space-y-1">
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline" className="text-xs">
+                            <Box className="w-3 h-3 mr-1" />
+                            Job
+                          </Badge>
+                          <span className="font-mono text-xs">{k8sResources.jobName}</span>
+                          {k8sResources.jobStatus && (
+                            <Badge className={`text-xs ${getStatusColor(k8sResources.jobStatus)}`}>
+                              {k8sResources.jobStatus}
+                            </Badge>
+                          )}
+                        </div>
+                        
+                        {/* Pods */}
+                        {k8sResources.pods && k8sResources.pods.length > 0 && (
+                          <div className="ml-4 space-y-1 border-l-2 border-gray-200 pl-3">
+                            {k8sResources.pods.map((pod) => (
+                              <div key={pod.name} className="space-y-1">
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    onClick={() => setExpandedPods({ ...expandedPods, [pod.name]: !expandedPods[pod.name] })}
+                                    className="p-0 hover:bg-gray-100 rounded transition-colors"
+                                  >
+                                    {expandedPods[pod.name] ? (
+                                      <ChevronDown className="w-3 h-3 text-gray-500" />
+                                    ) : (
+                                      <ChevronRight className="w-3 h-3 text-gray-500" />
+                                    )}
+                                  </button>
+                                  <Badge variant="outline" className="text-xs">
+                                    <Container className="w-3 h-3 mr-1" />
+                                    Pod
+                                  </Badge>
+                                  <span className="font-mono text-xs truncate max-w-[200px]" title={pod.name}>
+                                    {pod.name}
+                                  </span>
+                                  <Badge className={`text-xs ${getStatusColor(pod.phase)}`}>
+                                    {pod.phase}
+                                  </Badge>
+                                  {pod.isTempPod && (
+                                    <Badge variant="outline" className="text-xs bg-purple-50 text-purple-700 border-purple-200">
+                                      Workspace viewer
+                                    </Badge>
+                                  )}
+                                </div>
+                                
+                                {expandedPods[pod.name] && pod.containers && (
+                                  <div className="ml-4 space-y-1 border-l-2 border-gray-200 pl-3">
+                                    {pod.containers.map((container) => (
+                                      <div key={container.name} className="flex items-center gap-2">
+                                        <Badge variant="outline" className="text-xs">
+                                          <Box className="w-3 h-3 mr-1" />
+                                          {container.name}
+                                        </Badge>
+                                        <Badge className={`text-xs ${getStatusColor(container.state)}`}>
+                                          {container.state}
+                                        </Badge>
+                                        {container.exitCode !== undefined && (
+                                          <span className="text-xs text-gray-500">Exit: {container.exitCode}</span>
+                                        )}
+                                        {container.reason && (
+                                          <span className="text-xs text-gray-500">({container.reason})</span>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        
+                        {/* PVC */}
+                        {k8sResources.pvcName && (
+                          <div className="flex items-center gap-2">
+                            <Badge variant="outline" className="text-xs">
+                              <HardDrive className="w-3 h-3 mr-1" />
+                              PVC
+                            </Badge>
+                            <span className="font-mono text-xs">{k8sResources.pvcName}</span>
+                            <Badge className={`text-xs ${k8sResources.pvcExists ? 'bg-green-100 text-green-800 border-green-300' : 'bg-red-100 text-red-800 border-red-300'}`}>
+                              {k8sResources.pvcExists ? 'Exists' : 'Not Found'}
+                            </Badge>
+                            {k8sResources.pvcSize && <span className="text-xs text-gray-500">{k8sResources.pvcSize}</span>}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 <div>
                   <div className="flex items-center justify-between mb-2">
