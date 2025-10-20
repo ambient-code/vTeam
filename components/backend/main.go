@@ -56,6 +56,8 @@ func main() {
 
 	// Initialize project handlers
 	handlers.GetOpenShiftProjectResource = k8s.GetOpenShiftProjectResource
+	handlers.GetOpenShiftProjectRequestResource = k8s.GetOpenShiftProjectRequestResource
+	handlers.K8sClientProjects = server.K8sClient // Backend SA client for namespace operations
 
 	// Initialize session handlers
 	handlers.GetAgenticSessionV1Alpha1Resource = k8s.GetAgenticSessionV1Alpha1Resource

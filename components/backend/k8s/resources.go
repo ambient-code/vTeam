@@ -37,3 +37,12 @@ func GetOpenShiftProjectResource() schema.GroupVersionResource {
 		Resource: "projects",
 	}
 }
+
+// GetOpenShiftProjectRequestResource returns the GroupVersionResource for OpenShift ProjectRequest
+func GetOpenShiftProjectRequestResource() schema.GroupVersionResource {
+	return schema.GroupVersionResource{
+		Group:    "project.openshift.io",
+		Version:  "v1",
+		Resource: "projectrequests",
+	}
+}

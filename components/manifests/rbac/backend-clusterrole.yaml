@@ -52,4 +52,14 @@ rules:
   resources: ["rfeworkflows/status"]
   verbs: ["get", "update", "patch"]
 
+# Namespaces - backend needs to add labels after ProjectRequest creates them
+- apiGroups: [""]
+  resources: ["namespaces"]
+  verbs: ["get", "list", "update", "patch"]
+
+# OpenShift Projects - read access for project validation
+- apiGroups: ["project.openshift.io"]
+  resources: ["projects"]
+  verbs: ["get", "list", "watch"]
+
 

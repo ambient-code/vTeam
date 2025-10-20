@@ -10,15 +10,18 @@ import (
 	"ambient-code-backend/types"
 
 	"github.com/gin-gonic/gin"
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/kubernetes"
 )
 
 // Package-level variables for project handlers (set from main package)
 var (
-	GetOpenShiftProjectResource func() schema.GroupVersionResource
+	GetOpenShiftProjectResource        func() schema.GroupVersionResource
+	GetOpenShiftProjectRequestResource func() schema.GroupVersionResource
+	K8sClientProjects                  *kubernetes.Clientset // Backend SA client for namespace operations
 )
 
 // ListProjects handles GET /projects
@@ -100,7 +103,7 @@ func ListProjects(c *gin.Context) {
 
 // CreateProject handles POST /projects
 func CreateProject(c *gin.Context) {
-	reqK8s, _ := GetK8sClientsForRequest(c)
+	_, reqDyn := GetK8sClientsForRequest(c)
 	var req types.CreateProjectRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -111,48 +114,107 @@ func CreateProject(c *gin.Context) {
 	userID, hasUser := c.Get("userID")
 	userName, hasName := c.Get("userName")
 
-	// Create namespace with Ambient labels (T049: Project labeling logic)
-	ns := &corev1.Namespace{
-		ObjectMeta: v1.ObjectMeta{
-			Name: req.Name,
-			Labels: map[string]string{
-				"ambient-code.io/managed": "true", // Critical label for Ambient project identification
-			},
-			Annotations: map[string]string{
-				"openshift.io/display-name": req.DisplayName,
-			},
-		},
+	// Build annotations for the ProjectRequest
+	annotations := map[string]interface{}{
+		"openshift.io/display-name": req.DisplayName,
+		// Add the Ambient label to the annotations so it gets transferred to the namespace
+		"ambient-code.io/managed": "true",
 	}
 
-	// Add optional annotations
+	// Add optional description
 	if req.Description != "" {
-		ns.Annotations["openshift.io/description"] = req.Description
+		annotations["openshift.io/description"] = req.Description
 	}
 	// Prefer requester as user name; fallback to user ID when available
 	if hasName && userName != nil {
-		ns.Annotations["openshift.io/requester"] = fmt.Sprintf("%v", userName)
+		annotations["openshift.io/requester"] = fmt.Sprintf("%v", userName)
 	} else if hasUser && userID != nil {
-		ns.Annotations["openshift.io/requester"] = fmt.Sprintf("%v", userID)
+		annotations["openshift.io/requester"] = fmt.Sprintf("%v", userID)
 	}
 
-	created, err := reqK8s.CoreV1().Namespaces().Create(context.TODO(), ns, v1.CreateOptions{})
+	// Create ProjectRequest using the dynamic client
+	// OpenShift will automatically create the namespace and grant the requester admin access
+	projectRequest := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "project.openshift.io/v1",
+			"kind":       "ProjectRequest",
+			"metadata": map[string]interface{}{
+				"name":        req.Name,
+				"annotations": annotations,
+			},
+			"displayName": req.DisplayName,
+			"description": req.Description,
+		},
+	}
+
+	projReqGvr := GetOpenShiftProjectRequestResource()
+	created, err := reqDyn.Resource(projReqGvr).Create(context.TODO(), projectRequest, v1.CreateOptions{})
 	if err != nil {
 		log.Printf("Failed to create project %s: %v", req.Name, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create project"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to create project: %v", err)})
 		return
+	}
+
+	// After creating the ProjectRequest, we need to fetch the created namespace
+	// to add the Ambient label (since ProjectRequest doesn't support labels directly)
+	// Use the backend SA client here as users don't have permission to update namespaces
+	ns, err := K8sClientProjects.CoreV1().Namespaces().Get(context.TODO(), req.Name, v1.GetOptions{})
+	if err != nil {
+		log.Printf("Project %s created but failed to fetch namespace: %v", req.Name, err)
+		// Continue anyway - the project was created
+	} else {
+		// Add the Ambient label to the namespace
+		if ns.Labels == nil {
+			ns.Labels = make(map[string]string)
+		}
+		ns.Labels["ambient-code.io/managed"] = "true"
+		_, err = K8sClientProjects.CoreV1().Namespaces().Update(context.TODO(), ns, v1.UpdateOptions{})
+		if err != nil {
+			log.Printf("Project %s created but failed to add Ambient label: %v", req.Name, err)
+			// Continue anyway - we can retry or handle this later
+		}
 	}
 
 	// Do not create ProjectSettings here. The operator will reconcile when it
 	// sees the managed label and create the ProjectSettings in the project namespace.
 
+	// Extract metadata from created project
+	meta, _ := created.Object["metadata"].(map[string]interface{})
+	anns := make(map[string]string)
+	labels := make(map[string]string)
+	creationTimestamp := ""
+
+	if meta != nil {
+		if rawAnns, ok := meta["annotations"].(map[string]interface{}); ok {
+			for k, v := range rawAnns {
+				if s, ok := v.(string); ok {
+					anns[k] = s
+				}
+			}
+		}
+		if rawLabels, ok := meta["labels"].(map[string]interface{}); ok {
+			for k, v := range rawLabels {
+				if s, ok := v.(string); ok {
+					labels[k] = s
+				}
+			}
+		}
+		// Add the Ambient label we just set
+		labels["ambient-code.io/managed"] = "true"
+
+		if ts, ok := meta["creationTimestamp"].(string); ok {
+			creationTimestamp = ts
+		}
+	}
+
 	project := types.AmbientProject{
-		Name:              created.Name,
-		DisplayName:       created.Annotations["openshift.io/display-name"],
-		Description:       created.Annotations["openshift.io/description"],
-		Labels:            created.Labels,
-		Annotations:       created.Annotations,
-		CreationTimestamp: created.CreationTimestamp.Format(time.RFC3339),
-		Status:            string(created.Status.Phase),
+		Name:              req.Name,
+		DisplayName:       anns["openshift.io/display-name"],
+		Description:       anns["openshift.io/description"],
+		Labels:            labels,
+		Annotations:       anns,
+		CreationTimestamp: creationTimestamp,
+		Status:            "Active",
 	}
 
 	c.JSON(http.StatusCreated, project)
@@ -230,8 +292,43 @@ func GetProject(c *gin.Context) {
 // DeleteProject handles DELETE /projects/:projectName
 func DeleteProject(c *gin.Context) {
 	projectName := c.Param("projectName")
-	reqK8s, _ := GetK8sClientsForRequest(c)
-	err := reqK8s.CoreV1().Namespaces().Delete(context.TODO(), projectName, v1.DeleteOptions{})
+	reqK8s, reqDyn := GetK8sClientsForRequest(c)
+
+	// First validate this is an Ambient-managed project
+	projGvr := GetOpenShiftProjectResource()
+	projObj, err := reqDyn.Resource(projGvr).Get(context.TODO(), projectName, v1.GetOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Project not found"})
+			return
+		}
+		if errors.IsUnauthorized(err) || errors.IsForbidden(err) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized to delete project"})
+			return
+		}
+		log.Printf("Failed to get project %s: %v", projectName, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get project"})
+		return
+	}
+
+	// Validate it's an Ambient-managed project
+	labels := map[string]string{}
+	if meta, ok := projObj.Object["metadata"].(map[string]interface{}); ok {
+		if raw, ok := meta["labels"].(map[string]interface{}); ok {
+			for k, v := range raw {
+				if s, ok := v.(string); ok {
+					labels[k] = s
+				}
+			}
+		}
+	}
+	if labels["ambient-code.io/managed"] != "true" {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Project not found or not an Ambient project"})
+		return
+	}
+
+	// Now delete the namespace
+	err = reqK8s.CoreV1().Namespaces().Delete(context.TODO(), projectName, v1.DeleteOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Project not found"})
