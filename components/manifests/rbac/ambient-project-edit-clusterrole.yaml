@@ -3,13 +3,13 @@ kind: ClusterRole
 metadata:
   name: ambient-project-edit
 rules:
-# AgenticSessions (read-only)
+# AgenticSessions (read-only - backend SA handles all CRUD operations)
 - apiGroups: ["vteam.ambient-code"]
   resources: ["agenticsessions"]
   verbs: ["get", "list", "watch"]
 - apiGroups: ["vteam.ambient-code"]
   resources: ["agenticsessions/status"]
-  verbs: ["get"]
+  verbs: ["get", "list", "watch"]
 # RFEWorkflows (full CRUD)
 - apiGroups: ["vteam.ambient-code"]
   resources: ["rfeworkflows"]
@@ -21,6 +21,10 @@ rules:
 - apiGroups: ["vteam.ambient-code"]
   resources: ["projectsettings"]
   verbs: ["get", "list", "watch"]
+# OpenShift Projects (read-only to list projects - OpenShift filters to only projects user has access to)
+- apiGroups: ["project.openshift.io"]
+  resources: ["projects"]
+  verbs: ["get", "list", "watch"]
 # ConfigMaps (read Git config during session creation)
 - apiGroups: [""]
   resources: ["configmaps"]
@@ -29,13 +33,25 @@ rules:
 - apiGroups: [""]
   resources: ["secrets"]
   verbs: ["create"]
-# Jobs (session management - can delete jobs during stopSession)
+# Jobs (session management - full CRUD for custom jobs, delete for cleanup)
 - apiGroups: ["batch"]
   resources: ["jobs"]
-  verbs: ["get", "list", "watch", "delete"]
-# Pods (monitoring)
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+# Pods (monitoring and logs)
 - apiGroups: [""]
   resources: ["pods", "pods/log"]
+  verbs: ["get", "list", "watch"]
+# PersistentVolumeClaims (workspace storage - read access for monitoring)
+- apiGroups: [""]
+  resources: ["persistentvolumeclaims"]
+  verbs: ["get", "list", "watch"]
+# Services (content services - read access for monitoring)
+- apiGroups: [""]
+  resources: ["services"]
+  verbs: ["get", "list", "watch"]
+# Deployments (content services - read access for monitoring)
+- apiGroups: ["apps"]
+  resources: ["deployments"]
   verbs: ["get", "list", "watch"]
 # ServiceAccounts (for provisioning runner tokens)
 - apiGroups: [""]

@@ -3,7 +3,7 @@ kind: ClusterRole
 metadata:
   name: ambient-project-admin
 rules:
-# ProjectSettings and RFEWorkflows (full CRUD); AgenticSessions read-only
+# ProjectSettings and RFEWorkflows (full CRUD); AgenticSessions (read-only - backend SA handles CRUD)
 - apiGroups: ["vteam.ambient-code"]
   resources: ["projectsettings", "rfeworkflows"]
   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
@@ -11,8 +11,11 @@ rules:
   resources: ["agenticsessions"]
   verbs: ["get", "list", "watch"]
 - apiGroups: ["vteam.ambient-code"]
-  resources: ["agenticsessions/status", "projectsettings/status", "rfeworkflows/status"]
-  verbs: ["get", "update", "patch"]
+  resources: ["projectsettings/status", "rfeworkflows/status"]
+  verbs: ["get", "list", "watch", "update", "patch"]
+- apiGroups: ["vteam.ambient-code"]
+  resources: ["agenticsessions/status"]
+  verbs: ["get", "list", "watch"]
 # Secrets and ConfigMaps (full management)
 - apiGroups: [""]
   resources: ["secrets", "configmaps"]
@@ -32,18 +35,26 @@ rules:
 # Jobs (full management)
 - apiGroups: ["batch"]
   resources: ["jobs"]
-  verbs: ["get", "list", "watch", "delete"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 # Pods (monitoring)
 - apiGroups: [""]
   resources: ["pods", "pods/log"]
   verbs: ["get", "list", "watch"]
-# Namespaces (project management)
-- apiGroups: [""]
-  resources: ["namespaces"]
-  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-# OpenShift Projects (project management)
+# OpenShift Projects (read-only to list projects - OpenShift filters to only projects user has access to)
 - apiGroups: ["project.openshift.io"]
   resources: ["projects"]
-  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  verbs: ["get", "list", "watch"]
+# PersistentVolumeClaims (workspace storage management)
+- apiGroups: [""]
+  resources: ["persistentvolumeclaims"]
+  verbs: ["get", "list", "watch", "delete"]
+# Services (content services management)
+- apiGroups: [""]
+  resources: ["services"]
+  verbs: ["get", "list", "watch", "delete"]
+# Deployments (content services management)
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["get", "list", "watch", "delete"]
 
 
