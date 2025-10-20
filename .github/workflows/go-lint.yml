@@ -40,7 +40,7 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: 'components/backend/go.mod'
           cache-dependency-path: 'components/backend/go.sum'
@@ -78,7 +78,7 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: 'components/operator/go.mod'
           cache-dependency-path: 'components/operator/go.sum'
