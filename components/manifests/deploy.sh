@@ -2,7 +2,10 @@
 
 # OpenShift Deployment Script for vTeam Ambient Agentic Runner
 # Usage: ./deploy.sh
-# Or with environment variables: NAMESPACE=my-namespace ./deploy.sh
+# Or with environment variables:
+#   NAMESPACE=my-namespace ./deploy.sh
+#   NAMESPACE=my-namespace OAUTH_CLIENT_NAME=my-oauth-client ./deploy.sh
+#   NAMESPACE=my-namespace DEFAULT_BACKEND_IMAGE=my-registry/backend:tag ./deploy.sh
 # Note: This script deploys pre-built images. Build and push images first.
 
 set -e
@@ -78,22 +81,22 @@ oauth_setup() {
     fi
 
     # Create/Update cluster-scoped OAuthClient (requires cluster-admin)
-    echo -e "${BLUE}Creating/Updating OAuthClient 'ambient-frontend'...${NC}"
-    cat > /tmp/ambient-frontend-oauthclient.yaml <<EOF
+    echo -e "${BLUE}Creating/Updating OAuthClient '${OAUTH_CLIENT_NAME}'...${NC}"
+    cat > /tmp/${OAUTH_CLIENT_NAME}-oauthclient.yaml <<EOF
 apiVersion: oauth.openshift.io/v1
 kind: OAuthClient
 metadata:
-  name: ambient-frontend
+  name: ${OAUTH_CLIENT_NAME}
 secret: ${CLIENT_SECRET_VALUE}
 redirectURIs:
 - https://${ROUTE_HOST}/oauth/callback
 grantMethod: auto
 EOF
     set +e
-    oc apply -f /tmp/ambient-frontend-oauthclient.yaml
+    oc apply -f /tmp/${OAUTH_CLIENT_NAME}-oauthclient.yaml
     OAUTH_APPLY_RC=$?
     set -e
-    rm -f /tmp/ambient-frontend-oauthclient.yaml
+    rm -f /tmp/${OAUTH_CLIENT_NAME}-oauthclient.yaml
     if [[ ${OAUTH_APPLY_RC} -ne 0 ]]; then
         echo -e "${YELLOW}⚠️ Could not create/update cluster-scoped OAuthClient. You likely need cluster-admin.${NC}"
         echo -e "${YELLOW}Ask an admin to run:${NC}"
@@ -101,7 +104,7 @@ EOF
         echo "apiVersion: oauth.openshift.io/v1"
         echo "kind: OAuthClient"
         echo "metadata:"
-        echo "  name: ambient-frontend"
+        echo "  name: ${OAUTH_CLIENT_NAME}"
         echo "secret: ${CLIENT_SECRET_VALUE}"
         echo "redirectURIs:"
         echo "- https://${ROUTE_HOST}/oauth/callback"
@@ -119,13 +122,21 @@ EOF
       --dry-run=client -o yaml | oc apply -f -
     echo -e "${GREEN}✅ Secret configured${NC}"
 
-    # Restart frontend to pick up new secret
+    # Update oauth-proxy sidecar with correct client-id (arg index 4)
+    echo -e "${BLUE}Updating oauth-proxy with client-id: ${OAUTH_CLIENT_NAME}...${NC}"
+    oc patch deployment frontend -n ${NAMESPACE} --type=json -p "[{\"op\":\"replace\",\"path\":\"/spec/template/spec/containers/1/args/4\",\"value\":\"--client-id=${OAUTH_CLIENT_NAME}\"}]" || {
+        echo -e "${YELLOW}⚠️ Failed to patch oauth-proxy client-id. Will restart deployment to try again.${NC}"
+    }
+
+    # Restart frontend to pick up new secret and config
     echo -e "${BLUE}Restarting frontend deployment...${NC}"
     oc -n ${NAMESPACE} rollout restart deployment/frontend
 }
 
 # Configuration
 NAMESPACE="${NAMESPACE:-ambient-code}"
+# OAuth client name - should be unique per instance to avoid conflicts
+OAUTH_CLIENT_NAME="${OAUTH_CLIENT_NAME:-ambient-frontend-${NAMESPACE}}"
 # Allow overriding images via CONTAINER_REGISTRY/IMAGE_TAG or explicit DEFAULT_*_IMAGE
 CONTAINER_REGISTRY="${CONTAINER_REGISTRY:-quay.io/ambient_code}"
 IMAGE_TAG="${IMAGE_TAG:-latest}"
@@ -225,6 +236,7 @@ fi
 echo -e "${BLUE}🚀 vTeam Ambient Agentic Runner - OpenShift Deployment${NC}"
 echo -e "${BLUE}====================================================${NC}"
 echo -e "Namespace: ${GREEN}${NAMESPACE}${NC}"
+echo -e "OAuth Client Name: ${GREEN}${OAUTH_CLIENT_NAME}${NC}"
 echo -e "Backend Image: ${GREEN}${DEFAULT_BACKEND_IMAGE}${NC}"
 echo -e "Frontend Image: ${GREEN}${DEFAULT_FRONTEND_IMAGE}${NC}"
 echo -e "Operator Image: ${GREEN}${DEFAULT_OPERATOR_IMAGE}${NC}"
