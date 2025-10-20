@@ -25,6 +25,7 @@ func RFEWorkflowToCRObject(workflow *types.RFEWorkflow) map[string]interface{} {
 	spec := map[string]interface{}{
 		"title":         workflow.Title,
 		"description":   workflow.Description,
+		"branchName":    workflow.BranchName,
 		"workspacePath": workflow.WorkspacePath,
 	}
 	if len(workflow.JiraLinks) > 0 {

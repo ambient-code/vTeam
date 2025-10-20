@@ -113,8 +113,12 @@ func CreateProjectRFEWorkflow(c *gin.Context) {
 	now := time.Now().UTC().Format(time.RFC3339)
 	workflowID := fmt.Sprintf("rfe-%d", time.Now().Unix())
 
-	// Generate branch name from title
-	branchName := git.GenerateBranchName(req.Title)
+	// Generate branch name from title - validate it's not a protected branch
+	branchName, err := git.GenerateBranchName(req.Title)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
 
 	workflow := &RFEWorkflow{
 		ID:              workflowID,
@@ -209,13 +213,13 @@ func SeedProjectRFEWorkflow(c *gin.Context) {
 	}
 	specKitRepo := req.SpecKitRepo
 	if specKitRepo == "" {
-		specKitRepo = "sallyom/spec-kit" // TODO: remove this fork development
-		// specKitRepo = "ambient-code/spec-kit-rh" // TODO: Use fork/tag with flexible branch support
+		// Using sallyom/spec-kit for testing - update to ambient-code/spec-kit-rh for production
+		specKitRepo = "sallyom/spec-kit"
 	}
 	specKitVersion := req.SpecKitVersion
 	if specKitVersion == "" {
-		specKitVersion = "auto-branch-spec-kit" // TODO: remove this fork development branch
-		// specKitVersion = "vteam-flexible-branches" // TODO: Use fork/tag branch
+		// Using auto-branch-spec-kit branch for testing - update to vteam-flexible-branches for production
+		specKitVersion = "auto-branch-spec-kit"
 	}
 	specKitTemplate := req.SpecKitTemplate
 	if specKitTemplate == "" {

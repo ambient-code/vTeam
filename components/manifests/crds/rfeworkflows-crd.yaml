@@ -34,6 +34,9 @@ spec:
                 type: string
               description:
                 type: string
+              branchName:
+                type: string
+                description: "Platform-generated feature branch name based on title"
               umbrellaRepo:
                 type: object
                 description: "Primary umbrella Git repository"

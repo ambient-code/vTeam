@@ -222,9 +222,23 @@ func ParseGitHubURL(gitURL string) (owner, repo string, err error) {
 	return "", "", fmt.Errorf("not a GitHub URL")
 }
 
+// IsProtectedBranch checks if a branch name is a protected branch
+// Protected branches: main, master, develop
+func IsProtectedBranch(branchName string) bool {
+	protected := []string{"main", "master", "develop"}
+	normalized := strings.ToLower(strings.TrimSpace(branchName))
+	for _, p := range protected {
+		if normalized == p {
+			return true
+		}
+	}
+	return false
+}
+
 // GenerateBranchName creates a branch name from an RFE title
 // Converts to lowercase and replaces non-alphanumeric chars with hyphens
-func GenerateBranchName(title string) string {
+// Returns the generated branch name and an error if it would create a protected branch
+func GenerateBranchName(title string) (string, error) {
 	// Convert to lowercase
 	lower := strings.ToLower(title)
 
@@ -244,7 +258,12 @@ func GenerateBranchName(title string) string {
 	// Trim hyphens from start and end
 	branch = strings.Trim(branch, "-")
 
-	return branch
+	// Validate that generated branch name is not a protected branch
+	if IsProtectedBranch(branch) {
+		return "", fmt.Errorf("RFE title '%s' would generate protected branch name '%s'. Please use a different title", title, branch)
+	}
+
+	return branch, nil
 }
 
 // checkGitHubPathExists checks if a path exists in a GitHub repo
@@ -431,6 +450,11 @@ func PerformRepoSeeding(ctx context.Context, wf Workflow, branchName, githubToke
 			if len(parts) == 2 {
 				rel = parts[1] // Take everything after first "/"
 			}
+		}
+
+		// Skip .github/workflows/ - these are spec-kit's own CI/CD files, not for user repos
+		if strings.HasPrefix(rel, ".github/workflows/") {
+			continue
 		}
 
 		// Security: prevent path traversal

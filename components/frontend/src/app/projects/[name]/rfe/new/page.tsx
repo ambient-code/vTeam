@@ -148,7 +148,10 @@ export default function ProjectNewRFEWorkflowPage() {
                       <FormControl>
                         <Input placeholder="e.g., User Authentication System" {...field} />
                       </FormControl>
-                      <FormDescription>A concise title that describes the feature or enhancement</FormDescription>
+                      <FormDescription>
+                        A concise title that describes the feature or enhancement.{' '}
+                        <span className="font-medium text-foreground">This title will be used to generate the feature branch name.</span>
+                      </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -221,6 +224,9 @@ export default function ProjectNewRFEWorkflowPage() {
                           <FormControl>
                             <Input placeholder="main" {...field} />
                           </FormControl>
+                          <FormDescription className="text-xs">
+                            Base branch for generated feature branch
+                          </FormDescription>
                           <FormMessage />
                         </FormItem>
                       )}
@@ -258,6 +264,9 @@ export default function ProjectNewRFEWorkflowPage() {
                             <FormControl>
                               <Input placeholder="main" {...field} />
                             </FormControl>
+                            <FormDescription className="text-xs">
+                              Base branch for generated feature branch
+                            </FormDescription>
                             <FormMessage />
                           </FormItem>
                         )}

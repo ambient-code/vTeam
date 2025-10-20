@@ -48,6 +48,7 @@ func RFEFromUnstructured(item *unstructured.Unstructured) *types.RFEWorkflow {
 		ID:            item.GetName(),
 		Title:         fmt.Sprintf("%v", spec["title"]),
 		Description:   fmt.Sprintf("%v", spec["description"]),
+		BranchName:    fmt.Sprintf("%v", spec["branchName"]),
 		Project:       item.GetNamespace(),
 		WorkspacePath: fmt.Sprintf("%v", spec["workspacePath"]),
 		CreatedAt:     created,
