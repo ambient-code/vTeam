@@ -4,6 +4,7 @@ import "./globals.css";
 import { Navigation } from "@/components/navigation";
 import { QueryProvider } from "@/components/providers/query-provider";
 import { Toaster } from "@/components/ui/toaster";
+import { VersionFooter } from "@/components/version-footer";
 import { env } from "@/lib/env";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -29,6 +30,7 @@ export default function RootLayout({
         <QueryProvider>
           <Navigation />
           <main className="flex-1 bg-background overflow-auto">{children}</main>
+          <VersionFooter />
           <Toaster />
         </QueryProvider>
       </body>

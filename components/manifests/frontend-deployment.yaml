@@ -29,6 +29,8 @@ spec:
           value: "production"
         - name: GITHUB_APP_SLUG
           value: "ambient-code"
+        - name: VTEAM_VERSION
+          value: "v0.0.3"
         resources:
           requests:
             cpu: 100m

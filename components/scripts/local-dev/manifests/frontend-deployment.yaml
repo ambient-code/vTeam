@@ -38,6 +38,8 @@ spec:
               key: token
         - name: NODE_TLS_REJECT_UNAUTHORIZED
           value: "0"
+        - name: VTEAM_VERSION
+          value: "v0.0.3"
         resources:
           requests:
             memory: "256Mi"
