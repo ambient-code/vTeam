@@ -28,8 +28,15 @@ jobs:
       - name: Get Latest Tag
         id: get_latest_tag
         run: |
-          # Get the latest tag, or use v0.0.0 if no tags exist
-          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          # List all existing tags for debugging
+          echo "All existing tags:"
+          git tag --list 'v*.*.*' --sort=-version:refname
+
+          # Get the latest tag using version sort, or use v0.0.0 if no tags exist
+          LATEST_TAG=$(git tag --list 'v*.*.*' --sort=-version:refname | head -n 1)
+          if [ -z "$LATEST_TAG" ]; then
+            exit 1
+          fi
           echo "latest_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
           echo "Latest tag: $LATEST_TAG"
 
