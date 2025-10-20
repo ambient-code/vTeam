@@ -248,7 +248,7 @@ jobs:
 
       - name: Update frontend if changed
         run: |
-          oc patch deployment frontend -n ambient-code --patch "{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"frontend\",\"image\":\"quay.io/ambient_code/vteam_frontend:${{ needs.release.outputs.new_tag }}\"}]}}}}"
+          oc patch deployment frontend -n ambient-code --patch "{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"frontend\",\"image\":\"quay.io/ambient_code/vteam_frontend:${{ needs.release.outputs.new_tag }}\",\"env\":[{\"name\":\"BACKEND_URL\",\"value\":\"http://backend-service:8080/api\"},{\"name\":\"NODE_ENV\",\"value\":\"production\"},{\"name\":\"GITHUB_APP_SLUG\",\"value\":\"ambient-code\"},{\"name\":\"VTEAM_VERSION\",\"value\":\"${{ needs.release.outputs.new_tag }}\"}]}]}}}}"
 
       - name: Update backend if changed
         run: |

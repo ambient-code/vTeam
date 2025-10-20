@@ -164,7 +164,7 @@ jobs:
         run: |
           oc delete deployment frontend -n ambient-code
           oc apply -f components/manifests/frontend-deployment.yaml -n ambient-code
-          oc patch deployment frontend -n ambient-code --patch "{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"frontend\",\"image\":\"quay.io/ambient_code/vteam_frontend:${{ github.sha }}\"}]}}}}"
+          oc patch deployment frontend -n ambient-code --patch "{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"frontend\",\"image\":\"quay.io/ambient_code/vteam_frontend:${{ github.sha }}\",\"env\":[{\"name\":\"BACKEND_URL\",\"value\":\"http://backend-service:8080/api\"},{\"name\":\"NODE_ENV\",\"value\":\"production\"},{\"name\":\"GITHUB_APP_SLUG\",\"value\":\"ambient-code\"},{\"name\":\"VTEAM_VERSION\",\"value\":\"${{ github.sha }}\"}]}]}}}}"
 
       - name: Update backend if changed
         if: matrix.component.name == 'backend' && matrix.component.changed == 'true' || github.event_name == 'workflow_dispatch'
