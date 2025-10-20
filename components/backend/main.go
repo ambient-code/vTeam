@@ -115,8 +115,8 @@ type gitRepositoryAdapter struct {
 }
 
 // Wrapper for git.PerformRepoSeeding that adapts *types.RFEWorkflow to git.Workflow interface
-func performRepoSeeding(ctx context.Context, wf *types.RFEWorkflow, githubToken, agentURL, agentBranch, agentPath, specKitVersion, specKitTemplate string) error {
-	return git.PerformRepoSeeding(ctx, &rfeWorkflowAdapter{wf: wf}, githubToken, agentURL, agentBranch, agentPath, specKitVersion, specKitTemplate)
+func performRepoSeeding(ctx context.Context, wf *types.RFEWorkflow, branchName, githubToken, agentURL, agentBranch, agentPath, specKitRepo, specKitVersion, specKitTemplate string) (bool, error) {
+	return git.PerformRepoSeeding(ctx, &rfeWorkflowAdapter{wf: wf}, branchName, githubToken, agentURL, agentBranch, agentPath, specKitRepo, specKitVersion, specKitTemplate)
 }
 
 // GetUmbrellaRepo implements git.Workflow interface

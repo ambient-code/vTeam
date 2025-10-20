@@ -222,6 +222,31 @@ func ParseGitHubURL(gitURL string) (owner, repo string, err error) {
 	return "", "", fmt.Errorf("not a GitHub URL")
 }
 
+// GenerateBranchName creates a branch name from an RFE title
+// Converts to lowercase and replaces non-alphanumeric chars with hyphens
+func GenerateBranchName(title string) string {
+	// Convert to lowercase
+	lower := strings.ToLower(title)
+
+	// Replace non-alphanumeric characters with hyphens
+	branch := strings.Map(func(r rune) rune {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			return r
+		}
+		return '-'
+	}, lower)
+
+	// Remove consecutive hyphens
+	for strings.Contains(branch, "--") {
+		branch = strings.ReplaceAll(branch, "--", "-")
+	}
+
+	// Trim hyphens from start and end
+	branch = strings.Trim(branch, "-")
+
+	return branch
+}
+
 // checkGitHubPathExists checks if a path exists in a GitHub repo
 func checkGitHubPathExists(ctx context.Context, owner, repo, branch, path, token string) (bool, error) {
 	apiURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/%s?ref=%s",
@@ -265,21 +290,26 @@ type Workflow interface {
 
 // PerformRepoSeeding performs the actual seeding operations
 // wf parameter should implement the Workflow interface
-func PerformRepoSeeding(ctx context.Context, wf Workflow, githubToken, agentURL, agentBranch, agentPath, specKitVersion, specKitTemplate string) error {
+// Returns: branchExisted (bool), error
+func PerformRepoSeeding(ctx context.Context, wf Workflow, branchName, githubToken, agentURL, agentBranch, agentPath, specKitRepo, specKitVersion, specKitTemplate string) (bool, error) {
 	umbrellaRepo := wf.GetUmbrellaRepo()
 	if umbrellaRepo == nil {
-		return fmt.Errorf("workflow has no umbrella repo")
+		return false, fmt.Errorf("workflow has no umbrella repo")
+	}
+
+	if branchName == "" {
+		return false, fmt.Errorf("branchName is required")
 	}
 
 	umbrellaDir, err := os.MkdirTemp("", "umbrella-*")
 	if err != nil {
-		return fmt.Errorf("failed to create temp dir for umbrella repo: %w", err)
+		return false, fmt.Errorf("failed to create temp dir for umbrella repo: %w", err)
 	}
 	defer os.RemoveAll(umbrellaDir)
 
 	agentSrcDir, err := os.MkdirTemp("", "agents-*")
 	if err != nil {
-		return fmt.Errorf("failed to create temp dir for agent source: %w", err)
+		return false, fmt.Errorf("failed to create temp dir for agent source: %w", err)
 	}
 	defer os.RemoveAll(agentSrcDir)
 
@@ -287,18 +317,20 @@ func PerformRepoSeeding(ctx context.Context, wf Workflow, githubToken, agentURL,
 	log.Printf("Cloning umbrella repo: %s", umbrellaRepo.GetURL())
 	authenticatedURL, err := InjectGitHubToken(umbrellaRepo.GetURL(), githubToken)
 	if err != nil {
-		return fmt.Errorf("failed to prepare umbrella repo URL: %w", err)
+		return false, fmt.Errorf("failed to prepare umbrella repo URL: %w", err)
 	}
 
-	umbrellaArgs := []string{"clone", "--depth", "1"}
+	// Clone default branch (usually main)
+	defaultBranch := "main"
 	if branch := umbrellaRepo.GetBranch(); branch != nil && strings.TrimSpace(*branch) != "" {
-		umbrellaArgs = append(umbrellaArgs, "--branch", strings.TrimSpace(*branch))
+		defaultBranch = strings.TrimSpace(*branch)
 	}
-	umbrellaArgs = append(umbrellaArgs, authenticatedURL, umbrellaDir)
+
+	umbrellaArgs := []string{"clone", "--depth", "1", "--branch", defaultBranch, authenticatedURL, umbrellaDir}
 
 	cmd := exec.CommandContext(ctx, "git", umbrellaArgs...)
 	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("failed to clone umbrella repo: %w (output: %s)", err, string(out))
+		return false, fmt.Errorf("failed to clone umbrella repo: %w (output: %s)", err, string(out))
 	}
 
 	// Configure git user
@@ -311,27 +343,75 @@ func PerformRepoSeeding(ctx context.Context, wf Workflow, githubToken, agentURL,
 		log.Printf("Warning: failed to set git user.name: %v (output: %s)", err, string(out))
 	}
 
+	// Check if feature branch already exists remotely
+	cmd = exec.CommandContext(ctx, "git", "-C", umbrellaDir, "ls-remote", "--heads", "origin", branchName)
+	lsRemoteOut, lsRemoteErr := cmd.CombinedOutput()
+	branchExistsRemotely := lsRemoteErr == nil && strings.TrimSpace(string(lsRemoteOut)) != ""
+
+	if branchExistsRemotely {
+		// Branch exists - check it out instead of creating new
+		log.Printf("⚠️  Branch '%s' already exists remotely - checking out existing branch", branchName)
+		log.Printf("⚠️  This RFE will modify the existing branch '%s'", branchName)
+
+		// Fetch the branch
+		cmd = exec.CommandContext(ctx, "git", "-C", umbrellaDir, "fetch", "origin", branchName)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			return false, fmt.Errorf("failed to fetch existing branch %s: %w (output: %s)", branchName, err, string(out))
+		}
+
+		// Checkout the existing remote branch
+		cmd = exec.CommandContext(ctx, "git", "-C", umbrellaDir, "checkout", "-b", branchName, fmt.Sprintf("origin/%s", branchName))
+		if out, err := cmd.CombinedOutput(); err != nil {
+			// If checkout -b fails (branch might exist locally), try plain checkout
+			cmd = exec.CommandContext(ctx, "git", "-C", umbrellaDir, "checkout", branchName)
+			if out2, err2 := cmd.CombinedOutput(); err2 != nil {
+				return false, fmt.Errorf("failed to checkout existing branch %s: %w (output: %s, %s)", branchName, err2, string(out), string(out2))
+			}
+		}
+	} else {
+		// Branch doesn't exist - create new
+		log.Printf("Creating new feature branch: %s", branchName)
+		cmd = exec.CommandContext(ctx, "git", "-C", umbrellaDir, "checkout", "-b", branchName)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			return false, fmt.Errorf("failed to create branch %s: %w (output: %s)", branchName, err, string(out))
+		}
+	}
+
 	// Download and extract spec-kit template
-	log.Printf("Downloading spec-kit template: %s", specKitVersion)
-	specKitURL := fmt.Sprintf("https://github.com/github/spec-kit/releases/download/%s/%s-%s.zip", specKitVersion, specKitTemplate, specKitVersion)
+	log.Printf("Downloading spec-kit from repo: %s, version: %s", specKitRepo, specKitVersion)
+
+	// Support both releases (vX.X.X) and branch archives (main, branch-name)
+	var specKitURL string
+	if strings.HasPrefix(specKitVersion, "v") {
+		// It's a tagged release - use releases API
+		specKitURL = fmt.Sprintf("https://github.com/%s/releases/download/%s/%s-%s.zip",
+			specKitRepo, specKitVersion, specKitTemplate, specKitVersion)
+		log.Printf("Downloading spec-kit release: %s", specKitURL)
+	} else {
+		// It's a branch name - use archive API
+		specKitURL = fmt.Sprintf("https://github.com/%s/archive/refs/heads/%s.zip",
+			specKitRepo, specKitVersion)
+		log.Printf("Downloading spec-kit branch archive: %s", specKitURL)
+	}
+
 	resp, err := http.Get(specKitURL)
 	if err != nil {
-		return fmt.Errorf("failed to download spec-kit: %w", err)
+		return false, fmt.Errorf("failed to download spec-kit: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("spec-kit download failed with status: %s", resp.Status)
+		return false, fmt.Errorf("spec-kit download failed with status: %s", resp.Status)
 	}
 
 	zipData, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return fmt.Errorf("failed to read spec-kit zip: %w", err)
+		return false, fmt.Errorf("failed to read spec-kit zip: %w", err)
 	}
 
 	zr, err := zip.NewReader(bytes.NewReader(zipData), int64(len(zipData)))
 	if err != nil {
-		return fmt.Errorf("failed to open spec-kit zip: %w", err)
+		return false, fmt.Errorf("failed to open spec-kit zip: %w", err)
 	}
 
 	// Extract spec-kit files
@@ -343,6 +423,17 @@ func PerformRepoSeeding(ctx context.Context, wf Workflow, githubToken, agentURL,
 
 		rel := strings.TrimPrefix(f.Name, "./")
 		rel = strings.ReplaceAll(rel, "\\", "/")
+
+		// Strip archive prefix from branch downloads (e.g., "spec-kit-rh-vteam-flexible-branches/")
+		// Branch archives have format: "repo-branch-name/file", releases have just "file"
+		if strings.Contains(rel, "/") && !strings.HasPrefix(specKitVersion, "v") {
+			parts := strings.SplitN(rel, "/", 2)
+			if len(parts) == 2 {
+				rel = parts[1] // Take everything after first "/"
+			}
+		}
+
+		// Security: prevent path traversal
 		for strings.Contains(rel, "../") {
 			rel = strings.ReplaceAll(rel, "../", "")
 		}
@@ -388,7 +479,7 @@ func PerformRepoSeeding(ctx context.Context, wf Workflow, githubToken, agentURL,
 
 	cmd = exec.CommandContext(ctx, "git", agentArgs...)
 	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("failed to clone agent source: %w (output: %s)", err, string(out))
+		return false, fmt.Errorf("failed to clone agent source: %w (output: %s)", err, string(out))
 	}
 
 	// Copy agent markdown files to .claude/agents/
@@ -396,7 +487,7 @@ func PerformRepoSeeding(ctx context.Context, wf Workflow, githubToken, agentURL,
 	claudeDir := filepath.Join(umbrellaDir, ".claude")
 	claudeAgentsDir := filepath.Join(claudeDir, "agents")
 	if err := os.MkdirAll(claudeAgentsDir, 0755); err != nil {
-		return fmt.Errorf("failed to create .claude/agents directory: %w", err)
+		return false, fmt.Errorf("failed to create .claude/agents directory: %w", err)
 	}
 
 	agentsCopied := 0
@@ -423,39 +514,48 @@ func PerformRepoSeeding(ctx context.Context, wf Workflow, githubToken, agentURL,
 		return nil
 	})
 	if err != nil {
-		return fmt.Errorf("failed to copy agents: %w", err)
+		return false, fmt.Errorf("failed to copy agents: %w", err)
 	}
 	log.Printf("Copied %d agent files", agentsCopied)
 
-	// Commit and push changes
+	// Create specs directory for feature work
+	specsDir := filepath.Join(umbrellaDir, "specs", branchName)
+	if err := os.MkdirAll(specsDir, 0755); err != nil {
+		return false, fmt.Errorf("failed to create specs/%s directory: %w", branchName, err)
+	}
+	log.Printf("Created specs/%s directory", branchName)
+
+	// Commit and push changes to feature branch
 	cmd = exec.CommandContext(ctx, "git", "-C", umbrellaDir, "add", ".")
 	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("git add failed: %w (output: %s)", err, string(out))
+		return false, fmt.Errorf("git add failed: %w (output: %s)", err, string(out))
 	}
 
 	cmd = exec.CommandContext(ctx, "git", "-C", umbrellaDir, "diff", "--cached", "--quiet")
 	if err := cmd.Run(); err == nil {
-		log.Printf("No changes to commit for seeding")
-		return nil
-	}
-
-	cmd = exec.CommandContext(ctx, "git", "-C", umbrellaDir, "commit", "-m", "chore: seed workspace with spec-kit and agents")
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("git commit failed: %w (output: %s)", err, string(out))
+		log.Printf("No changes to commit for seeding, but will still push branch")
+	} else {
+		// Commit with branch-specific message
+		commitMsg := fmt.Sprintf("chore: initialize %s with spec-kit and agents", branchName)
+		cmd = exec.CommandContext(ctx, "git", "-C", umbrellaDir, "commit", "-m", commitMsg)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			return false, fmt.Errorf("git commit failed: %w (output: %s)", err, string(out))
+		}
 	}
 
 	cmd = exec.CommandContext(ctx, "git", "-C", umbrellaDir, "remote", "set-url", "origin", authenticatedURL)
 	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("failed to set remote URL: %w (output: %s)", err, string(out))
+		return false, fmt.Errorf("failed to set remote URL: %w (output: %s)", err, string(out))
 	}
 
-	cmd = exec.CommandContext(ctx, "git", "-C", umbrellaDir, "push")
+	// Push feature branch to origin
+	cmd = exec.CommandContext(ctx, "git", "-C", umbrellaDir, "push", "-u", "origin", branchName)
 	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("git push failed: %w (output: %s)", err, string(out))
+		return false, fmt.Errorf("git push failed: %w (output: %s)", err, string(out))
 	}
 
-	log.Printf("Successfully seeded umbrella repo")
-	return nil
+	log.Printf("Successfully seeded umbrella repo on branch %s", branchName)
+	return branchExistsRemotely, nil
 }
 
 // InjectGitHubToken injects a GitHub token into a git URL for authentication

@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"ambient-code-backend/git"
 	"ambient-code-backend/types"
 
 	"github.com/gin-gonic/gin"
@@ -26,7 +27,7 @@ import (
 var (
 	GetRFEWorkflowResource     func() schema.GroupVersionResource
 	UpsertProjectRFEWorkflowCR func(dynamic.Interface, *types.RFEWorkflow) error
-	PerformRepoSeeding         func(context.Context, *types.RFEWorkflow, string, string, string, string, string, string) error
+	PerformRepoSeeding         func(context.Context, *types.RFEWorkflow, string, string, string, string, string, string, string, string) (bool, error)
 	CheckRepoSeeding           func(context.Context, string, *string, string) (bool, map[string]interface{}, error)
 	RfeFromUnstructured        func(*unstructured.Unstructured) *types.RFEWorkflow
 )
@@ -111,10 +112,15 @@ func CreateProjectRFEWorkflow(c *gin.Context) {
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	workflowID := fmt.Sprintf("rfe-%d", time.Now().Unix())
+
+	// Generate branch name from title
+	branchName := git.GenerateBranchName(req.Title)
+
 	workflow := &RFEWorkflow{
 		ID:              workflowID,
 		Title:           req.Title,
 		Description:     req.Description,
+		BranchName:      branchName,
 		UmbrellaRepo:    &req.UmbrellaRepo,
 		SupportingRepos: req.SupportingRepos,
 		WorkspacePath:   req.WorkspacePath,
@@ -156,6 +162,12 @@ func SeedProjectRFEWorkflow(c *gin.Context) {
 		return
 	}
 
+	// Ensure we have a branch name
+	if wf.BranchName == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Workflow missing branch name"})
+		return
+	}
+
 	// Get user ID from forwarded identity middleware
 	userID, _ := c.Get("userID")
 	userIDStr, ok := userID.(string)
@@ -170,11 +182,12 @@ func SeedProjectRFEWorkflow(c *gin.Context) {
 		return
 	}
 
-	// Read request body for optional agent source
+	// Read request body for optional agent source and spec-kit settings
 	type SeedRequest struct {
 		AgentSourceURL    string `json:"agentSourceUrl,omitempty"`
 		AgentSourceBranch string `json:"agentSourceBranch,omitempty"`
 		AgentSourcePath   string `json:"agentSourcePath,omitempty"`
+		SpecKitRepo       string `json:"specKitRepo,omitempty"`
 		SpecKitVersion    string `json:"specKitVersion,omitempty"`
 		SpecKitTemplate   string `json:"specKitTemplate,omitempty"`
 	}
@@ -194,26 +207,39 @@ func SeedProjectRFEWorkflow(c *gin.Context) {
 	if agentPath == "" {
 		agentPath = "agents"
 	}
+	specKitRepo := req.SpecKitRepo
+	if specKitRepo == "" {
+		specKitRepo = "sallyom/spec-kit" // TODO: remove this fork development
+		// specKitRepo = "ambient-code/spec-kit-rh" // TODO: Use fork/tag with flexible branch support
+	}
 	specKitVersion := req.SpecKitVersion
 	if specKitVersion == "" {
-		specKitVersion = "v0.0.55"
+		specKitVersion = "auto-branch-spec-kit" // TODO: remove this fork development branch
+		// specKitVersion = "vteam-flexible-branches" // TODO: Use fork/tag branch
 	}
 	specKitTemplate := req.SpecKitTemplate
 	if specKitTemplate == "" {
 		specKitTemplate = "spec-kit-template-claude-sh"
 	}
 
-	// Perform seeding operations
-	seedErr := PerformRepoSeeding(c.Request.Context(), wf, githubToken, agentURL, agentBranch, agentPath, specKitVersion, specKitTemplate)
+	// Perform seeding operations with platform-managed branch
+	branchExisted, seedErr := PerformRepoSeeding(c.Request.Context(), wf, wf.BranchName, githubToken, agentURL, agentBranch, agentPath, specKitRepo, specKitVersion, specKitTemplate)
 
 	if seedErr != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": seedErr.Error()})
 		return
 	}
 
+	message := "Repository seeded successfully"
+	if branchExisted {
+		message = fmt.Sprintf("Repository seeded successfully. Note: Branch '%s' already existed and will be modified by this RFE.", wf.BranchName)
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"status":  "completed",
-		"message": "Repository seeded successfully",
+		"status":        "completed",
+		"message":       message,
+		"branchName":    wf.BranchName,
+		"branchExisted": branchExisted,
 	})
 }
 

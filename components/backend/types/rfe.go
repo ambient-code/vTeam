@@ -5,6 +5,7 @@ type RFEWorkflow struct {
 	ID              string             `json:"id"`
 	Title           string             `json:"title"`
 	Description     string             `json:"description"`
+	BranchName      string             `json:"branchName"`
 	UmbrellaRepo    *GitRepository     `json:"umbrellaRepo,omitempty"`
 	SupportingRepos []GitRepository    `json:"supportingRepos,omitempty"`
 	Project         string             `json:"project,omitempty"`
