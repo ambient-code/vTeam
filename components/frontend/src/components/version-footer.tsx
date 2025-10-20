@@ -1,16 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useVersion } from '@/services/queries/use-version';
 
 export function VersionFooter() {
-  const [version, setVersion] = useState<string | null>(null);
-
-  useEffect(() => {
-    fetch('/api/version')
-      .then((res) => res.json())
-      .then((data) => setVersion(data.version))
-      .catch((err) => console.error('Failed to fetch version:', err));
-  }, []);
+  const { data: version } = useVersion();
 
   if (!version) {
     return null;
