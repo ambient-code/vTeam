@@ -37,6 +37,7 @@ spec:
           value: "github/ambient-code/spec-kit-rh"
         - name: SPEC_KIT_VERSION
           value: "main"
+        # Spec-kit templates are only used when version is a tagged release
         - name: SPEC_KIT_TEMPLATE
           value: "spec-kit-template-claude-sh"
         # GitHub App authentication (optional - use this OR git-secret)

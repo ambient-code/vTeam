@@ -429,17 +429,6 @@ func CreateSession(c *gin.Context) {
 							// Access spec from session object
 							spec := session["spec"].(map[string]interface{})
 
-							// Add environment variables for spec-kit integration
-							envVars := map[string]string{}
-							if spec["environmentVariables"] != nil {
-								if existing, ok := spec["environmentVariables"].(map[string]string); ok {
-									envVars = existing
-								}
-							}
-							envVars["RFE_BRANCH_NAME"] = rfeWf.BranchName
-							envVars["SPECIFY_FEATURE"] = rfeWf.BranchName
-							spec["environmentVariables"] = envVars
-
 							// Override branch for all repos to use feature branch
 							if repos, ok := spec["repos"].([]map[string]interface{}); ok {
 								for i := range repos {
