@@ -235,35 +235,17 @@ func IsProtectedBranch(branchName string) bool {
 	return false
 }
 
-// GenerateBranchName creates a branch name from an RFE title
-// Converts to lowercase and replaces non-alphanumeric chars with hyphens
-// Returns the generated branch name and an error if it would create a protected branch
-func GenerateBranchName(title string) (string, error) {
-	// Convert to lowercase
-	lower := strings.ToLower(title)
-
-	// Replace non-alphanumeric characters with hyphens
-	branch := strings.Map(func(r rune) rune {
-		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
-			return r
-		}
-		return '-'
-	}, lower)
-
-	// Remove consecutive hyphens
-	for strings.Contains(branch, "--") {
-		branch = strings.ReplaceAll(branch, "--", "-")
+// ValidateBranchName validates a user-provided branch name
+// Returns an error if the branch name is protected or invalid
+func ValidateBranchName(branchName string) error {
+	normalized := strings.TrimSpace(branchName)
+	if normalized == "" {
+		return fmt.Errorf("branch name cannot be empty")
 	}
-
-	// Trim hyphens from start and end
-	branch = strings.Trim(branch, "-")
-
-	// Validate that generated branch name is not a protected branch
-	if IsProtectedBranch(branch) {
-		return "", fmt.Errorf("RFE title '%s' would generate protected branch name '%s'. Please use a different title", title, branch)
+	if IsProtectedBranch(normalized) {
+		return fmt.Errorf("'%s' is a protected branch name. Please use a different branch name", normalized)
 	}
-
-	return branch, nil
+	return nil
 }
 
 // checkGitHubPathExists checks if a path exists in a GitHub repo

@@ -24,6 +24,7 @@ type WorkflowJiraLink struct {
 type CreateRFEWorkflowRequest struct {
 	Title           string          `json:"title" binding:"required"`
 	Description     string          `json:"description" binding:"required"`
+	BranchName      string          `json:"branchName" binding:"required"`
 	UmbrellaRepo    GitRepository   `json:"umbrellaRepo"`
 	SupportingRepos []GitRepository `json:"supportingRepos,omitempty"`
 	WorkspacePath   string          `json:"workspacePath,omitempty"`

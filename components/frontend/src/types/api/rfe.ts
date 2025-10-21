@@ -87,6 +87,7 @@ export type RFEWorkflow = {
 export type CreateRFEWorkflowRequest = {
   title: string;
   description: string;
+  branchName: string;
   umbrellaRepo: GitRepository;
   supportingRepos?: GitRepository[];
   workspacePath?: string;

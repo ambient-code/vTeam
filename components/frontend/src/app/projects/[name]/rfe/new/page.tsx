@@ -1,5 +1,6 @@
 'use client';
 
+import React from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -27,6 +28,7 @@ const repoSchema = z.object({
 const formSchema = z.object({
   title: z.string().min(5, 'Title must be at least 5 characters long'),
   description: z.string().min(20, 'Description must be at least 20 characters long'),
+  branchName: z.string().min(1, 'Branch name is required'),
   workspacePath: z.string().optional(),
   parentOutcome: z.string().optional(),
   umbrellaRepo: repoSchema,
@@ -34,6 +36,16 @@ const formSchema = z.object({
 });
 
 type FormValues = z.input<typeof formSchema>;
+
+// Generate branch name from title (ambient-first-three-words)
+function generateBranchName(title: string): string {
+  const normalized = title.toLowerCase().trim();
+  const words = normalized
+    .split(/[^a-z0-9]+/)
+    .filter((w) => w.length > 0)
+    .slice(0, 3);
+  return words.length > 0 ? `ambient-${words.join('-')}` : '';
+}
 
 export default function ProjectNewRFEWorkflowPage() {
   const router = useRouter();
@@ -49,6 +61,7 @@ export default function ProjectNewRFEWorkflowPage() {
     defaultValues: {
       title: '',
       description: '',
+      branchName: '',
       workspacePath: '',
       parentOutcome: '',
       umbrellaRepo: { url: '', branch: 'main' },
@@ -61,10 +74,29 @@ export default function ProjectNewRFEWorkflowPage() {
     name: 'supportingRepos',
   });
 
+  // Watch the title field and auto-populate branchName
+  const title = form.watch('title');
+  const branchName = form.watch('branchName');
+
+  // Auto-populate branch name when title changes
+  // This will only update if user hasn't manually edited the branch name
+  React.useEffect(() => {
+    const generatedName = generateBranchName(title);
+    const currentBranchName = form.getValues('branchName');
+
+    // Only auto-populate if:
+    // 1. There's a generated name
+    // 2. Current branch name is empty or matches the previously auto-generated name
+    if (generatedName && (!currentBranchName || currentBranchName.startsWith('ambient-'))) {
+      form.setValue('branchName', generatedName, { shouldValidate: false, shouldDirty: false });
+    }
+  }, [title, form]);
+
   const onSubmit = async (values: FormValues) => {
     const request: CreateRFEWorkflowRequest = {
       title: values.title,
       description: values.description,
+      branchName: values.branchName.trim(),
       workspacePath: values.workspacePath || undefined,
       parentOutcome: values.parentOutcome?.trim() || undefined,
       umbrellaRepo: {
@@ -172,6 +204,22 @@ export default function ProjectNewRFEWorkflowPage() {
                 />
                 <FormField
                   control={form.control}
+                  name="branchName"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Feature Branch</FormLabel>
+                      <FormControl>
+                        <Input placeholder="ambient-feature-name" {...field} />
+                      </FormControl>
+                      <FormDescription>
+                        This feature branch will be created for all repositories configured in this RFE. Below, configure the Base Branch for each repository from which the feature branch will be created.
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
                   name="parentOutcome"
                   render={({ field }) => (
                     <FormItem>
@@ -220,12 +268,18 @@ export default function ProjectNewRFEWorkflowPage() {
                       name={`umbrellaRepo.branch`}
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Branch</FormLabel>
+                          <FormLabel>Base Branch</FormLabel>
                           <FormControl>
                             <Input placeholder="main" {...field} />
                           </FormControl>
                           <FormDescription className="text-xs">
-                            Base branch for generated feature branch
+                            {branchName ? (
+                              <>
+                                Feature branch <span className="font-medium text-foreground">{branchName}</span> will be created from this base branch
+                              </>
+                            ) : (
+                              'Base branch from which the feature branch will be created'
+                            )}
                           </FormDescription>
                           <FormMessage />
                         </FormItem>
@@ -260,12 +314,18 @@ export default function ProjectNewRFEWorkflowPage() {
                         name={`supportingRepos.${index}.branch`}
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Branch</FormLabel>
+                            <FormLabel>Base Branch</FormLabel>
                             <FormControl>
                               <Input placeholder="main" {...field} />
                             </FormControl>
                             <FormDescription className="text-xs">
-                              Base branch for generated feature branch
+                              {branchName ? (
+                                <>
+                                  Feature branch <span className="font-medium text-foreground">{branchName}</span> will be created from this base branch
+                                </>
+                              ) : (
+                                'Base branch from which the feature branch will be created'
+                              )}
                             </FormDescription>
                             <FormMessage />
                           </FormItem>

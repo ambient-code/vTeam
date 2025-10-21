@@ -45,11 +45,17 @@ func RFEFromUnstructured(item *unstructured.Unstructured) *types.RFEWorkflow {
 		created = item.GetCreationTimestamp().Time.UTC().Format(time.RFC3339)
 	}
 
+	// Extract branchName safely - avoid converting nil to "<nil>" string
+	branchName := ""
+	if bn, ok := spec["branchName"].(string); ok && strings.TrimSpace(bn) != "" {
+		branchName = strings.TrimSpace(bn)
+	}
+
 	wf := &types.RFEWorkflow{
 		ID:            item.GetName(),
 		Title:         fmt.Sprintf("%v", spec["title"]),
 		Description:   fmt.Sprintf("%v", spec["description"]),
-		BranchName:    fmt.Sprintf("%v", spec["branchName"]),
+		BranchName:    branchName,
 		Project:       item.GetNamespace(),
 		WorkspacePath: fmt.Sprintf("%v", spec["workspacePath"]),
 		CreatedAt:     created,
