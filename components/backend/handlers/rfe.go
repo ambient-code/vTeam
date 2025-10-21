@@ -46,6 +46,41 @@ type rfeLinkSessionRequest struct {
 	Phase        string `json:"phase"`
 }
 
+// normalizeRepoURL normalizes a repository URL for comparison
+func normalizeRepoURL(repoURL string) string {
+	normalized := strings.ToLower(strings.TrimSpace(repoURL))
+	// Remove .git suffix
+	normalized = strings.TrimSuffix(normalized, ".git")
+	// Remove trailing slash
+	normalized = strings.TrimSuffix(normalized, "/")
+	return normalized
+}
+
+// validateUniqueRepositories checks that all repository URLs are unique
+func validateUniqueRepositories(umbrellaRepo *GitRepository, supportingRepos []GitRepository) error {
+	seen := make(map[string]bool)
+
+	// Check umbrella repo
+	if umbrellaRepo != nil && umbrellaRepo.URL != "" {
+		normalized := normalizeRepoURL(umbrellaRepo.URL)
+		seen[normalized] = true
+	}
+
+	// Check supporting repos
+	for _, repo := range supportingRepos {
+		if repo.URL == "" {
+			continue
+		}
+		normalized := normalizeRepoURL(repo.URL)
+		if seen[normalized] {
+			return fmt.Errorf("duplicate repository URL detected: %s", repo.URL)
+		}
+		seen[normalized] = true
+	}
+
+	return nil
+}
+
 // ListProjectRFEWorkflows lists all RFE workflows for a project
 func ListProjectRFEWorkflows(c *gin.Context) {
 	project := c.Param("projectName")
@@ -121,6 +156,12 @@ func CreateProjectRFEWorkflow(c *gin.Context) {
 	// Backend only validates that it's not empty and not a protected branch
 	branchName := strings.TrimSpace(req.BranchName)
 	if err := git.ValidateBranchName(branchName); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Validate no duplicate repository URLs
+	if err := validateUniqueRepositories(&req.UmbrellaRepo, req.SupportingRepos); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}

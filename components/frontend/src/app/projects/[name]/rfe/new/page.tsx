@@ -33,9 +33,39 @@ const formSchema = z.object({
   parentOutcome: z.string().optional(),
   umbrellaRepo: repoSchema,
   supportingRepos: z.array(repoSchema).optional().default([]),
-});
+}).refine(
+  (data) => {
+    // Check for duplicate repositories
+    const allUrls: string[] = [];
+
+    // Add umbrella repo URL if present
+    if (data.umbrellaRepo?.url) {
+      allUrls.push(normalizeRepoUrl(data.umbrellaRepo.url));
+    }
+
+    // Add supporting repo URLs if present
+    const supportingUrls = (data.supportingRepos || [])
+      .filter(r => r?.url)
+      .map(r => normalizeRepoUrl(r.url));
+
+    allUrls.push(...supportingUrls);
+
+    // Check for duplicates
+    const uniqueUrls = new Set(allUrls);
+    return uniqueUrls.size === allUrls.length;
+  },
+  {
+    message: 'Duplicate repository URLs are not allowed. Each repository must be unique.',
+    path: ['supportingRepos'],
+  }
+);
 
 type FormValues = z.input<typeof formSchema>;
+
+// Normalize repository URL for comparison (remove trailing slash and .git)
+function normalizeRepoUrl(url: string): string {
+  return url.trim().toLowerCase().replace(/\.git$/, '').replace(/\/$/, '');
+}
 
 // Generate branch name from title (ambient-first-three-words)
 function generateBranchName(title: string): string {
@@ -340,10 +370,15 @@ export default function ProjectNewRFEWorkflowPage() {
                     </div>
                   </div>
                 ))}
-                <div>
+                <div className="space-y-2">
                   <Button type="button" variant="secondary" size="sm" onClick={() => append({ url: '', branch: 'main' })}>
                     Add supporting repo
                   </Button>
+                  {form.formState.errors.supportingRepos?.message && (
+                    <p className="text-sm font-medium text-destructive">
+                      {form.formState.errors.supportingRepos.message}
+                    </p>
+                  )}
                 </div>
               </CardContent>
             </Card>
