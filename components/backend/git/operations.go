@@ -372,20 +372,17 @@ func PerformRepoSeeding(ctx context.Context, wf Workflow, branchName, githubToke
 		log.Printf("⚠️  Branch '%s' already exists remotely - checking out existing branch", branchName)
 		log.Printf("⚠️  This RFE will modify the existing branch '%s'", branchName)
 
-		// Fetch the branch
-		cmd = exec.CommandContext(ctx, "git", "-C", umbrellaDir, "fetch", "origin", branchName)
+		// Fetch the specific branch with depth (works with shallow clones)
+		// Format: git fetch --depth 1 origin <remote-branch>:<local-branch>
+		cmd = exec.CommandContext(ctx, "git", "-C", umbrellaDir, "fetch", "--depth", "1", "origin", fmt.Sprintf("%s:%s", branchName, branchName))
 		if out, err := cmd.CombinedOutput(); err != nil {
 			return false, fmt.Errorf("failed to fetch existing branch %s: %w (output: %s)", branchName, err, string(out))
 		}
 
-		// Checkout the existing remote branch
-		cmd = exec.CommandContext(ctx, "git", "-C", umbrellaDir, "checkout", "-b", branchName, fmt.Sprintf("origin/%s", branchName))
+		// Checkout the fetched branch
+		cmd = exec.CommandContext(ctx, "git", "-C", umbrellaDir, "checkout", branchName)
 		if out, err := cmd.CombinedOutput(); err != nil {
-			// If checkout -b fails (branch might exist locally), try plain checkout
-			cmd = exec.CommandContext(ctx, "git", "-C", umbrellaDir, "checkout", branchName)
-			if out2, err2 := cmd.CombinedOutput(); err2 != nil {
-				return false, fmt.Errorf("failed to checkout existing branch %s: %w (output: %s, %s)", branchName, err2, string(out), string(out2))
-			}
+			return false, fmt.Errorf("failed to checkout existing branch %s: %w (output: %s)", branchName, err, string(out))
 		}
 	} else {
 		// Branch doesn't exist - create new
@@ -452,17 +449,41 @@ func PerformRepoSeeding(ctx context.Context, wf Workflow, branchName, githubToke
 			}
 		}
 
-		// Skip .github/workflows/ - these are spec-kit's own CI/CD files, not for user repos
-		if strings.HasPrefix(rel, ".github/workflows/") {
+		// Only extract files needed for umbrella repos (matching official spec-kit release template):
+		// - templates/commands/ → .claude/commands/
+		// - scripts/bash/ → .specify/scripts/bash/
+		// - templates/*.md → .specify/templates/
+		// - memory/ → .specify/memory/
+		// Skip everything else (docs/, media/, root files, .github/, scripts/powershell/, etc.)
+
+		var targetRel string
+		if strings.HasPrefix(rel, "templates/commands/") {
+			// Map templates/commands/*.md to .claude/commands/speckit.*.md
+			cmdFile := strings.TrimPrefix(rel, "templates/commands/")
+			if !strings.HasPrefix(cmdFile, "speckit.") {
+				cmdFile = "speckit." + cmdFile
+			}
+			targetRel = ".claude/commands/" + cmdFile
+		} else if strings.HasPrefix(rel, "scripts/bash/") {
+			// Map scripts/bash/ to .specify/scripts/bash/
+			targetRel = strings.Replace(rel, "scripts/bash/", ".specify/scripts/bash/", 1)
+		} else if strings.HasPrefix(rel, "templates/") && strings.HasSuffix(rel, ".md") {
+			// Map templates/*.md to .specify/templates/
+			targetRel = strings.Replace(rel, "templates/", ".specify/templates/", 1)
+		} else if strings.HasPrefix(rel, "memory/") {
+			// Map memory/ to .specify/memory/
+			targetRel = ".specify/" + rel
+		} else {
+			// Skip all other files (docs/, media/, root files, .github/, scripts/powershell/, etc.)
 			continue
 		}
 
 		// Security: prevent path traversal
-		for strings.Contains(rel, "../") {
-			rel = strings.ReplaceAll(rel, "../", "")
+		for strings.Contains(targetRel, "../") {
+			targetRel = strings.ReplaceAll(targetRel, "../", "")
 		}
 
-		targetPath := filepath.Join(umbrellaDir, rel)
+		targetPath := filepath.Join(umbrellaDir, targetRel)
 
 		if _, err := os.Stat(targetPath); err == nil {
 			continue
