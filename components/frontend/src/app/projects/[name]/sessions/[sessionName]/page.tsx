@@ -411,11 +411,23 @@ export default function ProjectSessionDetailPage({
   };
 
   const handleInterrupt = () => {
-    sendControlMutation.mutate({ projectName, sessionName, type: 'interrupt' });
+    sendControlMutation.mutate(
+      { projectName, sessionName, type: 'interrupt' },
+      {
+        onSuccess: () => successToast("Agent interrupted"),
+        onError: (err) => errorToast(err instanceof Error ? err.message : "Failed to interrupt agent"),
+      }
+    );
   };
 
   const handleEndSession = () => {
-    sendControlMutation.mutate({ projectName, sessionName, type: 'end_session' });
+    sendControlMutation.mutate(
+      { projectName, sessionName, type: 'end_session' },
+      {
+        onSuccess: () => successToast("Session ended successfully"),
+        onError: (err) => errorToast(err instanceof Error ? err.message : "Failed to end session"),
+      }
+    );
   };
 
   // Workspace operations - using React Query with queryClient for imperative fetching
@@ -717,6 +729,7 @@ export default function ProjectSessionDetailPage({
               onInterrupt={() => Promise.resolve(handleInterrupt())}
               onEndSession={() => Promise.resolve(handleEndSession())}
               onGoToResults={() => setActiveTab('results')}
+              isEndingSession={sendControlMutation.isPending}
             />
           </TabsContent>
 

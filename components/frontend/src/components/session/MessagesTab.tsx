@@ -2,7 +2,7 @@
 
 import React from "react";
 import { Button } from "@/components/ui/button";
-import { Brain } from "lucide-react";
+import { Brain, Loader2 } from "lucide-react";
 import { StreamMessage } from "@/components/ui/stream-message";
 import type { AgenticSession, MessageObject, ToolUseMessages } from "@/types/agentic-session";
 
@@ -15,9 +15,10 @@ export type MessagesTabProps = {
   onInterrupt: () => Promise<void>;
   onEndSession: () => Promise<void>;
   onGoToResults?: () => void;
+  isEndingSession?: boolean;
 };
 
-const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chatInput, setChatInput, onSendChat, onInterrupt, onEndSession, onGoToResults }) => {
+const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chatInput, setChatInput, onSendChat, onInterrupt, onEndSession, onGoToResults, isEndingSession }) => {
   return (
     <div className="flex flex-col gap-2 max-h-[60vh] overflow-y-auto pr-1">
       {streamMessages.map((m, idx) => (
@@ -57,7 +58,10 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chat
                 <div className="text-xs text-muted-foreground">Interactive session</div>
                 <div className="flex gap-2">
                   <Button variant="outline" size="sm" onClick={onInterrupt}>Interrupt agent</Button>
-                  <Button variant="secondary" size="sm" onClick={onEndSession}>End session</Button>
+                  <Button variant="secondary" size="sm" onClick={onEndSession} disabled={isEndingSession}>
+                    {isEndingSession && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                    {isEndingSession ? "Ending session..." : "End session"}
+                  </Button>
                   <Button size="sm" onClick={onSendChat} disabled={!chatInput.trim()}>Send</Button>
                 </div>
               </div>
