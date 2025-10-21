@@ -153,7 +153,7 @@ class ClaudeCodeAdapter:
     async def _run_claude_agent_sdk(self, prompt: str):
         """Execute the Claude Code SDK with the given prompt."""
         try:
-            from claude_code_sdk import ClaudeSDKClient, ClaudeCodeOptions
+            from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
             api_key = self.context.get_env('ANTHROPIC_API_KEY', '')
             if not api_key:
                 raise RuntimeError("ANTHROPIC_API_KEY is required for Claude Code SDK")
@@ -190,7 +190,13 @@ class ClaudeCodeAdapter:
             logging.info(f"Claude SDK CWD: {cwd_path}")
             logging.info(f"Claude SDK additional directories: {add_dirs}")
             
-            options = ClaudeCodeOptions(cwd=cwd_path, permission_mode="acceptEdits", allowed_tools=["Read","Write","Bash","Glob","Grep","Edit","MultiEdit","WebSearch","WebFetch"])
+            options = ClaudeAgentOptions(
+                cwd=cwd_path, permission_mode="acceptEdits",
+                allowed_tools=["Read","Write","Bash","Glob","Grep","Edit","MultiEdit","WebSearch","WebFetch"],
+                setting_sources=["project"],
+                system_prompt={"type":"preset",
+                               "preset":"claude_code"}
+                )
             # Best-effort set add_dirs if supported by SDK version
             try:
                 if add_dirs:
@@ -228,7 +234,7 @@ class ClaudeCodeAdapter:
             result_payload = None
             self._turn_count = 0
             # Import SDK message and content types for accurate mapping
-            from claude_code_sdk import (
+            from claude_agent_sdk import (
                 AssistantMessage,
                 UserMessage,
                 SystemMessage,
