@@ -507,7 +507,17 @@ func PerformRepoSeeding(ctx context.Context, wf Workflow, branchName, githubToke
 			continue
 		}
 
-		if err := os.WriteFile(targetPath, content, 0644); err != nil {
+		// Preserve executable permissions for scripts
+		fileMode := fs.FileMode(0644)
+		if strings.HasPrefix(targetRel, ".specify/scripts/") {
+			// Scripts need to be executable
+			fileMode = 0755
+		} else if f.Mode().Perm()&0111 != 0 {
+			// Preserve executable bit from zip if it was set
+			fileMode = 0755
+		}
+
+		if err := os.WriteFile(targetPath, content, fileMode); err != nil {
 			log.Printf("Failed to write %s: %v", targetPath, err)
 			continue
 		}

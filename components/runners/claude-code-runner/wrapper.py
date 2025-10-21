@@ -456,14 +456,14 @@ class ClaudeCodeAdapter:
         if not prompt:
             return
 
-        # Extract slash command from prompt (e.g., "/plan", "/tasks", "/implement")
+        # Extract slash command from prompt (e.g., "/speckit.plan", "/speckit.tasks", "/speckit.implement")
         prompt_lower = prompt.strip().lower()
 
         # Define prerequisite requirements
         prerequisites = {
-            "/plan": ("spec.md", "Specification file (spec.md) not found. Please run /specify first to generate the specification."),
-            "/tasks": ("plan.md", "Planning file (plan.md) not found. Please run /plan first to generate the implementation plan."),
-            "/implement": ("tasks.md", "Tasks file (tasks.md) not found. Please run /tasks first to generate the task breakdown.")
+            "/speckit.plan": ("spec.md", "Specification file (spec.md) not found. Please run /speckit.specify first to generate the specification."),
+            "/speckit.tasks": ("plan.md", "Planning file (plan.md) not found. Please run /speckit.plan first to generate the implementation plan."),
+            "/speckit.implement": ("tasks.md", "Tasks file (tasks.md) not found. Please run /speckit.tasks first to generate the task breakdown.")
         }
 
         # Check if prompt starts with a slash command that requires prerequisites

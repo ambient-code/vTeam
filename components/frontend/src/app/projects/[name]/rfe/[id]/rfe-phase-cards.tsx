@@ -301,8 +301,8 @@ You can invoke agents by using their name in your prompts. For example: "Let's g
                             onStartPhase(phase);
                             const isSpecify = phase === "specify";
                             const basePrompt = isSpecify
-                              ? `/specify Develop a new feature based on rfe.md or if that does not exist, follow these feature requirements: ${workflow.description}`
-                              : `/${phase}`;
+                              ? `/speckit.specify Develop a new feature based on rfe.md or if that does not exist, follow these feature requirements: ${workflow.description}`
+                              : `/speckit.${phase}`;
                             const prompt = basePrompt + getAgentInstructions();
                             const payload: CreateAgenticSessionRequest = {
                               prompt,
