@@ -273,7 +273,9 @@ export default function ProjectNewRFEWorkflowPage() {
                   <GitBranch className="h-5 w-5" />
                   Repositories
                 </CardTitle>
-                <CardDescription>Set the spec repo and optional supporting repos</CardDescription>
+                <CardDescription>
+                  Set the spec repo and optional supporting repos. Base branch is the branch from which the feature branch{branchName && ` (${branchName})`} will be set up. All modifications will be made to the feature branch.
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
@@ -302,15 +304,6 @@ export default function ProjectNewRFEWorkflowPage() {
                           <FormControl>
                             <Input placeholder="main" {...field} />
                           </FormControl>
-                          <FormDescription className="text-xs">
-                            {branchName ? (
-                              <>
-                                Feature branch <span className="font-medium text-foreground">{branchName}</span> will be created from this base branch
-                              </>
-                            ) : (
-                              'Base branch from which the feature branch will be created'
-                            )}
-                          </FormDescription>
                           <FormMessage />
                         </FormItem>
                       )}
@@ -348,15 +341,6 @@ export default function ProjectNewRFEWorkflowPage() {
                             <FormControl>
                               <Input placeholder="main" {...field} />
                             </FormControl>
-                            <FormDescription className="text-xs">
-                              {branchName ? (
-                                <>
-                                  Feature branch <span className="font-medium text-foreground">{branchName}</span> will be created from this base branch
-                                </>
-                              ) : (
-                                'Base branch from which the feature branch will be created'
-                              )}
-                            </FormDescription>
                             <FormMessage />
                           </FormItem>
                         )}

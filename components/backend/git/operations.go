@@ -322,17 +322,26 @@ func PerformRepoSeeding(ctx context.Context, wf Workflow, branchName, githubToke
 		return false, fmt.Errorf("failed to prepare umbrella repo URL: %w", err)
 	}
 
-	// Clone default branch (usually main)
-	defaultBranch := "main"
+	// Clone base branch (the branch from which feature branch will be created)
+	baseBranch := "main"
 	if branch := umbrellaRepo.GetBranch(); branch != nil && strings.TrimSpace(*branch) != "" {
-		defaultBranch = strings.TrimSpace(*branch)
+		baseBranch = strings.TrimSpace(*branch)
 	}
 
-	umbrellaArgs := []string{"clone", "--depth", "1", "--branch", defaultBranch, authenticatedURL, umbrellaDir}
+	log.Printf("Verifying base branch '%s' exists before cloning", baseBranch)
+
+	// Verify base branch exists before trying to clone
+	verifyCmd := exec.CommandContext(ctx, "git", "ls-remote", "--heads", authenticatedURL, baseBranch)
+	verifyOut, verifyErr := verifyCmd.CombinedOutput()
+	if verifyErr != nil || strings.TrimSpace(string(verifyOut)) == "" {
+		return false, fmt.Errorf("base branch '%s' does not exist in repository. Please ensure the base branch exists before seeding", baseBranch)
+	}
+
+	umbrellaArgs := []string{"clone", "--depth", "1", "--branch", baseBranch, authenticatedURL, umbrellaDir}
 
 	cmd := exec.CommandContext(ctx, "git", umbrellaArgs...)
 	if out, err := cmd.CombinedOutput(); err != nil {
-		return false, fmt.Errorf("failed to clone umbrella repo: %w (output: %s)", err, string(out))
+		return false, fmt.Errorf("failed to clone base branch '%s': %w (output: %s)", baseBranch, err, string(out))
 	}
 
 	// Configure git user
@@ -355,24 +364,35 @@ func PerformRepoSeeding(ctx context.Context, wf Workflow, branchName, githubToke
 		log.Printf("⚠️  Branch '%s' already exists remotely - checking out existing branch", branchName)
 		log.Printf("⚠️  This RFE will modify the existing branch '%s'", branchName)
 
-		// Fetch the specific branch with depth (works with shallow clones)
-		// Format: git fetch --depth 1 origin <remote-branch>:<local-branch>
-		cmd = exec.CommandContext(ctx, "git", "-C", umbrellaDir, "fetch", "--depth", "1", "origin", fmt.Sprintf("%s:%s", branchName, branchName))
-		if out, err := cmd.CombinedOutput(); err != nil {
-			return false, fmt.Errorf("failed to fetch existing branch %s: %w (output: %s)", branchName, err, string(out))
-		}
+		// Check if the branch is already checked out (happens when base branch == feature branch)
+		if baseBranch == branchName {
+			log.Printf("Feature branch '%s' is the same as base branch - already checked out", branchName)
+		} else {
+			// Fetch the specific branch with depth (works with shallow clones)
+			// Format: git fetch --depth 1 origin <remote-branch>:<local-branch>
+			cmd = exec.CommandContext(ctx, "git", "-C", umbrellaDir, "fetch", "--depth", "1", "origin", fmt.Sprintf("%s:%s", branchName, branchName))
+			if out, err := cmd.CombinedOutput(); err != nil {
+				return false, fmt.Errorf("failed to fetch existing branch %s: %w (output: %s)", branchName, err, string(out))
+			}
 
-		// Checkout the fetched branch
-		cmd = exec.CommandContext(ctx, "git", "-C", umbrellaDir, "checkout", branchName)
-		if out, err := cmd.CombinedOutput(); err != nil {
-			return false, fmt.Errorf("failed to checkout existing branch %s: %w (output: %s)", branchName, err, string(out))
+			// Checkout the fetched branch
+			cmd = exec.CommandContext(ctx, "git", "-C", umbrellaDir, "checkout", branchName)
+			if out, err := cmd.CombinedOutput(); err != nil {
+				return false, fmt.Errorf("failed to checkout existing branch %s: %w (output: %s)", branchName, err, string(out))
+			}
 		}
 	} else {
-		// Branch doesn't exist - create new
-		log.Printf("Creating new feature branch: %s", branchName)
-		cmd = exec.CommandContext(ctx, "git", "-C", umbrellaDir, "checkout", "-b", branchName)
-		if out, err := cmd.CombinedOutput(); err != nil {
-			return false, fmt.Errorf("failed to create branch %s: %w (output: %s)", branchName, err, string(out))
+		// Branch doesn't exist remotely
+		// Check if we're already on the feature branch (happens when base branch == feature branch)
+		if baseBranch == branchName {
+			log.Printf("Feature branch '%s' is the same as base branch - already on this branch", branchName)
+		} else {
+			// Create new feature branch from the current base branch
+			log.Printf("Creating new feature branch: %s", branchName)
+			cmd = exec.CommandContext(ctx, "git", "-C", umbrellaDir, "checkout", "-b", branchName)
+			if out, err := cmd.CombinedOutput(); err != nil {
+				return false, fmt.Errorf("failed to create branch %s: %w (output: %s)", branchName, err, string(out))
+			}
 		}
 	}
 

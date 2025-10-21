@@ -69,7 +69,7 @@ export function RfeWorkspaceCard({
                   <div className="ml-4 text-muted-foreground">
                     Base branch: <code className="text-xs bg-muted px-1 py-0.5 rounded">{workflow.umbrellaRepo.branch}</code>
                     {workflow.branchName && (
-                      <span> → Feature branch: <code className="text-xs bg-blue-50 text-blue-700 px-1 py-0.5 rounded">{workflow.branchName}</code></span>
+                      <span> → Feature branch <code className="text-xs bg-blue-50 text-blue-700 px-1 py-0.5 rounded">{workflow.branchName}</code> {isSeeded ? 'set up' : 'will be set up'}</span>
                     )}
                   </div>
                 )}
@@ -85,7 +85,7 @@ export function RfeWorkspaceCard({
                     <div className="ml-4 text-muted-foreground">
                       Base branch: <code className="text-xs bg-muted px-1 py-0.5 rounded">{r.branch}</code>
                       {workflow.branchName && (
-                        <span> → Feature branch: <code className="text-xs bg-blue-50 text-blue-700 px-1 py-0.5 rounded">{workflow.branchName}</code></span>
+                        <span> → Feature branch <code className="text-xs bg-blue-50 text-blue-700 px-1 py-0.5 rounded">{workflow.branchName}</code> {isSeeded ? 'set up' : 'will be set up'}</span>
                       )}
                     </div>
                   )}
@@ -101,12 +101,13 @@ export function RfeWorkspaceCard({
             <AlertTitle>Umbrella Repository Not Seeded</AlertTitle>
             <AlertDescription className="mt-2">
               <p className="mb-3">
-                Before you can start working on phases, the umbrella repository needs to be seeded
-                with:
+                Before you can start working on phases, the umbrella repository needs to be seeded.
+                This will:
               </p>
               <ul className="list-disc list-inside space-y-1 mb-3 text-sm">
-                <li>Spec-Kit template files for spec-driven development</li>
-                <li>Agent definition files in the .claude directory</li>
+                <li>Set up the feature branch{workflow.branchName && ` (${workflow.branchName})`} from the base branch</li>
+                <li>Add Spec-Kit template files for spec-driven development</li>
+                <li>Add agent definition files in the .claude directory</li>
               </ul>
               {seedingError && (
                 <div className="mb-3 p-2 bg-red-100 border border-red-300 rounded text-sm text-red-800">
