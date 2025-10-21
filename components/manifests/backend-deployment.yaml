@@ -34,7 +34,7 @@ spec:
           value: "/workspace"
         # Spec-kit configuration for RFE seeding
         - name: SPEC_KIT_REPO
-          value: "github/ambient-code/spec-kit-rh"
+          value: "ambient-code/spec-kit-rh"
         - name: SPEC_KIT_VERSION
           value: "main"
         # Spec-kit templates are only used when version is a tagged release

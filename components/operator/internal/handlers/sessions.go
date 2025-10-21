@@ -426,6 +426,11 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 	// Create the job
 	createdJob, err := config.K8sClient.BatchV1().Jobs(sessionNamespace).Create(context.TODO(), job, v1.CreateOptions{})
 	if err != nil {
+		// If job already exists, this is likely a race condition from duplicate watch events - not an error
+		if errors.IsAlreadyExists(err) {
+			log.Printf("Job %s already exists (race condition), continuing", jobName)
+			return nil
+		}
 		log.Printf("Failed to create job %s: %v", jobName, err)
 		// Update status to Error if job creation fails and resource still exists
 		updateAgenticSessionStatus(sessionNamespace, name, map[string]interface{}{
