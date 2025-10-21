@@ -44,6 +44,7 @@ func RFEFromUnstructured(item *unstructured.Unstructured) *types.RFEWorkflow {
 	if item.GetCreationTimestamp().Time != (time.Time{}) {
 		created = item.GetCreationTimestamp().Time.UTC().Format(time.RFC3339)
 	}
+
 	wf := &types.RFEWorkflow{
 		ID:            item.GetName(),
 		Title:         fmt.Sprintf("%v", spec["title"]),
@@ -340,13 +341,14 @@ func (h *Handler) PublishWorkflowFileToJira(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid umbrella repo URL", "details": err.Error()})
 		return
 	}
-	// Use the generated feature branch, not the base branch
-	branch := "main"
-	if wf.BranchName != "" {
-		branch = wf.BranchName
-	} else if wf.UmbrellaRepo.Branch != nil && strings.TrimSpace(*wf.UmbrellaRepo.Branch) != "" {
-		branch = strings.TrimSpace(*wf.UmbrellaRepo.Branch)
+	// Use the generated feature branch - specs only exist on feature branch
+	if wf.BranchName == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "RFE workflow has no feature branch. Please seed the repository first."})
+		return
 	}
+
+	branch := wf.BranchName
+
 	content, err := git.ReadGitHubFile(c.Request.Context(), owner, repo, branch, req.Path, githubToken)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to read file from GitHub", "details": err.Error()})

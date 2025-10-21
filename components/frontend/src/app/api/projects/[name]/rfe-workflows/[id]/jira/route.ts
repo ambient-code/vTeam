@@ -36,11 +36,14 @@ export async function POST(
     const wf = await wfResp.json()
     // Use umbrellaRepo as the main repository
     const umbrellaUrl: string | undefined = wf?.umbrellaRepo?.url
-    const umbrellaBranch: string | undefined = wf?.umbrellaRepo?.branch
     const repo: string | undefined = umbrellaUrl?.replace(/^https?:\/\/(?:www\.)?github.com\//i, '').replace(/\.git$/i, '')
-    const ref: string = (umbrellaBranch || 'main')
+    // Use the feature branch (branchName), not the base branch
+    const ref: string | undefined = wf?.branchName
     if (!repo) {
       return Response.json({ error: 'Workflow umbrellaRepo not configured' }, { status: 400 })
+    }
+    if (!ref) {
+      return Response.json({ error: 'Workflow has no feature branch. Please seed the repository first.' }, { status: 400 })
     }
 
     // 2) Fetch file content via backend repo blob proxy
