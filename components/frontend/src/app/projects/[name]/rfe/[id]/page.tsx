@@ -34,7 +34,8 @@ export default function ProjectRFEDetailPage() {
 
   // Extract repo info from workflow
   const repo = workflow?.umbrellaRepo?.url.replace(/^https?:\/\/(?:www\.)?github.com\//i, '').replace(/\.git$/i, '') || '';
-  const ref = workflow?.umbrellaRepo?.branch || 'main';
+  // Use feature branch if available, otherwise fall back to base branch
+  const ref = workflow?.branchName || workflow?.umbrellaRepo?.branch || 'main';
   const hasRepoInfo = !!workflow?.umbrellaRepo && !!repo;
 
   // Fetch rfe.md
@@ -283,7 +284,7 @@ export default function ProjectRFEDetailPage() {
             <RepoBrowser
               projectName={project}
               repoUrl={selectedFork?.url || upstreamRepo}
-              defaultRef={selectedFork?.default_branch || workflow.umbrellaRepo?.branch || "main"}
+              defaultRef={selectedFork?.default_branch || workflow.branchName || workflow.umbrellaRepo?.branch || "main"}
             />
           </TabsContent>
         </Tabs>

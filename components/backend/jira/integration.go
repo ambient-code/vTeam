@@ -340,8 +340,11 @@ func (h *Handler) PublishWorkflowFileToJira(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid umbrella repo URL", "details": err.Error()})
 		return
 	}
+	// Use the generated feature branch, not the base branch
 	branch := "main"
-	if wf.UmbrellaRepo.Branch != nil && strings.TrimSpace(*wf.UmbrellaRepo.Branch) != "" {
+	if wf.BranchName != "" {
+		branch = wf.BranchName
+	} else if wf.UmbrellaRepo.Branch != nil && strings.TrimSpace(*wf.UmbrellaRepo.Branch) != "" {
 		branch = strings.TrimSpace(*wf.UmbrellaRepo.Branch)
 	}
 	content, err := git.ReadGitHubFile(c.Request.Context(), owner, repo, branch, req.Path, githubToken)

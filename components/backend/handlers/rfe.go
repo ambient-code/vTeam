@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -72,6 +73,7 @@ func ListProjectRFEWorkflows(c *gin.Context) {
 			"id":            w.ID,
 			"title":         w.Title,
 			"description":   w.Description,
+			"branchName":    w.BranchName,
 			"project":       w.Project,
 			"workspacePath": w.WorkspacePath,
 			"createdAt":     w.CreatedAt,
@@ -211,19 +213,30 @@ func SeedProjectRFEWorkflow(c *gin.Context) {
 	if agentPath == "" {
 		agentPath = "agents"
 	}
+	// Spec-kit configuration: request body > environment variables > hardcoded defaults
 	specKitRepo := req.SpecKitRepo
 	if specKitRepo == "" {
-		// Using sallyom/spec-kit for testing - update to ambient-code/spec-kit-rh for production
-		specKitRepo = "sallyom/spec-kit"
+		if envRepo := strings.TrimSpace(os.Getenv("SPEC_KIT_REPO")); envRepo != "" {
+			specKitRepo = envRepo
+		} else {
+			specKitRepo = "github/spec-kit"
+		}
 	}
 	specKitVersion := req.SpecKitVersion
 	if specKitVersion == "" {
-		// Using auto-branch-spec-kit branch for testing - update to vteam-flexible-branches for production
-		specKitVersion = "auto-branch-spec-kit"
+		if envVersion := strings.TrimSpace(os.Getenv("SPEC_KIT_VERSION")); envVersion != "" {
+			specKitVersion = envVersion
+		} else {
+			specKitVersion = "main"
+		}
 	}
 	specKitTemplate := req.SpecKitTemplate
 	if specKitTemplate == "" {
-		specKitTemplate = "spec-kit-template-claude-sh"
+		if envTemplate := strings.TrimSpace(os.Getenv("SPEC_KIT_TEMPLATE")); envTemplate != "" {
+			specKitTemplate = envTemplate
+		} else {
+			specKitTemplate = "spec-kit-template-claude-sh"
+		}
 	}
 
 	// Perform seeding operations with platform-managed branch
@@ -285,8 +298,12 @@ func CheckProjectRFEWorkflowSeeding(c *gin.Context) {
 		return
 	}
 
-	// Check if repo is seeded
-	isSeeded, details, err := CheckRepoSeeding(c.Request.Context(), wf.UmbrellaRepo.URL, wf.UmbrellaRepo.Branch, githubToken)
+	// Check if repo is seeded - use the generated feature branch, not the base branch
+	branchToCheck := wf.UmbrellaRepo.Branch
+	if wf.BranchName != "" {
+		branchToCheck = &wf.BranchName
+	}
+	isSeeded, details, err := CheckRepoSeeding(c.Request.Context(), wf.UmbrellaRepo.URL, branchToCheck, githubToken)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -324,6 +341,7 @@ func GetProjectRFEWorkflow(c *gin.Context) {
 		"id":            wf.ID,
 		"title":         wf.Title,
 		"description":   wf.Description,
+		"branchName":    wf.BranchName,
 		"project":       wf.Project,
 		"workspacePath": wf.WorkspacePath,
 		"createdAt":     wf.CreatedAt,
@@ -651,9 +669,11 @@ func GetProjectRFEWorkflowAgents(c *gin.Context) {
 		return
 	}
 
-	// Get ref (branch)
+	// Get ref (branch) - use the generated feature branch, not the base branch
 	ref := "main"
-	if wf.UmbrellaRepo.Branch != nil {
+	if wf.BranchName != "" {
+		ref = wf.BranchName
+	} else if wf.UmbrellaRepo.Branch != nil {
 		ref = *wf.UmbrellaRepo.Branch
 	}
 

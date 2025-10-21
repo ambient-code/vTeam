@@ -32,6 +32,13 @@ spec:
           value: "8080"
         - name: STATE_BASE_DIR
           value: "/workspace"
+        # Spec-kit configuration for RFE seeding
+        - name: SPEC_KIT_REPO
+          value: "github/ambient-code/spec-kit-rh"
+        - name: SPEC_KIT_VERSION
+          value: "main"
+        - name: SPEC_KIT_TEMPLATE
+          value: "spec-kit-template-claude-sh"
         # GitHub App authentication (optional - use this OR git-secret)
         - name: GITHUB_APP_ID
           valueFrom:

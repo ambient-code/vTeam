@@ -205,6 +205,7 @@ export type RFEWorkflow = {
 	id: string;
 	title: string;
 	description: string;
+	branchName?: string; // Platform-generated feature branch name
   currentPhase?: WorkflowPhase; // derived in UI
   status?: "active" | "completed" | "failed" | "paused"; // derived in UI
   // New CRD-aligned repo fields

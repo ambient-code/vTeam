@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { FolderTree, AlertCircle, Loader2, Sprout, CheckCircle2 } from "lucide-react";
+import { FolderTree, AlertCircle, Loader2, Sprout, CheckCircle2, GitBranch } from "lucide-react";
 import type { RFEWorkflow } from "@/types/agentic-session";
 
 type RfeWorkspaceCardProps = {
@@ -37,6 +37,21 @@ export function RfeWorkspaceCard({
       </CardHeader>
       <CardContent>
         <div className="text-sm text-muted-foreground">Workspace: {workflowWorkspace}</div>
+
+        {workflow.branchName && (
+          <Alert className="mt-4 border-blue-200 bg-blue-50">
+            <GitBranch className="h-4 w-4 text-blue-600" />
+            <AlertTitle className="text-blue-900">Feature Branch</AlertTitle>
+            <AlertDescription className="text-blue-800">
+              All modifications will occur on feature branch{' '}
+              <code className="px-2 py-1 bg-blue-100 text-blue-900 rounded font-semibold">
+                {workflow.branchName}
+              </code>
+              {' '}for all supplied repositories.
+            </AlertDescription>
+          </Alert>
+        )}
+
         {(workflow as { parentOutcome?: string }).parentOutcome && (
           <div className="mt-2 text-sm">
             <span className="font-medium">Parent Outcome:</span>{' '}
@@ -46,18 +61,34 @@ export function RfeWorkspaceCard({
         {(workflow.umbrellaRepo || (workflow.supportingRepos || []).length > 0) && (
           <div className="mt-2 space-y-1">
             {workflow.umbrellaRepo && (
-              <div className="text-sm">
-                <span className="font-medium">Umbrella:</span> {workflow.umbrellaRepo.url}
+              <div className="text-sm space-y-1">
+                <div>
+                  <span className="font-medium">Umbrella:</span> {workflow.umbrellaRepo.url}
+                </div>
                 {workflow.umbrellaRepo.branch && (
-                  <span className="text-muted-foreground"> @ {workflow.umbrellaRepo.branch}</span>
+                  <div className="ml-4 text-muted-foreground">
+                    Base branch: <code className="text-xs bg-muted px-1 py-0.5 rounded">{workflow.umbrellaRepo.branch}</code>
+                    {workflow.branchName && (
+                      <span> → Feature branch: <code className="text-xs bg-blue-50 text-blue-700 px-1 py-0.5 rounded">{workflow.branchName}</code></span>
+                    )}
+                  </div>
                 )}
               </div>
             )}
             {(workflow.supportingRepos || []).map(
               (r: { url: string; branch?: string; clonePath?: string }, i: number) => (
-                <div key={i} className="text-sm">
-                  <span className="font-medium">Supporting:</span> {r.url}
-                  {r.branch && <span className="text-muted-foreground"> @ {r.branch}</span>}
+                <div key={i} className="text-sm space-y-1">
+                  <div>
+                    <span className="font-medium">Supporting:</span> {r.url}
+                  </div>
+                  {r.branch && (
+                    <div className="ml-4 text-muted-foreground">
+                      Base branch: <code className="text-xs bg-muted px-1 py-0.5 rounded">{r.branch}</code>
+                      {workflow.branchName && (
+                        <span> → Feature branch: <code className="text-xs bg-blue-50 text-blue-700 px-1 py-0.5 rounded">{workflow.branchName}</code></span>
+                      )}
+                    </div>
+                  )}
                 </div>
               )
             )}

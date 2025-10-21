@@ -69,6 +69,7 @@ export type RFEWorkflow = {
   id: string;
   title: string;
   description: string;
+  branchName?: string;
   currentPhase?: WorkflowPhase;
   status?: RFEWorkflowStatus;
   umbrellaRepo?: GitRepository;

@@ -440,20 +440,16 @@ func CreateSession(c *gin.Context) {
 							envVars["SPECIFY_FEATURE"] = rfeWf.BranchName
 							spec["environmentVariables"] = envVars
 
-							// Set branch for all repos if not already set
+							// Override branch for all repos to use feature branch
 							if repos, ok := spec["repos"].([]map[string]interface{}); ok {
 								for i := range repos {
-									// Set input branch if not specified
+									// Always override input branch with feature branch
 									if input, ok := repos[i]["input"].(map[string]interface{}); ok {
-										if _, hasBranch := input["branch"]; !hasBranch {
-											input["branch"] = rfeWf.BranchName
-										}
+										input["branch"] = rfeWf.BranchName
 									}
-									// Set output branch if output exists and not specified
+									// Always override output branch with feature branch
 									if output, ok := repos[i]["output"].(map[string]interface{}); ok {
-										if _, hasBranch := output["branch"]; !hasBranch {
-											output["branch"] = rfeWf.BranchName
-										}
+										output["branch"] = rfeWf.BranchName
 									}
 								}
 							}
