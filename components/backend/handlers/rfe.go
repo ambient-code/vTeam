@@ -30,6 +30,7 @@ var (
 	UpsertProjectRFEWorkflowCR func(dynamic.Interface, *types.RFEWorkflow) error
 	PerformRepoSeeding         func(context.Context, *types.RFEWorkflow, string, string, string, string, string, string, string, string) (bool, error)
 	CheckRepoSeeding           func(context.Context, string, *string, string) (bool, map[string]interface{}, error)
+	CheckBranchExists          func(context.Context, string, string, string) (bool, error)
 	RfeFromUnstructured        func(*unstructured.Unstructured) *types.RFEWorkflow
 )
 
@@ -298,20 +299,54 @@ func CheckProjectRFEWorkflowSeeding(c *gin.Context) {
 		return
 	}
 
-	// Check if repo is seeded - use the generated feature branch, not the base branch
+	// Check if umbrella repo is seeded - use the generated feature branch, not the base branch
 	branchToCheck := wf.UmbrellaRepo.Branch
 	if wf.BranchName != "" {
 		branchToCheck = &wf.BranchName
 	}
-	isSeeded, details, err := CheckRepoSeeding(c.Request.Context(), wf.UmbrellaRepo.URL, branchToCheck, githubToken)
+	umbrellaSeeded, umbrellaDetails, err := CheckRepoSeeding(c.Request.Context(), wf.UmbrellaRepo.URL, branchToCheck, githubToken)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
+	// Check if all supporting repos have the feature branch
+	supportingReposStatus := []map[string]interface{}{}
+	allSupportingReposSeeded := true
+
+	for _, supportingRepo := range wf.SupportingRepos {
+		branchExists, err := CheckBranchExists(c.Request.Context(), supportingRepo.URL, wf.BranchName, githubToken)
+		if err != nil {
+			log.Printf("Warning: failed to check branch in supporting repo %s: %v", supportingRepo.URL, err)
+			allSupportingReposSeeded = false
+			supportingReposStatus = append(supportingReposStatus, map[string]interface{}{
+				"repoURL":      supportingRepo.URL,
+				"branchExists": false,
+				"error":        err.Error(),
+			})
+			continue
+		}
+
+		if !branchExists {
+			allSupportingReposSeeded = false
+		}
+
+		supportingReposStatus = append(supportingReposStatus, map[string]interface{}{
+			"repoURL":      supportingRepo.URL,
+			"branchExists": branchExists,
+		})
+	}
+
+	// Overall seeding is complete only if umbrella repo is seeded AND all supporting repos have the branch
+	isFullySeeded := umbrellaSeeded && allSupportingReposSeeded
+
 	c.JSON(http.StatusOK, gin.H{
-		"isSeeded": isSeeded,
-		"details":  details,
+		"isSeeded": isFullySeeded,
+		"umbrellaRepo": gin.H{
+			"isSeeded": umbrellaSeeded,
+			"details":  umbrellaDetails,
+		},
+		"supportingRepos": supportingReposStatus,
 	})
 }
 

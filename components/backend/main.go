@@ -68,6 +68,7 @@ func main() {
 	handlers.UpsertProjectRFEWorkflowCR = crd.UpsertProjectRFEWorkflowCR
 	handlers.PerformRepoSeeding = performRepoSeeding
 	handlers.CheckRepoSeeding = checkRepoSeeding
+	handlers.CheckBranchExists = checkBranchExists
 	handlers.RfeFromUnstructured = jira.RFEFromUnstructured
 
 	// Initialize Jira handler
@@ -127,6 +128,18 @@ func (r *rfeWorkflowAdapter) GetUmbrellaRepo() git.GitRepo {
 	return &gitRepositoryAdapter{repo: r.wf.UmbrellaRepo}
 }
 
+// GetSupportingRepos implements git.Workflow interface
+func (r *rfeWorkflowAdapter) GetSupportingRepos() []git.GitRepo {
+	if len(r.wf.SupportingRepos) == 0 {
+		return nil
+	}
+	repos := make([]git.GitRepo, 0, len(r.wf.SupportingRepos))
+	for i := range r.wf.SupportingRepos {
+		repos = append(repos, &gitRepositoryAdapter{repo: &r.wf.SupportingRepos[i]})
+	}
+	return repos
+}
+
 // GetURL implements git.GitRepo interface
 func (g *gitRepositoryAdapter) GetURL() string {
 	if g.repo == nil {
@@ -146,4 +159,9 @@ func (g *gitRepositoryAdapter) GetBranch() *string {
 // Wrapper for git.CheckRepoSeeding
 func checkRepoSeeding(ctx context.Context, repoURL string, branch *string, githubToken string) (bool, map[string]interface{}, error) {
 	return git.CheckRepoSeeding(ctx, repoURL, branch, githubToken)
+}
+
+// Wrapper for git.CheckBranchExists
+func checkBranchExists(ctx context.Context, repoURL, branchName, githubToken string) (bool, error) {
+	return git.CheckBranchExists(ctx, repoURL, branchName, githubToken)
 }

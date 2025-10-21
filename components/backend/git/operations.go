@@ -305,6 +305,7 @@ type GitRepo interface {
 // Workflow interface for RFE workflows
 type Workflow interface {
 	GetUmbrellaRepo() GitRepo
+	GetSupportingRepos() []GitRepo
 }
 
 // PerformRepoSeeding performs the actual seeding operations
@@ -600,6 +601,19 @@ func PerformRepoSeeding(ctx context.Context, wf Workflow, branchName, githubToke
 	}
 
 	log.Printf("Successfully seeded umbrella repo on branch %s", branchName)
+
+	// Create feature branch in all supporting repos
+	supportingRepos := wf.GetSupportingRepos()
+	if len(supportingRepos) > 0 {
+		log.Printf("Creating feature branch %s in %d supporting repos", branchName, len(supportingRepos))
+		for _, repo := range supportingRepos {
+			if err := createBranchInRepo(ctx, repo, branchName, githubToken); err != nil {
+				log.Printf("Warning: failed to create branch in %s: %v", repo.GetURL(), err)
+				// Don't fail the whole operation if a supporting repo fails
+			}
+		}
+	}
+
 	return branchExistsRemotely, nil
 }
 
@@ -887,4 +901,113 @@ func ReadGitHubFile(ctx context.Context, owner, repo, branch, path, token string
 	}
 
 	return io.ReadAll(resp.Body)
+}
+
+// CheckBranchExists checks if a branch exists in a GitHub repository
+func CheckBranchExists(ctx context.Context, repoURL, branchName, githubToken string) (bool, error) {
+	owner, repo, err := ParseGitHubURL(repoURL)
+	if err != nil {
+		return false, err
+	}
+
+	apiURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/git/refs/heads/%s",
+		owner, repo, branchName)
+
+	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
+	if err != nil {
+		return false, err
+	}
+
+	req.Header.Set("Authorization", "Bearer "+githubToken)
+	req.Header.Set("Accept", "application/vnd.github.v3+json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return false, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusOK {
+		return true, nil
+	}
+	if resp.StatusCode == http.StatusNotFound {
+		return false, nil
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	return false, fmt.Errorf("GitHub API error: %s (body: %s)", resp.Status, string(body))
+}
+
+// createBranchInRepo creates a feature branch in a supporting repository
+// Follows the same pattern as umbrella repo seeding but without adding files
+func createBranchInRepo(ctx context.Context, repo GitRepo, branchName, githubToken string) error {
+	repoURL := repo.GetURL()
+	if repoURL == "" {
+		return fmt.Errorf("repository URL is empty")
+	}
+
+	repoDir, err := os.MkdirTemp("", "supporting-repo-*")
+	if err != nil {
+		return fmt.Errorf("failed to create temp dir: %w", err)
+	}
+	defer os.RemoveAll(repoDir)
+
+	authenticatedURL, err := InjectGitHubToken(repoURL, githubToken)
+	if err != nil {
+		return fmt.Errorf("failed to prepare repo URL: %w", err)
+	}
+
+	baseBranch := "main"
+	if branch := repo.GetBranch(); branch != nil && strings.TrimSpace(*branch) != "" {
+		baseBranch = strings.TrimSpace(*branch)
+	}
+
+	log.Printf("Cloning supporting repo: %s (branch: %s)", repoURL, baseBranch)
+	cloneArgs := []string{"clone", "--depth", "1", "--branch", baseBranch, authenticatedURL, repoDir}
+	cmd := exec.CommandContext(ctx, "git", cloneArgs...)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to clone repo: %w (output: %s)", err, string(out))
+	}
+
+	cmd = exec.CommandContext(ctx, "git", "-C", repoDir, "config", "user.email", "vteam-bot@ambient-code.io")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		log.Printf("Warning: failed to set git user.email: %v (output: %s)", err, string(out))
+	}
+	cmd = exec.CommandContext(ctx, "git", "-C", repoDir, "config", "user.name", "vTeam Bot")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		log.Printf("Warning: failed to set git user.name: %v (output: %s)", err, string(out))
+	}
+
+	cmd = exec.CommandContext(ctx, "git", "-C", repoDir, "ls-remote", "--heads", "origin", branchName)
+	lsRemoteOut, lsRemoteErr := cmd.CombinedOutput()
+	branchExistsRemotely := lsRemoteErr == nil && strings.TrimSpace(string(lsRemoteOut)) != ""
+
+	if branchExistsRemotely {
+		log.Printf("Branch '%s' already exists in %s, skipping", branchName, repoURL)
+		return nil
+	}
+
+	log.Printf("Creating feature branch '%s' in %s", branchName, repoURL)
+	cmd = exec.CommandContext(ctx, "git", "-C", repoDir, "checkout", "-b", branchName)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to create branch %s: %w (output: %s)", branchName, err, string(out))
+	}
+
+	cmd = exec.CommandContext(ctx, "git", "-C", repoDir, "remote", "set-url", "origin", authenticatedURL)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to set remote URL: %w (output: %s)", err, string(out))
+	}
+
+	cmd = exec.CommandContext(ctx, "git", "-C", repoDir, "push", "-u", "origin", branchName)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		// Check if it's a permission error
+		errMsg := string(out)
+		if strings.Contains(errMsg, "Permission denied") || strings.Contains(errMsg, "403") || strings.Contains(errMsg, "not authorized") {
+			return fmt.Errorf("permission denied: you don't have push access to %s. Please provide a repository you can push to", repoURL)
+		}
+		return fmt.Errorf("failed to push branch: %w (output: %s)", err, errMsg)
+	}
+
+	log.Printf("Successfully created and pushed branch '%s' in %s", branchName, repoURL)
+	return nil
 }
