@@ -104,6 +104,7 @@ jobs:
           tags: |
             ${{ matrix.component.image }}:latest
             ${{ matrix.component.image }}:${{ github.sha }}
+            ${{ matrix.component.image }}:stage
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -122,7 +123,7 @@ jobs:
   deploy-to-openshift:
     runs-on: ubuntu-latest
     needs: [detect-changes, build-and-push]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && (needs.detect-changes.outputs.frontend == 'true' || needs.detect-changes.outputs.backend == 'true' || needs.detect-changes.outputs.operator == 'true' || needs.detect-changes.outputs.claude-runner == 'true') || github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && (needs.detect-changes.outputs.frontend == 'true' || needs.detect-changes.outputs.backend == 'true' || needs.detect-changes.outputs.operator == 'true' || needs.detect-changes.outputs.claude-runner == 'true')
     strategy:
       matrix:
         component:
@@ -160,22 +161,80 @@ jobs:
           oc login ${{ secrets.OPENSHIFT_SERVER }} --token=${{ secrets.OPENSHIFT_TOKEN }} --insecure-skip-tls-verify
 
       - name: Update frontend if changed
-        if: matrix.component.name == 'frontend' && matrix.component.changed == 'true' || github.event_name == 'workflow_dispatch'
+        if: matrix.component.name == 'frontend' && matrix.component.changed == 'true'
         run: |
           oc delete deployment frontend -n ambient-code
           oc apply -f components/manifests/frontend-deployment.yaml -n ambient-code
           oc patch deployment frontend -n ambient-code --patch "{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"frontend\",\"image\":\"quay.io/ambient_code/vteam_frontend:${{ github.sha }}\",\"env\":[{\"name\":\"BACKEND_URL\",\"value\":\"http://backend-service:8080/api\"},{\"name\":\"NODE_ENV\",\"value\":\"production\"},{\"name\":\"GITHUB_APP_SLUG\",\"value\":\"ambient-code\"},{\"name\":\"VTEAM_VERSION\",\"value\":\"${{ github.sha }}\"}]}]}}}}"
 
       - name: Update backend if changed
-        if: matrix.component.name == 'backend' && matrix.component.changed == 'true' || github.event_name == 'workflow_dispatch'
+        if: matrix.component.name == 'backend' && matrix.component.changed == 'true'
         run: |
           oc delete deployment backend-api -n ambient-code
           oc apply -f components/manifests/backend-deployment.yaml -n ambient-code
           oc patch deployment backend-api -n ambient-code --patch "{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"backend-api\",\"image\":\"quay.io/ambient_code/vteam_backend:${{ github.sha }}\"}]}}}}"
 
       - name: Update operator if changed
-        if: matrix.component.name == 'operator' && matrix.component.changed == 'true' || github.event_name == 'workflow_dispatch'
+        if: matrix.component.name == 'operator' && matrix.component.changed == 'true'
         run: |
           oc delete deployment agentic-operator -n ambient-code
           oc apply -f components/manifests/operator-deployment.yaml -n ambient-code
           oc patch deployment agentic-operator -n ambient-code --patch "{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"agentic-operator\",\"image\":\"quay.io/ambient_code/vteam_operator:${{ github.sha }}\"}]}}}}"
+
+      - name: Update operator environment variables if backend or runner changed
+        if: matrix.component.name == 'operator' && (needs.detect-changes.outputs.backend == 'true' || needs.detect-changes.outputs.claude-runner == 'true')
+        run: |
+          # Determine which image tags to use based on what changed
+          if [ "${{ needs.detect-changes.outputs.backend }}" == "true" ]; then
+            BACKEND_TAG="${{ github.sha }}"
+          else
+            BACKEND_TAG="stage"
+          fi
+
+          if [ "${{ needs.detect-changes.outputs.claude-runner }}" == "true" ]; then
+            RUNNER_TAG="${{ github.sha }}"
+          else
+            RUNNER_TAG="stage"
+          fi
+
+          # Use JSON patch to replace the entire env array with all required variables
+          oc patch deployment agentic-operator -n ambient-code --type=json -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/env", "value": [{"name":"NAMESPACE","valueFrom":{"fieldRef":{"fieldPath":"metadata.namespace"}}},{"name":"BACKEND_NAMESPACE","valueFrom":{"fieldRef":{"fieldPath":"metadata.namespace"}}},{"name":"BACKEND_API_URL","value":"http://backend-service:8080/api"},{"name":"AMBIENT_CODE_RUNNER_IMAGE","value":"quay.io/ambient_code/vteam_claude_runner:'"${RUNNER_TAG}"'"},{"name":"CONTENT_SERVICE_IMAGE","value":"quay.io/ambient_code/vteam_backend:'"${BACKEND_TAG}"'"},{"name":"IMAGE_PULL_POLICY","value":"Always"}]}]'
+
+  deploy-with-disptach:
+    runs-on: ubuntu-latest
+    needs: [detect-changes, build-and-push]
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Install oc
+        uses: redhat-actions/oc-installer@v1
+        with:
+          oc_version: 'latest'
+
+      - name: Log in to OpenShift Cluster
+        run: |
+          oc login ${{ secrets.OPENSHIFT_SERVER }} --token=${{ secrets.OPENSHIFT_TOKEN }} --insecure-skip-tls-verify
+
+      - name: Update frontend if changed
+        run: |
+          oc delete deployment frontend -n ambient-code
+          oc apply -f components/manifests/frontend-deployment.yaml -n ambient-code
+          oc patch deployment frontend -n ambient-code --patch "{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"frontend\",\"image\":\"quay.io/ambient_code/vteam_frontend:stage\",\"env\":[{\"name\":\"BACKEND_URL\",\"value\":\"http://backend-service:8080/api\"},{\"name\":\"NODE_ENV\",\"value\":\"production\"},{\"name\":\"GITHUB_APP_SLUG\",\"value\":\"ambient-code\"},{\"name\":\"VTEAM_VERSION\",\"value\":\"${{ github.sha }}\"}]}]}}}}"
+
+      - name: Update backend if changed
+        run: |
+          oc delete deployment backend-api -n ambient-code
+          oc apply -f components/manifests/backend-deployment.yaml -n ambient-code
+          oc patch deployment backend-api -n ambient-code --patch "{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"backend-api\",\"image\":\"quay.io/ambient_code/vteam_backend:stage\"}]}}}}"
+
+      - name: Update operator if changed
+        run: |
+          oc delete deployment agentic-operator -n ambient-code
+          oc apply -f components/manifests/operator-deployment.yaml -n ambient-code
+          oc patch deployment agentic-operator -n ambient-code --patch "{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"agentic-operator\",\"image\":\"quay.io/ambient_code/vteam_operator:stage\"}]}}}}"
+
+      - name: Update operator environment variables if backend or runner changed
+        run: |
+          oc patch deployment agentic-operator -n ambient-code --type=json -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/env", "value": [{"name":"NAMESPACE","valueFrom":{"fieldRef":{"fieldPath":"metadata.namespace"}}},{"name":"BACKEND_NAMESPACE","valueFrom":{"fieldRef":{"fieldPath":"metadata.namespace"}}},{"name":"BACKEND_API_URL","value":"http://backend-service:8080/api"},{"name":"AMBIENT_CODE_RUNNER_IMAGE","value":"quay.io/ambient_code/vteam_claude_runner:stage"},{"name":"CONTENT_SERVICE_IMAGE","value":"quay.io/ambient_code/vteam_backend:stage"},{"name":"IMAGE_PULL_POLICY","value":"Always"}]}]'

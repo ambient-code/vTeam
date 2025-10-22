@@ -185,7 +185,7 @@ jobs:
           username: ${{ secrets.REDHAT_USERNAME }}
           password: ${{ secrets.REDHAT_PASSWORD }}
 
-      - name: Build and push ${{ matrix.component.name }} image only for merge into main
+      - name: Build and push ${{ matrix.component.name }} image
         uses: docker/build-push-action@v6
         with:
           context: ${{ matrix.component.context }}
@@ -194,18 +194,6 @@ jobs:
           push: true
           tags: |
             ${{ matrix.component.image }}:${{ needs.release.outputs.new_tag }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Build ${{ matrix.component.name }} image for pull requests but don't push
-        uses: docker/build-push-action@v6
-        with:
-          context: ${{ matrix.component.context }}
-          file: ${{ matrix.component.dockerfile }}
-          platforms: linux/amd64,linux/arm64
-          push: false
-          tags: |
-           ${{ matrix.component.image }}:${{ needs.release.outputs.new_tag }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -261,6 +249,7 @@ jobs:
         run: |
           oc patch deployment backend-api -n ambient-code --patch "{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"backend-api\",\"image\":\"quay.io/ambient_code/vteam_backend:${{ needs.release.outputs.new_tag }}\"}]}}}}"
 
-      - name: Update operator if changed
+      - name: Update operator image and environment variables
         run: |
           oc patch deployment agentic-operator -n ambient-code --patch "{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"agentic-operator\",\"image\":\"quay.io/ambient_code/vteam_operator:${{ needs.release.outputs.new_tag }}\"}]}}}}"
+          oc patch deployment agentic-operator -n ambient-code --type=json -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/env", "value": [{"name":"NAMESPACE","valueFrom":{"fieldRef":{"fieldPath":"metadata.namespace"}}},{"name":"BACKEND_NAMESPACE","valueFrom":{"fieldRef":{"fieldPath":"metadata.namespace"}}},{"name":"BACKEND_API_URL","value":"http://backend-service:8080/api"},{"name":"AMBIENT_CODE_RUNNER_IMAGE","value":"quay.io/ambient_code/vteam_claude_runner:${{ needs.release.outputs.new_tag }}"},{"name":"CONTENT_SERVICE_IMAGE","value":"quay.io/ambient_code/vteam_backend:${{ needs.release.outputs.new_tag }}"},{"name":"IMAGE_PULL_POLICY","value":"Always"}]}]'
