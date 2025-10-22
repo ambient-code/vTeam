@@ -104,6 +104,7 @@ jobs:
           tags: |
             ${{ matrix.component.image }}:latest
             ${{ matrix.component.image }}:${{ github.sha }}
+            ${{ matrix.component.image }}:stage
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -178,4 +179,22 @@ jobs:
         run: |
           oc delete deployment agentic-operator -n ambient-code
           oc apply -f components/manifests/operator-deployment.yaml -n ambient-code
-          oc patch deployment agentic-operator -n ambient-code --patch "{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"agentic-operator\",\"image\":\"quay.io/ambient_code/vteam_operator:${{ github.sha }}\"}]}}}}"
+          oc patch deployment agentic-operator -n ambient-code --patch "{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"agentic-operator\",\"image\":\"quay.io/ambient_code/vteam_operator:${{ github.sha }}\",\"env\":[{\"name\":\"AMBIENT_CODE_RUNNER_IMAGE\",\"value\":\"quay.io/ambient_code/vteam_claude_runner:${{ github.sha }}\"},{\"name\":\"CONTENT_SERVICE_IMAGE\",\"value\":\"quay.io/ambient_code/vteam_backend:${{ github.sha }}\"}]}]}}}}"
+
+      - name: Update operator environment variables if backend or runner changed
+        if: matrix.component.name == 'operator' && matrix.component.changed == 'false' && (needs.detect-changes.outputs.backend == 'true' || needs.detect-changes.outputs.claude-runner == 'true')
+        run: |
+          # Determine which image tags to use based on what changed
+          if [ "${{ needs.detect-changes.outputs.backend }}" == "true" ]; then
+            BACKEND_TAG="${{ github.sha }}"
+          else
+            BACKEND_TAG="stage"
+          fi
+
+          if [ "${{ needs.detect-changes.outputs.claude-runner }}" == "true" ]; then
+            RUNNER_TAG="${{ github.sha }}"
+          else
+            RUNNER_TAG="stage"
+          fi
+
+          oc patch deployment agentic-operator -n ambient-code --patch "{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"agentic-operator\",\"env\":[{\"name\":\"AMBIENT_CODE_RUNNER_IMAGE\",\"value\":\"quay.io/ambient_code/vteam_claude_runner:${RUNNER_TAG}\"},{\"name\":\"CONTENT_SERVICE_IMAGE\",\"value\":\"quay.io/ambient_code/vteam_backend:${BACKEND_TAG}\"}]}]}}}}"

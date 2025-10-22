@@ -261,6 +261,7 @@ jobs:
         run: |
           oc patch deployment backend-api -n ambient-code --patch "{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"backend-api\",\"image\":\"quay.io/ambient_code/vteam_backend:${{ needs.release.outputs.new_tag }}\"}]}}}}"
 
-      - name: Update operator if changed
+      - name: Update operator image and environment variables
         run: |
           oc patch deployment agentic-operator -n ambient-code --patch "{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"agentic-operator\",\"image\":\"quay.io/ambient_code/vteam_operator:${{ needs.release.outputs.new_tag }}\"}]}}}}"
+          oc patch deployment agentic-operator -n ambient-code --type=json -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/env", "value": [{"name":"NAMESPACE","valueFrom":{"fieldRef":{"fieldPath":"metadata.namespace"}}},{"name":"BACKEND_NAMESPACE","valueFrom":{"fieldRef":{"fieldPath":"metadata.namespace"}}},{"name":"BACKEND_API_URL","value":"http://backend-service:8080/api"},{"name":"AMBIENT_CODE_RUNNER_IMAGE","value":"quay.io/ambient_code/vteam_claude_runner:${{ needs.release.outputs.new_tag }}"},{"name":"CONTENT_SERVICE_IMAGE","value":"quay.io/ambient_code/vteam_backend:${{ needs.release.outputs.new_tag }}"},{"name":"IMAGE_PULL_POLICY","value":"Always"}]}]'
