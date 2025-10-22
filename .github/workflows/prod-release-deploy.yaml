@@ -201,25 +201,6 @@ jobs:
    deploy-to-openshift:
     runs-on: ubuntu-latest
     needs: [release, build-and-push]
-    strategy:
-      matrix:
-        component:
-          - name: frontend
-            context: ./components/frontend
-            image: quay.io/ambient_code/vteam_frontend
-            dockerfile: ./components/frontend/Dockerfile
-          - name: backend
-            context: ./components/backend
-            image: quay.io/ambient_code/vteam_backend
-            dockerfile: ./components/backend/Dockerfile
-          - name: operator
-            context: ./components/operator
-            image: quay.io/ambient_code/vteam_operator
-            dockerfile: ./components/operator/Dockerfile
-          - name: claude-code-runner
-            context: ./components/runners
-            image: quay.io/ambient_code/vteam_claude_runner
-            dockerfile: ./components/runners/claude-code-runner/Dockerfile
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
