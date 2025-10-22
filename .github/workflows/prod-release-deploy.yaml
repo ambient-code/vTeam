@@ -185,7 +185,7 @@ jobs:
           username: ${{ secrets.REDHAT_USERNAME }}
           password: ${{ secrets.REDHAT_PASSWORD }}
 
-      - name: Build and push ${{ matrix.component.name }} image only for merge into main
+      - name: Build and push ${{ matrix.component.name }} image
         uses: docker/build-push-action@v6
         with:
           context: ${{ matrix.component.context }}
@@ -194,18 +194,6 @@ jobs:
           push: true
           tags: |
             ${{ matrix.component.image }}:${{ needs.release.outputs.new_tag }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Build ${{ matrix.component.name }} image for pull requests but don't push
-        uses: docker/build-push-action@v6
-        with:
-          context: ${{ matrix.component.context }}
-          file: ${{ matrix.component.dockerfile }}
-          platforms: linux/amd64,linux/arm64
-          push: false
-          tags: |
-           ${{ matrix.component.image }}:${{ needs.release.outputs.new_tag }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

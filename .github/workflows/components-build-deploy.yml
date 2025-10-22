@@ -197,4 +197,5 @@ jobs:
             RUNNER_TAG="stage"
           fi
 
-          oc patch deployment agentic-operator -n ambient-code --patch "{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"agentic-operator\",\"env\":[{\"name\":\"AMBIENT_CODE_RUNNER_IMAGE\",\"value\":\"quay.io/ambient_code/vteam_claude_runner:${RUNNER_TAG}\"},{\"name\":\"CONTENT_SERVICE_IMAGE\",\"value\":\"quay.io/ambient_code/vteam_backend:${BACKEND_TAG}\"}]}]}}}}"
+          # Use JSON patch to replace the entire env array with all required variables
+          oc patch deployment agentic-operator -n ambient-code --type=json -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/env", "value": [{"name":"NAMESPACE","valueFrom":{"fieldRef":{"fieldPath":"metadata.namespace"}}},{"name":"BACKEND_NAMESPACE","valueFrom":{"fieldRef":{"fieldPath":"metadata.namespace"}}},{"name":"BACKEND_API_URL","value":"http://backend-service:8080/api"},{"name":"AMBIENT_CODE_RUNNER_IMAGE","value":"quay.io/ambient_code/vteam_claude_runner:'"${RUNNER_TAG}"'"},{"name":"CONTENT_SERVICE_IMAGE","value":"quay.io/ambient_code/vteam_backend:'"${BACKEND_TAG}"'"},{"name":"IMAGE_PULL_POLICY","value":"Always"}]}]'
