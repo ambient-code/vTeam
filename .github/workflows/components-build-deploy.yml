@@ -182,7 +182,7 @@ jobs:
           oc patch deployment agentic-operator -n ambient-code --patch "{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"agentic-operator\",\"image\":\"quay.io/ambient_code/vteam_operator:${{ github.sha }}\"}]}}}}"
 
       - name: Update operator environment variables if backend or runner changed
-        if: matrix.component.name == 'operator' && (needs.detect-changes.outputs.backend == 'true' || needs.detect-changes.outputs.claude-runner == 'true')
+        if: matrix.component.name == 'operator' && (needs.detect-changes.outputs.backend == 'true' || needs.detect-changes.outputs.claude-runner == 'true') || github.event_name == 'workflow_dispatch'
         run: |
           # Determine which image tags to use based on what changed
           if [ "${{ needs.detect-changes.outputs.backend }}" == "true" ]; then
