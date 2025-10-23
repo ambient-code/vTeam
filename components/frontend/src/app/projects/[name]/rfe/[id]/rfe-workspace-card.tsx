@@ -33,7 +33,7 @@ export function RfeWorkspaceCard({
           <FolderTree className="h-5 w-5" />
           Workspace & Repositories
         </CardTitle>
-        <CardDescription>Shared workspace for this workflow and optional repos</CardDescription>
+        <CardDescription>Shared workspace with spec repository (specs, planning docs, agent configs) and optional supporting repos</CardDescription>
       </CardHeader>
       <CardContent>
         <div className="text-sm text-muted-foreground">Workspace: {workflowWorkspace}</div>
@@ -63,7 +63,7 @@ export function RfeWorkspaceCard({
             {workflow.umbrellaRepo && (
               <div className="text-sm space-y-1">
                 <div>
-                  <span className="font-medium">Umbrella:</span> {workflow.umbrellaRepo.url}
+                  <span className="font-medium">Spec Repo:</span> {workflow.umbrellaRepo.url}
                 </div>
                 {workflow.umbrellaRepo.branch && (
                   <div className="ml-4 text-muted-foreground">
@@ -98,10 +98,10 @@ export function RfeWorkspaceCard({
         {!isSeeded && !seedingStatus.checking && workflow.umbrellaRepo && (
           <Alert variant="destructive" className="mt-4">
             <AlertCircle className="h-4 w-4" />
-            <AlertTitle>Umbrella Repository Not Seeded</AlertTitle>
+            <AlertTitle>Spec Repository Not Seeded</AlertTitle>
             <AlertDescription className="mt-2">
               <p className="mb-3">
-                Before you can start working on phases, the umbrella repository needs to be seeded.
+                Before you can start working on phases, the spec repository needs to be seeded.
                 This will:
               </p>
               <ul className="list-disc list-inside space-y-1 mb-3 text-sm">

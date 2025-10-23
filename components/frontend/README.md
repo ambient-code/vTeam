@@ -127,7 +127,7 @@ curl -i http://localhost:3000/api/projects/my-project/agentic-sessions \
 #### 📊 Sessions Dashboard (T011)
 - **`SessionsDashboard.tsx`**: Live session management
   - Real-time WebSocket connections for session updates
-  - Grouped PR display (umbrella + submodule PRs)
+  - Grouped PR display (spec repo + submodule PRs)
   - Live message streaming with partial reassembly
   - Visual status indicators for all session states
   - Multi-runner support (Claude, OpenAI, local execution)
@@ -147,7 +147,7 @@ curl -i http://localhost:3000/api/projects/my-project/agentic-sessions \
 
 ### Key Features
 - **Live Session Monitoring**: WebSocket connections with automatic reconnection
-- **Multi-repo PR Management**: Handle umbrella and submodule PRs separately
+- **Multi-repo PR Management**: Handle spec repo and submodule PRs separately
 - **GitHub App Integration**: Streamlined per-user installation flow
 - **Repository Browsing**: Full file tree navigation with content preview
 - **Runner Support**: Claude Code, OpenAI, and local execution runners

@@ -289,6 +289,9 @@ export default function ProjectNewRFEWorkflowPage() {
                           <FormControl>
                             <Input placeholder="https://github.com/org/repo.git" {...field} />
                           </FormControl>
+                          <FormDescription>
+                            The spec repository contains your feature specifications, planning documents, and agent configurations for this RFE workspace
+                          </FormDescription>
                           <FormMessage />
                         </FormItem>
                       )}
