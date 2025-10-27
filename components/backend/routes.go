@@ -51,6 +51,7 @@ func registerRoutes(r *gin.Engine, jiraHandler *jira.Handler) {
 			projectGroup.GET("/rfe-workflows", handlers.ListProjectRFEWorkflows)
 			projectGroup.POST("/rfe-workflows", handlers.CreateProjectRFEWorkflow)
 			projectGroup.GET("/rfe-workflows/:id", handlers.GetProjectRFEWorkflow)
+			projectGroup.PUT("/rfe-workflows/:id", handlers.UpdateProjectRFEWorkflow)
 			projectGroup.GET("/rfe-workflows/:id/summary", handlers.GetProjectRFEWorkflowSummary)
 			projectGroup.DELETE("/rfe-workflows/:id", handlers.DeleteProjectRFEWorkflow)
 			projectGroup.POST("/rfe-workflows/:id/seed", handlers.SeedProjectRFEWorkflow)

@@ -1,11 +1,13 @@
 "use client";
 
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { FolderTree, AlertCircle, Loader2, Sprout, CheckCircle2, GitBranch } from "lucide-react";
+import { FolderTree, AlertCircle, Loader2, Sprout, CheckCircle2, GitBranch, Edit } from "lucide-react";
 import type { RFEWorkflow } from "@/types/agentic-session";
+import { EditRepositoriesDialog } from "./edit-repositories-dialog";
 
 type RfeWorkspaceCardProps = {
   workflow: RFEWorkflow;
@@ -15,6 +17,8 @@ type RfeWorkspaceCardProps = {
   seedingError: string | null | undefined;
   seeding: boolean;
   onSeedWorkflow: () => Promise<void>;
+  onUpdateRepositories: (data: { umbrellaRepo: { url: string; branch?: string }; supportingRepos: { url: string; branch?: string }[] }) => Promise<void>;
+  updating: boolean;
 };
 
 export function RfeWorkspaceCard({
@@ -25,9 +29,24 @@ export function RfeWorkspaceCard({
   seedingError,
   seeding,
   onSeedWorkflow,
+  onUpdateRepositories,
+  updating,
 }: RfeWorkspaceCardProps) {
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+
   return (
-    <Card>
+    <>
+      <EditRepositoriesDialog
+        open={editDialogOpen}
+        onOpenChange={setEditDialogOpen}
+        workflow={workflow}
+        onSave={async (data) => {
+          await onUpdateRepositories(data);
+          setEditDialogOpen(false);
+        }}
+        isSaving={updating}
+      />
+      <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <FolderTree className="h-5 w-5" />
@@ -111,22 +130,35 @@ export function RfeWorkspaceCard({
               </ul>
               {seedingError && (
                 <div className="mb-3 p-2 bg-red-100 border border-red-300 rounded text-sm text-red-800">
-                  <strong>Check Error:</strong> {seedingError}
+                  <strong>Seeding Failed:</strong> {seedingError}
                 </div>
               )}
-              <Button onClick={onSeedWorkflow} disabled={seeding} size="sm">
-                {seeding ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Seeding Repository...
-                  </>
-                ) : (
-                  <>
-                    <Sprout className="mr-2 h-4 w-4" />
-                    Seed Repository
-                  </>
+              <div className="flex gap-2">
+                {seedingError && (
+                  <Button
+                    onClick={() => setEditDialogOpen(true)}
+                    disabled={updating}
+                    size="sm"
+                    variant="outline"
+                  >
+                    <Edit className="mr-2 h-4 w-4" />
+                    Edit Repositories
+                  </Button>
                 )}
-              </Button>
+                <Button onClick={onSeedWorkflow} disabled={seeding || updating} size="sm">
+                  {seeding ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Seeding Repository...
+                    </>
+                  ) : (
+                    <>
+                      <Sprout className="mr-2 h-4 w-4" />
+                      {seedingError ? "Retry Seeding" : "Seed Repository"}
+                    </>
+                  )}
+                </Button>
+              </div>
             </AlertDescription>
           </Alert>
         )}
@@ -146,5 +178,6 @@ export function RfeWorkspaceCard({
         )}
       </CardContent>
     </Card>
+    </>
   );
 }

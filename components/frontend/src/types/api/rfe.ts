@@ -111,6 +111,9 @@ export type UpdateRFEWorkflowRequest = {
   description?: string;
   status?: RFEWorkflowStatus;
   currentPhase?: WorkflowPhase;
+  umbrellaRepo?: GitRepository;
+  supportingRepos?: GitRepository[];
+  parentOutcome?: string;
 };
 
 export type UpdateRFEWorkflowResponse = {

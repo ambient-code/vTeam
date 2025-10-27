@@ -16,7 +16,7 @@ import { RfePhaseCards } from "./rfe-phase-cards";
 import { RfeWorkspaceCard } from "./rfe-workspace-card";
 import { RfeHeader } from "./rfe-header";
 import { RfeAgentsCard } from "./rfe-agents-card";
-import { useRfeWorkflow, useRfeWorkflowSessions, useDeleteRfeWorkflow, useRfeWorkflowSeeding, useSeedRfeWorkflow, useRepoBlob, useRepoTree, useOpenJiraIssue } from "@/services/queries";
+import { useRfeWorkflow, useRfeWorkflowSessions, useDeleteRfeWorkflow, useRfeWorkflowSeeding, useSeedRfeWorkflow, useUpdateRfeWorkflow, useRepoBlob, useRepoTree, useOpenJiraIssue } from "@/services/queries";
 
 export default function ProjectRFEDetailPage() {
   const params = useParams();
@@ -28,8 +28,9 @@ export default function ProjectRFEDetailPage() {
   const { data: workflow, isLoading: loading, refetch: load } = useRfeWorkflow(project, id);
   const { data: rfeSessions = [], refetch: loadSessions } = useRfeWorkflowSessions(project, id);
   const deleteWorkflowMutation = useDeleteRfeWorkflow();
-  const { data: seedingData, isLoading: checkingSeeding, error: seedingQueryError } = useRfeWorkflowSeeding(project, id);
+  const { data: seedingData, isLoading: checkingSeeding, error: seedingQueryError, refetch: refetchSeeding } = useRfeWorkflowSeeding(project, id);
   const seedWorkflowMutation = useSeedRfeWorkflow();
+  const updateWorkflowMutation = useUpdateRfeWorkflow();
   const { openJiraForPath } = useOpenJiraIssue(project, id);
 
   // Extract repo info from workflow
@@ -170,6 +171,34 @@ export default function ProjectRFEDetailPage() {
     });
   }, [project, id, seedWorkflowMutation]);
 
+  const updateRepositories = useCallback(async (data: { umbrellaRepo: { url: string; branch?: string }; supportingRepos: { url: string; branch?: string }[] }) => {
+    return new Promise<void>((resolve, reject) => {
+      updateWorkflowMutation.mutate(
+        {
+          projectName: project,
+          workflowId: id,
+          data: {
+            umbrellaRepo: data.umbrellaRepo,
+            supportingRepos: data.supportingRepos,
+          },
+        },
+        {
+          onSuccess: () => {
+            // Refetch workflow to get updated data
+            load();
+            // Also refetch seeding status to clear any errors
+            refetchSeeding();
+            resolve();
+          },
+          onError: (err) => {
+            setError(err.message || 'Failed to update repositories');
+            reject(err);
+          },
+        }
+      );
+    });
+  }, [project, id, updateWorkflowMutation, load, refetchSeeding]);
+
 
   if (loading) return (
     <div className="flex items-center justify-center min-h-screen">
@@ -230,6 +259,8 @@ export default function ProjectRFEDetailPage() {
           seedingError={seedingError}
           seeding={seedWorkflowMutation.isPending}
           onSeedWorkflow={seedWorkflow}
+          onUpdateRepositories={updateRepositories}
+          updating={updateWorkflowMutation.isPending}
         />
 
         <RfeAgentsCard

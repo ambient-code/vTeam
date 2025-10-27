@@ -188,6 +188,107 @@ func CreateProjectRFEWorkflow(c *gin.Context) {
 	c.JSON(http.StatusCreated, workflow)
 }
 
+// UpdateProjectRFEWorkflow updates an existing RFE workflow's repository configuration
+// This is primarily used to fix repository URLs before seeding
+func UpdateProjectRFEWorkflow(c *gin.Context) {
+	project := c.Param("projectName")
+	id := c.Param("id")
+
+	var req types.UpdateRFEWorkflowRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Validation failed: " + err.Error()})
+		return
+	}
+
+	// Get the workflow
+	gvr := GetRFEWorkflowResource()
+	_, reqDyn := GetK8sClientsForRequest(c)
+	if reqDyn == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
+		return
+	}
+
+	item, err := reqDyn.Resource(gvr).Namespace(project).Get(context.TODO(), id, v1.GetOptions{})
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Workflow not found"})
+		return
+	}
+
+	wf := RfeFromUnstructured(item)
+	if wf == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid workflow"})
+		return
+	}
+
+	// Validate no duplicate repository URLs if repositories are being updated
+	if req.UmbrellaRepo != nil || req.SupportingRepos != nil {
+		umbrellaRepo := req.UmbrellaRepo
+		if umbrellaRepo == nil {
+			umbrellaRepo = wf.UmbrellaRepo
+		}
+		supportingRepos := req.SupportingRepos
+		if supportingRepos == nil {
+			supportingRepos = wf.SupportingRepos
+		}
+		if err := validateUniqueRepositories(umbrellaRepo, supportingRepos); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+	}
+
+	// Update the CR
+	obj := item.DeepCopy()
+	spec, ok := obj.Object["spec"].(map[string]interface{})
+	if !ok {
+		spec = make(map[string]interface{})
+		obj.Object["spec"] = spec
+	}
+
+	// Update fields if provided
+	if req.Title != nil {
+		spec["title"] = *req.Title
+	}
+	if req.Description != nil {
+		spec["description"] = *req.Description
+	}
+	if req.UmbrellaRepo != nil {
+		spec["umbrellaRepo"] = map[string]interface{}{
+			"url":    req.UmbrellaRepo.URL,
+			"branch": req.UmbrellaRepo.Branch,
+		}
+	}
+	if req.SupportingRepos != nil {
+		repos := make([]interface{}, len(req.SupportingRepos))
+		for i, r := range req.SupportingRepos {
+			repos[i] = map[string]interface{}{
+				"url":    r.URL,
+				"branch": r.Branch,
+			}
+		}
+		spec["supportingRepos"] = repos
+	}
+	if req.ParentOutcome != nil {
+		spec["parentOutcome"] = *req.ParentOutcome
+	}
+
+	// Update the CR
+	updated, err := reqDyn.Resource(gvr).Namespace(project).Update(context.TODO(), obj, v1.UpdateOptions{})
+	if err != nil {
+		log.Printf("Failed to update RFEWorkflow CR: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update workflow"})
+		return
+	}
+
+	// Convert back to RFEWorkflow type
+	updatedWf := RfeFromUnstructured(updated)
+	if updatedWf == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to parse updated workflow"})
+		return
+	}
+
+	c.JSON(http.StatusOK, updatedWf)
+}
+
 // SeedProjectRFEWorkflow seeds the umbrella repo with spec-kit and agents via direct git operations
 func SeedProjectRFEWorkflow(c *gin.Context) {
 	project := c.Param("projectName")

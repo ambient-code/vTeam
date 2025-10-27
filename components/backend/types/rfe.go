@@ -31,6 +31,14 @@ type CreateRFEWorkflowRequest struct {
 	ParentOutcome   *string         `json:"parentOutcome,omitempty"`
 }
 
+type UpdateRFEWorkflowRequest struct {
+	Title           *string          `json:"title,omitempty"`
+	Description     *string          `json:"description,omitempty"`
+	UmbrellaRepo    *GitRepository   `json:"umbrellaRepo,omitempty"`
+	SupportingRepos []GitRepository  `json:"supportingRepos,omitempty"`
+	ParentOutcome   *string          `json:"parentOutcome,omitempty"`
+}
+
 type AdvancePhaseRequest struct {
 	Force bool `json:"force,omitempty"` // Force advance even if current phase isn't complete
 }
