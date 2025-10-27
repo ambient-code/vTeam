@@ -163,7 +163,8 @@ export default function ProjectRFEDetailPage() {
             resolve();
           },
           onError: (err) => {
-            setError(err.message || 'Failed to start seeding');
+            // Don't set page-level error - let RfeWorkspaceCard show the inline error
+            // The error is available via seedWorkflowMutation.error
             reject(err);
           },
         }
@@ -188,6 +189,8 @@ export default function ProjectRFEDetailPage() {
             load();
             // Also refetch seeding status to clear any errors
             refetchSeeding();
+            // Clear any previous seeding errors
+            seedWorkflowMutation.reset();
             resolve();
           },
           onError: (err) => {
@@ -223,7 +226,8 @@ export default function ProjectRFEDetailPage() {
 
   // Seeding status from React Query
   const isSeeded = seedingData?.isSeeded || false;
-  const seedingError = seedingQueryError?.message;
+  // Combine seed mutation error with check-seeding query error
+  const seedingError = seedWorkflowMutation.error?.message || seedingQueryError?.message;
   const seedingStatus = {
     checking: checkingSeeding,
     isSeeded,

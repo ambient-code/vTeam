@@ -388,6 +388,7 @@ func SeedProjectRFEWorkflow(c *gin.Context) {
 	branchExisted, seedErr := PerformRepoSeeding(c.Request.Context(), wf, wf.BranchName, githubToken, agentURL, agentBranch, agentPath, specKitRepo, specKitVersion, specKitTemplate)
 
 	if seedErr != nil {
+		log.Printf("Failed to seed RFE workflow %s in project %s: %v", id, project, seedErr)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": seedErr.Error()})
 		return
 	}
