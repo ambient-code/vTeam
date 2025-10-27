@@ -208,7 +208,7 @@ func SeedProjectRFEWorkflow(c *gin.Context) {
 	}
 	wf := RfeFromUnstructured(item)
 	if wf == nil || wf.UmbrellaRepo == nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "No umbrella repo configured"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "No spec repo configured"})
 		return
 	}
 
@@ -324,7 +324,7 @@ func CheckProjectRFEWorkflowSeeding(c *gin.Context) {
 	}
 	wf := RfeFromUnstructured(item)
 	if wf == nil || wf.UmbrellaRepo == nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "No umbrella repo configured"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "No spec repo configured"})
 		return
 	}
 
@@ -385,7 +385,7 @@ func CheckProjectRFEWorkflowSeeding(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"isSeeded": isFullySeeded,
-		"umbrellaRepo": gin.H{
+		"specRepo": gin.H{
 			"isSeeded": umbrellaSeeded,
 			"details":  umbrellaDetails,
 		},
@@ -721,7 +721,7 @@ func GetProjectRFEWorkflowAgents(c *gin.Context) {
 	}
 	wf := RfeFromUnstructured(item)
 	if wf == nil || wf.UmbrellaRepo == nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "No umbrella repo configured"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "No spec repo configured"})
 		return
 	}
 

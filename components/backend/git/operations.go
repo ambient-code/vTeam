@@ -296,17 +296,17 @@ type Workflow interface {
 func PerformRepoSeeding(ctx context.Context, wf Workflow, branchName, githubToken, agentURL, agentBranch, agentPath, specKitRepo, specKitVersion, specKitTemplate string) (bool, error) {
 	umbrellaRepo := wf.GetUmbrellaRepo()
 	if umbrellaRepo == nil {
-		return false, fmt.Errorf("workflow has no umbrella repo")
+		return false, fmt.Errorf("workflow has no spec repo")
 	}
 
 	if branchName == "" {
 		return false, fmt.Errorf("branchName is required")
 	}
 
-	// Validate push access to umbrella repo before starting
-	log.Printf("Validating push access to umbrella repo: %s", umbrellaRepo.GetURL())
+	// Validate push access to spec repo before starting
+	log.Printf("Validating push access to spec repo: %s", umbrellaRepo.GetURL())
 	if err := validatePushAccess(ctx, umbrellaRepo.GetURL(), githubToken); err != nil {
-		return false, fmt.Errorf("umbrella repo access validation failed: %w", err)
+		return false, fmt.Errorf("spec repo access validation failed: %w", err)
 	}
 
 	// Validate push access to all supporting repos before starting
@@ -322,7 +322,7 @@ func PerformRepoSeeding(ctx context.Context, wf Workflow, branchName, githubToke
 
 	umbrellaDir, err := os.MkdirTemp("", "umbrella-*")
 	if err != nil {
-		return false, fmt.Errorf("failed to create temp dir for umbrella repo: %w", err)
+		return false, fmt.Errorf("failed to create temp dir for spec repo: %w", err)
 	}
 	defer os.RemoveAll(umbrellaDir)
 
@@ -336,7 +336,7 @@ func PerformRepoSeeding(ctx context.Context, wf Workflow, branchName, githubToke
 	log.Printf("Cloning umbrella repo: %s", umbrellaRepo.GetURL())
 	authenticatedURL, err := InjectGitHubToken(umbrellaRepo.GetURL(), githubToken)
 	if err != nil {
-		return false, fmt.Errorf("failed to prepare umbrella repo URL: %w", err)
+		return false, fmt.Errorf("failed to prepare spec repo URL: %w", err)
 	}
 
 	// Clone base branch (the branch from which feature branch will be created)

@@ -324,7 +324,7 @@ func (h *Handler) PublishWorkflowFileToJira(c *gin.Context) {
 	}
 	wf := RFEFromUnstructured(item)
 	if wf == nil || wf.UmbrellaRepo == nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Workflow has no umbrella repo configured"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Workflow has no spec repo configured"})
 		return
 	}
 
@@ -344,7 +344,7 @@ func (h *Handler) PublishWorkflowFileToJira(c *gin.Context) {
 	// Read file from GitHub
 	owner, repo, err := git.ParseGitHubURL(wf.UmbrellaRepo.URL)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid umbrella repo URL", "details": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid spec repo URL", "details": err.Error()})
 		return
 	}
 	// Use the generated feature branch - specs only exist on feature branch
