@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"time"
 
@@ -19,12 +20,45 @@ import (
 
 // Package-level variables for project handlers (set from main package)
 var (
-	GetOpenShiftProjectResource        func() schema.GroupVersionResource
+	// GetOpenShiftProjectResource returns the GVR for OpenShift Project resources
+	GetOpenShiftProjectResource func() schema.GroupVersionResource
+	// GetOpenShiftProjectRequestResource returns the GVR for OpenShift ProjectRequest resources
 	GetOpenShiftProjectRequestResource func() schema.GroupVersionResource
-	K8sClientProjects                  *kubernetes.Clientset // Backend SA client for namespace operations
+	// K8sClientProjects is the backend service account client used for namespace operations
+	// that require elevated permissions (e.g., adding labels to namespaces)
+	K8sClientProjects *kubernetes.Clientset
 )
 
+// retryWithBackoff attempts an operation with exponential backoff
+// maxRetries: maximum number of retry attempts
+// initialDelay: initial delay duration
+// maxDelay: maximum delay duration
+// operation: function to retry that returns an error
+func retryWithBackoff(maxRetries int, initialDelay, maxDelay time.Duration, operation func() error) error {
+	var lastErr error
+	for i := 0; i < maxRetries; i++ {
+		if err := operation(); err != nil {
+			lastErr = err
+			if i < maxRetries-1 {
+				// Calculate exponential backoff delay
+				delay := time.Duration(float64(initialDelay) * math.Pow(2, float64(i)))
+				if delay > maxDelay {
+					delay = maxDelay
+				}
+				log.Printf("Operation failed (attempt %d/%d), retrying in %v: %v", i+1, maxRetries, delay, err)
+				time.Sleep(delay)
+				continue
+			}
+		} else {
+			return nil
+		}
+	}
+	return fmt.Errorf("operation failed after %d retries: %w", maxRetries, lastErr)
+}
+
 // ListProjects handles GET /projects
+// Returns a list of all OpenShift projects that the authenticated user can access
+// and are marked with the ambient-code.io/managed=true label.
 func ListProjects(c *gin.Context) {
 	_, reqDyn := GetK8sClientsForRequest(c)
 
@@ -102,8 +136,18 @@ func ListProjects(c *gin.Context) {
 }
 
 // CreateProject handles POST /projects
+// Creates a new OpenShift project using ProjectRequest and ensures it is labeled as Ambient-managed.
+// This is a critical operation as the ambient-code.io/managed=true label is required for project filtering.
 func CreateProject(c *gin.Context) {
-	_, reqDyn := GetK8sClientsForRequest(c)
+	reqK8s, reqDyn := GetK8sClientsForRequest(c)
+
+	// Validate that user authentication succeeded
+	if reqK8s == nil || reqDyn == nil {
+		log.Printf("CreateProject: Invalid or missing authentication token")
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid or missing token"})
+		return
+	}
+
 	var req types.CreateProjectRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -115,10 +159,10 @@ func CreateProject(c *gin.Context) {
 	userName, hasName := c.Get("userName")
 
 	// Build annotations for the ProjectRequest
+	// Note: ProjectRequest doesn't support labels directly, so we'll add the critical
+	// ambient-code.io/managed label to the namespace after creation using the backend SA
 	annotations := map[string]interface{}{
 		"openshift.io/display-name": req.DisplayName,
-		// Add the Ambient label to the annotations so it gets transferred to the namespace
-		"ambient-code.io/managed": "true",
 	}
 
 	// Add optional description
@@ -151,28 +195,47 @@ func CreateProject(c *gin.Context) {
 	created, err := reqDyn.Resource(projReqGvr).Create(context.TODO(), projectRequest, v1.CreateOptions{})
 	if err != nil {
 		log.Printf("Failed to create project %s: %v", req.Name, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to create project: %v", err)})
+		// Don't expose internal error details to the client
+		if errors.IsAlreadyExists(err) {
+			c.JSON(http.StatusConflict, gin.H{"error": "Project already exists"})
+		} else if errors.IsForbidden(err) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Insufficient permissions to create project"})
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create project"})
+		}
 		return
 	}
 
-	// After creating the ProjectRequest, we need to fetch the created namespace
-	// to add the Ambient label (since ProjectRequest doesn't support labels directly)
-	// Use the backend SA client here as users don't have permission to update namespaces
-	ns, err := K8sClientProjects.CoreV1().Namespaces().Get(context.TODO(), req.Name, v1.GetOptions{})
-	if err != nil {
-		log.Printf("Project %s created but failed to fetch namespace: %v", req.Name, err)
-		// Continue anyway - the project was created
-	} else {
+	// CRITICAL OPERATION: Add the Ambient label to the namespace
+	// Without this label, the project won't be recognized by the system.
+	// We use retry logic with exponential backoff as OpenShift may need time to create the namespace.
+	// Use the backend SA client as users don't have permission to update namespaces.
+	labelingFailed := false
+	labelErr := retryWithBackoff(5, 200*time.Millisecond, 2*time.Second, func() error {
+		ns, err := K8sClientProjects.CoreV1().Namespaces().Get(context.TODO(), req.Name, v1.GetOptions{})
+		if err != nil {
+			return fmt.Errorf("failed to fetch namespace: %w", err)
+		}
+
 		// Add the Ambient label to the namespace
 		if ns.Labels == nil {
 			ns.Labels = make(map[string]string)
 		}
 		ns.Labels["ambient-code.io/managed"] = "true"
+
 		_, err = K8sClientProjects.CoreV1().Namespaces().Update(context.TODO(), ns, v1.UpdateOptions{})
 		if err != nil {
-			log.Printf("Project %s created but failed to add Ambient label: %v", req.Name, err)
-			// Continue anyway - we can retry or handle this later
+			return fmt.Errorf("failed to update namespace: %w", err)
 		}
+
+		return nil
+	})
+
+	if labelErr != nil {
+		log.Printf("CRITICAL: Project %s created but failed to add Ambient label after retries: %v", req.Name, labelErr)
+		labelingFailed = true
+		// TODO: Add metrics/monitoring for this failure
+		// Consider: Could we use a webhook or operator to handle this automatically?
 	}
 
 	// Do not create ProjectSettings here. The operator will reconcile when it
@@ -199,8 +262,10 @@ func CreateProject(c *gin.Context) {
 				}
 			}
 		}
-		// Add the Ambient label we just set
-		labels["ambient-code.io/managed"] = "true"
+		// Add the Ambient label if it was successfully set
+		if !labelingFailed {
+			labels["ambient-code.io/managed"] = "true"
+		}
 
 		if ts, ok := meta["creationTimestamp"].(string); ok {
 			creationTimestamp = ts
@@ -217,10 +282,20 @@ func CreateProject(c *gin.Context) {
 		Status:            "Active",
 	}
 
-	c.JSON(http.StatusCreated, project)
+	// If labeling failed, return a warning with the response
+	if labelingFailed {
+		c.JSON(http.StatusCreated, gin.H{
+			"project": project,
+			"warning": "Project created but may not be visible in project list. Please contact administrator.",
+		})
+	} else {
+		c.JSON(http.StatusCreated, project)
+	}
 }
 
 // GetProject handles GET /projects/:projectName
+// Returns details of a specific Ambient-managed project.
+// Returns 404 if the project doesn't exist or is not Ambient-managed.
 func GetProject(c *gin.Context) {
 	projectName := c.Param("projectName")
 	_, reqDyn := GetK8sClientsForRequest(c)
@@ -290,6 +365,8 @@ func GetProject(c *gin.Context) {
 }
 
 // DeleteProject handles DELETE /projects/:projectName
+// Deletes an Ambient-managed project by deleting its namespace.
+// Only projects with the ambient-code.io/managed=true label can be deleted.
 func DeleteProject(c *gin.Context) {
 	projectName := c.Param("projectName")
 	reqK8s, reqDyn := GetK8sClientsForRequest(c)
@@ -343,7 +420,8 @@ func DeleteProject(c *gin.Context) {
 }
 
 // UpdateProject handles PUT /projects/:projectName
-// Update basic project metadata (annotations)
+// Updates basic project metadata (display name, description, and annotations).
+// Only Ambient-managed projects can be updated.
 func UpdateProject(c *gin.Context) {
 	projectName := c.Param("projectName")
 	_, reqDyn := GetK8sClientsForRequest(c)

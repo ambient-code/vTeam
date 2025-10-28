@@ -33,10 +33,11 @@ rules:
 - apiGroups: [""]
   resources: ["secrets"]
   verbs: ["create"]
-# Jobs (session management - full CRUD for custom jobs, delete for cleanup)
+# Jobs (session management - read access for monitoring, delete for cleanup)
+# Note: Job creation is handled by the backend service account, not users
 - apiGroups: ["batch"]
   resources: ["jobs"]
-  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  verbs: ["get", "list", "watch", "delete"]
 # Pods (monitoring and logs)
 - apiGroups: [""]
   resources: ["pods", "pods/log"]
