@@ -84,7 +84,8 @@ func ListProjects(c *gin.Context) {
 		return out
 	}
 
-	var projects []types.AmbientProject
+	// Initialize as empty slice to return [] instead of null when no projects found
+	projects := []types.AmbientProject{}
 	for _, item := range list.Items {
 		meta, _ := item.Object["metadata"].(map[string]interface{})
 		name := item.GetName()
