@@ -29,13 +29,13 @@ import type { RFEWorkflow } from "@/types/agentic-session";
 
 const repoSchema = z.object({
   url: z.string().url("Please enter a valid repository URL"),
-  branch: z.string().default("main"),
+  branch: z.string().min(1),
 });
 
 const formSchema = z
   .object({
     umbrellaRepo: repoSchema,
-    supportingRepos: z.array(repoSchema).optional().default([]),
+    supportingRepos: z.array(repoSchema),
   })
   .refine(
     (data) => {
@@ -87,9 +87,8 @@ export function EditRepositoriesDialog({
   onSave,
   isSaving,
 }: EditRepositoriesDialogProps) {
-  const form = useForm({
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    resolver: zodResolver(formSchema) as any,
+  const form = useForm<FormValues>({
+    resolver: zodResolver(formSchema),
     mode: "onBlur",
     defaultValues: {
       umbrellaRepo: {

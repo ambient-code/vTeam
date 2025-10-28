@@ -228,10 +228,13 @@ export default function ProjectRFEDetailPage() {
   const isSeeded = seedingData?.isSeeded || false;
   // Combine seed mutation error with check-seeding query error
   const seedingError = seedWorkflowMutation.error?.message || seedingQueryError?.message;
+  // Track if we've completed the initial seeding check
+  const hasCheckedSeeding = seedingData !== undefined || !!seedingQueryError;
   const seedingStatus = {
     checking: checkingSeeding,
     isSeeded,
     error: seedingError,
+    hasChecked: hasCheckedSeeding,
   };
 
   return (

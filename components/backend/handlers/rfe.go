@@ -89,7 +89,7 @@ func ListProjectRFEWorkflows(c *gin.Context) {
 	gvr := GetRFEWorkflowResource()
 	_, reqDyn := GetK8sClientsForRequest(c)
 	if reqDyn != nil {
-		if list, err := reqDyn.Resource(gvr).Namespace(project).List(context.TODO(), v1.ListOptions{LabelSelector: fmt.Sprintf("project=%s", project)}); err == nil {
+		if list, err := reqDyn.Resource(gvr).Namespace(project).List(c.Request.Context(), v1.ListOptions{LabelSelector: fmt.Sprintf("project=%s", project)}); err == nil {
 			for _, item := range list.Items {
 				wf := RfeFromUnstructured(&item)
 				if wf == nil {
@@ -208,9 +208,16 @@ func UpdateProjectRFEWorkflow(c *gin.Context) {
 		return
 	}
 
-	item, err := reqDyn.Resource(gvr).Namespace(project).Get(context.TODO(), id, v1.GetOptions{})
+	item, err := reqDyn.Resource(gvr).Namespace(project).Get(c.Request.Context(), id, v1.GetOptions{})
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Workflow not found"})
+		if errors.IsNotFound(err) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Workflow not found"})
+		} else if errors.IsForbidden(err) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "You don't have permission to access this workflow"})
+		} else {
+			log.Printf("Failed to get workflow %s: %v", id, err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve workflow"})
+		}
 		return
 	}
 
@@ -272,7 +279,7 @@ func UpdateProjectRFEWorkflow(c *gin.Context) {
 	}
 
 	// Update the CR
-	updated, err := reqDyn.Resource(gvr).Namespace(project).Update(context.TODO(), obj, v1.UpdateOptions{})
+	updated, err := reqDyn.Resource(gvr).Namespace(project).Update(c.Request.Context(), obj, v1.UpdateOptions{})
 	if err != nil {
 		log.Printf("Failed to update RFEWorkflow CR: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update workflow"})
@@ -302,9 +309,16 @@ func SeedProjectRFEWorkflow(c *gin.Context) {
 		return
 	}
 
-	item, err := reqDyn.Resource(gvr).Namespace(project).Get(context.TODO(), id, v1.GetOptions{})
+	item, err := reqDyn.Resource(gvr).Namespace(project).Get(c.Request.Context(), id, v1.GetOptions{})
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Workflow not found"})
+		if errors.IsNotFound(err) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Workflow not found"})
+		} else if errors.IsForbidden(err) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "You don't have permission to access this workflow"})
+		} else {
+			log.Printf("Failed to get workflow %s: %v", id, err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve workflow"})
+		}
 		return
 	}
 	wf := RfeFromUnstructured(item)
@@ -419,9 +433,16 @@ func CheckProjectRFEWorkflowSeeding(c *gin.Context) {
 		return
 	}
 
-	item, err := reqDyn.Resource(gvr).Namespace(project).Get(context.TODO(), id, v1.GetOptions{})
+	item, err := reqDyn.Resource(gvr).Namespace(project).Get(c.Request.Context(), id, v1.GetOptions{})
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Workflow not found"})
+		if errors.IsNotFound(err) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Workflow not found"})
+		} else if errors.IsForbidden(err) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "You don't have permission to access this workflow"})
+		} else {
+			log.Printf("Failed to get workflow %s: %v", id, err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve workflow"})
+		}
 		return
 	}
 	wf := RfeFromUnstructured(item)
@@ -505,7 +526,7 @@ func GetProjectRFEWorkflow(c *gin.Context) {
 	var wf *RFEWorkflow
 	var err error
 	if reqDyn != nil {
-		if item, gerr := reqDyn.Resource(gvr).Namespace(project).Get(context.TODO(), id, v1.GetOptions{}); gerr == nil {
+		if item, gerr := reqDyn.Resource(gvr).Namespace(project).Get(c.Request.Context(), id, v1.GetOptions{}); gerr == nil {
 			wf = RfeFromUnstructured(item)
 			err = nil
 		} else {
@@ -615,7 +636,7 @@ func GetProjectRFEWorkflowSummary(c *gin.Context) {
 	anyFailed := false
 	if reqDyn != nil {
 		selector := fmt.Sprintf("rfe-workflow=%s,project=%s", id, project)
-		if list, err := reqDyn.Resource(gvr).Namespace(project).List(context.TODO(), v1.ListOptions{LabelSelector: selector}); err == nil {
+		if list, err := reqDyn.Resource(gvr).Namespace(project).List(c.Request.Context(), v1.ListOptions{LabelSelector: selector}); err == nil {
 			for _, item := range list.Items {
 				status, _ := item.Object["status"].(map[string]interface{})
 				phaseStr := strings.ToLower(fmt.Sprintf("%v", status["phase"]))
@@ -689,7 +710,7 @@ func DeleteProjectRFEWorkflow(c *gin.Context) {
 	gvr := GetRFEWorkflowResource()
 	_, reqDyn := GetK8sClientsForRequest(c)
 	if reqDyn != nil {
-		_ = reqDyn.Resource(gvr).Namespace(c.Param("projectName")).Delete(context.TODO(), id, v1.DeleteOptions{})
+		_ = reqDyn.Resource(gvr).Namespace(c.Param("projectName")).Delete(c.Request.Context(), id, v1.DeleteOptions{})
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "Workflow deleted successfully"})
 }
@@ -705,7 +726,7 @@ func ListProjectRFEWorkflowSessions(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing or invalid user token"})
 		return
 	}
-	list, err := reqDyn.Resource(gvr).Namespace(project).List(context.TODO(), v1.ListOptions{LabelSelector: selector})
+	list, err := reqDyn.Resource(gvr).Namespace(project).List(c.Request.Context(), v1.ListOptions{LabelSelector: selector})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list sessions", "details": err.Error()})
 		return
@@ -738,7 +759,7 @@ func AddProjectRFEWorkflowSession(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing or invalid user token"})
 		return
 	}
-	obj, err := reqDyn.Resource(gvr).Namespace(project).Get(context.TODO(), req.ExistingName, v1.GetOptions{})
+	obj, err := reqDyn.Resource(gvr).Namespace(project).Get(c.Request.Context(), req.ExistingName, v1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Session not found"})
@@ -759,7 +780,7 @@ func AddProjectRFEWorkflowSession(c *gin.Context) {
 		labels["rfe-phase"] = req.Phase
 	}
 	// Update the resource
-	updated, err := reqDyn.Resource(gvr).Namespace(project).Update(context.TODO(), obj, v1.UpdateOptions{})
+	updated, err := reqDyn.Resource(gvr).Namespace(project).Update(c.Request.Context(), obj, v1.UpdateOptions{})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update session labels", "details": err.Error()})
 		return
@@ -780,7 +801,7 @@ func RemoveProjectRFEWorkflowSession(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing or invalid user token"})
 		return
 	}
-	obj, err := reqDyn.Resource(gvr).Namespace(project).Get(context.TODO(), sessionName, v1.GetOptions{})
+	obj, err := reqDyn.Resource(gvr).Namespace(project).Get(c.Request.Context(), sessionName, v1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Session not found"})
@@ -795,7 +816,7 @@ func RemoveProjectRFEWorkflowSession(c *gin.Context) {
 		delete(labels, "rfe-workflow")
 		delete(labels, "rfe-phase")
 	}
-	if _, err := reqDyn.Resource(gvr).Namespace(project).Update(context.TODO(), obj, v1.UpdateOptions{}); err != nil {
+	if _, err := reqDyn.Resource(gvr).Namespace(project).Update(c.Request.Context(), obj, v1.UpdateOptions{}); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update session labels", "details": err.Error()})
 		return
 	}
@@ -816,9 +837,16 @@ func GetProjectRFEWorkflowAgents(c *gin.Context) {
 		return
 	}
 
-	item, err := reqDyn.Resource(gvr).Namespace(project).Get(context.TODO(), id, v1.GetOptions{})
+	item, err := reqDyn.Resource(gvr).Namespace(project).Get(c.Request.Context(), id, v1.GetOptions{})
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Workflow not found"})
+		if errors.IsNotFound(err) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Workflow not found"})
+		} else if errors.IsForbidden(err) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "You don't have permission to access this workflow"})
+		} else {
+			log.Printf("Failed to get workflow %s: %v", id, err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve workflow"})
+		}
 		return
 	}
 	wf := RfeFromUnstructured(item)

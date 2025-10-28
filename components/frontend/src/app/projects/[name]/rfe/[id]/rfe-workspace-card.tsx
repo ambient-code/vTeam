@@ -13,7 +13,7 @@ type RfeWorkspaceCardProps = {
   workflow: RFEWorkflow;
   workflowWorkspace: string;
   isSeeded: boolean;
-  seedingStatus: { checking: boolean };
+  seedingStatus: { checking: boolean; hasChecked?: boolean };
   seedingError: string | null | undefined;
   seeding: boolean;
   onSeedWorkflow: () => Promise<void>;
@@ -114,7 +114,7 @@ export function RfeWorkspaceCard({
           </div>
         )}
 
-        {!isSeeded && !seedingStatus.checking && workflow.umbrellaRepo && (
+        {!isSeeded && !seedingStatus.checking && seedingStatus.hasChecked && workflow.umbrellaRepo && (
           <Alert variant="destructive" className="mt-4">
             <AlertCircle className="h-4 w-4" />
             <AlertTitle>Spec Repository Not Seeded</AlertTitle>

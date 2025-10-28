@@ -32,11 +32,11 @@ type CreateRFEWorkflowRequest struct {
 }
 
 type UpdateRFEWorkflowRequest struct {
-	Title           *string          `json:"title,omitempty"`
-	Description     *string          `json:"description,omitempty"`
-	UmbrellaRepo    *GitRepository   `json:"umbrellaRepo,omitempty"`
-	SupportingRepos []GitRepository  `json:"supportingRepos,omitempty"`
-	ParentOutcome   *string          `json:"parentOutcome,omitempty"`
+	Title           *string         `json:"title,omitempty"`
+	Description     *string         `json:"description,omitempty"`
+	UmbrellaRepo    *GitRepository  `json:"umbrellaRepo,omitempty"`
+	SupportingRepos []GitRepository `json:"supportingRepos,omitempty"`
+	ParentOutcome   *string         `json:"parentOutcome,omitempty"`
 }
 
 type AdvancePhaseRequest struct {

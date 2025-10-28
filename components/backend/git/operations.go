@@ -974,6 +974,7 @@ func validatePushAccess(ctx context.Context, repoURL, githubToken string) error 
 	}
 
 	// Use GitHub API to check repository permissions
+	log.Printf("Validating push access to %s with token (len=%d)", repoURL, len(githubToken))
 	apiURL := fmt.Sprintf("https://api.github.com/repos/%s/%s", owner, repo)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
@@ -990,24 +991,38 @@ func validatePushAccess(ctx context.Context, repoURL, githubToken string) error 
 	}
 	defer resp.Body.Close()
 
+	// Read response body once
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read response body: %w", err)
+	}
+
 	if resp.StatusCode == http.StatusNotFound {
 		return fmt.Errorf("repository %s/%s not found or you don't have access to it", owner, repo)
 	}
 
+	if resp.StatusCode == http.StatusTooManyRequests {
+		resetTime := resp.Header.Get("X-RateLimit-Reset")
+		if resetTime != "" {
+			return fmt.Errorf("GitHub API rate limit exceeded. Rate limit will reset at %s. Please try again later", resetTime)
+		}
+		return fmt.Errorf("GitHub API rate limit exceeded. Please try again later")
+	}
+
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("GitHub API error: %s (body: %s)", resp.Status, string(body))
 	}
 
 	// Parse response to check permissions
+
 	var repoInfo struct {
 		Permissions struct {
 			Push bool `json:"push"`
 		} `json:"permissions"`
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(&repoInfo); err != nil {
-		return fmt.Errorf("failed to parse repository info: %w", err)
+	if err := json.Unmarshal(body, &repoInfo); err != nil {
+		return fmt.Errorf("failed to parse repository info: %w (body: %s)", err, string(body))
 	}
 
 	if !repoInfo.Permissions.Push {
