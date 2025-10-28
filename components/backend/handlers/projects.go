@@ -366,11 +366,12 @@ func GetProject(c *gin.Context) {
 }
 
 // DeleteProject handles DELETE /projects/:projectName
-// Deletes an Ambient-managed project by deleting its namespace.
+// Deletes an Ambient-managed project by deleting the OpenShift Project resource.
 // Only projects with the ambient-code.io/managed=true label can be deleted.
+// OpenShift will handle the namespace deletion automatically.
 func DeleteProject(c *gin.Context) {
 	projectName := c.Param("projectName")
-	reqK8s, reqDyn := GetK8sClientsForRequest(c)
+	_, reqDyn := GetK8sClientsForRequest(c)
 
 	// First validate this is an Ambient-managed project
 	projGvr := GetOpenShiftProjectResource()
@@ -405,11 +406,17 @@ func DeleteProject(c *gin.Context) {
 		return
 	}
 
-	// Now delete the namespace
-	err = reqK8s.CoreV1().Namespaces().Delete(context.TODO(), projectName, v1.DeleteOptions{})
+	// Delete the OpenShift Project resource (not the namespace directly)
+	// OpenShift will handle cascading deletion of the namespace and its resources
+	// Users with admin access to the project can delete it, even without namespace delete permissions
+	err = reqDyn.Resource(projGvr).Delete(context.TODO(), projectName, v1.DeleteOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Project not found"})
+			return
+		}
+		if errors.IsForbidden(err) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Insufficient permissions to delete project"})
 			return
 		}
 		log.Printf("Failed to delete project %s: %v", projectName, err)
