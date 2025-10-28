@@ -8,10 +8,11 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, Save, Loader2 } from "lucide-react";
+import { RefreshCw, Save, Loader2, Info } from "lucide-react";
 import { Plus, Trash2, Eye, EyeOff } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { successToast, errorToast } from "@/hooks/use-toast";
 import { useProject, useUpdateProject } from "@/services/queries/use-projects";
 import { useSecretsList, useSecretsConfig, useSecretsValues, useUpdateSecretsConfig, useUpdateSecrets } from "@/services/queries/use-secrets";
@@ -193,54 +194,65 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ name
         }
       />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Edit Project</CardTitle>
-          <CardDescription>Rename display name or update description</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="displayName">Display Name</Label>
-            <Input
-              id="displayName"
-              value={formData.displayName}
-              onChange={(e) => setFormData((prev) => ({ ...prev, displayName: e.target.value }))}
-              placeholder="My Awesome Project"
-              maxLength={100}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="description">Description</Label>
-            <Textarea
-              id="description"
-              value={formData.description}
-              onChange={(e) => setFormData((prev) => ({ ...prev, description: e.target.value }))}
-              placeholder="Describe the purpose and goals of this project..."
-              maxLength={500}
-              rows={3}
-            />
-          </div>
-          <div className="flex gap-3 pt-2">
-            <Button onClick={handleSave} disabled={updateProjectMutation.isPending || projectLoading || !project}>
-              {updateProjectMutation.isPending ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Saving...
-                </>
-              ) : (
-                <>
-                  <Save className="w-4 h-4 mr-2" />
-                  Save Changes
-                </>
-              )}
-            </Button>
-            <Button variant="outline" onClick={handleRefresh} disabled={updateProjectMutation.isPending || projectLoading}>
-              <RefreshCw className={`w-4 h-4 mr-2 ${projectLoading ? "animate-spin" : ""}`} />
-              Reset
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+      {/* Only show project metadata editor on OpenShift */}
+      {project?.isOpenShift ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Edit Project</CardTitle>
+            <CardDescription>Rename display name or update description</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="displayName">Display Name</Label>
+              <Input
+                id="displayName"
+                value={formData.displayName}
+                onChange={(e) => setFormData((prev) => ({ ...prev, displayName: e.target.value }))}
+                placeholder="My Awesome Project"
+                maxLength={100}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="description">Description</Label>
+              <Textarea
+                id="description"
+                value={formData.description}
+                onChange={(e) => setFormData((prev) => ({ ...prev, description: e.target.value }))}
+                placeholder="Describe the purpose and goals of this project..."
+                maxLength={500}
+                rows={3}
+              />
+            </div>
+            <div className="flex gap-3 pt-2">
+              <Button onClick={handleSave} disabled={updateProjectMutation.isPending || projectLoading || !project}>
+                {updateProjectMutation.isPending ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-4 h-4 mr-2" />
+                    Save Changes
+                  </>
+                )}
+              </Button>
+              <Button variant="outline" onClick={handleRefresh} disabled={updateProjectMutation.isPending || projectLoading}>
+                <RefreshCw className={`w-4 h-4 mr-2 ${projectLoading ? "animate-spin" : ""}`} />
+                Reset
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <Alert>
+          <Info className="h-4 w-4" />
+          <AlertDescription>
+            Running on vanilla Kubernetes. Project display name and description editing is not available.
+            The project namespace is: <strong>{projectName}</strong>
+          </AlertDescription>
+        </Alert>
+      )}
 
       <div className="h-6" />
 

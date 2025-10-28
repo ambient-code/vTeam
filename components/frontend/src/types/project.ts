@@ -110,19 +110,20 @@ export interface AmbientProjectStatus {
 // Flat DTO used by frontend UIs when backend formats Project responses
 export type Project = {
   name: string;
-  displayName?: string;
-  description?: string;
+  displayName?: string; // Empty on vanilla k8s, set on OpenShift
+  description?: string; // Empty on vanilla k8s, set on OpenShift
   labels?: Record<string, string>;
   annotations?: Record<string, string>;
   creationTimestamp?: string;
   status?: string; // e.g., "Active" | "Pending" | "Error"
+  isOpenShift?: boolean; // Indicates if cluster is OpenShift (affects available features)
 };
 
 
 export interface CreateProjectRequest {
   name: string;
-  displayName: string;
-  description?: string;
+  displayName?: string; // Optional: only used on OpenShift
+  description?: string; // Optional: only used on OpenShift
 }
 
 export type ProjectPhase = "Pending" | "Active" | "Error" | "Terminating";

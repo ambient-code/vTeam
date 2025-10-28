@@ -65,6 +65,9 @@ export default function ProjectsPage() {
     });
   };
 
+  // Special handling for 403 errors on vanilla Kubernetes (user lacks cluster-wide namespace list permission)
+  const is403Error = error && (error as any).message?.includes('403');
+
   // Loading state
   if (isLoading) {
     return (
@@ -73,6 +76,15 @@ export default function ProjectsPage() {
           <RefreshCw className="h-8 w-8 animate-spin" />
           <span className="ml-2">Loading projects...</span>
         </div>
+      </div>
+    );
+  }
+
+  // Error state (non-403 errors)
+  if (error && !is403Error) {
+    return (
+      <div className="container mx-auto p-6">
+        <ErrorMessage error={error} onRetry={() => refetch()} />
       </div>
     );
   }
@@ -109,10 +121,28 @@ export default function ProjectsPage() {
         </div>
       </div>
 
-      {/* Error state */}
-      {error && (
+      {/* Special 403 error state for vanilla Kubernetes */}
+      {is403Error && (
         <div className="px-6 pt-4">
-          <ErrorMessage error={error} onRetry={() => refetch()} />
+          <Card className="border-amber-200 bg-amber-50">
+            <CardContent className="pt-6">
+              <div className="flex items-start gap-3">
+                <div className="text-amber-600">
+                  <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-semibold text-amber-900">Insufficient Permissions</h3>
+                  <p className="text-sm text-amber-800 mt-1">
+                    You don't have permissions to list all namespaces in the cluster. 
+                    On vanilla Kubernetes, listing projects requires cluster-wide namespace list permissions.
+                    Please contact your administrator to grant you access or create a project using the button above.
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       )}
 

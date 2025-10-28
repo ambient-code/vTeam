@@ -7,12 +7,13 @@ export type ProjectStatus = 'active' | 'archived' | 'pending' | 'error' | 'termi
 
 export type Project = {
   name: string;
-  displayName: string;
-  description?: string;
+  displayName: string; // Empty on vanilla k8s, set on OpenShift
+  description?: string; // Empty on vanilla k8s, set on OpenShift
   labels: Record<string, string>;
   annotations: Record<string, string>;
   creationTimestamp: string;
   status: ProjectStatus;
+  isOpenShift: boolean; // Indicates if cluster is OpenShift (affects available features)
   namespace?: string;
   resourceVersion?: string;
   uid?: string;
@@ -20,8 +21,8 @@ export type Project = {
 
 export type CreateProjectRequest = {
   name: string;
-  displayName: string;
-  description?: string;
+  displayName?: string; // Optional: only used on OpenShift
+  description?: string; // Optional: only used on OpenShift
   labels?: Record<string, string>;
 };
 

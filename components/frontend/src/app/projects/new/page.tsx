@@ -15,22 +15,22 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { CreateProjectRequest } from "@/types/project";
-import { ArrowLeft, Save, Loader2 } from "lucide-react";
+import { ArrowLeft, Save, Loader2, Info } from "lucide-react";
 import { successToast, errorToast } from "@/hooks/use-toast";
 import { Breadcrumbs } from "@/components/breadcrumbs";
 import { useCreateProject } from "@/services/queries";
-
-// Project type selection removed
+import { useClusterInfo } from "@/hooks/use-cluster-info";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 export default function NewProjectPage() {
   const router = useRouter();
   const createProjectMutation = useCreateProject();
+  const { isOpenShift, isDetected } = useClusterInfo();
   const [error, setError] = useState<string | null>(null);
   const [formData, setFormData] = useState<CreateProjectRequest>({
     name: "",
     displayName: "",
     description: "",
-    // resourceQuota removed
   });
 
   const [nameError, setNameError] = useState<string | null>(null);
@@ -69,9 +69,11 @@ export default function NewProjectPage() {
       return;
     }
 
-    if (!formData.displayName.trim()) {
-      setError("Display name is required");
-      return;
+    // On OpenShift, displayName is helpful but not strictly required (will default to name)
+    // On vanilla k8s, displayName is not used at all
+    if (isOpenShift && !formData.displayName?.trim()) {
+      // Auto-fill displayName with name if empty on OpenShift
+      setFormData(prev => ({ ...prev, displayName: formData.name }));
     }
 
     setError(null);
@@ -79,8 +81,9 @@ export default function NewProjectPage() {
     // Prepare the request payload
     const payload: CreateProjectRequest = {
       name: formData.name,
-      displayName: formData.displayName.trim(),
-      ...(formData.description?.trim() && { description: formData.description.trim() }),
+      // Only include displayName and description on OpenShift
+      ...(isOpenShift && formData.displayName?.trim() && { displayName: formData.displayName.trim() }),
+      ...(isOpenShift && formData.description?.trim() && { description: formData.description.trim() }),
     };
 
     createProjectMutation.mutate(payload, {
@@ -123,6 +126,16 @@ export default function NewProjectPage() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Cluster info banner */}
+            {isDetected && !isOpenShift && (
+              <Alert>
+                <Info className="h-4 w-4" />
+                <AlertDescription>
+                  Running on vanilla Kubernetes. Display name and description fields are not available.
+                </AlertDescription>
+              </Alert>
+            )}
+
             {/* Basic Information */}
             <div className="space-y-4">
               <h3 className="text-lg font-semibold">Basic Information</h3>
@@ -140,40 +153,43 @@ export default function NewProjectPage() {
                   <p className="text-sm text-red-600">{nameError}</p>
                 )}
                 <p className="text-sm text-gray-600">
-                  Lowercase alphanumeric with hyphens. Will be used as the OpenShift namespace.
+                  Lowercase alphanumeric with hyphens. Will be used as the Kubernetes namespace.
                 </p>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="displayName">Display Name *</Label>
-                <Input
-                  id="displayName"
-                  value={formData.displayName}
-                  onChange={(e) => setFormData(prev => ({ ...prev, displayName: e.target.value }))}
-                  placeholder="My Research Project"
-                  maxLength={100}
-                />
-                <p className="text-sm text-gray-600">
-                  Human-readable name for the project (max 100 characters)
-                </p>
-              </div>
+              {/* OpenShift-only fields */}
+              {isOpenShift && (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="displayName">Display Name</Label>
+                    <Input
+                      id="displayName"
+                      value={formData.displayName}
+                      onChange={(e) => setFormData(prev => ({ ...prev, displayName: e.target.value }))}
+                      placeholder="My Research Project"
+                      maxLength={100}
+                    />
+                    <p className="text-sm text-gray-600">
+                      Human-readable name for the project (max 100 characters). Defaults to project name if empty.
+                    </p>
+                  </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="description">Description</Label>
-                <Textarea
-                  id="description"
-                  value={formData.description}
-                  onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-                  placeholder="Description of the project purpose and goals..."
-                  maxLength={500}
-                  rows={3}
-                />
-                <p className="text-sm text-gray-600">
-                  Optional description (max 500 characters)
-                </p>
-              </div>
-
-            {/* Project type removed */}
+                  <div className="space-y-2">
+                    <Label htmlFor="description">Description</Label>
+                    <Textarea
+                      id="description"
+                      value={formData.description}
+                      onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+                      placeholder="Description of the project purpose and goals..."
+                      maxLength={500}
+                      rows={3}
+                    />
+                    <p className="text-sm text-gray-600">
+                      Optional description (max 500 characters)
+                    </p>
+                  </div>
+                </>
+              )}
             </div>
 
             {/* Resource quota inputs removed */}
