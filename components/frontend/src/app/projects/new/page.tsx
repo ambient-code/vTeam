@@ -71,19 +71,17 @@ export default function NewProjectPage() {
 
     // On OpenShift, displayName is helpful but not strictly required (will default to name)
     // On vanilla k8s, displayName is not used at all
-    if (isOpenShift && !formData.displayName?.trim()) {
-      // Auto-fill displayName with name if empty on OpenShift
-      setFormData(prev => ({ ...prev, displayName: formData.name }));
-    }
-
+    // When not detected (null), include displayName in case it's OpenShift
+    const shouldIncludeDisplayName = isOpenShift === true || isOpenShift === null;
+    
     setError(null);
 
     // Prepare the request payload
     const payload: CreateProjectRequest = {
       name: formData.name,
-      // Only include displayName and description on OpenShift
-      ...(isOpenShift && formData.displayName?.trim() && { displayName: formData.displayName.trim() }),
-      ...(isOpenShift && formData.description?.trim() && { description: formData.description.trim() }),
+      // Include displayName and description on OpenShift or when not yet detected
+      ...(shouldIncludeDisplayName && formData.displayName?.trim() && { displayName: formData.displayName.trim() }),
+      ...(shouldIncludeDisplayName && formData.description?.trim() && { description: formData.description.trim() }),
     };
 
     createProjectMutation.mutate(payload, {
@@ -127,7 +125,15 @@ export default function NewProjectPage() {
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* Cluster info banner */}
-            {isDetected && !isOpenShift && (
+            {isOpenShift === null && !isDetected && (
+              <Alert>
+                <Info className="h-4 w-4" />
+                <AlertDescription>
+                  Create a project to enable cluster-specific features (display name and description will be available on OpenShift).
+                </AlertDescription>
+              </Alert>
+            )}
+            {isOpenShift === false && (
               <Alert>
                 <Info className="h-4 w-4" />
                 <AlertDescription>
@@ -157,8 +163,8 @@ export default function NewProjectPage() {
                 </p>
               </div>
 
-              {/* OpenShift-only fields */}
-              {isOpenShift && (
+              {/* OpenShift-only fields (hide on vanilla k8s, show when not detected or on OpenShift) */}
+              {(isOpenShift === null || isOpenShift === true) && (
                 <>
                   <div className="space-y-2">
                     <Label htmlFor="displayName">Display Name</Label>

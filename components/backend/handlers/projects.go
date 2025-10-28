@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -18,6 +19,7 @@ import (
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	k8stypes "k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 )
@@ -32,61 +34,95 @@ var (
 )
 
 var (
-	isOpenShiftCache     *bool
-	isOpenShiftCacheLock sync.RWMutex
+	isOpenShiftCache bool
+	isOpenShiftOnce  sync.Once
 )
 
 // Default timeout for Kubernetes API operations
 const defaultK8sTimeout = 10 * time.Second
 
+// Retry configuration constants
+const (
+	projectRetryAttempts     = 5
+	projectRetryInitialDelay = 200 * time.Millisecond
+	projectRetryMaxDelay     = 2 * time.Second
+)
+
+// Kubernetes namespace name validation pattern
+var namespaceNamePattern = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`)
+
+// validateProjectName validates a project/namespace name according to Kubernetes naming rules
+func validateProjectName(name string) error {
+	if name == "" {
+		return fmt.Errorf("project name is required")
+	}
+	if len(name) > 63 {
+		return fmt.Errorf("project name must be 63 characters or less")
+	}
+	if !namespaceNamePattern.MatchString(name) {
+		return fmt.Errorf("project name must be lowercase alphanumeric with hyphens (cannot start or end with hyphen)")
+	}
+	// Reserved namespaces
+	reservedNames := map[string]bool{
+		"default": true, "kube-system": true, "kube-public": true, "kube-node-lease": true,
+		"openshift": true, "openshift-infra": true, "openshift-node": true,
+	}
+	if reservedNames[name] {
+		return fmt.Errorf("project name '%s' is reserved and cannot be used", name)
+	}
+	return nil
+}
+
+// sanitizeForK8sName converts a user subject to a valid Kubernetes resource name
+func sanitizeForK8sName(subject string) string {
+	// Remove system:serviceaccount: prefix if present
+	subject = strings.TrimPrefix(subject, "system:serviceaccount:")
+
+	// Replace invalid characters with hyphens
+	reg := regexp.MustCompile(`[^a-z0-9-]`)
+	sanitized := reg.ReplaceAllString(strings.ToLower(subject), "-")
+
+	// Remove leading/trailing hyphens
+	sanitized = strings.Trim(sanitized, "-")
+
+	// Ensure it doesn't exceed 63 chars (leave room for prefix)
+	if len(sanitized) > 40 {
+		sanitized = sanitized[:40]
+	}
+
+	return sanitized
+}
+
 // isOpenShiftCluster detects if we're running on OpenShift by checking for the project.openshift.io API group
-// Results are cached after first detection
+// Results are cached using sync.Once for thread-safe, race-free initialization
 func isOpenShiftCluster() bool {
-	isOpenShiftCacheLock.RLock()
-	if isOpenShiftCache != nil {
-		result := *isOpenShiftCache
-		isOpenShiftCacheLock.RUnlock()
-		return result
-	}
-	isOpenShiftCacheLock.RUnlock()
-
-	// Check if we can access the project.openshift.io API group
-	isOpenShiftCacheLock.Lock()
-	defer isOpenShiftCacheLock.Unlock()
-
-	// Double-check after acquiring write lock
-	if isOpenShiftCache != nil {
-		return *isOpenShiftCache
-	}
-
-	if K8sClientProjects == nil {
-		result := false
-		isOpenShiftCache = &result
-		return result
-	}
-
-	// Try to list API groups and look for project.openshift.io
-	groups, err := K8sClientProjects.Discovery().ServerGroups()
-	if err != nil {
-		log.Printf("Failed to detect OpenShift (assuming k8s): %v", err)
-		result := false
-		isOpenShiftCache = &result
-		return result
-	}
-
-	for _, group := range groups.Groups {
-		if group.Name == "project.openshift.io" {
-			log.Printf("Detected OpenShift cluster")
-			result := true
-			isOpenShiftCache = &result
-			return result
+	isOpenShiftOnce.Do(func() {
+		if K8sClientProjects == nil {
+			log.Printf("K8s client not initialized, assuming vanilla Kubernetes")
+			isOpenShiftCache = false
+			return
 		}
-	}
 
-	log.Printf("Detected vanilla Kubernetes cluster")
-	result := false
-	isOpenShiftCache = &result
-	return result
+		// Try to list API groups and look for project.openshift.io
+		groups, err := K8sClientProjects.Discovery().ServerGroups()
+		if err != nil {
+			log.Printf("Failed to detect OpenShift (assuming vanilla Kubernetes): %v", err)
+			isOpenShiftCache = false
+			return
+		}
+
+		for _, group := range groups.Groups {
+			if group.Name == "project.openshift.io" {
+				log.Printf("Detected OpenShift cluster")
+				isOpenShiftCache = true
+				return
+			}
+		}
+
+		log.Printf("Detected vanilla Kubernetes cluster")
+		isOpenShiftCache = false
+	})
+	return isOpenShiftCache
 }
 
 // ListProjects handles GET /projects
@@ -158,25 +194,28 @@ func ListProjects(c *gin.Context) {
 
 // projectFromUnstructured converts an unstructured OpenShift Project to AmbientProject
 func projectFromUnstructured(item *unstructured.Unstructured, isOpenShift bool) types.AmbientProject {
-	meta, _ := item.Object["metadata"].(map[string]interface{})
+	meta, ok := item.Object["metadata"].(map[string]interface{})
+	if !ok || meta == nil {
+		log.Printf("Warning: malformed metadata for project %s", item.GetName())
+		meta = make(map[string]interface{})
+	}
+
 	name := item.GetName()
 
 	labels := map[string]string{}
 	annotations := map[string]string{}
 
-	if meta != nil {
-		if raw, ok := meta["labels"].(map[string]interface{}); ok {
-			for k, v := range raw {
-				if s, ok := v.(string); ok {
-					labels[k] = s
-				}
+	if raw, ok := meta["labels"].(map[string]interface{}); ok {
+		for k, v := range raw {
+			if s, ok := v.(string); ok {
+				labels[k] = s
 			}
 		}
-		if raw, ok := meta["annotations"].(map[string]interface{}); ok {
-			for k, v := range raw {
-				if s, ok := v.(string); ok {
-					annotations[k] = s
-				}
+	}
+	if raw, ok := meta["annotations"].(map[string]interface{}); ok {
+		for k, v := range raw {
+			if s, ok := v.(string); ok {
+				annotations[k] = s
 			}
 		}
 	}
@@ -247,6 +286,12 @@ func CreateProject(c *gin.Context) {
 		return
 	}
 
+	// Validate project name
+	if err := validateProjectName(req.Name); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
 	// Extract user identity from token
 	userSubject, err := getUserSubjectFromContext(c)
 	if err != nil {
@@ -299,10 +344,16 @@ func CreateProject(c *gin.Context) {
 	}
 
 	// Assign ambient-project-admin ClusterRole to the creator
+	// Use deterministic name based on user to avoid conflicts with multiple admins
+	roleBindingName := fmt.Sprintf("ambient-admin-%s", sanitizeForK8sName(userSubject))
+
 	roleBinding := &rbacv1.RoleBinding{
 		ObjectMeta: v1.ObjectMeta{
-			Name:      "ambient-project-admin-creator",
+			Name:      roleBindingName,
 			Namespace: req.Name,
+			Labels: map[string]string{
+				"ambient-code.io/role": "admin",
+			},
 		},
 		RoleRef: rbacv1.RoleRef{
 			APIGroup: "rbac.authorization.k8s.io",
@@ -339,6 +390,20 @@ func CreateProject(c *gin.Context) {
 		deleteErr := K8sClientProjects.CoreV1().Namespaces().Delete(ctx3, req.Name, v1.DeleteOptions{})
 		if deleteErr != nil {
 			log.Printf("CRITICAL: Failed to rollback namespace %s after role binding failure: %v", req.Name, deleteErr)
+
+			// Label the namespace as orphaned for manual cleanup
+			patch := []byte(`{"metadata":{"labels":{"ambient-code.io/orphaned":"true","ambient-code.io/orphan-reason":"role-binding-failed"}}}`)
+			ctx4, cancel4 := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel4()
+
+			_, labelErr := K8sClientProjects.CoreV1().Namespaces().Patch(
+				ctx4, req.Name, k8stypes.MergePatchType, patch, v1.PatchOptions{},
+			)
+			if labelErr != nil {
+				log.Printf("CRITICAL: Failed to label orphaned namespace %s: %v", req.Name, labelErr)
+			} else {
+				log.Printf("Labeled orphaned namespace %s for manual cleanup", req.Name)
+			}
 		}
 
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create project permissions"})
@@ -355,7 +420,7 @@ func CreateProject(c *gin.Context) {
 			var dynClient dynamic.Interface = reqDyn
 
 			// Retry getting and updating the Project resource (OpenShift creates it asynchronously)
-			retryErr := RetryWithBackoff(5, 200*time.Millisecond, 2*time.Second, func() error {
+			retryErr := RetryWithBackoff(projectRetryAttempts, projectRetryInitialDelay, projectRetryMaxDelay, func() error {
 				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel()
 
@@ -458,6 +523,7 @@ func GetProject(c *gin.Context) {
 				return
 			}
 			if errors.IsUnauthorized(err) || errors.IsForbidden(err) {
+				log.Printf("User forbidden to access OpenShift Project %s: %v", projectName, err)
 				c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized to access project"})
 				return
 			}
@@ -487,6 +553,7 @@ func GetProject(c *gin.Context) {
 				return
 			}
 			if errors.IsUnauthorized(err) || errors.IsForbidden(err) {
+				log.Printf("User forbidden to access Namespace %s: %v", projectName, err)
 				c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized to access project"})
 				return
 			}
@@ -561,13 +628,13 @@ func UpdateProject(c *gin.Context) {
 		}
 
 		// Update annotations
-		meta, _ := projObj.Object["metadata"].(map[string]interface{})
-		if meta == nil {
+		meta, ok := projObj.Object["metadata"].(map[string]interface{})
+		if !ok || meta == nil {
 			meta = map[string]interface{}{}
 			projObj.Object["metadata"] = meta
 		}
-		anns, _ := meta["annotations"].(map[string]interface{})
-		if anns == nil {
+		anns, ok := meta["annotations"].(map[string]interface{})
+		if !ok || anns == nil {
 			anns = map[string]interface{}{}
 			meta["annotations"] = anns
 		}
@@ -655,6 +722,7 @@ func DeleteProject(c *gin.Context) {
 				return
 			}
 			if errors.IsUnauthorized(err) || errors.IsForbidden(err) {
+				log.Printf("User forbidden to delete OpenShift Project %s: %v", projectName, err)
 				c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized to access project"})
 				return
 			}
@@ -681,6 +749,7 @@ func DeleteProject(c *gin.Context) {
 				return
 			}
 			if errors.IsForbidden(err) {
+				log.Printf("User forbidden to delete OpenShift Project %s: %v", projectName, err)
 				c.JSON(http.StatusForbidden, gin.H{"error": "Insufficient permissions to delete project"})
 				return
 			}
@@ -706,6 +775,7 @@ func DeleteProject(c *gin.Context) {
 
 		// Validate it's an Ambient-managed namespace
 		if ns.Labels["ambient-code.io/managed"] != "true" {
+			log.Printf("SECURITY: User attempted to delete non-managed namespace: %s", projectName)
 			c.JSON(http.StatusNotFound, gin.H{"error": "Project not found or not an Ambient project"})
 			return
 		}
@@ -733,10 +803,27 @@ func DeleteProject(c *gin.Context) {
 		// Delete the namespace using backend SA (after verifying user has admin role)
 		// On vanilla Kubernetes, regular users can't delete namespaces directly (cluster-scoped resource).
 		// We verify the user has the ambient-project-admin role binding, then use backend SA to perform deletion.
+
+		// Defense-in-depth: Double-check namespace is still Ambient-managed before deletion
 		ctx2, cancel2 := context.WithTimeout(context.Background(), defaultK8sTimeout)
 		defer cancel2()
 
-		err = K8sClientProjects.CoreV1().Namespaces().Delete(ctx2, projectName, v1.DeleteOptions{})
+		verifyNs, verifyErr := K8sClientProjects.CoreV1().Namespaces().Get(ctx2, projectName, v1.GetOptions{})
+		if verifyErr != nil {
+			log.Printf("Failed to verify namespace %s before deletion: %v", projectName, verifyErr)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify project"})
+			return
+		}
+		if verifyNs.Labels["ambient-code.io/managed"] != "true" {
+			log.Printf("SECURITY: Namespace %s lost managed label, aborting deletion", projectName)
+			c.JSON(http.StatusForbidden, gin.H{"error": "Cannot delete non-managed namespace"})
+			return
+		}
+
+		ctx3, cancel3 := context.WithTimeout(context.Background(), defaultK8sTimeout)
+		defer cancel3()
+
+		err = K8sClientProjects.CoreV1().Namespaces().Delete(ctx3, projectName, v1.DeleteOptions{})
 		if err != nil {
 			if errors.IsNotFound(err) {
 				c.JSON(http.StatusNotFound, gin.H{"error": "Project not found"})
@@ -757,8 +844,9 @@ func checkUserHasAdminRoleBinding(namespace, userSubject string) (bool, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	// Try to get the specific role binding we create
-	rb, err := K8sClientProjects.RbacV1().RoleBindings(namespace).Get(ctx, "ambient-project-admin-creator", v1.GetOptions{})
+	// Try to get the specific role binding we create (user-specific name)
+	roleBindingName := fmt.Sprintf("ambient-admin-%s", sanitizeForK8sName(userSubject))
+	rb, err := K8sClientProjects.RbacV1().RoleBindings(namespace).Get(ctx, roleBindingName, v1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			// Role binding doesn't exist, check if there are any other role bindings granting admin

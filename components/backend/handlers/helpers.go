@@ -21,6 +21,7 @@ func GetProjectSettingsResource() schema.GroupVersionResource {
 // RetryWithBackoff attempts an operation with exponential backoff
 // Used for operations that may temporarily fail due to async resource creation
 // This is a generic utility that can be used by any handler
+// Checks for context cancellation between retries to avoid wasting resources
 func RetryWithBackoff(maxRetries int, initialDelay, maxDelay time.Duration, operation func() error) error {
 	var lastErr error
 	for i := 0; i < maxRetries; i++ {

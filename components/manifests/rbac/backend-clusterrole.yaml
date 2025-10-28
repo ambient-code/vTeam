@@ -20,10 +20,6 @@ rules:
 - apiGroups: [""]
   resources: ["serviceaccounts/token"]
   verbs: ["create"]
-# ConfigMaps for GitHub installation mapping
-- apiGroups: [""]
-  resources: ["configmaps"]
-  verbs: ["get", "create", "update", "patch"]
 
 # TokenReviews for runner SA validation
 - apiGroups: ["authentication.k8s.io"]
@@ -39,7 +35,8 @@ rules:
 - apiGroups: [""]
   resources: ["secrets"]
   verbs: ["get", "list", "create", "update", "patch", "delete"]
-# ConfigMaps for GitHub installation mapping
+
+# ConfigMaps for GitHub installation mapping and project configuration
 - apiGroups: [""]
   resources: ["configmaps"]
   verbs: ["get", "create", "update", "patch"]
