@@ -139,13 +139,21 @@ func GetClusterInfo(c *gin.Context) {
 }
 
 // ListProjects handles GET /projects
-// Uses user's token to list Projects (OpenShift) or Namespaces (k8s) with label selector
-// Kubernetes RBAC and OpenShift automatically filter to only show accessible projects
+// Lists all ambient-managed projects/namespaces using backend SA, then filters to only those
+// where the user has the ambient-project-admin role binding
 func ListProjects(c *gin.Context) {
-	reqK8s, reqDyn := GetK8sClientsForRequest(c)
+	reqK8s, _ := GetK8sClientsForRequest(c)
 
-	if reqK8s == nil || reqDyn == nil {
+	if reqK8s == nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid or missing token"})
+		return
+	}
+
+	// Extract user identity for access verification
+	userSubject, err := getUserSubjectFromContext(c)
+	if err != nil {
+		log.Printf("Failed to extract user subject for list: %v", err)
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
 		return
 	}
 
@@ -156,43 +164,63 @@ func ListProjects(c *gin.Context) {
 	defer cancel()
 
 	if isOpenShift {
-		// OpenShift: List Projects with label selector (user's token)
-		projGvr := GetOpenShiftProjectResource()
-		var dynClient dynamic.Interface = reqDyn
+		// OpenShift: List Projects using backend SA (user list doesn't filter properly)
+		if DynamicClientProjects == nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list projects"})
+			return
+		}
 
-		list, err := dynClient.Resource(projGvr).List(ctx, v1.ListOptions{
+		projGvr := GetOpenShiftProjectResource()
+
+		list, err := DynamicClientProjects.Resource(projGvr).List(ctx, v1.ListOptions{
 			LabelSelector: "ambient-code.io/managed=true",
 		})
 		if err != nil {
 			log.Printf("Failed to list OpenShift Projects: %v", err)
-			if errors.IsForbidden(err) {
-				c.JSON(http.StatusForbidden, gin.H{"error": "Insufficient permissions to list projects"})
-			} else {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list projects"})
-			}
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list projects"})
 			return
 		}
 
+		// Filter to only projects where user has admin role binding
 		for _, item := range list.Items {
-			projects = append(projects, projectFromUnstructured(&item, true))
+			projectName := item.GetName()
+			hasAccess, err := checkUserHasAdminRoleBinding(projectName, userSubject)
+			if err != nil {
+				log.Printf("Failed to check access for project %s: %v", projectName, err)
+				continue
+			}
+
+			if hasAccess {
+				projects = append(projects, projectFromUnstructured(&item, true))
+			}
 		}
 	} else {
-		// Kubernetes: List Namespaces with label selector (user's token)
-		nsList, err := reqK8s.CoreV1().Namespaces().List(ctx, v1.ListOptions{
+		// Kubernetes: List Namespaces using backend SA
+		if K8sClientProjects == nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list projects"})
+			return
+		}
+
+		nsList, err := K8sClientProjects.CoreV1().Namespaces().List(ctx, v1.ListOptions{
 			LabelSelector: "ambient-code.io/managed=true",
 		})
 		if err != nil {
 			log.Printf("Failed to list Namespaces: %v", err)
-			if errors.IsForbidden(err) {
-				c.JSON(http.StatusForbidden, gin.H{"error": "Insufficient permissions to list namespaces"})
-			} else {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list projects"})
-			}
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list projects"})
 			return
 		}
 
+		// Filter to only namespaces where user has admin role binding
 		for _, ns := range nsList.Items {
-			projects = append(projects, projectFromNamespace(&ns, false))
+			hasAccess, err := checkUserHasAdminRoleBinding(ns.Name, userSubject)
+			if err != nil {
+				log.Printf("Failed to check access for namespace %s: %v", ns.Name, err)
+				continue
+			}
+
+			if hasAccess {
+				projects = append(projects, projectFromNamespace(&ns, false))
+			}
 		}
 	}
 
