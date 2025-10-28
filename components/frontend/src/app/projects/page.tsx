@@ -66,7 +66,7 @@ export default function ProjectsPage() {
   };
 
   // Special handling for 403 errors on vanilla Kubernetes (user lacks cluster-wide namespace list permission)
-  const is403Error = error && (error as any).message?.includes('403');
+  const is403Error = error && error instanceof Error && error.message?.includes('403');
 
   // Loading state
   if (isLoading) {
@@ -135,7 +135,7 @@ export default function ProjectsPage() {
                 <div className="flex-1">
                   <h3 className="font-semibold text-amber-900">Insufficient Permissions</h3>
                   <p className="text-sm text-amber-800 mt-1">
-                    You don't have permissions to list all namespaces in the cluster. 
+                    You don&apos;t have permissions to list all namespaces in the cluster. 
                     On vanilla Kubernetes, listing projects requires cluster-wide namespace list permissions.
                     Please contact your administrator to grant you access or create a project using the button above.
                   </p>
