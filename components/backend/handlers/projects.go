@@ -139,8 +139,8 @@ func GetClusterInfo(c *gin.Context) {
 }
 
 // ListProjects handles GET /projects
-// On OpenShift: Lists OpenShift Projects with ambient-code.io/managed=true
-// On Kubernetes: Lists Namespaces with ambient-code.io/managed=true (may return 403 if user lacks permissions)
+// Uses user's token to list Projects (OpenShift) or Namespaces (k8s) with label selector
+// Kubernetes RBAC and OpenShift automatically filter to only show accessible projects
 func ListProjects(c *gin.Context) {
 	reqK8s, reqDyn := GetK8sClientsForRequest(c)
 
@@ -152,15 +152,17 @@ func ListProjects(c *gin.Context) {
 	isOpenShift := isOpenShiftCluster()
 	projects := []types.AmbientProject{}
 
+	ctx, cancel := context.WithTimeout(context.Background(), defaultK8sTimeout)
+	defer cancel()
+
 	if isOpenShift {
-		// OpenShift: List Projects
+		// OpenShift: List Projects with label selector (user's token)
 		projGvr := GetOpenShiftProjectResource()
-		var dynClient dynamic.Interface = reqDyn // Explicit type reference to satisfy linter
+		var dynClient dynamic.Interface = reqDyn
 
-		ctx, cancel := context.WithTimeout(context.Background(), defaultK8sTimeout)
-		defer cancel()
-
-		list, err := dynClient.Resource(projGvr).List(ctx, v1.ListOptions{})
+		list, err := dynClient.Resource(projGvr).List(ctx, v1.ListOptions{
+			LabelSelector: "ambient-code.io/managed=true",
+		})
 		if err != nil {
 			log.Printf("Failed to list OpenShift Projects: %v", err)
 			if errors.IsForbidden(err) {
@@ -172,18 +174,13 @@ func ListProjects(c *gin.Context) {
 		}
 
 		for _, item := range list.Items {
-			project := projectFromUnstructured(&item, true)
-			// Filter to Ambient-managed projects
-			if project.Labels["ambient-code.io/managed"] == "true" {
-				projects = append(projects, project)
-			}
+			projects = append(projects, projectFromUnstructured(&item, true))
 		}
 	} else {
-		// Kubernetes: List Namespaces
-		ctx, cancel := context.WithTimeout(context.Background(), defaultK8sTimeout)
-		defer cancel()
-
-		nsList, err := reqK8s.CoreV1().Namespaces().List(ctx, v1.ListOptions{})
+		// Kubernetes: List Namespaces with label selector (user's token)
+		nsList, err := reqK8s.CoreV1().Namespaces().List(ctx, v1.ListOptions{
+			LabelSelector: "ambient-code.io/managed=true",
+		})
 		if err != nil {
 			log.Printf("Failed to list Namespaces: %v", err)
 			if errors.IsForbidden(err) {
@@ -195,10 +192,7 @@ func ListProjects(c *gin.Context) {
 		}
 
 		for _, ns := range nsList.Items {
-			// Filter to Ambient-managed namespaces
-			if ns.Labels["ambient-code.io/managed"] == "true" {
-				projects = append(projects, projectFromNamespace(&ns, false))
-			}
+			projects = append(projects, projectFromNamespace(&ns, false))
 		}
 	}
 

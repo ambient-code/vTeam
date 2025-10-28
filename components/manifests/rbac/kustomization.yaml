@@ -10,6 +10,7 @@ resources:
 - ambient-project-admin-clusterrole.yaml
 - ambient-project-edit-clusterrole.yaml
 - ambient-project-view-clusterrole.yaml
+- ambient-users-list-projects-clusterrolebinding.yaml
 - frontend-rbac.yaml
 - aggregate-agenticsessions-admin.yaml
 - aggregate-projectsettings-admin.yaml
