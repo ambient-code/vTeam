@@ -134,17 +134,15 @@ export function RfeWorkspaceCard({
                 </div>
               )}
               <div className="flex gap-2">
-                {seedingError && (
-                  <Button
-                    onClick={() => setEditDialogOpen(true)}
-                    disabled={updating}
-                    size="sm"
-                    variant="outline"
-                  >
-                    <Edit className="mr-2 h-4 w-4" />
-                    Edit Repositories
-                  </Button>
-                )}
+                <Button
+                  onClick={() => setEditDialogOpen(true)}
+                  disabled={updating}
+                  size="sm"
+                  variant="outline"
+                >
+                  <Edit className="mr-2 h-4 w-4" />
+                  Edit Repositories
+                </Button>
                 <Button onClick={onSeedWorkflow} disabled={seeding || updating} size="sm">
                   {seeding ? (
                     <>
@@ -171,9 +169,20 @@ export function RfeWorkspaceCard({
         )}
 
         {isSeeded && (
-          <div className="mt-4 flex items-center gap-2 text-green-700 bg-green-50 p-3 rounded-lg">
-            <CheckCircle2 className="h-5 w-5 text-green-600" />
-            <span className="text-sm font-medium">Repository seeded and ready</span>
+          <div className="mt-4 flex items-center justify-between text-green-700 bg-green-50 p-3 rounded-lg">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="h-5 w-5 text-green-600" />
+              <span className="text-sm font-medium">Repository seeded and ready</span>
+            </div>
+            <Button
+              onClick={() => setEditDialogOpen(true)}
+              disabled={updating}
+              size="sm"
+              variant="outline"
+            >
+              <Edit className="mr-2 h-4 w-4" />
+              Edit Repositories
+            </Button>
           </div>
         )}
       </CardContent>
