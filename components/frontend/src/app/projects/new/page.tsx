@@ -25,7 +25,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 export default function NewProjectPage() {
   const router = useRouter();
   const createProjectMutation = useCreateProject();
-  const { isOpenShift, isDetected } = useClusterInfo();
+  const { isOpenShift, isLoading: clusterLoading } = useClusterInfo();
   const [error, setError] = useState<string | null>(null);
   const [formData, setFormData] = useState<CreateProjectRequest>({
     name: "",
@@ -69,19 +69,14 @@ export default function NewProjectPage() {
       return;
     }
 
-    // On OpenShift, displayName is helpful but not strictly required (will default to name)
-    // On vanilla k8s, displayName is not used at all
-    // When not detected (null), include displayName in case it's OpenShift
-    const shouldIncludeDisplayName = isOpenShift === true || isOpenShift === null;
-    
     setError(null);
 
     // Prepare the request payload
     const payload: CreateProjectRequest = {
       name: formData.name,
-      // Include displayName and description on OpenShift or when not yet detected
-      ...(shouldIncludeDisplayName && formData.displayName?.trim() && { displayName: formData.displayName.trim() }),
-      ...(shouldIncludeDisplayName && formData.description?.trim() && { description: formData.description.trim() }),
+      // Only include displayName and description on OpenShift
+      ...(isOpenShift && formData.displayName?.trim() && { displayName: formData.displayName.trim() }),
+      ...(isOpenShift && formData.description?.trim() && { description: formData.description.trim() }),
     };
 
     createProjectMutation.mutate(payload, {
@@ -125,15 +120,7 @@ export default function NewProjectPage() {
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* Cluster info banner */}
-            {isOpenShift === null && !isDetected && (
-              <Alert>
-                <Info className="h-4 w-4" />
-                <AlertDescription>
-                  Create a project to enable cluster-specific features (display name and description will be available on OpenShift).
-                </AlertDescription>
-              </Alert>
-            )}
-            {isOpenShift === false && (
+            {!clusterLoading && !isOpenShift && (
               <Alert>
                 <Info className="h-4 w-4" />
                 <AlertDescription>
@@ -163,8 +150,8 @@ export default function NewProjectPage() {
                 </p>
               </div>
 
-              {/* OpenShift-only fields (hide on vanilla k8s, show when not detected or on OpenShift) */}
-              {(isOpenShift === null || isOpenShift === true) && (
+              {/* OpenShift-only fields */}
+              {isOpenShift && (
                 <>
                   <div className="space-y-2">
                     <Label htmlFor="displayName">Display Name</Label>

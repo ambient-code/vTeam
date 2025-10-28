@@ -125,6 +125,17 @@ func isOpenShiftCluster() bool {
 	return isOpenShiftCache
 }
 
+// GetClusterInfo handles GET /cluster-info
+// Returns information about the cluster type (OpenShift vs vanilla Kubernetes)
+// This endpoint does not require authentication as it's public cluster information
+func GetClusterInfo(c *gin.Context) {
+	isOpenShift := isOpenShiftCluster()
+
+	c.JSON(http.StatusOK, gin.H{
+		"isOpenShift": isOpenShift,
+	})
+}
+
 // ListProjects handles GET /projects
 // On OpenShift: Lists OpenShift Projects with ambient-code.io/managed=true
 // On Kubernetes: Lists Namespaces with ambient-code.io/managed=true (may return 403 if user lacks permissions)

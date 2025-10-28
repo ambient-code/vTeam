@@ -3,6 +3,7 @@
  * Re-exports all query hook modules
  */
 
+export * from './use-cluster';
 export * from './use-projects';
 export * from './use-sessions';
 export * from './use-rfe';

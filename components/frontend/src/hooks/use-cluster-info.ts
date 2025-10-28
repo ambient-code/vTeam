@@ -1,32 +1,27 @@
 /**
  * Cluster information hook
- * Detects cluster type (OpenShift vs vanilla Kubernetes) based on project data
+ * Detects cluster type (OpenShift vs vanilla Kubernetes) by calling the /api/cluster-info endpoint
  */
 
-import { useProjects } from '@/services/queries';
+import { useClusterInfo as useClusterInfoQuery } from '@/services/queries/use-cluster';
 
 export type ClusterInfo = {
-  isOpenShift: boolean | null; // null = not yet detected, true = OpenShift, false = vanilla k8s
+  isOpenShift: boolean;
   isLoading: boolean;
-  isDetected: boolean;
+  isError: boolean;
 };
 
 /**
  * Detects whether the cluster is OpenShift or vanilla Kubernetes
- * Uses the isOpenShift flag from any project in the list
- * Returns null if cluster type hasn't been detected yet (no projects exist)
+ * Calls the /api/cluster-info endpoint which checks for project.openshift.io API group
  */
 export function useClusterInfo(): ClusterInfo {
-  const { data: projects = [], isLoading } = useProjects();
-
-  // If we have at least one project, we can determine cluster type
-  const isDetected = projects.length > 0;
-  const isOpenShift = isDetected ? (projects[0]?.isOpenShift ?? false) : null;
+  const { data, isLoading, isError } = useClusterInfoQuery();
 
   return {
-    isOpenShift,
+    isOpenShift: data?.isOpenShift ?? false,
     isLoading,
-    isDetected,
+    isError,
   };
 }
 

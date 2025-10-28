@@ -4,6 +4,7 @@
  */
 
 export * from './client';
+export * as clusterApi from './cluster';
 export * as projectsApi from './projects';
 export * as sessionsApi from './sessions';
 export * as rfeApi from './rfe';
