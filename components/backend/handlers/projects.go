@@ -31,6 +31,8 @@ var (
 	// K8sClientProjects is the backend service account client used for namespace operations
 	// that require elevated permissions (e.g., creating namespaces, assigning roles)
 	K8sClientProjects *kubernetes.Clientset
+	// DynamicClientProjects is the backend SA dynamic client for OpenShift Project operations
+	DynamicClientProjects dynamic.Interface
 )
 
 var (
@@ -423,63 +425,60 @@ func CreateProject(c *gin.Context) {
 
 	// On OpenShift: Update the Project resource with display metadata
 	// Use retry logic as OpenShift needs time to create the Project resource from the namespace
-	if isOpenShift {
-		// Get the user's dynamic client to work with Projects
-		_, reqDyn := GetK8sClientsForRequest(c)
-		if reqDyn != nil {
-			projGvr := GetOpenShiftProjectResource()
-			var dynClient dynamic.Interface = reqDyn
+	// Use backend SA dynamic client (users don't have permission to update Project resources)
+	if isOpenShift && DynamicClientProjects != nil {
+		projGvr := GetOpenShiftProjectResource()
 
-			// Retry getting and updating the Project resource (OpenShift creates it asynchronously)
-			retryErr := RetryWithBackoff(projectRetryAttempts, projectRetryInitialDelay, projectRetryMaxDelay, func() error {
-				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-				defer cancel()
+		// Retry getting and updating the Project resource (OpenShift creates it asynchronously)
+		retryErr := RetryWithBackoff(projectRetryAttempts, projectRetryInitialDelay, projectRetryMaxDelay, func() error {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
 
-				// Get the Project resource
-				projObj, err := dynClient.Resource(projGvr).Get(ctx, req.Name, v1.GetOptions{})
-				if err != nil {
-					return fmt.Errorf("failed to get Project resource: %w", err)
-				}
-
-				// Update Project annotations with display metadata
-				meta, ok := projObj.Object["metadata"].(map[string]interface{})
-				if !ok || meta == nil {
-					meta = map[string]interface{}{}
-					projObj.Object["metadata"] = meta
-				}
-				anns, ok := meta["annotations"].(map[string]interface{})
-				if !ok || anns == nil {
-					anns = map[string]interface{}{}
-					meta["annotations"] = anns
-				}
-
-				// Use displayName if provided, otherwise use name
-				displayName := req.DisplayName
-				if displayName == "" {
-					displayName = req.Name
-				}
-				anns["openshift.io/display-name"] = displayName
-				if req.Description != "" {
-					anns["openshift.io/description"] = req.Description
-				}
-				anns["openshift.io/requester"] = userSubject
-
-				ctx2, cancel2 := context.WithTimeout(context.Background(), 5*time.Second)
-				defer cancel2()
-
-				_, err = dynClient.Resource(projGvr).Update(ctx2, projObj, v1.UpdateOptions{})
-				if err != nil {
-					return fmt.Errorf("failed to update Project annotations: %w", err)
-				}
-
-				return nil
-			})
-
-			if retryErr != nil {
-				log.Printf("WARNING: Failed to update Project resource for %s after retries: %v", req.Name, retryErr)
-			} else {
-				log.Printf("Successfully updated Project resource with display metadata for %s", req.Name)
+			// Get the Project resource (using backend SA)
+			projObj, err := DynamicClientProjects.Resource(projGvr).Get(ctx, req.Name, v1.GetOptions{})
+			if err != nil {
+				return fmt.Errorf("failed to get Project resource: %w", err)
 			}
+
+			// Update Project annotations with display metadata
+			meta, ok := projObj.Object["metadata"].(map[string]interface{})
+			if !ok || meta == nil {
+				meta = map[string]interface{}{}
+				projObj.Object["metadata"] = meta
+			}
+			anns, ok := meta["annotations"].(map[string]interface{})
+			if !ok || anns == nil {
+				anns = map[string]interface{}{}
+				meta["annotations"] = anns
+			}
+
+			// Use displayName if provided, otherwise use name
+			displayName := req.DisplayName
+			if displayName == "" {
+				displayName = req.Name
+			}
+			anns["openshift.io/display-name"] = displayName
+			if req.Description != "" {
+				anns["openshift.io/description"] = req.Description
+			}
+			anns["openshift.io/requester"] = userSubject
+
+			ctx2, cancel2 := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel2()
+
+			// Update using backend SA (users don't have Project update permission)
+			_, err = DynamicClientProjects.Resource(projGvr).Update(ctx2, projObj, v1.UpdateOptions{})
+			if err != nil {
+				return fmt.Errorf("failed to update Project annotations: %w", err)
+			}
+
+			return nil
+		})
+
+		if retryErr != nil {
+			log.Printf("WARNING: Failed to update Project resource for %s after retries: %v", req.Name, retryErr)
+		} else {
+			log.Printf("Successfully updated Project resource with display metadata for %s", req.Name)
 		}
 	}
 

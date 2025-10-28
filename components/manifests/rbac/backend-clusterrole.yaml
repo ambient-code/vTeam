@@ -31,6 +31,13 @@ rules:
   resources: ["roles", "rolebindings"]
   verbs: ["get", "list", "create", "update", "patch", "delete"]
 
+# ClusterRole binding permission - allows backend to grant ambient-project-admin to users
+# This is required to create RoleBindings that reference ClusterRoles
+- apiGroups: ["rbac.authorization.k8s.io"]
+  resources: ["clusterroles"]
+  resourceNames: ["ambient-project-admin", "ambient-project-edit", "ambient-project-view"]
+  verbs: ["bind"]
+
 # Secrets to store per-session BOT_TOKEN
 - apiGroups: [""]
   resources: ["secrets"]
@@ -55,9 +62,9 @@ rules:
   resources: ["namespaces"]
   verbs: ["get", "list", "create", "update", "patch", "delete"]
 
-# OpenShift Projects - read access for project validation
+# OpenShift Projects - backend needs to update Project resources with display metadata
 - apiGroups: ["project.openshift.io"]
   resources: ["projects"]
-  verbs: ["get", "list", "watch"]
+  verbs: ["get", "list", "watch", "update", "patch"]
 
 
