@@ -36,6 +36,9 @@ var (
 	isOpenShiftCacheLock sync.RWMutex
 )
 
+// Default timeout for Kubernetes API operations
+const defaultK8sTimeout = 10 * time.Second
+
 // isOpenShiftCluster detects if we're running on OpenShift by checking for the project.openshift.io API group
 // Results are cached after first detection
 func isOpenShiftCluster() bool {
@@ -104,7 +107,11 @@ func ListProjects(c *gin.Context) {
 		// OpenShift: List Projects
 		projGvr := GetOpenShiftProjectResource()
 		var dynClient dynamic.Interface = reqDyn // Explicit type reference to satisfy linter
-		list, err := dynClient.Resource(projGvr).List(context.TODO(), v1.ListOptions{})
+
+		ctx, cancel := context.WithTimeout(context.Background(), defaultK8sTimeout)
+		defer cancel()
+
+		list, err := dynClient.Resource(projGvr).List(ctx, v1.ListOptions{})
 		if err != nil {
 			log.Printf("Failed to list OpenShift Projects: %v", err)
 			if errors.IsForbidden(err) {
@@ -124,7 +131,10 @@ func ListProjects(c *gin.Context) {
 		}
 	} else {
 		// Kubernetes: List Namespaces
-		nsList, err := reqK8s.CoreV1().Namespaces().List(context.TODO(), v1.ListOptions{})
+		ctx, cancel := context.WithTimeout(context.Background(), defaultK8sTimeout)
+		defer cancel()
+
+		nsList, err := reqK8s.CoreV1().Namespaces().List(ctx, v1.ListOptions{})
 		if err != nil {
 			log.Printf("Failed to list Namespaces: %v", err)
 			if errors.IsForbidden(err) {
@@ -272,7 +282,10 @@ func CreateProject(c *gin.Context) {
 		ns.Annotations["openshift.io/requester"] = userSubject
 	}
 
-	createdNs, err := K8sClientProjects.CoreV1().Namespaces().Create(context.TODO(), ns, v1.CreateOptions{})
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	createdNs, err := K8sClientProjects.CoreV1().Namespaces().Create(ctx, ns, v1.CreateOptions{})
 	if err != nil {
 		log.Printf("Failed to create namespace %s: %v", req.Name, err)
 		if errors.IsAlreadyExists(err) {
@@ -311,13 +324,29 @@ func CreateProject(c *gin.Context) {
 		roleBinding.Subjects[0].APIGroup = ""
 	}
 
-	_, err = K8sClientProjects.RbacV1().RoleBindings(req.Name).Create(context.TODO(), roleBinding, v1.CreateOptions{})
+	ctx2, cancel2 := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel2()
+
+	_, err = K8sClientProjects.RbacV1().RoleBindings(req.Name).Create(ctx2, roleBinding, v1.CreateOptions{})
 	if err != nil {
-		log.Printf("WARNING: Created namespace %s but failed to assign admin role: %v", req.Name, err)
-		// Continue anyway - namespace was created
+		log.Printf("ERROR: Created namespace %s but failed to assign admin role: %v", req.Name, err)
+
+		// ROLLBACK: Delete the namespace since role binding failed
+		// Without the role binding, the user won't have access to their project
+		ctx3, cancel3 := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel3()
+
+		deleteErr := K8sClientProjects.CoreV1().Namespaces().Delete(ctx3, req.Name, v1.DeleteOptions{})
+		if deleteErr != nil {
+			log.Printf("CRITICAL: Failed to rollback namespace %s after role binding failure: %v", req.Name, deleteErr)
+		}
+
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create project permissions"})
+		return
 	}
 
 	// On OpenShift: Update the Project resource with display metadata
+	// Use retry logic as OpenShift needs time to create the Project resource from the namespace
 	if isOpenShift {
 		// Get the user's dynamic client to work with Projects
 		_, reqDyn := GetK8sClientsForRequest(c)
@@ -325,22 +354,25 @@ func CreateProject(c *gin.Context) {
 			projGvr := GetOpenShiftProjectResource()
 			var dynClient dynamic.Interface = reqDyn
 
-			// Wait a moment for OpenShift to create the Project resource from the namespace
-			time.Sleep(500 * time.Millisecond)
+			// Retry getting and updating the Project resource (OpenShift creates it asynchronously)
+			retryErr := RetryWithBackoff(5, 200*time.Millisecond, 2*time.Second, func() error {
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
 
-			// Get the Project resource
-			projObj, err := dynClient.Resource(projGvr).Get(context.TODO(), req.Name, v1.GetOptions{})
-			if err != nil {
-				log.Printf("WARNING: Failed to get Project resource for %s: %v", req.Name, err)
-			} else {
+				// Get the Project resource
+				projObj, err := dynClient.Resource(projGvr).Get(ctx, req.Name, v1.GetOptions{})
+				if err != nil {
+					return fmt.Errorf("failed to get Project resource: %w", err)
+				}
+
 				// Update Project annotations with display metadata
-				meta, _ := projObj.Object["metadata"].(map[string]interface{})
-				if meta == nil {
+				meta, ok := projObj.Object["metadata"].(map[string]interface{})
+				if !ok || meta == nil {
 					meta = map[string]interface{}{}
 					projObj.Object["metadata"] = meta
 				}
-				anns, _ := meta["annotations"].(map[string]interface{})
-				if anns == nil {
+				anns, ok := meta["annotations"].(map[string]interface{})
+				if !ok || anns == nil {
 					anns = map[string]interface{}{}
 					meta["annotations"] = anns
 				}
@@ -356,12 +388,21 @@ func CreateProject(c *gin.Context) {
 				}
 				anns["openshift.io/requester"] = userSubject
 
-				_, err = dynClient.Resource(projGvr).Update(context.TODO(), projObj, v1.UpdateOptions{})
+				ctx2, cancel2 := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel2()
+
+				_, err = dynClient.Resource(projGvr).Update(ctx2, projObj, v1.UpdateOptions{})
 				if err != nil {
-					log.Printf("WARNING: Failed to update Project annotations for %s: %v", req.Name, err)
-				} else {
-					log.Printf("Successfully updated Project resource with display metadata for %s", req.Name)
+					return fmt.Errorf("failed to update Project annotations: %w", err)
 				}
+
+				return nil
+			})
+
+			if retryErr != nil {
+				log.Printf("WARNING: Failed to update Project resource for %s after retries: %v", req.Name, retryErr)
+			} else {
+				log.Printf("Successfully updated Project resource with display metadata for %s", req.Name)
 			}
 		}
 	}
@@ -406,7 +447,11 @@ func GetProject(c *gin.Context) {
 	if isOpenShift {
 		// OpenShift: Get Project
 		projGvr := GetOpenShiftProjectResource()
-		projObj, err := reqDyn.Resource(projGvr).Get(context.TODO(), projectName, v1.GetOptions{})
+
+		ctx, cancel := context.WithTimeout(context.Background(), defaultK8sTimeout)
+		defer cancel()
+
+		projObj, err := reqDyn.Resource(projGvr).Get(ctx, projectName, v1.GetOptions{})
 		if err != nil {
 			if errors.IsNotFound(err) {
 				c.JSON(http.StatusNotFound, gin.H{"error": "Project not found"})
@@ -432,7 +477,10 @@ func GetProject(c *gin.Context) {
 		c.JSON(http.StatusOK, project)
 	} else {
 		// Kubernetes: Get Namespace
-		ns, err := reqK8s.CoreV1().Namespaces().Get(context.TODO(), projectName, v1.GetOptions{})
+		ctx, cancel := context.WithTimeout(context.Background(), defaultK8sTimeout)
+		defer cancel()
+
+		ns, err := reqK8s.CoreV1().Namespaces().Get(ctx, projectName, v1.GetOptions{})
 		if err != nil {
 			if errors.IsNotFound(err) {
 				c.JSON(http.StatusNotFound, gin.H{"error": "Project not found"})
@@ -490,7 +538,11 @@ func UpdateProject(c *gin.Context) {
 	if isOpenShift {
 		// OpenShift: Update Project annotations
 		projGvr := GetOpenShiftProjectResource()
-		projObj, err := reqDyn.Resource(projGvr).Get(context.TODO(), projectName, v1.GetOptions{})
+
+		ctx, cancel := context.WithTimeout(context.Background(), defaultK8sTimeout)
+		defer cancel()
+
+		projObj, err := reqDyn.Resource(projGvr).Get(ctx, projectName, v1.GetOptions{})
 		if err != nil {
 			if errors.IsNotFound(err) {
 				c.JSON(http.StatusNotFound, gin.H{"error": "Project not found"})
@@ -527,7 +579,10 @@ func UpdateProject(c *gin.Context) {
 			anns["openshift.io/description"] = req.Description
 		}
 
-		_, err = reqDyn.Resource(projGvr).Update(context.TODO(), projObj, v1.UpdateOptions{})
+		ctx2, cancel2 := context.WithTimeout(context.Background(), defaultK8sTimeout)
+		defer cancel2()
+
+		_, err = reqDyn.Resource(projGvr).Update(ctx2, projObj, v1.UpdateOptions{})
 		if err != nil {
 			log.Printf("Failed to update OpenShift Project %s: %v", projectName, err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update project"})
@@ -535,13 +590,19 @@ func UpdateProject(c *gin.Context) {
 		}
 
 		// Read back and return
-		projObj, _ = reqDyn.Resource(projGvr).Get(context.TODO(), projectName, v1.GetOptions{})
+		ctx3, cancel3 := context.WithTimeout(context.Background(), defaultK8sTimeout)
+		defer cancel3()
+
+		projObj, _ = reqDyn.Resource(projGvr).Get(ctx3, projectName, v1.GetOptions{})
 		updatedProject := projectFromUnstructured(projObj, true)
 		c.JSON(http.StatusOK, updatedProject)
 	} else {
 		// Kubernetes: Just verify the namespace exists and return it
 		// Display name and description are not supported on vanilla k8s
-		ns, err := reqK8s.CoreV1().Namespaces().Get(context.TODO(), projectName, v1.GetOptions{})
+		ctx, cancel := context.WithTimeout(context.Background(), defaultK8sTimeout)
+		defer cancel()
+
+		ns, err := reqK8s.CoreV1().Namespaces().Get(ctx, projectName, v1.GetOptions{})
 		if err != nil {
 			if errors.IsNotFound(err) {
 				c.JSON(http.StatusNotFound, gin.H{"error": "Project not found"})
@@ -583,7 +644,11 @@ func DeleteProject(c *gin.Context) {
 		// OpenShift: Delete Project resource using user's credentials
 		projGvr := GetOpenShiftProjectResource()
 		var dynClient dynamic.Interface = reqDyn
-		projObj, err := dynClient.Resource(projGvr).Get(context.TODO(), projectName, v1.GetOptions{})
+
+		ctx, cancel := context.WithTimeout(context.Background(), defaultK8sTimeout)
+		defer cancel()
+
+		projObj, err := dynClient.Resource(projGvr).Get(ctx, projectName, v1.GetOptions{})
 		if err != nil {
 			if errors.IsNotFound(err) {
 				c.JSON(http.StatusNotFound, gin.H{"error": "Project not found"})
@@ -606,7 +671,10 @@ func DeleteProject(c *gin.Context) {
 		}
 
 		// Delete the Project using user's credentials (OpenShift will cascade delete the namespace)
-		err = dynClient.Resource(projGvr).Delete(context.TODO(), projectName, v1.DeleteOptions{})
+		ctx2, cancel2 := context.WithTimeout(context.Background(), defaultK8sTimeout)
+		defer cancel2()
+
+		err = dynClient.Resource(projGvr).Delete(ctx2, projectName, v1.DeleteOptions{})
 		if err != nil {
 			if errors.IsNotFound(err) {
 				c.JSON(http.StatusNotFound, gin.H{"error": "Project not found"})
@@ -622,7 +690,10 @@ func DeleteProject(c *gin.Context) {
 		}
 	} else {
 		// Kubernetes: Verify namespace exists and is Ambient-managed
-		ns, err := K8sClientProjects.CoreV1().Namespaces().Get(context.TODO(), projectName, v1.GetOptions{})
+		ctx, cancel := context.WithTimeout(context.Background(), defaultK8sTimeout)
+		defer cancel()
+
+		ns, err := K8sClientProjects.CoreV1().Namespaces().Get(ctx, projectName, v1.GetOptions{})
 		if err != nil {
 			if errors.IsNotFound(err) {
 				c.JSON(http.StatusNotFound, gin.H{"error": "Project not found"})
@@ -662,7 +733,10 @@ func DeleteProject(c *gin.Context) {
 		// Delete the namespace using backend SA (after verifying user has admin role)
 		// On vanilla Kubernetes, regular users can't delete namespaces directly (cluster-scoped resource).
 		// We verify the user has the ambient-project-admin role binding, then use backend SA to perform deletion.
-		err = K8sClientProjects.CoreV1().Namespaces().Delete(context.TODO(), projectName, v1.DeleteOptions{})
+		ctx2, cancel2 := context.WithTimeout(context.Background(), defaultK8sTimeout)
+		defer cancel2()
+
+		err = K8sClientProjects.CoreV1().Namespaces().Delete(ctx2, projectName, v1.DeleteOptions{})
 		if err != nil {
 			if errors.IsNotFound(err) {
 				c.JSON(http.StatusNotFound, gin.H{"error": "Project not found"})
@@ -678,9 +752,55 @@ func DeleteProject(c *gin.Context) {
 }
 
 // checkUserHasAdminRoleBinding verifies if a user has the ambient-project-admin role binding in a namespace
+// Uses direct GET for efficiency instead of listing all role bindings
 func checkUserHasAdminRoleBinding(namespace, userSubject string) (bool, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// Try to get the specific role binding we create
+	rb, err := K8sClientProjects.RbacV1().RoleBindings(namespace).Get(ctx, "ambient-project-admin-creator", v1.GetOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			// Role binding doesn't exist, check if there are any other role bindings granting admin
+			return checkUserHasAdminRoleBindingFallback(namespace, userSubject)
+		}
+		return false, err
+	}
+
+	// Verify this role binding grants ambient-project-admin
+	if rb.RoleRef.Kind != "ClusterRole" || rb.RoleRef.Name != "ambient-project-admin" {
+		return checkUserHasAdminRoleBindingFallback(namespace, userSubject)
+	}
+
+	userKind := getUserSubjectKind(userSubject)
+	userName := getUserSubjectName(userSubject)
+	userNs := getUserSubjectNamespace(userSubject)
+
+	// Check if user is in the subjects list
+	for _, subject := range rb.Subjects {
+		if subject.Kind == userKind && subject.Name == userName {
+			// For ServiceAccount, also check namespace
+			if userKind == "ServiceAccount" {
+				if subject.Namespace == userNs {
+					return true, nil
+				}
+			} else {
+				return true, nil
+			}
+		}
+	}
+
+	// User not in this role binding, check others
+	return checkUserHasAdminRoleBindingFallback(namespace, userSubject)
+}
+
+// checkUserHasAdminRoleBindingFallback checks all role bindings (slower fallback)
+func checkUserHasAdminRoleBindingFallback(namespace, userSubject string) (bool, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
 	// List all RoleBindings in the namespace
-	roleBindings, err := K8sClientProjects.RbacV1().RoleBindings(namespace).List(context.TODO(), v1.ListOptions{})
+	roleBindings, err := K8sClientProjects.RbacV1().RoleBindings(namespace).List(ctx, v1.ListOptions{})
 	if err != nil {
 		return false, err
 	}

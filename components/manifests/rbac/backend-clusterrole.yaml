@@ -52,10 +52,11 @@ rules:
   resources: ["rfeworkflows/status"]
   verbs: ["get", "update", "patch"]
 
-# Namespaces - backend needs to add labels after ProjectRequest creates them
+# Namespaces - backend creates namespaces and manages labels for Ambient projects
+# Also handles deletion on vanilla Kubernetes after permission verification
 - apiGroups: [""]
   resources: ["namespaces"]
-  verbs: ["get", "list", "update", "patch"]
+  verbs: ["get", "list", "create", "update", "patch", "delete"]
 
 # OpenShift Projects - read access for project validation
 - apiGroups: ["project.openshift.io"]
