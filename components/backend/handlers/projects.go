@@ -13,6 +13,7 @@ import (
 	"ambient-code-backend/types"
 
 	"github.com/gin-gonic/gin"
+	authv1 "k8s.io/api/authorization/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -139,8 +140,8 @@ func GetClusterInfo(c *gin.Context) {
 }
 
 // ListProjects handles GET /projects
-// Lists all ambient-managed projects/namespaces using backend SA, then filters to only those
-// where the user has the ambient-project-admin role binding
+// Lists Namespaces (both platforms) using backend SA with label selector,
+// then uses SubjectAccessReview to verify user access to each namespace
 func ListProjects(c *gin.Context) {
 	reqK8s, _ := GetK8sClientsForRequest(c)
 
@@ -149,11 +150,9 @@ func ListProjects(c *gin.Context) {
 		return
 	}
 
-	// Extract user identity for access verification
-	userSubject, err := getUserSubjectFromContext(c)
-	if err != nil {
-		log.Printf("Failed to extract user subject for list: %v", err)
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
+	// List namespaces using backend SA (both platforms)
+	if K8sClientProjects == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list projects"})
 		return
 	}
 
@@ -163,133 +162,53 @@ func ListProjects(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), defaultK8sTimeout)
 	defer cancel()
 
-	if isOpenShift {
-		// OpenShift: List Projects using backend SA (user list doesn't filter properly)
-		if DynamicClientProjects == nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list projects"})
-			return
-		}
+	nsList, err := K8sClientProjects.CoreV1().Namespaces().List(ctx, v1.ListOptions{
+		LabelSelector: "ambient-code.io/managed=true",
+	})
+	if err != nil {
+		log.Printf("Failed to list Namespaces: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list projects"})
+		return
+	}
 
-		projGvr := GetOpenShiftProjectResource()
-
-		list, err := DynamicClientProjects.Resource(projGvr).List(ctx, v1.ListOptions{
-			LabelSelector: "ambient-code.io/managed=true",
-		})
+	// Filter to only namespaces where user has access
+	// Use SubjectAccessReview - checks ALL RBAC sources (any RoleBinding, group, etc.)
+	for _, ns := range nsList.Items {
+		hasAccess, err := checkUserCanAccessNamespace(reqK8s, ns.Name)
 		if err != nil {
-			log.Printf("Failed to list OpenShift Projects: %v", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list projects"})
-			return
+			log.Printf("Failed to check access for namespace %s: %v", ns.Name, err)
+			continue
 		}
 
-		// Filter to only projects where user has admin role binding
-		for _, item := range list.Items {
-			projectName := item.GetName()
-			hasAccess, err := checkUserHasAdminRoleBinding(projectName, userSubject)
-			if err != nil {
-				log.Printf("Failed to check access for project %s: %v", projectName, err)
-				continue
-			}
-
-			if hasAccess {
-				projects = append(projects, projectFromUnstructured(&item, true))
-			}
-		}
-	} else {
-		// Kubernetes: List Namespaces using backend SA
-		if K8sClientProjects == nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list projects"})
-			return
-		}
-
-		nsList, err := K8sClientProjects.CoreV1().Namespaces().List(ctx, v1.ListOptions{
-			LabelSelector: "ambient-code.io/managed=true",
-		})
-		if err != nil {
-			log.Printf("Failed to list Namespaces: %v", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list projects"})
-			return
-		}
-
-		// Filter to only namespaces where user has admin role binding
-		for _, ns := range nsList.Items {
-			hasAccess, err := checkUserHasAdminRoleBinding(ns.Name, userSubject)
-			if err != nil {
-				log.Printf("Failed to check access for namespace %s: %v", ns.Name, err)
-				continue
-			}
-
-			if hasAccess {
-				projects = append(projects, projectFromNamespace(&ns, false))
-			}
+		if hasAccess {
+			projects = append(projects, projectFromNamespace(&ns, isOpenShift))
 		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{"items": projects})
 }
 
-// projectFromUnstructured converts an unstructured OpenShift Project to AmbientProject
-func projectFromUnstructured(item *unstructured.Unstructured, isOpenShift bool) types.AmbientProject {
-	meta, ok := item.Object["metadata"].(map[string]interface{})
-	if !ok || meta == nil {
-		log.Printf("Warning: malformed metadata for project %s", item.GetName())
-		meta = make(map[string]interface{})
-	}
-
-	name := item.GetName()
-
-	labels := map[string]string{}
-	annotations := map[string]string{}
-
-	if raw, ok := meta["labels"].(map[string]interface{}); ok {
-		for k, v := range raw {
-			if s, ok := v.(string); ok {
-				labels[k] = s
-			}
-		}
-	}
-	if raw, ok := meta["annotations"].(map[string]interface{}); ok {
-		for k, v := range raw {
-			if s, ok := v.(string); ok {
-				annotations[k] = s
-			}
-		}
-	}
-
-	displayName := annotations["openshift.io/display-name"]
-	description := annotations["openshift.io/description"]
-	created := item.GetCreationTimestamp().Time
-
-	status := "Active"
-	if st, ok := item.Object["status"].(map[string]interface{}); ok {
-		if phase, ok := st["phase"].(string); ok {
-			status = phase
-		}
-	}
-
-	return types.AmbientProject{
-		Name:              name,
-		DisplayName:       displayName,
-		Description:       description,
-		Labels:            labels,
-		Annotations:       annotations,
-		CreationTimestamp: created.Format(time.RFC3339),
-		Status:            status,
-		IsOpenShift:       isOpenShift,
-	}
-}
-
 // projectFromNamespace converts a Kubernetes Namespace to AmbientProject
+// On OpenShift, extracts displayName and description from namespace annotations
 func projectFromNamespace(ns *corev1.Namespace, isOpenShift bool) types.AmbientProject {
 	status := "Active"
 	if ns.Status.Phase != corev1.NamespaceActive {
 		status = string(ns.Status.Phase)
 	}
 
-	// For k8s, displayName and description are empty
+	displayName := ""
+	description := ""
+
+	// On OpenShift, extract display metadata from annotations
+	if isOpenShift && ns.Annotations != nil {
+		displayName = ns.Annotations["openshift.io/display-name"]
+		description = ns.Annotations["openshift.io/description"]
+	}
+
 	return types.AmbientProject{
 		Name:              ns.Name,
-		DisplayName:       "",
-		Description:       "",
+		DisplayName:       displayName,
+		Description:       description,
 		Labels:            ns.Labels,
 		Annotations:       ns.Annotations,
 		CreationTimestamp: ns.CreationTimestamp.Format(time.RFC3339),
@@ -378,7 +297,7 @@ func CreateProject(c *gin.Context) {
 		return
 	}
 
-	// Assign ambient-project-admin ClusterRole to the creator
+	// Assign ambient-project-admin ClusterRole to the creator in the namespace
 	// Use deterministic name based on user to avoid conflicts with multiple admins
 	roleBindingName := fmt.Sprintf("ambient-admin-%s", sanitizeForK8sName(userSubject))
 
@@ -463,7 +382,8 @@ func CreateProject(c *gin.Context) {
 			}
 
 			// Update Project annotations with display metadata
-			meta, ok := projObj.Object["metadata"].(map[string]interface{})
+			var unstruct *unstructured.Unstructured = projObj // Explicit type reference
+			meta, ok := unstruct.Object["metadata"].(map[string]interface{})
 			if !ok || meta == nil {
 				meta = map[string]interface{}{}
 				projObj.Object["metadata"] = meta
@@ -528,91 +448,56 @@ func CreateProject(c *gin.Context) {
 }
 
 // GetProject handles GET /projects/:projectName
-// On OpenShift: Returns OpenShift Project details
-// On Kubernetes: Returns Namespace details
+// Returns Namespace details with OpenShift annotations if on OpenShift
 func GetProject(c *gin.Context) {
 	projectName := c.Param("projectName")
-	reqK8s, reqDyn := GetK8sClientsForRequest(c)
+	reqK8s, _ := GetK8sClientsForRequest(c)
 
-	if reqK8s == nil || reqDyn == nil {
+	if reqK8s == nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid or missing token"})
 		return
 	}
 
 	isOpenShift := isOpenShiftCluster()
 
-	if isOpenShift {
-		// OpenShift: Get Project
-		projGvr := GetOpenShiftProjectResource()
+	ctx, cancel := context.WithTimeout(context.Background(), defaultK8sTimeout)
+	defer cancel()
 
-		ctx, cancel := context.WithTimeout(context.Background(), defaultK8sTimeout)
-		defer cancel()
-
-		projObj, err := reqDyn.Resource(projGvr).Get(ctx, projectName, v1.GetOptions{})
-		if err != nil {
-			if errors.IsNotFound(err) {
-				c.JSON(http.StatusNotFound, gin.H{"error": "Project not found"})
-				return
-			}
-			if errors.IsUnauthorized(err) || errors.IsForbidden(err) {
-				log.Printf("User forbidden to access OpenShift Project %s: %v", projectName, err)
-				c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized to access project"})
-				return
-			}
-			log.Printf("Failed to get OpenShift Project %s: %v", projectName, err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get project"})
+	ns, err := reqK8s.CoreV1().Namespaces().Get(ctx, projectName, v1.GetOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Project not found"})
 			return
 		}
-
-		project := projectFromUnstructured(projObj, true)
-
-		// Validate it's an Ambient-managed project
-		if project.Labels["ambient-code.io/managed"] != "true" {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Project not found or not an Ambient project"})
+		if errors.IsForbidden(err) {
+			log.Printf("User forbidden to access Namespace %s: %v", projectName, err)
+			c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized to access project"})
 			return
 		}
-
-		c.JSON(http.StatusOK, project)
-	} else {
-		// Kubernetes: Get Namespace
-		ctx, cancel := context.WithTimeout(context.Background(), defaultK8sTimeout)
-		defer cancel()
-
-		ns, err := reqK8s.CoreV1().Namespaces().Get(ctx, projectName, v1.GetOptions{})
-		if err != nil {
-			if errors.IsNotFound(err) {
-				c.JSON(http.StatusNotFound, gin.H{"error": "Project not found"})
-				return
-			}
-			if errors.IsUnauthorized(err) || errors.IsForbidden(err) {
-				log.Printf("User forbidden to access Namespace %s: %v", projectName, err)
-				c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized to access project"})
-				return
-			}
-			log.Printf("Failed to get Namespace %s: %v", projectName, err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get project"})
-			return
-		}
-
-		// Validate it's an Ambient-managed namespace
-		if ns.Labels["ambient-code.io/managed"] != "true" {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Project not found or not an Ambient project"})
-			return
-		}
-
-		project := projectFromNamespace(ns, false)
-		c.JSON(http.StatusOK, project)
+		log.Printf("Failed to get Namespace %s: %v", projectName, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get project"})
+		return
 	}
+
+	// Validate it's an Ambient-managed namespace
+	if ns.Labels["ambient-code.io/managed"] != "true" {
+		log.Printf("SECURITY: User attempted to access non-managed namespace: %s", projectName)
+		c.JSON(http.StatusNotFound, gin.H{"error": "Project not found or not an Ambient project"})
+		return
+	}
+
+	project := projectFromNamespace(ns, isOpenShift)
+	c.JSON(http.StatusOK, project)
 }
 
 // UpdateProject handles PUT /projects/:projectName
-// On OpenShift: Updates display name and description via Project annotations
-// On Kubernetes: No-op (returns success but doesn't update anything as k8s namespaces don't have displayName/description)
+// On OpenShift: Updates namespace annotations for display name/description
+// On Kubernetes: No-op (k8s namespaces don't have display metadata)
 func UpdateProject(c *gin.Context) {
 	projectName := c.Param("projectName")
-	reqK8s, reqDyn := GetK8sClientsForRequest(c)
+	reqK8s, _ := GetK8sClientsForRequest(c)
 
-	if reqK8s == nil || reqDyn == nil {
+	if reqK8s == nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid or missing token"})
 		return
 	}
@@ -634,244 +519,170 @@ func UpdateProject(c *gin.Context) {
 
 	isOpenShift := isOpenShiftCluster()
 
-	if isOpenShift {
-		// OpenShift: Update Project annotations
-		projGvr := GetOpenShiftProjectResource()
+	ctx, cancel := context.WithTimeout(context.Background(), defaultK8sTimeout)
+	defer cancel()
 
-		ctx, cancel := context.WithTimeout(context.Background(), defaultK8sTimeout)
-		defer cancel()
-
-		projObj, err := reqDyn.Resource(projGvr).Get(ctx, projectName, v1.GetOptions{})
-		if err != nil {
-			if errors.IsNotFound(err) {
-				c.JSON(http.StatusNotFound, gin.H{"error": "Project not found"})
-				return
-			}
-			log.Printf("Failed to get OpenShift Project %s: %v", projectName, err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get project"})
+	// Get namespace using user's token (verifies access)
+	ns, err := reqK8s.CoreV1().Namespaces().Get(ctx, projectName, v1.GetOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Project not found"})
 			return
 		}
-
-		// Validate it's an Ambient-managed project
-		project := projectFromUnstructured(projObj, true)
-		if project.Labels["ambient-code.io/managed"] != "true" {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Project not found or not an Ambient project"})
+		if errors.IsForbidden(err) {
+			log.Printf("User forbidden to update Namespace %s: %v", projectName, err)
+			c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized to update project"})
 			return
 		}
+		log.Printf("Failed to get Namespace %s: %v", projectName, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get project"})
+		return
+	}
 
-		// Update annotations
-		meta, ok := projObj.Object["metadata"].(map[string]interface{})
-		if !ok || meta == nil {
-			meta = map[string]interface{}{}
-			projObj.Object["metadata"] = meta
-		}
-		anns, ok := meta["annotations"].(map[string]interface{})
-		if !ok || anns == nil {
-			anns = map[string]interface{}{}
-			meta["annotations"] = anns
-		}
+	// Validate it's an Ambient-managed namespace
+	if ns.Labels["ambient-code.io/managed"] != "true" {
+		log.Printf("SECURITY: User attempted to update non-managed namespace: %s", projectName)
+		c.JSON(http.StatusNotFound, gin.H{"error": "Project not found or not an Ambient project"})
+		return
+	}
 
+	// On OpenShift: Update namespace annotations (backend SA needed for namespace updates)
+	if isOpenShift && K8sClientProjects != nil {
 		if req.DisplayName != "" {
-			anns["openshift.io/display-name"] = req.DisplayName
+			if ns.Annotations == nil {
+				ns.Annotations = make(map[string]string)
+			}
+			ns.Annotations["openshift.io/display-name"] = req.DisplayName
 		}
 		if req.Description != "" {
-			anns["openshift.io/description"] = req.Description
+			if ns.Annotations == nil {
+				ns.Annotations = make(map[string]string)
+			}
+			ns.Annotations["openshift.io/description"] = req.Description
 		}
 
 		ctx2, cancel2 := context.WithTimeout(context.Background(), defaultK8sTimeout)
 		defer cancel2()
 
-		_, err = reqDyn.Resource(projGvr).Update(ctx2, projObj, v1.UpdateOptions{})
+		// Update using backend SA (users can't update namespace annotations)
+		_, err = K8sClientProjects.CoreV1().Namespaces().Update(ctx2, ns, v1.UpdateOptions{})
 		if err != nil {
-			log.Printf("Failed to update OpenShift Project %s: %v", projectName, err)
+			log.Printf("Failed to update Namespace annotations for %s: %v", projectName, err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update project"})
 			return
 		}
 
-		// Read back and return
+		// Read back the updated namespace
 		ctx3, cancel3 := context.WithTimeout(context.Background(), defaultK8sTimeout)
 		defer cancel3()
 
-		projObj, _ = reqDyn.Resource(projGvr).Get(ctx3, projectName, v1.GetOptions{})
-		updatedProject := projectFromUnstructured(projObj, true)
-		c.JSON(http.StatusOK, updatedProject)
-	} else {
-		// Kubernetes: Just verify the namespace exists and return it
-		// Display name and description are not supported on vanilla k8s
-		ctx, cancel := context.WithTimeout(context.Background(), defaultK8sTimeout)
-		defer cancel()
-
-		ns, err := reqK8s.CoreV1().Namespaces().Get(ctx, projectName, v1.GetOptions{})
-		if err != nil {
-			if errors.IsNotFound(err) {
-				c.JSON(http.StatusNotFound, gin.H{"error": "Project not found"})
-				return
-			}
-			log.Printf("Failed to get Namespace %s: %v", projectName, err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get project"})
-			return
-		}
-
-		// Validate it's an Ambient-managed namespace
-		if ns.Labels["ambient-code.io/managed"] != "true" {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Project not found or not an Ambient project"})
-			return
-		}
-
-		project := projectFromNamespace(ns, false)
-		c.JSON(http.StatusOK, project)
+		ns, _ = K8sClientProjects.CoreV1().Namespaces().Get(ctx3, projectName, v1.GetOptions{})
 	}
+
+	project := projectFromNamespace(ns, isOpenShift)
+	c.JSON(http.StatusOK, project)
 }
 
 // DeleteProject handles DELETE /projects/:projectName
-// On OpenShift: Deletes the Project resource using user's credentials (user has permission as project admin)
-// On Kubernetes: Verifies user has ambient-project-admin role, then uses backend SA to delete namespace
-//
-//	(namespace deletion is cluster-scoped, so regular users can't delete directly)
+// Verifies user has access, then uses backend SA to delete namespace (both platforms)
+// Namespace deletion is cluster-scoped, so regular users can't delete directly
 func DeleteProject(c *gin.Context) {
 	projectName := c.Param("projectName")
-	reqK8s, reqDyn := GetK8sClientsForRequest(c)
+	reqK8s, _ := GetK8sClientsForRequest(c)
 
-	if reqK8s == nil || reqDyn == nil {
+	if reqK8s == nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid or missing token"})
 		return
 	}
 
-	isOpenShift := isOpenShiftCluster()
+	ctx, cancel := context.WithTimeout(context.Background(), defaultK8sTimeout)
+	defer cancel()
 
-	if isOpenShift {
-		// OpenShift: Delete Project resource using user's credentials
-		projGvr := GetOpenShiftProjectResource()
-		var dynClient dynamic.Interface = reqDyn
+	// Verify namespace exists and is Ambient-managed (using backend SA)
+	if K8sClientProjects == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete project"})
+		return
+	}
 
-		ctx, cancel := context.WithTimeout(context.Background(), defaultK8sTimeout)
-		defer cancel()
-
-		projObj, err := dynClient.Resource(projGvr).Get(ctx, projectName, v1.GetOptions{})
-		if err != nil {
-			if errors.IsNotFound(err) {
-				c.JSON(http.StatusNotFound, gin.H{"error": "Project not found"})
-				return
-			}
-			if errors.IsUnauthorized(err) || errors.IsForbidden(err) {
-				log.Printf("User forbidden to delete OpenShift Project %s: %v", projectName, err)
-				c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized to access project"})
-				return
-			}
-			log.Printf("Failed to get OpenShift Project %s: %v", projectName, err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get project"})
+	ns, err := K8sClientProjects.CoreV1().Namespaces().Get(ctx, projectName, v1.GetOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Project not found"})
 			return
 		}
+		log.Printf("Failed to get namespace %s: %v", projectName, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get project"})
+		return
+	}
 
-		// Validate it's an Ambient-managed project
-		project := projectFromUnstructured(projObj, true)
-		if project.Labels["ambient-code.io/managed"] != "true" {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Project not found or not an Ambient project"})
+	// Validate it's an Ambient-managed namespace
+	if ns.Labels["ambient-code.io/managed"] != "true" {
+		log.Printf("SECURITY: User attempted to delete non-managed namespace: %s", projectName)
+		c.JSON(http.StatusNotFound, gin.H{"error": "Project not found or not an Ambient project"})
+		return
+	}
+
+	// Verify user has access (use SubjectAccessReview with user's token)
+	hasAccess, err := checkUserCanAccessNamespace(reqK8s, projectName)
+	if err != nil {
+		log.Printf("DeleteProject: Failed to check access for %s: %v", projectName, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify permissions"})
+		return
+	}
+
+	if !hasAccess {
+		log.Printf("User attempted to delete project %s without access", projectName)
+		c.JSON(http.StatusForbidden, gin.H{"error": "Insufficient permissions to delete project"})
+		return
+	}
+
+	// Delete the namespace using backend SA (after verifying user has access)
+	ctx2, cancel2 := context.WithTimeout(context.Background(), defaultK8sTimeout)
+	defer cancel2()
+
+	err = K8sClientProjects.CoreV1().Namespaces().Delete(ctx2, projectName, v1.DeleteOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Project not found"})
 			return
 		}
-
-		// Delete the Project using user's credentials (OpenShift will cascade delete the namespace)
-		ctx2, cancel2 := context.WithTimeout(context.Background(), defaultK8sTimeout)
-		defer cancel2()
-
-		err = dynClient.Resource(projGvr).Delete(ctx2, projectName, v1.DeleteOptions{})
-		if err != nil {
-			if errors.IsNotFound(err) {
-				c.JSON(http.StatusNotFound, gin.H{"error": "Project not found"})
-				return
-			}
-			if errors.IsForbidden(err) {
-				log.Printf("User forbidden to delete OpenShift Project %s: %v", projectName, err)
-				c.JSON(http.StatusForbidden, gin.H{"error": "Insufficient permissions to delete project"})
-				return
-			}
-			log.Printf("Failed to delete OpenShift Project %s: %v", projectName, err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete project"})
-			return
-		}
-	} else {
-		// Kubernetes: Verify namespace exists and is Ambient-managed
-		ctx, cancel := context.WithTimeout(context.Background(), defaultK8sTimeout)
-		defer cancel()
-
-		ns, err := K8sClientProjects.CoreV1().Namespaces().Get(ctx, projectName, v1.GetOptions{})
-		if err != nil {
-			if errors.IsNotFound(err) {
-				c.JSON(http.StatusNotFound, gin.H{"error": "Project not found"})
-				return
-			}
-			log.Printf("Failed to get namespace %s: %v", projectName, err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get project"})
-			return
-		}
-
-		// Validate it's an Ambient-managed namespace
-		if ns.Labels["ambient-code.io/managed"] != "true" {
-			log.Printf("SECURITY: User attempted to delete non-managed namespace: %s", projectName)
-			c.JSON(http.StatusNotFound, gin.H{"error": "Project not found or not an Ambient project"})
-			return
-		}
-
-		// Verify user has ambient-project-admin role binding in this namespace
-		userSubject, err := getUserSubjectFromContext(c)
-		if err != nil {
-			log.Printf("DeleteProject: Failed to extract user subject: %v", err)
-			c.JSON(http.StatusForbidden, gin.H{"error": "Insufficient permissions to delete project"})
-			return
-		}
-
-		hasAdminAccess, err := checkUserHasAdminRoleBinding(projectName, userSubject)
-		if err != nil {
-			log.Printf("DeleteProject: Failed to check role binding for %s in %s: %v", userSubject, projectName, err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify permissions"})
-			return
-		}
-
-		if !hasAdminAccess {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Insufficient permissions to delete project"})
-			return
-		}
-
-		// Delete the namespace using backend SA (after verifying user has admin role)
-		// On vanilla Kubernetes, regular users can't delete namespaces directly (cluster-scoped resource).
-		// We verify the user has the ambient-project-admin role binding, then use backend SA to perform deletion.
-
-		// Defense-in-depth: Double-check namespace is still Ambient-managed before deletion
-		ctx2, cancel2 := context.WithTimeout(context.Background(), defaultK8sTimeout)
-		defer cancel2()
-
-		verifyNs, verifyErr := K8sClientProjects.CoreV1().Namespaces().Get(ctx2, projectName, v1.GetOptions{})
-		if verifyErr != nil {
-			log.Printf("Failed to verify namespace %s before deletion: %v", projectName, verifyErr)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify project"})
-			return
-		}
-		if verifyNs.Labels["ambient-code.io/managed"] != "true" {
-			log.Printf("SECURITY: Namespace %s lost managed label, aborting deletion", projectName)
-			c.JSON(http.StatusForbidden, gin.H{"error": "Cannot delete non-managed namespace"})
-			return
-		}
-
-		ctx3, cancel3 := context.WithTimeout(context.Background(), defaultK8sTimeout)
-		defer cancel3()
-
-		err = K8sClientProjects.CoreV1().Namespaces().Delete(ctx3, projectName, v1.DeleteOptions{})
-		if err != nil {
-			if errors.IsNotFound(err) {
-				c.JSON(http.StatusNotFound, gin.H{"error": "Project not found"})
-				return
-			}
-			log.Printf("Failed to delete namespace %s: %v", projectName, err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete project"})
-			return
-		}
+		log.Printf("Failed to delete namespace %s: %v", projectName, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete project"})
+		return
 	}
 
 	c.Status(http.StatusNoContent)
 }
 
+// checkUserCanAccessNamespace uses SelfSubjectAccessReview to verify if user can access a namespace
+// This is the proper Kubernetes-native way - lets RBAC engine determine access from ALL sources
+// (RoleBindings, ClusterRoleBindings, groups, etc.)
+func checkUserCanAccessNamespace(userClient *kubernetes.Clientset, namespace string) (bool, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	// Check if user can list agenticsessions in the namespace (a good proxy for project access)
+	ssar := &authv1.SelfSubjectAccessReview{
+		Spec: authv1.SelfSubjectAccessReviewSpec{
+			ResourceAttributes: &authv1.ResourceAttributes{
+				Namespace: namespace,
+				Verb:      "list",
+				Group:     "vteam.ambient-code",
+				Resource:  "agenticsessions",
+			},
+		},
+	}
+
+	result, err := userClient.AuthorizationV1().SelfSubjectAccessReviews().Create(ctx, ssar, v1.CreateOptions{})
+	if err != nil {
+		return false, err
+	}
+
+	return result.Status.Allowed, nil
+}
+
 // checkUserHasAdminRoleBinding verifies if a user has the ambient-project-admin role binding in a namespace
-// Uses direct GET for efficiency instead of listing all role bindings
+// Only used for deletion verification on vanilla k8s
 func checkUserHasAdminRoleBinding(namespace, userSubject string) (bool, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
