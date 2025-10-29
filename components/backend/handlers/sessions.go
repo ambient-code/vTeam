@@ -626,7 +626,7 @@ func provisionRunnerTokenForSession(c *gin.Context, reqK8s *kubernetes.Clientset
 		}
 	}
 
-	// Create Role with least-privilege for updating AgenticSession status
+	// Create Role with least-privilege for updating AgenticSession status and annotations
 	roleName := fmt.Sprintf("ambient-session-%s-role", sessionName)
 	role := &rbacv1.Role{
 		ObjectMeta: v1.ObjectMeta{
@@ -643,7 +643,7 @@ func provisionRunnerTokenForSession(c *gin.Context, reqK8s *kubernetes.Clientset
 			{
 				APIGroups: []string{"vteam.ambient-code"},
 				Resources: []string{"agenticsessions"},
-				Verbs:     []string{"get", "list", "watch"},
+				Verbs:     []string{"get", "list", "watch", "update", "patch"}, // Added update, patch for annotations
 			},
 			{
 				APIGroups: []string{"authorization.k8s.io"},
@@ -652,8 +652,16 @@ func provisionRunnerTokenForSession(c *gin.Context, reqK8s *kubernetes.Clientset
 			},
 		},
 	}
+	// Try to create or update the Role to ensure it has latest permissions
 	if _, err := reqK8s.RbacV1().Roles(project).Create(c.Request.Context(), role, v1.CreateOptions{}); err != nil {
-		if !errors.IsAlreadyExists(err) {
+		if errors.IsAlreadyExists(err) {
+			// Role exists - update it to ensure it has the latest permissions (including update/patch)
+			log.Printf("Role %s already exists, updating with latest permissions", roleName)
+			if _, err := reqK8s.RbacV1().Roles(project).Update(c.Request.Context(), role, v1.UpdateOptions{}); err != nil {
+				return fmt.Errorf("update Role: %w", err)
+			}
+			log.Printf("Successfully updated Role %s with annotation update permissions", roleName)
+		} else {
 			return fmt.Errorf("create Role: %w", err)
 		}
 	}
