@@ -8,6 +8,7 @@ metadata:
 spec:
   accessModes:
     - ReadWriteOnce  # single backend replica mounted to RWO PVC
+  storageClassName: crc-csi-hostpath-provisioner
   resources:
     requests:
       storage: 5Gi
