@@ -216,16 +216,23 @@ class ClaudeCodeAdapter:
                 )
             
             # Use SDK's built-in session resumption if continuing
-            # The CLI stores session state in ~/.claude which is now persisted in PVC
+            # The CLI stores session state in /app/.claude which is now persisted in PVC
+            # We need to get the SDK's UUID session ID, not our K8s session name
             if is_continuation and parent_session_id:
                 try:
-                    options.resume = parent_session_id  # type: ignore[attr-defined]
-                    options.fork_session = False  # type: ignore[attr-defined]
-                    logging.info(f"Enabled SDK session resumption: resume={parent_session_id[:8]}, fork=False")
-                    await self._send_log(f"🔄 Resuming session {parent_session_id[:8]} using SDK built-in resumption")
+                    # Fetch the SDK session ID from the parent session's CR status
+                    sdk_resume_id = await self._get_sdk_session_id(parent_session_id)
+                    if sdk_resume_id:
+                        options.resume = sdk_resume_id  # type: ignore[attr-defined]
+                        options.fork_session = False  # type: ignore[attr-defined]
+                        logging.info(f"Enabled SDK session resumption: resume={sdk_resume_id[:8]}, fork=False")
+                        await self._send_log(f"🔄 Resuming SDK session {sdk_resume_id[:8]}")
+                    else:
+                        logging.warning(f"Parent session {parent_session_id} has no stored SDK session ID, starting fresh")
+                        await self._send_log("⚠️ No SDK session ID found, starting fresh")
                 except Exception as e:
                     logging.warning(f"Failed to set resume options: {e}")
-                    await self._send_log(f"⚠️ SDK resume not available, starting fresh")
+                    await self._send_log(f"⚠️ SDK resume failed: {e}")
 
             # Best-effort set add_dirs if supported by SDK version
             try:
@@ -277,10 +284,23 @@ class ClaudeCodeAdapter:
             # Determine interactive mode once for this run
             interactive = str(self.context.get_env('INTERACTIVE', 'false')).strip().lower() in ('1', 'true', 'yes')
 
+            sdk_session_id = None
+            
             async def process_response_stream(client_obj):
-                nonlocal result_payload
+                nonlocal result_payload, sdk_session_id
                 async for message in client_obj.receive_response():
                     logging.info(f"[ClaudeSDKClient]: {message}")
+
+                    # Capture SDK session ID from init message
+                    if isinstance(message, SystemMessage):
+                        if message.subtype == 'init' and message.data.get('session_id'):
+                            sdk_session_id = message.data.get('session_id')
+                            logging.info(f"Captured SDK session ID: {sdk_session_id}")
+                            # Store it for future resumption
+                            try:
+                                await self._update_cr_status({"session_id": sdk_session_id})
+                            except Exception as e:
+                                logging.warning(f"Failed to store SDK session ID in CR: {e}")
 
                     if isinstance(message, (AssistantMessage, UserMessage)):
                         for block in getattr(message, 'content', []) or []:
@@ -1023,6 +1043,69 @@ class ClaudeCodeAdapter:
         # Redact basic auth credentials
         text = re.sub(r'://[^:@\s]+:[^@\s]+@', '://***REDACTED***@', text)
         return text
+
+    async def _get_sdk_session_id(self, session_name: str) -> str:
+        """Fetch the SDK session ID (UUID) from the parent session's CR status."""
+        status_url = self._compute_status_url()
+        if not status_url:
+            logging.warning("Cannot fetch SDK session ID: status URL not available")
+            return ""
+        
+        try:
+            # Transform status URL to point to parent session
+            from urllib.parse import urlparse as _up, urlunparse as _uu
+            p = _up(status_url)
+            path_parts = [pt for pt in p.path.split('/') if pt]
+            
+            if 'projects' in path_parts and 'agentic-sessions' in path_parts:
+                proj_idx = path_parts.index('projects')
+                project = path_parts[proj_idx + 1] if len(path_parts) > proj_idx + 1 else ''
+                # Point to parent session's status
+                new_path = f"/api/projects/{project}/agentic-sessions/{session_name}"
+                url = _uu((p.scheme, p.netloc, new_path, '', '', ''))
+                logging.info(f"Fetching SDK session ID from: {url}")
+            else:
+                logging.error("Could not parse project path from status URL")
+                return ""
+        except Exception as e:
+            logging.error(f"Failed to construct session URL: {e}")
+            return ""
+        
+        req = _urllib_request.Request(url, headers={'Content-Type': 'application/json'}, method='GET')
+        bot = (os.getenv('BOT_TOKEN') or '').strip()
+        if bot:
+            req.add_header('Authorization', f'Bearer {bot}')
+        
+        loop = asyncio.get_event_loop()
+        def _do_req():
+            try:
+                with _urllib_request.urlopen(req, timeout=15) as resp:
+                    return resp.read().decode('utf-8', errors='replace')
+            except _urllib_error.HTTPError as he:
+                logging.warning(f"SDK session ID fetch HTTP {he.code}")
+                return ''
+            except Exception as e:
+                logging.warning(f"SDK session ID fetch failed: {e}")
+                return ''
+        
+        resp_text = await loop.run_in_executor(None, _do_req)
+        if not resp_text:
+            return ""
+        
+        try:
+            data = _json.loads(resp_text)
+            # Look for session_id in status
+            status = data.get('status', {})
+            sdk_session_id = status.get('session_id', '')
+            if sdk_session_id:
+                logging.info(f"Found SDK session ID: {sdk_session_id[:8]}")
+                return sdk_session_id
+            else:
+                logging.warning(f"Parent session {session_name} has no session_id in status")
+                return ""
+        except Exception as e:
+            logging.error(f"Failed to parse SDK session ID: {e}")
+            return ""
 
     async def _fetch_github_token(self) -> str:
         # Try cached value from env first
