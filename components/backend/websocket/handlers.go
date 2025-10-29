@@ -269,19 +269,25 @@ func GetSessionMessagesClaudeFormat(c *gin.Context) {
 // transformToClaudeFormat converts SessionMessage to Claude SDK control protocol format
 // The SDK's connect() uses a control protocol that wraps API messages in an envelope
 //
-// Required format (from client.py lines 184-190):
+// Required format (from client.py lines 184-190 and message_parser.py):
+//
+// User message:
 //
 //	{
 //	  "type": "user",
 //	  "message": {"role": "user", "content": "..."},
-//	  "parent_tool_use_id": "tool_abc123"  // optional: links message to tool call chain
+//	  "parent_tool_use_id": "tool_abc123"  // optional
 //	}
 //
-// For tool results, there are TWO levels of tool linking:
-//  1. Message-level: "parent_tool_use_id" - links this message to the tool call chain
-//  2. Content-level: Inside tool_result blocks - {"type": "tool_result", "tool_use_id": "...", "content": "..."}
+// Assistant message:
 //
-// Only user messages are accepted - the SDK replays the conversation from user inputs
+//	{
+//	  "type": "assistant",
+//	  "message": {"role": "assistant", "content": [...], "model": "claude-3-7-sonnet-latest"},
+//	  "parent_tool_use_id": "tool_abc123"  // optional
+//	}
+//
+// Both user and assistant messages are included for full conversation replay with tool calls
 // This is different from the standard Messages API which uses simpler {"role": "user", "content": "..."}
 func transformToClaudeFormat(messages []SessionMessage) []map[string]interface{} {
 	result := []map[string]interface{}{}
@@ -321,9 +327,32 @@ func transformToClaudeFormat(messages []SessionMessage) []map[string]interface{}
 			}
 
 		case "agent_message":
-			// Skip assistant messages - SDK connect() only accepts user messages
-			// The SDK will replay the conversation and regenerate assistant responses
-			log.Printf("transformToClaudeFormat: skipping agent_message (SDK only accepts user messages)")
+			// Extract assistant content - can be text blocks, tool_use blocks, thinking blocks, etc.
+			content := extractAssistantMessageContent(msg.Payload)
+			if content != nil {
+				// Extract model and parent_tool_use_id
+				model := extractModel(msg.Payload)
+				parentToolUseID := extractParentToolUseID(msg.Payload)
+
+				// SDK control protocol format for assistant messages
+				message := map[string]interface{}{
+					"type": "assistant",
+					"message": map[string]interface{}{
+						"role":    "assistant",
+						"content": content,
+						"model":   model,
+					},
+				}
+				// Only include parent_tool_use_id if it exists
+				if parentToolUseID != "" {
+					message["parent_tool_use_id"] = parentToolUseID
+				}
+
+				result = append(result, message)
+				log.Printf("transformToClaudeFormat: added assistant message (model=%s, parent_tool_use_id=%s)", model, parentToolUseID)
+			} else {
+				log.Printf("transformToClaudeFormat: skipping agent_message with no extractable content")
+			}
 
 		default:
 			log.Printf("transformToClaudeFormat: skipping message with unknown type=%s (normalized=%s)", msg.Type, normalizedType)
@@ -331,22 +360,25 @@ func transformToClaudeFormat(messages []SessionMessage) []map[string]interface{}
 	}
 
 	// Validate all messages have proper structure
-	// SDK connect() only accepts type: "user" or "control"
+	// SDK connect() accepts type: "user", "assistant", or "control"
 	validated := []map[string]interface{}{}
 	for i, msg := range result {
 		msgType, hasType := msg["type"].(string)
-		if !hasType || (msgType != "user" && msgType != "control") {
-			log.Printf("transformToClaudeFormat: INVALID message at index %d - type must be 'user' or 'control', got: %v", i, msgType)
+		if !hasType || (msgType != "user" && msgType != "assistant" && msgType != "control") {
+			log.Printf("transformToClaudeFormat: INVALID message at index %d - type must be 'user', 'assistant', or 'control', got: %v", i, msgType)
 			continue
 		}
-		if msg["content"] == nil {
-			log.Printf("transformToClaudeFormat: INVALID message at index %d - missing content", i)
+
+		// Validate message envelope structure
+		if msg["message"] == nil {
+			log.Printf("transformToClaudeFormat: INVALID message at index %d - missing 'message' envelope", i)
 			continue
 		}
+
 		validated = append(validated, msg)
 	}
 
-	log.Printf("transformToClaudeFormat: returning %d validated user messages (SDK will replay conversation)", len(validated))
+	log.Printf("transformToClaudeFormat: returning %d validated messages for SDK", len(validated))
 	return validated
 }
 
@@ -444,6 +476,16 @@ func extractAssistantMessageContent(payload map[string]interface{}) interface{} 
 	}
 
 	return nil
+}
+
+func extractModel(payload map[string]interface{}) string {
+	// Check for model at top level
+	if model, ok := payload["model"].(string); ok && model != "" {
+		return model
+	}
+
+	// Default model if not specified
+	return "claude-3-7-sonnet-latest"
 }
 
 func extractParentToolUseID(payload map[string]interface{}) string {

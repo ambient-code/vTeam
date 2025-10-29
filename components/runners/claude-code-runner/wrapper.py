@@ -364,6 +364,11 @@ class ClaudeCodeAdapter:
 
                 # Initial prompt (if any)
                 if prompt and prompt.strip():
+                    # Store the initial prompt as a user message so it appears in history for continuation
+                    await self.shell._send_message(
+                        MessageType.USER_MESSAGE,
+                        {"content": prompt},
+                    )
                     await process_one_prompt(prompt)
 
                 if interactive:

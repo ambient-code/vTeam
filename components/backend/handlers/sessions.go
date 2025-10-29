@@ -1295,6 +1295,23 @@ func StartSession(c *gin.Context) {
 			// Non-fatal: continue anyway, operator may retry
 		} else {
 			log.Printf("StartSession: Successfully regenerated runner token for continuation")
+
+			// Delete the old runner pod so operator creates new one with fresh token
+			// The pod won't reload the secret - it was injected as env var at pod creation
+			jobName := fmt.Sprintf("ambient-runner-%s", sessionName)
+			pods, err := reqK8s.CoreV1().Pods(project).List(c.Request.Context(), v1.ListOptions{
+				LabelSelector: fmt.Sprintf("job-name=%s", jobName),
+			})
+			if err == nil && len(pods.Items) > 0 {
+				for _, pod := range pods.Items {
+					log.Printf("StartSession: Deleting old runner pod %s to force fresh token reload", pod.Name)
+					if err := reqK8s.CoreV1().Pods(project).Delete(c.Request.Context(), pod.Name, v1.DeleteOptions{}); err != nil {
+						log.Printf("Warning: failed to delete old runner pod %s: %v", pod.Name, err)
+					} else {
+						log.Printf("StartSession: Successfully deleted old runner pod %s", pod.Name)
+					}
+				}
+			}
 		}
 	} else {
 		log.Printf("StartSession: Not setting parent-session-id (first run, no completion time)")
