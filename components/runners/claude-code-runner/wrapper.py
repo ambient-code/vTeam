@@ -158,6 +158,7 @@ class ClaudeCodeAdapter:
                 raise RuntimeError("ANTHROPIC_API_KEY is required for Claude Code SDK")
 
             # Check if continuing from previous session
+            # If PARENT_SESSION_ID is set, use SDK's built-in resume functionality
             parent_session_id = self.context.get_env('PARENT_SESSION_ID', '').strip()
             is_continuation = bool(parent_session_id)
 
@@ -203,6 +204,7 @@ class ClaudeCodeAdapter:
                     allowed_tools.append(f"mcp__{server_name}")
                 logging.info(f"MCP tool permissions granted for servers: {list(mcp_servers.keys())}")
 
+            # Configure SDK options with session resumption if continuing
             options = ClaudeAgentOptions(
                 cwd=cwd_path, 
                 permission_mode="acceptEdits",
@@ -212,6 +214,18 @@ class ClaudeCodeAdapter:
                 system_prompt={"type":"preset",
                                "preset":"claude_code"}
                 )
+            
+            # Use SDK's built-in session resumption if continuing
+            # The CLI stores session state in ~/.claude which is now persisted in PVC
+            if is_continuation and parent_session_id:
+                try:
+                    options.resume = parent_session_id  # type: ignore[attr-defined]
+                    options.fork_session = False  # type: ignore[attr-defined]
+                    logging.info(f"Enabled SDK session resumption: resume={parent_session_id[:8]}, fork=False")
+                    await self._send_log(f"🔄 Resuming session {parent_session_id[:8]} using SDK built-in resumption")
+                except Exception as e:
+                    logging.warning(f"Failed to set resume options: {e}")
+                    await self._send_log(f"⚠️ SDK resume not available, starting fresh")
 
             # Best-effort set add_dirs if supported by SDK version
             try:
@@ -330,80 +344,11 @@ class ClaudeCodeAdapter:
                                 {"type": "result.message", "payload": result_payload},
                             )
 
-            # HARDCODED TEST: Full conversation with user, assistant, and tool use
-            message_history = [
-                # User prompt
-                {
-                    "type": "user",
-                    "message": {
-                        "role": "user",
-                        "content": "Create a file called poem.txt with a short poem"
-                    }
-                },
-                # Assistant response with text
-                {
-                    "type": "user",  # Trying envelope type=user
-                    "message": {
-                        "role": "assistant",  # But assistant role
-                        "content": [
-                            {"type": "text", "text": "I'll create a poem file for you."}
-                        ],
-                        "model": "claude-3-7-sonnet-latest"
-                    }
-                },
-                # # Assistant with tool_use
-                # {
-                #     "type": "user",  # Envelope type=user
-                #     "message": {
-                #         "role": "assistant",  # But assistant role with tool_use
-                #         "content": [
-                #             {
-                #                 "type": "tool_use",
-                #                 "id": "test_tool_123",
-                #                 "name": "Write",
-                #                 "input": {
-                #                     "file_path": "/workspace/poem.txt",
-                #                     "content": "Roses are red\\nViolets are blue"
-                #                 }
-                #             }
-                #         ],
-                #         "model": "claude-3-7-sonnet-latest"
-                #     }
-                # },
-                # # Tool result
-                # {
-                #     "type": "user",
-                #     "message": {
-                #         "role": "user",
-                #         "content": [
-                #             {
-                #                 "type": "tool_result",
-                #                 "tool_use_id": "test_tool_123",
-                #                 "content": "File created successfully"
-                #             }
-                #         ]
-                #     }
-                # }
-            ]
-            await self._send_log(f"🧪 TESTING with {len(message_history)} hardcoded messages (user+assistant+tool_use)...")
-            logging.info(f"Test messages: {len(message_history)} messages with roles: user, assistant, tool_use, tool_result")
-            
-            # Create message stream that yields history then stays open forever
-            async def continuous_stream():
-                # Yield all history messages
-                for msg in message_history:
-                    yield msg
-                # Then block forever to keep stdin open for interactive query() calls
-                await asyncio.Event().wait()  # Never completes
-            
-            # Create client and connect with continuous stream
-            client = ClaudeSDKClient(options=options)
-            await client.connect(continuous_stream())
-            
-            try:
-                if message_history:
-                    await self._send_log("✅ Session context restored successfully")
-                    logging.info("Session history seeded successfully into Claude client")
+            # Use async with - SDK will automatically resume if options.resume is set
+            async with ClaudeSDKClient(options=options) as client:
+                if is_continuation and parent_session_id:
+                    await self._send_log("✅ SDK resuming session with full context")
+                    logging.info(f"SDK is handling session resumption for {parent_session_id}")
                 
                 async def process_one_prompt(text: str):
                     await self.shell._send_message(MessageType.AGENT_RUNNING, {})
@@ -444,21 +389,18 @@ class ClaudeCodeAdapter:
                         else:
                             await self._send_log({"level": "debug", "message": f"ignored.message: {mtype_raw}"})
 
-                # Note: All output is streamed via WebSocket, not collected here
-                await self._check_pr_intent("")
+            # Note: All output is streamed via WebSocket, not collected here
+            await self._check_pr_intent("")
 
-                # Return success - result_payload may be None if SDK didn't send ResultMessage
-                # (which can happen legitimately for some operations like git push)
-                return {
-                    "success": True,
-                    "result": result_payload,
-                    "returnCode": 0,
-                    "stdout": "",
-                    "stderr": ""
-                }
-            finally:
-                # Disconnect client
-                await client.disconnect()
+            # Return success - result_payload may be None if SDK didn't send ResultMessage
+            # (which can happen legitimately for some operations like git push)
+            return {
+                "success": True,
+                "result": result_payload,
+                "returnCode": 0,
+                "stdout": "",
+                "stderr": ""
+            }
         except Exception as e:
             logging.error(f"Failed to run Claude Code SDK: {e}")
             return {
@@ -1081,65 +1023,6 @@ class ClaudeCodeAdapter:
         # Redact basic auth credentials
         text = re.sub(r'://[^:@\s]+:[^@\s]+@', '://***REDACTED***@', text)
         return text
-
-    async def _fetch_session_history(self, session_id: str) -> list[dict] | None:
-        """Fetch message history from backend in Claude SDK format."""
-        status_url = self._compute_status_url()
-        if not status_url:
-            logging.warning("Cannot fetch session history: status URL not available")
-            return None
-        
-        try:
-            from urllib.parse import urlparse as _up, urlunparse as _uu
-            p = _up(status_url)
-            path_parts = [pt for pt in p.path.split('/') if pt]
-            
-            if 'projects' in path_parts and 'agentic-sessions' in path_parts:
-                proj_idx = path_parts.index('projects')
-                project = path_parts[proj_idx + 1] if len(path_parts) > proj_idx + 1 else ''
-                new_path = f"/api/projects/{project}/sessions/{session_id}/messages/claude-format"
-                url = _uu((p.scheme, p.netloc, new_path, '', '', ''))
-                logging.info(f"Fetching session history from: {url}")
-            else:
-                logging.error("Could not parse project path from status URL")
-                return None
-        except Exception as e:
-            logging.error(f"Failed to construct history URL: {e}")
-            return None
-        
-        req = _urllib_request.Request(url, headers={'Content-Type': 'application/json'}, method='GET')
-        bot = (os.getenv('BOT_TOKEN') or '').strip()
-        if bot:
-            req.add_header('Authorization', f'Bearer {bot}')
-        
-        loop = asyncio.get_event_loop()
-        def _do_req():
-            try:
-                with _urllib_request.urlopen(req, timeout=15) as resp:
-                    return resp.read().decode('utf-8', errors='replace')
-            except _urllib_error.HTTPError as he:
-                logging.warning(f"Session history fetch HTTP {he.code}")
-                return ''
-            except Exception as e:
-                logging.warning(f"Session history fetch failed: {e}")
-                return ''
-        
-        resp_text = await loop.run_in_executor(None, _do_req)
-        if not resp_text:
-            return None
-        
-        try:
-            data = _json.loads(resp_text)
-            messages = data.get('messages', [])
-            if not messages:
-                logging.info("No message history found for continuation")
-                return None
-            
-            logging.info(f"Fetched {len(messages)} messages for session continuation")
-            return messages
-        except Exception as e:
-            logging.error(f"Failed to parse session history: {e}")
-            return None
 
     async def _fetch_github_token(self) -> str:
         # Try cached value from env first

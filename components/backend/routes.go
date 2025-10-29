@@ -64,7 +64,7 @@ func registerRoutes(r *gin.Engine, jiraHandler *jira.Handler) {
 
 			projectGroup.GET("/sessions/:sessionId/ws", websocket.HandleSessionWebSocket)
 			projectGroup.GET("/sessions/:sessionId/messages", websocket.GetSessionMessagesWS)
-			projectGroup.GET("/sessions/:sessionId/messages/claude-format", websocket.GetSessionMessagesClaudeFormat)
+			// Removed: /messages/claude-format - Using SDK's built-in resume with persisted ~/.claude state
 			projectGroup.POST("/sessions/:sessionId/messages", websocket.PostSessionMessageWS)
 			projectGroup.POST("/rfe-workflows/:id/jira", jiraHandler.PublishWorkflowFileToJira)
 			projectGroup.GET("/rfe-workflows/:id/jira", handlers.GetWorkflowJira)

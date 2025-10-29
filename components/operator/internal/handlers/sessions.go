@@ -408,6 +408,9 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 
 							VolumeMounts: []corev1.VolumeMount{
 								{Name: "workspace", MountPath: "/workspace", ReadOnly: false},
+								// Mount .claude directory for session state persistence
+								// This enables SDK's built-in resume functionality
+								{Name: "workspace", MountPath: "/root/.claude", SubPath: fmt.Sprintf("sessions/%s/.claude", name), ReadOnly: false},
 							},
 
 							Env: func() []corev1.EnvVar {
