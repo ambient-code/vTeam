@@ -328,12 +328,12 @@ func transformToClaudeFormat(messages []SessionMessage) []map[string]interface{}
 				// Extract model and parent_tool_use_id
 				parentToolUseID := extractParentToolUseID(msg.Payload)
 
-				// SDK control protocol: Use "user" as envelope type, but "assistant" as message role
-				// The envelope type indicates who's sending (user/control), not the conversation role
+				// SDK control protocol: BOTH envelope type AND message role must be "user"
+				// CLI validates both levels and rejects role="assistant"
 				message := map[string]interface{}{
-					"type": "user", // Control protocol envelope - always "user" for messages we send
+					"type": "user", // Control protocol envelope
 					"message": map[string]interface{}{
-						"role":    "user", // Actual conversation role
+						"role":    "user", // Must be "user" even for assistant messages!
 						"content": content,
 					},
 				}
@@ -352,6 +352,8 @@ func transformToClaudeFormat(messages []SessionMessage) []map[string]interface{}
 			log.Printf("transformToClaudeFormat: skipping message with unknown type=%s (normalized=%s)", msg.Type, normalizedType)
 		}
 	}
+
+	log.Printf("transformToClaudeFormat: result: %+v", result)
 
 	// Validate all messages have proper structure
 	// Envelope "type" must be "user" or "control" (control protocol level)
