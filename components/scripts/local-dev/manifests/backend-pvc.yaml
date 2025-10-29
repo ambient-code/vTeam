@@ -3,7 +3,7 @@ kind: PersistentVolumeClaim
 metadata:
   name: backend-state-pvc
   labels:
-    app: vteam-backend
+    app: backend-api
     component: state-storage
 spec:
   accessModes:

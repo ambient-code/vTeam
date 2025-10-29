@@ -15,6 +15,13 @@ spec:
         app: vteam-backend
     spec:
       serviceAccountName: backend-api
+      initContainers:
+      - name: init-workspace
+        image: image-registry.openshift-image-registry.svc:5000/vteam-dev/vteam-backend:latest
+        command: ['sh', '-c', 'mkdir -p /workspace/sessions && chmod 755 /workspace/sessions']
+        volumeMounts:
+        - name: backend-state
+          mountPath: /workspace
       containers:
       - name: backend
         image: image-registry.openshift-image-registry.svc:5000/vteam-dev/vteam-backend:latest
