@@ -351,26 +351,26 @@ class ClaudeCodeAdapter:
                         "model": "claude-3-7-sonnet-latest"
                     }
                 },
-                # Assistant with tool_use
-                {
-                    "type": "user",  # Envelope type=user
-                    "message": {
-                        "role": "assistant",  # But assistant role with tool_use
-                        "content": [
-                            {
-                                "type": "tool_use",
-                                "id": "test_tool_123",
-                                "name": "Write",
-                                "input": {
-                                    "file_path": "/workspace/poem.txt",
-                                    "content": "Roses are red\\nViolets are blue"
-                                }
-                            }
-                        ],
-                        "model": "claude-3-7-sonnet-latest"
-                    }
-                },
-                # Tool result
+                # # Assistant with tool_use
+                # {
+                #     "type": "user",  # Envelope type=user
+                #     "message": {
+                #         "role": "assistant",  # But assistant role with tool_use
+                #         "content": [
+                #             {
+                #                 "type": "tool_use",
+                #                 "id": "test_tool_123",
+                #                 "name": "Write",
+                #                 "input": {
+                #                     "file_path": "/workspace/poem.txt",
+                #                     "content": "Roses are red\\nViolets are blue"
+                #                 }
+                #             }
+                #         ],
+                #         "model": "claude-3-7-sonnet-latest"
+                #     }
+                # },
+                # # Tool result
                 {
                     "type": "user",
                     "message": {
