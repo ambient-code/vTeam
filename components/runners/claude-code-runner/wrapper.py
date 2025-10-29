@@ -330,18 +330,63 @@ class ClaudeCodeAdapter:
                                 {"type": "result.message", "payload": result_payload},
                             )
 
-            # Fetch message history for continuation
-            message_history = []
-            if is_continuation and parent_session_id:
-                await self._send_log(f"🔄 Continuing from session {parent_session_id[:8]}...")
-                try:
-                    message_history = await self._fetch_session_history(parent_session_id) or []
-                    if message_history:
-                        await self._send_log(f"📚 Will restore {len(message_history)} messages...")
-                        logging.info(f"Prepared {len(message_history)} messages for seeding")
-                except Exception as e:
-                    logging.error(f"Failed to fetch session history: {e}", exc_info=True)
-                    await self._send_log(f"⚠️ Could not fetch history: {e}")
+            # HARDCODED TEST: Full conversation with user, assistant, and tool use
+            message_history = [
+                # User prompt
+                {
+                    "type": "user",
+                    "message": {
+                        "role": "user",
+                        "content": "Create a file called poem.txt with a short poem"
+                    }
+                },
+                # Assistant response with text
+                {
+                    "type": "user",  # Trying envelope type=user
+                    "message": {
+                        "role": "assistant",  # But assistant role
+                        "content": [
+                            {"type": "text", "text": "I'll create a poem file for you."}
+                        ],
+                        "model": "claude-3-7-sonnet-latest"
+                    }
+                },
+                # Assistant with tool_use
+                {
+                    "type": "user",  # Envelope type=user
+                    "message": {
+                        "role": "assistant",  # But assistant role with tool_use
+                        "content": [
+                            {
+                                "type": "tool_use",
+                                "id": "test_tool_123",
+                                "name": "Write",
+                                "input": {
+                                    "file_path": "/workspace/poem.txt",
+                                    "content": "Roses are red\\nViolets are blue"
+                                }
+                            }
+                        ],
+                        "model": "claude-3-7-sonnet-latest"
+                    }
+                },
+                # Tool result
+                {
+                    "type": "user",
+                    "message": {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": "test_tool_123",
+                                "content": "File created successfully"
+                            }
+                        ]
+                    }
+                }
+            ]
+            await self._send_log(f"🧪 TESTING with {len(message_history)} hardcoded messages (user+assistant+tool_use)...")
+            logging.info(f"Test messages: {len(message_history)} messages with roles: user, assistant, tool_use, tool_result")
             
             # Create message stream that yields history then stays open forever
             async def continuous_stream():
