@@ -1098,6 +1098,37 @@ class ClaudeCodeAdapter:
             return []
         return []
 
+    def _filter_mcp_servers(self, servers: dict) -> dict:
+        """Filter MCP servers to only allow http and sse types.
+
+        Args:
+            servers: Dictionary of MCP server configurations
+
+        Returns:
+            Filtered dictionary containing only allowed server types
+        """
+        allowed_servers = {}
+        allowed_types = {'http', 'sse'}
+
+        for name, server_config in servers.items():
+            if not isinstance(server_config, dict):
+                logging.warning(f"MCP server '{name}' has invalid configuration format, skipping")
+                continue
+
+            server_type = server_config.get('type', '').lower()
+
+            if server_type in allowed_types:
+                url = server_config.get('url', '')
+                if url:
+                    allowed_servers[name] = server_config
+                    logging.info(f"MCP server '{name}' allowed (type: {server_type}, url: {url})")
+                else:
+                    logging.warning(f"MCP server '{name}' rejected: missing 'url' field")
+            else:
+                logging.warning(f"MCP server '{name}' rejected: type '{server_type}' not allowed")
+
+        return allowed_servers
+
     def _load_mcp_config(self, cwd_path: str) -> dict | None:
         """Load MCP server configuration from .mcp.json file in the workspace.
 
@@ -1105,6 +1136,8 @@ class ClaudeCodeAdapter:
         1. MCP_CONFIG_PATH environment variable (if set)
         2. cwd_path/.mcp.json (main working directory)
         3. workspace root/.mcp.json (for multi-repo setups)
+
+        Only allows http and sse type MCP servers.
 
         Returns the parsed MCP servers configuration dict, or None if not found.
         """
@@ -1122,8 +1155,13 @@ class ClaudeCodeAdapter:
                     logging.info(f"Loading MCP config from MCP_CONFIG_PATH: {mcp_file}")
                     with open(mcp_file, 'r') as f:
                         config = _json.load(f)
-                        logging.info(f"MCP servers loaded: {list(config.get('mcpServers', {}).keys())}")
-                        return config.get('mcpServers')
+                        all_servers = config.get('mcpServers', {})
+                        filtered_servers = self._filter_mcp_servers(all_servers)
+                        if filtered_servers:
+                            logging.info(f"MCP servers loaded: {list(filtered_servers.keys())}")
+                            return filtered_servers
+                        logging.info("No valid MCP servers found after filtering")
+                        return None
                 else:
                     logging.warning(f"MCP_CONFIG_PATH specified but file not found: {explicit_path}")
 
@@ -1133,9 +1171,13 @@ class ClaudeCodeAdapter:
                 logging.info(f"Found .mcp.json in working directory: {mcp_file}")
                 with open(mcp_file, 'r') as f:
                     config = _json.load(f)
-                    server_names = list(config.get('mcpServers', {}).keys())
-                    logging.info(f"MCP servers loaded from {mcp_file}: {server_names}")
-                    return config.get('mcpServers')
+                    all_servers = config.get('mcpServers', {})
+                    filtered_servers = self._filter_mcp_servers(all_servers)
+                    if filtered_servers:
+                        logging.info(f"MCP servers loaded from {mcp_file}: {list(filtered_servers.keys())}")
+                        return filtered_servers
+                    logging.info("No valid MCP servers found after filtering")
+                    return None
 
             # Option 3: Look in workspace root (for multi-repo setups)
             if self.context and self.context.workspace_path != cwd_path:
@@ -1144,9 +1186,13 @@ class ClaudeCodeAdapter:
                     logging.info(f"Found .mcp.json in workspace root: {workspace_mcp_file}")
                     with open(workspace_mcp_file, 'r') as f:
                         config = _json.load(f)
-                        server_names = list(config.get('mcpServers', {}).keys())
-                        logging.info(f"MCP servers loaded from {workspace_mcp_file}: {server_names}")
-                        return config.get('mcpServers')
+                        all_servers = config.get('mcpServers', {})
+                        filtered_servers = self._filter_mcp_servers(all_servers)
+                        if filtered_servers:
+                            logging.info(f"MCP servers loaded from {workspace_mcp_file}: {list(filtered_servers.keys())}")
+                            return filtered_servers
+                        logging.info("No valid MCP servers found after filtering")
+                        return None
 
             logging.info("No .mcp.json file found in any search location")
             return None
