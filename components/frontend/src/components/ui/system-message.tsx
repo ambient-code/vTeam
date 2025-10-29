@@ -1,7 +1,5 @@
 import React from "react";
 import { cn } from "@/lib/utils";
-import { Badge } from "@/components/ui/badge";
-import { Info } from "lucide-react";
 
 type SystemMessageData = {
   message?: string;
@@ -9,13 +7,13 @@ type SystemMessageData = {
 };
 
 export type SystemMessageProps = {
-  subtype: string;
+  subtype?: string;
   data: SystemMessageData;
   className?: string;
   borderless?: boolean;
 };
 
-export const SystemMessage: React.FC<SystemMessageProps> = ({ subtype, data, className, borderless }) => {
+export const SystemMessage: React.FC<SystemMessageProps> = ({ data, className }) => {
   // Expect a simple string in data.message; fallback to JSON.stringify
   const text: string = typeof (data?.message) === 'string' ? data.message : (typeof data === 'string' ? data : JSON.stringify(data ?? {}, null, 2));
 
