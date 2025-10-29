@@ -8,6 +8,7 @@ metadata:
 spec:
   accessModes:
     - ReadWriteOnce  # single backend replica mounted to RWO PVC
+  # Note: storageClassName must be specified for CRC as it has no default storage class
   storageClassName: crc-csi-hostpath-provisioner
   resources:
     requests:

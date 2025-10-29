@@ -339,6 +339,7 @@ See [crc instructions for RHEL/Fedora](https://medium.com/@Tal-Hason/openshift-l
    - Follow the installation prompts
 
 4. **Set up pull secret**:
+
    ```bash
    mkdir -p ~/.crc
    mv ~/Downloads/pull-secret ~/.crc/pull-secret.json
@@ -497,13 +498,13 @@ After resetting, restart from the [Installing and Setting Up CRC](#installing-an
 
 #### Pull Secret Issues
 
-If CRC can't find your pull secret:
+If CRC can't find your pull secret, verify the pull secret file exists at `~/.crc/pull-secret.json` and then run:
 
 ```shell
 crc config set pull-secret-file ~/.crc/pull-secret.json
 ```
 
-Then restart CRC and verify the pull secret file exists at `~/.crc/pull-secret.json`.
+Then restart CRC.
 
 ### Application Issues
 
@@ -534,17 +535,20 @@ For detailed debugging through the OpenShift web console:
 #### Common Issues
 
 **Pods not starting:**
+
 ```bash
 oc get pods -n vteam-dev
 oc describe pod <pod-name> -n vteam-dev
 ```
 
 **Image pull errors:**
+
 ```bash
 oc get events -n vteam-dev --sort-by='.lastTimestamp'
 ```
 
 **PVC issues:**
+
 ```bash
 oc get pvc -n vteam-dev
 oc describe pvc backend-state-pvc -n vteam-dev
