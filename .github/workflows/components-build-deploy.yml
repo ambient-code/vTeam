@@ -139,8 +139,8 @@ jobs:
 
       - name: Apply RBAC and CRD manifests
         run: |
-          oc apply -f components/manifests/crds/
-          oc apply -f components/manifests/rbac/
+          oc apply -k components/manifests/crds/
+          oc apply -k components/manifests/rbac/
 
   deploy-to-openshift:
     runs-on: ubuntu-latest
