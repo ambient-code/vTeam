@@ -330,40 +330,36 @@ class ClaudeCodeAdapter:
                                 {"type": "result.message", "payload": result_payload},
                             )
 
-            # Create client and connect with message stream for seeding
-            client = ClaudeSDKClient(options=options)
-            
-            # Prepare message stream for connect()
-            logging.info(f"Checking continuation: is_continuation={is_continuation}, parent_session_id={parent_session_id[:8] if parent_session_id else 'None'}")
-            if is_continuation and parent_session_id:
-                await self._send_log(f"🔄 Continuing from session {parent_session_id[:8]}...")
-                try:
-                    message_history = await self._fetch_session_history(parent_session_id)
-                    if message_history:
-                        await self._send_log(f"📚 Restoring {len(message_history)} messages...")
-                        logging.info(f"Seeding Claude client with {len(message_history)} messages")
-                        
-                        # Create async generator that yields messages then returns
-                        async def message_stream():
-                            for msg in message_history:
-                                yield msg
-                        
-                        # Connect with message stream for seeding
-                        await client.connect(message_stream())
-                        await self._send_log("✅ Session context restored successfully")
-                        logging.info("Session history seeded successfully into Claude client")
-                    else:
-                        logging.info("No message history to restore, connecting fresh")
-                        await client.connect()
-                except Exception as e:
-                    logging.error(f"Failed to restore session history: {e}", exc_info=True)
-                    await self._send_log(f"⚠️ Could not restore history: {e}")
-                    await client.connect()
-            else:
-                logging.info("Starting new session (not a continuation)")
-                await client.connect()
-            
-            try:
+            # Use async with - it connects automatically and keeps stdin open
+            async with ClaudeSDKClient(options=options) as client:
+                # If continuation, seed message history via query()
+                logging.info(f"Checking continuation: is_continuation={is_continuation}, parent_session_id={parent_session_id[:8] if parent_session_id else 'None'}")
+                if is_continuation and parent_session_id:
+                    await self._send_log(f"🔄 Continuing from session {parent_session_id[:8]}...")
+                    try:
+                        message_history = await self._fetch_session_history(parent_session_id)
+                        if message_history:
+                            await self._send_log(f"📚 Restoring {len(message_history)} messages...")
+                            logging.info(f"Seeding Claude client with {len(message_history)} messages")
+                            
+                            # Use query() with stream to seed messages
+                            # query() writes directly to stdin without closing it
+                            async def message_stream():
+                                for msg in message_history:
+                                    yield msg
+                            
+                            await client.query(message_stream())
+                            await process_response_stream(client)
+                            await self._send_log("✅ Session context restored successfully")
+                            logging.info("Session history seeded successfully into Claude client")
+                        else:
+                            logging.info("No message history to restore, starting fresh")
+                    except Exception as e:
+                        logging.error(f"Failed to restore session history: {e}", exc_info=True)
+                        await self._send_log(f"⚠️ Could not restore history: {e}")
+                else:
+                    logging.info("Starting new session (not a continuation)")
+                
                 async def process_one_prompt(text: str):
                     await self.shell._send_message(MessageType.AGENT_RUNNING, {})
                     await client.query(text)
@@ -403,21 +399,18 @@ class ClaudeCodeAdapter:
                         else:
                             await self._send_log({"level": "debug", "message": f"ignored.message: {mtype_raw}"})
 
-                # Note: All output is streamed via WebSocket, not collected here
-                await self._check_pr_intent("")
+            # Note: All output is streamed via WebSocket, not collected here
+            await self._check_pr_intent("")
 
-                # Return success - result_payload may be None if SDK didn't send ResultMessage
-                # (which can happen legitimately for some operations like git push)
-                return {
-                    "success": True,
-                    "result": result_payload,
-                    "returnCode": 0,
-                    "stdout": "",
-                    "stderr": ""
-                }
-            finally:
-                # Always disconnect
-                await client.disconnect()
+            # Return success - result_payload may be None if SDK didn't send ResultMessage
+            # (which can happen legitimately for some operations like git push)
+            return {
+                "success": True,
+                "result": result_payload,
+                "returnCode": 0,
+                "stdout": "",
+                "stderr": ""
+            }
         except Exception as e:
             logging.error(f"Failed to run Claude Code SDK: {e}")
             return {
