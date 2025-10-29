@@ -267,28 +267,29 @@ func GetSessionMessagesClaudeFormat(c *gin.Context) {
 }
 
 // transformToClaudeFormat converts SessionMessage to Claude SDK control protocol format
-// The SDK's connect() uses a control protocol that wraps API messages in an envelope
+// The SDK's connect() uses a two-level structure:
+//  1. Envelope "type" (control protocol): "user" or "control" - WHO is sending the message
+//  2. Message "role" (conversation): "user" or "assistant" - WHAT role in the conversation
 //
-// Required format (from client.py lines 184-190 and message_parser.py):
+// Format (from client.py lines 184-190):
 //
 // User message:
 //
 //	{
-//	  "type": "user",
-//	  "message": {"role": "user", "content": "..."},
-//	  "parent_tool_use_id": "tool_abc123"  // optional
+//	  "type": "user",       // ← Control protocol (always "user" for messages WE send)
+//	  "message": {"role": "user", "content": "..."},  // ← Conversation role
+//	  "parent_tool_use_id": "..."  // optional
 //	}
 //
 // Assistant message:
 //
 //	{
-//	  "type": "assistant",
-//	  "message": {"role": "assistant", "content": [...], "model": "claude-3-7-sonnet-latest"},
-//	  "parent_tool_use_id": "tool_abc123"  // optional
+//	  "type": "user",       // ← Still "user" envelope! (WE are sending it)
+//	  "message": {"role": "assistant", "content": [...], "model": "..."},  // ← Conversation role
+//	  "parent_tool_use_id": "..."  // optional
 //	}
 //
-// Both user and assistant messages are included for full conversation replay with tool calls
-// This is different from the standard Messages API which uses simpler {"role": "user", "content": "..."}
+// The envelope type is about the control protocol, not the conversation role!
 func transformToClaudeFormat(messages []SessionMessage) []map[string]interface{} {
 	result := []map[string]interface{}{}
 
@@ -331,16 +332,15 @@ func transformToClaudeFormat(messages []SessionMessage) []map[string]interface{}
 			content := extractAssistantMessageContent(msg.Payload)
 			if content != nil {
 				// Extract model and parent_tool_use_id
-				model := extractModel(msg.Payload)
 				parentToolUseID := extractParentToolUseID(msg.Payload)
 
-				// SDK control protocol format for assistant messages
+				// SDK control protocol: Use "user" as envelope type, but "assistant" as message role
+				// The envelope type indicates who's sending (user/control), not the conversation role
 				message := map[string]interface{}{
-					"type": "assistant",
+					"type": "user", // Control protocol envelope - always "user" for messages we send
 					"message": map[string]interface{}{
-						"role":    "assistant",
+						"role":    "assistant", // Actual conversation role
 						"content": content,
-						"model":   model,
 					},
 				}
 				// Only include parent_tool_use_id if it exists
@@ -349,7 +349,7 @@ func transformToClaudeFormat(messages []SessionMessage) []map[string]interface{}
 				}
 
 				result = append(result, message)
-				log.Printf("transformToClaudeFormat: added assistant message (model=%s, parent_tool_use_id=%s)", model, parentToolUseID)
+				log.Printf("transformToClaudeFormat: added assistant message as envelope type=user (parent_tool_use_id=%s)", parentToolUseID)
 			} else {
 				log.Printf("transformToClaudeFormat: skipping agent_message with no extractable content")
 			}
@@ -360,12 +360,13 @@ func transformToClaudeFormat(messages []SessionMessage) []map[string]interface{}
 	}
 
 	// Validate all messages have proper structure
-	// SDK connect() accepts type: "user", "assistant", or "control"
+	// Envelope "type" must be "user" or "control" (control protocol level)
+	// Inner "message.role" can be "user" or "assistant" (conversation level)
 	validated := []map[string]interface{}{}
 	for i, msg := range result {
-		msgType, hasType := msg["type"].(string)
-		if !hasType || (msgType != "user" && msgType != "assistant" && msgType != "control") {
-			log.Printf("transformToClaudeFormat: INVALID message at index %d - type must be 'user', 'assistant', or 'control', got: %v", i, msgType)
+		envType, hasType := msg["type"].(string)
+		if !hasType || (envType != "user" && envType != "control") {
+			log.Printf("transformToClaudeFormat: INVALID message at index %d - envelope type must be 'user' or 'control', got: %v", i, envType)
 			continue
 		}
 
@@ -378,7 +379,7 @@ func transformToClaudeFormat(messages []SessionMessage) []map[string]interface{}
 		validated = append(validated, msg)
 	}
 
-	log.Printf("transformToClaudeFormat: returning %d validated messages for SDK", len(validated))
+	log.Printf("transformToClaudeFormat: returning %d messages (envelope type='user', conversation includes user+assistant)", len(validated))
 	return validated
 }
 
