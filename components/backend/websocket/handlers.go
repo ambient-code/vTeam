@@ -267,29 +267,23 @@ func GetSessionMessagesClaudeFormat(c *gin.Context) {
 }
 
 // transformToClaudeFormat converts SessionMessage to Claude SDK control protocol format
-// The SDK's connect() uses a two-level structure:
-//  1. Envelope "type" (control protocol): "user" or "control" - WHO is sending the message
-//  2. Message "role" (conversation): "user" or "assistant" - WHAT role in the conversation
+// For session continuation via connect(), the CLI validates BOTH:
+//  1. Envelope "type" must be "user" or "control"
+//  2. Message "role" must be "user" (NOT "assistant")
 //
-// Format (from client.py lines 184-190):
+// Attempting to send assistant messages fails with:
 //
-// User message:
+//	"Expected message role 'user', got 'assistant'"
+//
+// Required format (from client.py lines 184-190):
 //
 //	{
-//	  "type": "user",       // ← Control protocol (always "user" for messages WE send)
-//	  "message": {"role": "user", "content": "..."},  // ← Conversation role
+//	  "type": "user",
+//	  "message": {"role": "user", "content": "..."},
 //	  "parent_tool_use_id": "..."  // optional
 //	}
 //
-// Assistant message:
-//
-//	{
-//	  "type": "user",       // ← Still "user" envelope! (WE are sending it)
-//	  "message": {"role": "assistant", "content": [...], "model": "..."},  // ← Conversation role
-//	  "parent_tool_use_id": "..."  // optional
-//	}
-//
-// The envelope type is about the control protocol, not the conversation role!
+// The CLI will replay the conversation from user inputs and regenerate all assistant responses
 func transformToClaudeFormat(messages []SessionMessage) []map[string]interface{} {
 	result := []map[string]interface{}{}
 
@@ -339,7 +333,7 @@ func transformToClaudeFormat(messages []SessionMessage) []map[string]interface{}
 				message := map[string]interface{}{
 					"type": "user", // Control protocol envelope - always "user" for messages we send
 					"message": map[string]interface{}{
-						"role":    "assistant", // Actual conversation role
+						"role":    "user", // Actual conversation role
 						"content": content,
 					},
 				}

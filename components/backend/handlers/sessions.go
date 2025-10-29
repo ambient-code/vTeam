@@ -1254,11 +1254,13 @@ func StartSession(c *gin.Context) {
 	}
 
 	// Check if this is a continuation (session is in a terminal phase)
-	// Terminal phases: Completed, Failed, Cancelled
+	// Terminal phases from CRD: Completed, Failed, Stopped, Error
 	isActualContinuation := false
+	currentPhase := ""
 	if currentStatus, ok := item.Object["status"].(map[string]interface{}); ok {
 		if phase, ok := currentStatus["phase"].(string); ok {
-			terminalPhases := []string{"Completed", "Failed", "Cancelled"}
+			currentPhase = phase
+			terminalPhases := []string{"Completed", "Failed", "Stopped", "Error"}
 			for _, terminalPhase := range terminalPhases {
 				if phase == terminalPhase {
 					isActualContinuation = true
@@ -1267,6 +1269,10 @@ func StartSession(c *gin.Context) {
 				}
 			}
 		}
+	}
+
+	if !isActualContinuation {
+		log.Printf("StartSession: Not a continuation - current phase is: %s (not in terminal phases)", currentPhase)
 	}
 
 	// Only set parent session annotation if this is an actual continuation
