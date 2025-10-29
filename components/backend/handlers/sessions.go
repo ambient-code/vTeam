@@ -872,6 +872,55 @@ func MintSessionGitHubToken(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"token": tokenStr})
 }
 
+func PatchSession(c *gin.Context) {
+	project := c.GetString("project")
+	sessionName := c.Param("sessionName")
+	_, reqDyn := GetK8sClientsForRequest(c)
+
+	var patch map[string]interface{}
+	if err := c.ShouldBindJSON(&patch); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	gvr := GetAgenticSessionV1Alpha1Resource()
+
+	// Get current resource
+	item, err := reqDyn.Resource(gvr).Namespace(project).Get(context.TODO(), sessionName, v1.GetOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Session not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get session"})
+		return
+	}
+
+	// Apply patch to metadata annotations
+	if metaPatch, ok := patch["metadata"].(map[string]interface{}); ok {
+		if annsPatch, ok := metaPatch["annotations"].(map[string]interface{}); ok {
+			metadata := item.Object["metadata"].(map[string]interface{})
+			if metadata["annotations"] == nil {
+				metadata["annotations"] = make(map[string]interface{})
+			}
+			anns := metadata["annotations"].(map[string]interface{})
+			for k, v := range annsPatch {
+				anns[k] = v
+			}
+		}
+	}
+
+	// Update the resource
+	updated, err := reqDyn.Resource(gvr).Namespace(project).Update(context.TODO(), item, v1.UpdateOptions{})
+	if err != nil {
+		log.Printf("Failed to patch agentic session %s: %v", sessionName, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to patch session"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Session patched successfully", "annotations": updated.GetAnnotations()})
+}
+
 func UpdateSession(c *gin.Context) {
 	project := c.GetString("project")
 	sessionName := c.Param("sessionName")

@@ -296,11 +296,11 @@ class ClaudeCodeAdapter:
                         if message.subtype == 'init' and message.data.get('session_id'):
                             sdk_session_id = message.data.get('session_id')
                             logging.info(f"Captured SDK session ID: {sdk_session_id}")
-                            # Store it for future resumption
+                            # Store it in annotations (not status - status gets cleared on restart)
                             try:
-                                await self._update_cr_status({"session_id": sdk_session_id})
+                                await self._update_cr_annotation("ambient-code.io/sdk-session-id", sdk_session_id)
                             except Exception as e:
-                                logging.warning(f"Failed to store SDK session ID in CR: {e}")
+                                logging.warning(f"Failed to store SDK session ID in CR annotations: {e}")
 
                     if isinstance(message, (AssistantMessage, UserMessage)):
                         for block in getattr(message, 'content', []) or []:
@@ -900,6 +900,54 @@ class ClaudeCodeAdapter:
             return None
         return None
 
+    async def _update_cr_annotation(self, key: str, value: str):
+        """Update a single annotation on the AgenticSession CR."""
+        status_url = self._compute_status_url()
+        if not status_url:
+            return
+        
+        # Transform status URL to patch endpoint
+        try:
+            from urllib.parse import urlparse as _up, urlunparse as _uu
+            p = _up(status_url)
+            # Remove /status suffix to get base resource URL
+            new_path = p.path.rstrip("/")
+            if new_path.endswith("/status"):
+                new_path = new_path[:-7]
+            url = _uu((p.scheme, p.netloc, new_path, '', '', ''))
+            
+            # JSON merge patch to update annotations
+            patch = _json.dumps({
+                "metadata": {
+                    "annotations": {
+                        key: value
+                    }
+                }
+            }).encode('utf-8')
+            
+            req = _urllib_request.Request(url, data=patch, headers={
+                'Content-Type': 'application/merge-patch+json'
+            }, method='PATCH')
+            
+            token = (os.getenv('BOT_TOKEN') or '').strip()
+            if token:
+                req.add_header('Authorization', f'Bearer {token}')
+            
+            loop = asyncio.get_event_loop()
+            def _do():
+                try:
+                    with _urllib_request.urlopen(req, timeout=10) as resp:
+                        _ = resp.read()
+                    logging.info(f"Annotation {key} updated successfully")
+                    return True
+                except Exception as e:
+                    logging.error(f"Annotation update failed: {e}")
+                    return False
+            
+            await loop.run_in_executor(None, _do)
+        except Exception as e:
+            logging.error(f"Failed to update annotation: {e}")
+    
     async def _update_cr_status(self, fields: dict, blocking: bool = False):
         """Update CR status. Set blocking=True for critical final updates before container exit."""
         url = self._compute_status_url()
@@ -1094,14 +1142,21 @@ class ClaudeCodeAdapter:
         
         try:
             data = _json.loads(resp_text)
-            # Look for session_id in status
-            status = data.get('status', {})
-            sdk_session_id = status.get('session_id', '')
+            # Look for SDK session ID in annotations (persists across restarts)
+            metadata = data.get('metadata', {})
+            annotations = metadata.get('annotations', {})
+            sdk_session_id = annotations.get('ambient-code.io/sdk-session-id', '')
+            
             if sdk_session_id:
-                logging.info(f"Found SDK session ID: {sdk_session_id[:8]}")
-                return sdk_session_id
+                # Validate it's a UUID
+                if '-' in sdk_session_id and len(sdk_session_id) == 36:
+                    logging.info(f"Found SDK session ID in annotations: {sdk_session_id}")
+                    return sdk_session_id
+                else:
+                    logging.warning(f"Invalid SDK session ID format: {sdk_session_id}")
+                    return ""
             else:
-                logging.warning(f"Parent session {session_name} has no session_id in status")
+                logging.warning(f"Parent session {session_name} has no sdk-session-id annotation")
                 return ""
         except Exception as e:
             logging.error(f"Failed to parse SDK session ID: {e}")

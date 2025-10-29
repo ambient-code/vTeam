@@ -36,6 +36,7 @@ func registerRoutes(r *gin.Engine, jiraHandler *jira.Handler) {
 			projectGroup.POST("/agentic-sessions", handlers.CreateSession)
 			projectGroup.GET("/agentic-sessions/:sessionName", handlers.GetSession)
 			projectGroup.PUT("/agentic-sessions/:sessionName", handlers.UpdateSession)
+			projectGroup.PATCH("/agentic-sessions/:sessionName", handlers.PatchSession)
 			projectGroup.DELETE("/agentic-sessions/:sessionName", handlers.DeleteSession)
 			projectGroup.POST("/agentic-sessions/:sessionName/clone", handlers.CloneSession)
 			projectGroup.POST("/agentic-sessions/:sessionName/start", handlers.StartSession)
