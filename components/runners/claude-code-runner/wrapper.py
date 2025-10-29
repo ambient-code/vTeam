@@ -371,19 +371,19 @@ class ClaudeCodeAdapter:
                 #     }
                 # },
                 # # Tool result
-                {
-                    "type": "user",
-                    "message": {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "tool_result",
-                                "tool_use_id": "test_tool_123",
-                                "content": "File created successfully"
-                            }
-                        ]
-                    }
-                }
+                # {
+                #     "type": "user",
+                #     "message": {
+                #         "role": "user",
+                #         "content": [
+                #             {
+                #                 "type": "tool_result",
+                #                 "tool_use_id": "test_tool_123",
+                #                 "content": "File created successfully"
+                #             }
+                #         ]
+                #     }
+                # }
             ]
             await self._send_log(f"🧪 TESTING with {len(message_history)} hardcoded messages (user+assistant+tool_use)...")
             logging.info(f"Test messages: {len(message_history)} messages with roles: user, assistant, tool_use, tool_result")
