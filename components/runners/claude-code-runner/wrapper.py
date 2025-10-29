@@ -376,13 +376,16 @@ class ClaudeCodeAdapter:
                     await process_response_stream(client)
 
                 # Initial prompt (if any)
-                if prompt and prompt.strip():
+                # Skip if this is a continuation - SDK already has the full context
+                if prompt and prompt.strip() and not is_continuation:
                     # Store the initial prompt as a user message so it appears in history for continuation
                     await self.shell._send_message(
                         MessageType.USER_MESSAGE,
                         {"content": prompt},
                     )
                     await process_one_prompt(prompt)
+                elif is_continuation:
+                    logging.info("Skipping initial prompt - SDK resuming with full context")
 
                 if interactive:
                     await self._send_log({"level": "system", "message": "Chat ready"})

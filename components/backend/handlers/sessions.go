@@ -1359,21 +1359,20 @@ func StartSession(c *gin.Context) {
 		} else {
 			log.Printf("StartSession: Successfully regenerated runner token for continuation")
 
-			// Delete the old runner pod so operator creates new one with fresh token
-			// The pod won't reload the secret - it was injected as env var at pod creation
+			// Delete the old job so operator creates a new one
+			// This ensures fresh token and clean state
 			jobName := fmt.Sprintf("ambient-runner-%s", sessionName)
-			pods, err := reqK8s.CoreV1().Pods(project).List(c.Request.Context(), v1.ListOptions{
-				LabelSelector: fmt.Sprintf("job-name=%s", jobName),
-			})
-			if err == nil && len(pods.Items) > 0 {
-				for _, pod := range pods.Items {
-					log.Printf("StartSession: Deleting old runner pod %s to force fresh token reload", pod.Name)
-					if err := reqK8s.CoreV1().Pods(project).Delete(c.Request.Context(), pod.Name, v1.DeleteOptions{}); err != nil {
-						log.Printf("Warning: failed to delete old runner pod %s: %v", pod.Name, err)
-					} else {
-						log.Printf("StartSession: Successfully deleted old runner pod %s", pod.Name)
-					}
+			log.Printf("StartSession: Deleting old job %s to allow operator to create fresh one", jobName)
+			if err := reqK8s.BatchV1().Jobs(project).Delete(c.Request.Context(), jobName, v1.DeleteOptions{
+				PropagationPolicy: func() *v1.DeletionPropagation { p := v1.DeletePropagationBackground; return &p }(),
+			}); err != nil {
+				if !errors.IsNotFound(err) {
+					log.Printf("Warning: failed to delete old job %s: %v", jobName, err)
+				} else {
+					log.Printf("StartSession: Job %s already gone", jobName)
 				}
+			} else {
+				log.Printf("StartSession: Successfully deleted old job %s", jobName)
 			}
 		}
 	} else {
