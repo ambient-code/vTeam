@@ -455,8 +455,13 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                           ? repo.output.branch 
                           : `sessions/${session.metadata.name}`;
                         const compareUrl = buildGithubCompareUrl(repo.input.url, repo.input.branch || 'main', repo.output?.url, outBranch);
+                        
+                        // Check if temp pod is running and ready
+                        const tempPod = k8sResources?.pods?.find(p => p.isTempPod);
+                        const tempPodReady = tempPod?.phase === 'Running';
+                        
                         const br = diffTotals[idx] || { total_added: 0, total_removed: 0 };
-                        const hasChanges = br.total_added > 0 || br.total_removed > 0;
+                        const hasChanges = tempPodReady && (br.total_added > 0 || br.total_removed > 0);
                         return (
                           <div key={idx} className="flex items-center gap-2 text-sm font-mono">
                             {isMain && <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded font-sans">MAIN</span>}
@@ -480,7 +485,12 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                               </span>
                             )}
                             <span className="flex-1" />
-                            {!hasChanges ? (
+                            
+                            {!tempPodReady ? (
+                              <span className="text-xs text-muted-foreground italic">
+                                (read-only - temp service not running)
+                              </span>
+                            ) : !hasChanges ? (
                               repo.status === 'pushed' && compareUrl ? (
                                 <a 
                                   href={compareUrl} 
@@ -519,14 +529,14 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                                 <ExternalLink className="h-3 w-3" />
                               </a>
                             ) : null}
-                            {hasChanges && (
+                            {hasChanges && tempPodReady && (
                               repo.output?.url ? (
                                 <div className="flex items-center gap-2">
-                                  <Button size="sm" variant="secondary" onClick={() => onPush(idx)}>{busyRepo[idx] === 'push' ? 'Pushing…' : 'Push'}</Button>
-                                  <Button size="sm" variant="outline" onClick={() => onAbandon(idx)}>{busyRepo[idx] === 'abandon' ? 'Abandoning…' : 'Abandon'}</Button>
+                                  <Button size="sm" variant="secondary" onClick={() => onPush(idx)} disabled={!tempPodReady}>{busyRepo[idx] === 'push' ? 'Pushing…' : 'Push'}</Button>
+                                  <Button size="sm" variant="outline" onClick={() => onAbandon(idx)} disabled={!tempPodReady}>{busyRepo[idx] === 'abandon' ? 'Abandoning…' : 'Abandon'}</Button>
                                 </div>
                               ) : (
-                                <Button size="sm" variant="outline" onClick={() => onAbandon(idx)}>{busyRepo[idx] === 'abandon' ? 'Abandoning…' : 'Abandon changes'}</Button>
+                                <Button size="sm" variant="outline" onClick={() => onAbandon(idx)} disabled={!tempPodReady}>{busyRepo[idx] === 'abandon' ? 'Abandoning…' : 'Abandon changes'}</Button>
                               )
                             )}
                           </div>

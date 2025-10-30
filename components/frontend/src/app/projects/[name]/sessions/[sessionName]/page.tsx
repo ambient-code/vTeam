@@ -304,12 +304,23 @@ export default function ProjectSessionDetailPage({
           break;
         }
         case "system.message": {
-          const text = (typeof envelope.payload === 'string') ? String(envelope.payload) : "";
+          let text = "";
+          let isDebug = false;
+          
+          if (typeof envelope.payload === 'string') {
+            text = String(envelope.payload);
+          } else if (typeof envelope.payload === 'object' && envelope.payload !== null) {
+            // New format: { message: string, debug: boolean }
+            const payload = envelope.payload as { message?: string; debug?: boolean };
+            text = payload.message || "";
+            isDebug = payload.debug === true;
+          }
+          
           if (text) {
             agenticMessages.push({
               type: "system_message",
               subtype: "system.message",
-              data: { message: text },
+              data: { message: text, debug: isDebug },
               timestamp: innerTs,
             });
           }

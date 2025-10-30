@@ -2,8 +2,14 @@
 
 import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Brain, Loader2 } from "lucide-react";
+import { Brain, Loader2, Settings } from "lucide-react";
 import { StreamMessage } from "@/components/ui/stream-message";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuCheckboxItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import type { AgenticSession, MessageObject, ToolUseMessages } from "@/types/agentic-session";
 
 export type MessagesTabProps = {
@@ -23,6 +29,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chat
   const [sendingChat, setSendingChat] = useState(false);
   const [interrupting, setInterrupting] = useState(false);
   const [ending, setEnding] = useState(false);
+  const [showDebugMessages, setShowDebugMessages] = useState(false);
 
   const phase = session?.status?.phase || "";
   const isInteractive = session?.spec?.interactive;
@@ -33,6 +40,23 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chat
   // Determine if session is in a terminal state
   const isTerminalState = ["Completed", "Failed", "Stopped"].includes(phase);
   const isCreating = ["Creating", "Pending"].includes(phase);
+
+  // Filter out debug messages unless showDebugMessages is true
+  const filteredMessages = streamMessages.filter((msg) => {
+    if (showDebugMessages) return true;
+    
+    // Filter out system messages with debug flag
+    if (msg.type === "system_message") {
+      type SystemMessageType = Extract<MessageObject, { type: "system_message" }>;
+      const systemMsg = msg as SystemMessageType;
+      const debug = systemMsg.data?.debug as boolean | undefined;
+      if (debug === true) {
+        return false;
+      }
+    }
+    
+    return true;
+  });
 
   const handleSendChat = async () => {
     setSendingChat(true);
@@ -62,26 +86,47 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chat
   };
 
   return (
-    <div className="flex flex-col gap-2 max-h-[60vh] overflow-y-auto pr-1">
-      {streamMessages.map((m, idx) => (
-        <StreamMessage key={`sm-${idx}`} message={m} isNewest={idx === streamMessages.length - 1} onGoToResults={onGoToResults} />
-      ))}
+    <div className="flex flex-col gap-2">
+      {/* Settings dropdown for debug toggle - positioned in bottom left */}
+      <div className="flex justify-start mb-2">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+              <Settings className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+            <DropdownMenuCheckboxItem
+              checked={showDebugMessages}
+              onCheckedChange={setShowDebugMessages}
+            >
+              Show debug messages
+            </DropdownMenuCheckboxItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
 
-      {streamMessages.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground">
-          <Brain className="w-8 h-8 mx-auto mb-2 opacity-50" />
-          <p className="text-sm">No messages yet</p>
-          <p className="text-xs mt-1">
-            {isInteractive 
-              ? isCreating 
-                ? "Session is starting..."
-                : isTerminalState
-                ? `Session has ${phase.toLowerCase()}.`
-                : "Start by sending a message below."
-              : "This session is not interactive."}
-          </p>
-        </div>
-      )}
+      <div className="flex flex-col gap-2 max-h-[60vh] overflow-y-auto pr-1">
+        {filteredMessages.map((m, idx) => (
+          <StreamMessage key={`sm-${idx}`} message={m} isNewest={idx === filteredMessages.length - 1} onGoToResults={onGoToResults} />
+        ))}
+
+        {filteredMessages.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground">
+            <Brain className="w-8 h-8 mx-auto mb-2 opacity-50" />
+            <p className="text-sm">No messages yet</p>
+            <p className="text-xs mt-1">
+              {isInteractive 
+                ? isCreating 
+                  ? "Session is starting..."
+                  : isTerminalState
+                  ? `Session has ${phase.toLowerCase()}.`
+                  : "Start by sending a message below."
+                : "This session is not interactive."}
+            </p>
+          </div>
+        )}
+      </div>
 
       {showChatInterface && (
         <div className="sticky bottom-0 border-t bg-white">

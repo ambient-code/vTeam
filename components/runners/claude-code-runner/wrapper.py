@@ -54,7 +54,7 @@ class ClaudeCodeAdapter:
                 prompt = self.context.get_metadata("prompt", "Hello! How can I help you today?")
 
             # Send progress update
-            await self._send_log("Starting Claude Code session...")
+            await self._send_log("Starting Claude Code session...", debug=True)
 
             # Mark CR Running (best-effort)
             try:
@@ -81,7 +81,7 @@ class ClaudeCodeAdapter:
             result = await self._run_claude_agent_sdk(prompt)
 
             # Send completion
-            await self._send_log("Claude Code session completed")
+            await self._send_log("Claude Code session completed", debug=True)
 
             # Optional auto-push on completion (default: disabled)
             try:
@@ -226,13 +226,13 @@ class ClaudeCodeAdapter:
                         options.resume = sdk_resume_id  # type: ignore[attr-defined]
                         options.fork_session = False  # type: ignore[attr-defined]
                         logging.info(f"Enabled SDK session resumption: resume={sdk_resume_id[:8]}, fork=False")
-                        await self._send_log(f"🔄 Resuming SDK session {sdk_resume_id[:8]}")
+                        await self._send_log(f"🔄 Resuming SDK session {sdk_resume_id[:8]}", debug=True)
                     else:
                         logging.warning(f"Parent session {parent_session_id} has no stored SDK session ID, starting fresh")
-                        await self._send_log("⚠️ No SDK session ID found, starting fresh")
+                        await self._send_log("⚠️ No SDK session ID found, starting fresh", debug=True)
                 except Exception as e:
                     logging.warning(f"Failed to set resume options: {e}")
-                    await self._send_log(f"⚠️ SDK resume failed: {e}")
+                    await self._send_log(f"⚠️ SDK resume failed: {e}", debug=True)
 
             # Best-effort set add_dirs if supported by SDK version
             try:
@@ -340,11 +340,11 @@ class ClaudeCodeAdapter:
                                     await self.shell._send_message(MessageType.WAITING_FOR_INPUT, {})
                                 self._turn_count += 1
                             elif isinstance(block, ThinkingBlock):
-                                await self._send_log({"level": "debug", "message": "Model is reasoning..."})
+                                await self._send_log({"level": "debug", "message": "Model is reasoning..."}, debug=True)
                     elif isinstance(message, (SystemMessage)):
                         text = getattr(message, 'text', None)
                         if text:
-                            await self._send_log({"level": "debug", "message": str(text)})
+                            await self._send_log({"level": "debug", "message": str(text)}, debug=True)
                     elif isinstance(message, (ResultMessage)):
                         # Only surface result envelope to UI in non-interactive mode
                         result_payload = {
@@ -367,7 +367,7 @@ class ClaudeCodeAdapter:
             # Use async with - SDK will automatically resume if options.resume is set
             async with ClaudeSDKClient(options=options) as client:
                 if is_continuation and parent_session_id:
-                    await self._send_log("✅ SDK resuming session with full context")
+                    await self._send_log("✅ SDK resuming session with full context", debug=True)
                     logging.info(f"SDK is handling session resumption for {parent_session_id}")
                 
                 async def process_one_prompt(text: str):
@@ -388,7 +388,7 @@ class ClaudeCodeAdapter:
                     logging.info("Skipping initial prompt - SDK resuming with full context")
 
                 if interactive:
-                    await self._send_log({"level": "system", "message": "Chat ready"})
+                    await self._send_log({"level": "system", "message": "Chat ready"}, debug=True)
                     # Consume incoming user messages until end_session
                     while True:
                         incoming = await self._incoming_queue.get()
@@ -401,16 +401,16 @@ class ClaudeCodeAdapter:
                             if text:
                                 await process_one_prompt(text)
                         elif mtype in ('end_session', 'terminate', 'stop'):
-                            await self._send_log({"level": "system", "message": "interactive.ended"})
+                            await self._send_log({"level": "system", "message": "interactive.ended"}, debug=True)
                             break
                         elif mtype == 'interrupt':
                             try:
                                 await client.interrupt()  # type: ignore[attr-defined]
-                                await self._send_log({"level": "info", "message": "interrupt.sent"})
+                                await self._send_log({"level": "info", "message": "interrupt.sent"}, debug=True)
                             except Exception as e:
-                                await self._send_log({"level": "warn", "message": f"interrupt.failed: {e}"})
+                                await self._send_log({"level": "warn", "message": f"interrupt.failed: {e}"}, debug=True)
                         else:
-                            await self._send_log({"level": "debug", "message": f"ignored.message: {mtype_raw}"})
+                            await self._send_log({"level": "debug", "message": f"ignored.message: {mtype_raw}"}, debug=True)
 
             # Note: All output is streamed via WebSocket, not collected here
             await self._check_pr_intent("")
@@ -443,7 +443,7 @@ class ClaudeCodeAdapter:
         
         logging.info(f"Workspace preparation: parent_session_id={parent_session_id[:8] if parent_session_id else 'None'}, reusing={reusing_workspace}")
         if reusing_workspace:
-            await self._send_log(f"♻️ Reusing workspace from session {parent_session_id[:8]}")
+            await self._send_log(f"♻️ Reusing workspace from session {parent_session_id[:8]}", debug=True)
             logging.info("Preserving existing workspace state for continuation")
 
         repos_cfg = self._get_repos_config()
@@ -471,14 +471,14 @@ class ClaudeCodeAdapter:
                         logging.info(f"Successfully cloned {name}")
                     elif reusing_workspace:
                         # Reusing workspace - preserve local changes from previous session
-                        await self._send_log(f"✓ Preserving {name} (continuation)")
+                        await self._send_log(f"✓ Preserving {name} (continuation)", debug=True)
                         logging.info(f"Repo {name} exists and reusing workspace - preserving all local changes")
                         # Update remote URL in case credentials changed
                         await self._run_cmd(["git", "remote", "set-url", "origin", self._url_with_token(url, token) if token else url], cwd=str(repo_dir), ignore_errors=True)
                         # Don't fetch, don't reset - keep all changes!
                     else:
                         # Repo exists but NOT reusing - reset to clean state
-                        await self._send_log(f"🔄 Resetting {name} to clean state")
+                        await self._send_log(f"🔄 Resetting {name} to clean state", debug=True)
                         logging.info(f"Repo {name} exists but not reusing - resetting to clean state")
                         await self._run_cmd(["git", "remote", "set-url", "origin", self._url_with_token(url, token) if token else url], cwd=str(repo_dir), ignore_errors=True)
                         await self._run_cmd(["git", "fetch", "origin", branch], cwd=str(repo_dir))
@@ -502,7 +502,7 @@ class ClaudeCodeAdapter:
                         await self._run_cmd(["git", "remote", "add", "output", out_url], cwd=str(repo_dir))
             except Exception as e:
                 logging.error(f"Failed to prepare multi-repo workspace: {e}")
-                await self._send_log(f"Workspace preparation failed: {e}")
+                await self._send_log(f"Workspace preparation failed: {e}", debug=True)
             return
 
         # Single-repo legacy flow
@@ -526,13 +526,13 @@ class ClaudeCodeAdapter:
                 logging.info("Successfully cloned repository")
             elif reusing_workspace:
                 # Reusing workspace - preserve local changes from previous session
-                await self._send_log("✓ Preserving workspace (continuation)")
+                await self._send_log("✓ Preserving workspace (continuation)", debug=True)
                 logging.info("Workspace exists and reusing - preserving all local changes")
                 await self._run_cmd(["git", "remote", "set-url", "origin", self._url_with_token(input_repo, token) if token else input_repo], cwd=str(workspace), ignore_errors=True)
                 # Don't fetch, don't reset - keep all changes!
             else:
                 # Reset to clean state
-                await self._send_log("🔄 Resetting workspace to clean state")
+                await self._send_log("🔄 Resetting workspace to clean state", debug=True)
                 logging.info("Workspace exists but not reusing - resetting to clean state")
                 await self._run_cmd(["git", "remote", "set-url", "origin", self._url_with_token(input_repo, token) if token else input_repo], cwd=str(workspace))
                 await self._run_cmd(["git", "fetch", "origin", input_branch], cwd=str(workspace))
@@ -548,14 +548,14 @@ class ClaudeCodeAdapter:
             logging.info(f"Git identity configured: {user_name} <{user_email}>")
 
             if output_repo:
-                await self._send_log("Configuring output remote...")
+                await self._send_log("Configuring output remote...", debug=True)
                 out_url = self._url_with_token(output_repo, token) if token else output_repo
                 await self._run_cmd(["git", "remote", "remove", "output"], cwd=str(workspace), ignore_errors=True)
                 await self._run_cmd(["git", "remote", "add", "output", out_url], cwd=str(workspace))
 
         except Exception as e:
             logging.error(f"Failed to prepare workspace: {e}")
-            await self._send_log(f"Workspace preparation failed: {e}")
+            await self._send_log(f"Workspace preparation failed: {e}", debug=True)
 
     async def _validate_prerequisites(self):
         """Validate prerequisite files exist for phase-based slash commands."""
@@ -593,7 +593,7 @@ class ClaudeCodeAdapter:
 
                 if not found:
                     error_message = f"❌ {error_msg}"
-                    await self._send_log(error_message)
+                    await self._send_log(error_message, debug=True)
                     # Mark session as failed
                     try:
                         await self._update_cr_status({
@@ -645,7 +645,7 @@ class ClaudeCodeAdapter:
                     in_branch = (in_.get('branch') or '').strip()
                     out_branch = (out.get('branch') or '').strip() or f"sessions/{self.context.session_id}"
 
-                    await self._send_log(f"Pushing changes for {name}...")
+                    await self._send_log(f"Pushing changes for {name}...", debug=True)
                     logging.info(f"Configuring output remote with authentication for {name}")
                     
                     # Reconfigure output remote with token before push
@@ -678,11 +678,11 @@ class ClaudeCodeAdapter:
                         raise RuntimeError(f"Output remote not configured for {name}")
                     
                     logging.info(f"Pushing to output remote: {out_branch} for {name}")
-                    await self._send_log(f"Pushing {name} to {out_branch}...")
+                    await self._send_log(f"Pushing {name} to {out_branch}...", debug=True)
                     await self._run_cmd(["git", "push", "-u", "output", f"HEAD:{out_branch}"], cwd=str(repo_dir))
                     
                     logging.info(f"Push completed for {name}")
-                    await self._send_log(f"✓ Push completed for {name}")
+                    await self._send_log(f"✓ Push completed for {name}", debug=True)
 
                     create_pr_flag = (os.getenv("CREATE_PR", "").strip().lower() == "true")
                     if create_pr_flag and in_branch and out_branch and out_branch != in_branch and out_url:
@@ -691,12 +691,12 @@ class ClaudeCodeAdapter:
                         try:
                             pr_url = await self._create_pull_request(upstream_repo=upstream_url, fork_repo=out_url, head_branch=out_branch, base_branch=target_branch)
                             if pr_url:
-                                await self._send_log({"level": "info", "message": f"Pull request created for {name}: {pr_url}"})
+                                await self._send_log({"level": "info", "message": f"Pull request created for {name}: {pr_url}"}, debug=True)
                         except Exception as e:
-                            await self._send_log({"level": "error", "message": f"PR creation failed for {name}: {e}"})
+                            await self._send_log({"level": "error", "message": f"PR creation failed for {name}: {e}"}, debug=True)
             except Exception as e:
                 logging.error(f"Failed to push results: {e}")
-                await self._send_log(f"Push failed: {e}")
+                await self._send_log(f"Push failed: {e}", debug=True)
             return
 
         # Single-repo legacy flow
@@ -715,10 +715,10 @@ class ClaudeCodeAdapter:
         try:
             status = await self._run_cmd(["git", "status", "--porcelain"], cwd=str(workspace), capture_stdout=True)
             if not status.strip():
-                await self._send_log({"level": "system", "message": "No changes to push."})
+                await self._send_log({"level": "system", "message": "No changes to push."}, debug=True)
                 return
             
-            await self._send_log("Committing and pushing changes...")
+            await self._send_log("Committing and pushing changes...", debug=True)
             logging.info("Configuring output remote with authentication")
             
             # Reconfigure output remote with token before push
@@ -737,7 +737,7 @@ class ClaudeCodeAdapter:
             except RuntimeError as e:
                 if "nothing to commit" in str(e).lower():
                     logging.info("No changes to commit")
-                    await self._send_log({"level": "system", "message": "No new changes to commit."})
+                    await self._send_log({"level": "system", "message": "No new changes to commit."}, debug=True)
                     return
                 else:
                     logging.error(f"Commit failed: {e}")
@@ -752,11 +752,11 @@ class ClaudeCodeAdapter:
                 raise RuntimeError("Output remote not configured")
             
             logging.info(f"Pushing to output remote: {output_branch}")
-            await self._send_log(f"Pushing to {output_branch}...")
+            await self._send_log(f"Pushing to {output_branch}...", debug=True)
             await self._run_cmd(["git", "push", "-u", "output", f"HEAD:{output_branch}"], cwd=str(workspace))
             
             logging.info("Push completed")
-            await self._send_log("✓ Push completed")
+            await self._send_log("✓ Push completed", debug=True)
 
             create_pr_flag = (os.getenv("CREATE_PR", "").strip().lower() == "true")
             if create_pr_flag and input_branch and output_branch and output_branch != input_branch:
@@ -764,12 +764,12 @@ class ClaudeCodeAdapter:
                 try:
                     pr_url = await self._create_pull_request(upstream_repo=input_repo or output_repo, fork_repo=output_repo, head_branch=output_branch, base_branch=target_branch)
                     if pr_url:
-                        await self._send_log({"level": "info", "message": f"Pull request created: {pr_url}"})
+                        await self._send_log({"level": "info", "message": f"Pull request created: {pr_url}"}, debug=True)
                 except Exception as e:
-                    await self._send_log({"level": "error", "message": f"PR creation failed: {e}"})
+                    await self._send_log({"level": "error", "message": f"PR creation failed: {e}"}, debug=True)
         except Exception as e:
             logging.error(f"Failed to push results: {e}")
-            await self._send_log(f"Push failed: {e}")
+            await self._send_log(f"Push failed: {e}", debug=True)
 
     async def _create_pull_request(self, upstream_repo: str, fork_repo: str, head_branch: str, base_branch: str) -> str | None:
         """Create a GitHub Pull Request from fork_repo:head_branch into upstream_repo:base_branch.
@@ -1051,8 +1051,13 @@ class ClaudeCodeAdapter:
                 # Wait 200ms before retry
                 await asyncio.sleep(0.2)
 
-    async def _send_log(self, payload):
-        """Send a system-level message. Accepts either a string or a dict payload."""
+    async def _send_log(self, payload, debug: bool = False):
+        """Send a system-level message. Accepts either a string or a dict payload.
+        
+        Args:
+            payload: String message or dict with 'message' key
+            debug: If True, marks this as a debug-level system message (hidden by default in UI)
+        """
         if not self.shell:
             return
         text: str
@@ -1062,9 +1067,16 @@ class ClaudeCodeAdapter:
             text = str(payload.get("message", ""))
         else:
             text = str(payload)
+        
+        # Create payload dict with debug flag
+        message_payload = {
+            "message": text,
+            "debug": debug
+        }
+        
         await self.shell._send_message(
             MessageType.SYSTEM_MESSAGE,
-            text,
+            message_payload,
         )
 
     def _url_with_token(self, url: str, token: str) -> str:
