@@ -4,7 +4,7 @@ import React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Brain, Clock, RefreshCw, Sparkle, ExternalLink, ChevronRight, ChevronDown, Box, Container, HardDrive } from "lucide-react";
+import { Brain, Clock, RefreshCw, Sparkle, ExternalLink, Box, Container, HardDrive } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import type { AgenticSession } from "@/types/agentic-session";
@@ -252,14 +252,10 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                         <div key={pod.name} className="space-y-1">
                           <div className="flex items-center gap-2">
                             <button
-                              onClick={() => setExpandedPods({ ...expandedPods, [pod.name]: !expandedPods[pod.name] })}
-                              className="p-0 hover:bg-gray-100 rounded transition-colors"
+                              onClick={() => setExpandedPods(prev => ({ ...prev, [pod.name]: !prev[pod.name] }))}
+                              className="text-xs text-blue-600 hover:underline flex items-center gap-1"
                             >
-                              {expandedPods[pod.name] ? (
-                                <ChevronDown className="w-3 h-3 text-gray-500" />
-                              ) : (
-                                <ChevronRight className="w-3 h-3 text-gray-500" />
-                              )}
+                              {expandedPods[pod.name] ? 'Hide' : 'Show'}
                             </button>
                             <Badge variant="outline" className="text-xs">
                               <Container className="w-3 h-3 mr-1" />
@@ -353,14 +349,10 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                               <div key={pod.name} className="space-y-1">
                                 <div className="flex items-center gap-2">
                                   <button
-                                    onClick={() => setExpandedPods({ ...expandedPods, [pod.name]: !expandedPods[pod.name] })}
-                                    className="p-0 hover:bg-gray-100 rounded transition-colors"
+                                    onClick={() => setExpandedPods(prev => ({ ...prev, [pod.name]: !prev[pod.name] }))}
+                                    className="text-xs text-blue-600 hover:underline flex items-center gap-1"
                                   >
-                                    {expandedPods[pod.name] ? (
-                                      <ChevronDown className="w-3 h-3 text-gray-500" />
-                                    ) : (
-                                      <ChevronRight className="w-3 h-3 text-gray-500" />
-                                    )}
+                                    {expandedPods[pod.name] ? 'Hide' : 'Show'}
                                   </button>
                                   <Badge variant="outline" className="text-xs">
                                     <Container className="w-3 h-3 mr-1" />

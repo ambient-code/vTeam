@@ -29,7 +29,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chat
   const [sendingChat, setSendingChat] = useState(false);
   const [interrupting, setInterrupting] = useState(false);
   const [ending, setEnding] = useState(false);
-  const [showDebugMessages, setShowDebugMessages] = useState(false);
+  const [showSystemMessages, setShowSystemMessages] = useState(false);
 
   const phase = session?.status?.phase || "";
   const isInteractive = session?.spec?.interactive;
@@ -41,18 +41,13 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chat
   const isTerminalState = ["Completed", "Failed", "Stopped"].includes(phase);
   const isCreating = ["Creating", "Pending"].includes(phase);
 
-  // Filter out debug messages unless showDebugMessages is true
+  // Filter out system messages unless showSystemMessages is true
   const filteredMessages = streamMessages.filter((msg) => {
-    if (showDebugMessages) return true;
+    if (showSystemMessages) return true;
     
-    // Filter out system messages with debug flag
+    // Hide system_message type by default
     if (msg.type === "system_message") {
-      type SystemMessageType = Extract<MessageObject, { type: "system_message" }>;
-      const systemMsg = msg as SystemMessageType;
-      const debug = systemMsg.data?.debug as boolean | undefined;
-      if (debug === true) {
-        return false;
-      }
+      return false;
     }
     
     return true;
@@ -122,10 +117,10 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chat
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start">
                   <DropdownMenuCheckboxItem
-                    checked={showDebugMessages}
-                    onCheckedChange={setShowDebugMessages}
+                    checked={showSystemMessages}
+                    onCheckedChange={setShowSystemMessages}
                   >
-                    Show debug messages
+                    {showSystemMessages ? 'Hide' : 'Show'} system messages
                   </DropdownMenuCheckboxItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -165,10 +160,10 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chat
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="start">
                       <DropdownMenuCheckboxItem
-                        checked={showDebugMessages}
-                        onCheckedChange={setShowDebugMessages}
+                        checked={showSystemMessages}
+                        onCheckedChange={setShowSystemMessages}
                       >
-                        Show debug messages
+                        {showSystemMessages ? 'Hide' : 'Show'} system messages
                       </DropdownMenuCheckboxItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -221,10 +216,10 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chat
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start">
                     <DropdownMenuCheckboxItem
-                      checked={showDebugMessages}
-                      onCheckedChange={setShowDebugMessages}
+                      checked={showSystemMessages}
+                      onCheckedChange={setShowSystemMessages}
                     >
-                      Show debug messages
+                      {showSystemMessages ? 'Hide' : 'Show'} system messages
                     </DropdownMenuCheckboxItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
