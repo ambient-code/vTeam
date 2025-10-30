@@ -87,25 +87,6 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chat
 
   return (
     <div className="flex flex-col gap-2">
-      {/* Settings dropdown for debug toggle - positioned in bottom left */}
-      <div className="flex justify-start mb-2">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-              <Settings className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start">
-            <DropdownMenuCheckboxItem
-              checked={showDebugMessages}
-              onCheckedChange={setShowDebugMessages}
-            >
-              Show debug messages
-            </DropdownMenuCheckboxItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-
       <div className="flex flex-col gap-2 max-h-[60vh] overflow-y-auto pr-1">
         {filteredMessages.map((m, idx) => (
           <StreamMessage key={`sm-${idx}`} message={m} isNewest={idx === filteredMessages.length - 1} onGoToResults={onGoToResults} />
@@ -128,6 +109,32 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chat
         )}
       </div>
 
+      {/* Settings for non-interactive sessions with messages */}
+      {!isInteractive && filteredMessages.length > 0 && (
+        <div className="sticky bottom-0 border-t bg-gray-50">
+          <div className="p-3">
+            <div className="flex items-center gap-2">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
+                    <Settings className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  <DropdownMenuCheckboxItem
+                    checked={showDebugMessages}
+                    onCheckedChange={setShowDebugMessages}
+                  >
+                    Show debug messages
+                  </DropdownMenuCheckboxItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <p className="text-sm text-muted-foreground">Non-interactive session</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showChatInterface && (
         <div className="sticky bottom-0 border-t bg-white">
           <div className="p-3">
@@ -149,7 +156,24 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chat
                 disabled={sendingChat}
               />
               <div className="flex items-center justify-between">
-                <div className="text-xs text-muted-foreground">Interactive session</div>
+                <div className="flex items-center gap-2">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
+                        <Settings className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start">
+                      <DropdownMenuCheckboxItem
+                        checked={showDebugMessages}
+                        onCheckedChange={setShowDebugMessages}
+                      >
+                        Show debug messages
+                      </DropdownMenuCheckboxItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                  <div className="text-xs text-muted-foreground">Interactive session</div>
+                </div>
                 <div className="flex gap-2">
                   <Button 
                     variant="outline" 
@@ -186,27 +210,46 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chat
 
       {isInteractive && !showChatInterface && streamMessages.length > 0 && (
         <div className="sticky bottom-0 border-t bg-gray-50">
-          <div className="p-3 text-center">
-            <p className="text-sm text-muted-foreground">
-              {isCreating && "Chat will be available once the session is running..."}
-              {isTerminalState && (
-                <>
-                  This session has {phase.toLowerCase()}. Chat is no longer available.
-                  {onContinue && (
+          <div className="p-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
+                      <Settings className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start">
+                    <DropdownMenuCheckboxItem
+                      checked={showDebugMessages}
+                      onCheckedChange={setShowDebugMessages}
+                    >
+                      Show debug messages
+                    </DropdownMenuCheckboxItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <p className="text-sm text-muted-foreground">
+                  {isCreating && "Chat will be available once the session is running..."}
+                  {isTerminalState && (
                     <>
-                      {" "}
-                      <button
-                        onClick={onContinue}
-                        className="text-blue-600 hover:underline font-medium"
-                      >
-                        Continue this session
-                      </button>
-                      {" "}to restart it.
+                      This session has {phase.toLowerCase()}. Chat is no longer available.
+                      {onContinue && (
+                        <>
+                          {" "}
+                          <button
+                            onClick={onContinue}
+                            className="text-blue-600 hover:underline font-medium"
+                          >
+                            Continue this session
+                          </button>
+                          {" "}to restart it.
+                        </>
+                      )}
                     </>
                   )}
-                </>
-              )}
-            </p>
+                </p>
+              </div>
+            </div>
           </div>
         </div>
       )}
