@@ -62,6 +62,16 @@ rules:
       - roles
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 
+  # RBAC - needs bind permission for specific ClusterRoles
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources:
+      - clusterroles
+    resourceNames:
+      - ambient-project-admin
+      - ambient-project-edit
+      - ambient-project-view
+    verbs: ["bind"]
+
   # Custom Resource Definitions
   - apiGroups: ["apiextensions.k8s.io"]
     resources:
@@ -82,7 +92,7 @@ rules:
       - agenticsessions/status
       - projectsettings/status
       - rfeworkflows/status
-    verbs: ["get", "update", "patch"]
+    verbs: ["get", "list", "watch", "update", "patch"]
 
   # OpenShift Routes
   - apiGroups: ["route.openshift.io"]
