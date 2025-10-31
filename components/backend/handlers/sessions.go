@@ -1343,7 +1343,16 @@ func StartSession(c *gin.Context) {
 		item.SetAnnotations(annotations)
 		log.Printf("StartSession: Set parent-session-id annotation to %s for continuation (has completion time)", sessionName)
 
-		// Update the metadata to persist the annotation
+		// For headless sessions being continued, force interactive mode
+		if spec, ok := item.Object["spec"].(map[string]interface{}); ok {
+			if interactive, ok := spec["interactive"].(bool); !ok || !interactive {
+				// Session was headless, convert to interactive
+				spec["interactive"] = true
+				log.Printf("StartSession: Converting headless session to interactive for continuation")
+			}
+		}
+
+		// Update the metadata and spec to persist the annotation and interactive flag
 		item, err = reqDyn.Resource(gvr).Namespace(project).Update(context.TODO(), item, v1.UpdateOptions{})
 		if err != nil {
 			log.Printf("Failed to update agentic session metadata %s in project %s: %v", sessionName, project, err)

@@ -260,8 +260,8 @@ function SessionActions({ sessionName, phase, interactive, onStop, onContinue, o
     });
   }
 
-  // Only allow continue for interactive sessions
-  if ((phase === 'Completed' || phase === 'Failed' || phase === 'Stopped' || phase === 'Error') && interactive) {
+  // Allow continue for all completed sessions (converts headless to interactive)
+  if (phase === 'Completed' || phase === 'Failed' || phase === 'Stopped' || phase === 'Error') {
     actions.push({
       key: 'continue',
       label: 'Continue',

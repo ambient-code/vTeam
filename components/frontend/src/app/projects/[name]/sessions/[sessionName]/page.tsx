@@ -713,8 +713,8 @@ export default function ProjectSessionDetailPage({
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {/* Continue button for completed interactive sessions only */}
-            {session.spec?.interactive && (session.status?.phase === "Completed" || session.status?.phase === "Failed" || session.status?.phase === "Stopped") && (
+            {/* Continue button for completed sessions (converts headless to interactive) */}
+            {(session.status?.phase === "Completed" || session.status?.phase === "Failed" || session.status?.phase === "Stopped") && (
               <Button
                 onClick={handleContinue}
                 disabled={continueMutation.isPending}
