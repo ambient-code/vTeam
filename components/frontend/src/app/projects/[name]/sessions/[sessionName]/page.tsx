@@ -307,23 +307,33 @@ export default function ProjectSessionDetailPage({
           let text = "";
           let isDebug = false;
           
-          if (typeof envelope.payload === 'string') {
-            text = String(envelope.payload);
-          } else if (typeof envelope.payload === 'object' && envelope.payload !== null) {
-            // Handle multiple payload formats
-            const payload = envelope.payload as { message?: string; payload?: string; debug?: boolean };
-            // Check for message first, then payload field
-            text = payload.message || (typeof payload.payload === 'string' ? payload.payload : "");
-            isDebug = payload.debug === true;
+          // Handle the payload - it could be a string, or an object with message/payload fields
+          const payloadData = envelope.payload;
+          
+          if (typeof payloadData === 'string') {
+            // Direct string payload
+            text = payloadData;
+          } else if (typeof payloadData === 'object' && payloadData !== null) {
+            // Object payload - check for message or payload fields
+            const payloadObj = payloadData as { message?: string; payload?: string | unknown; debug?: boolean };
+            
+            if (typeof payloadObj.message === 'string') {
+              text = payloadObj.message;
+            } else if (typeof payloadObj.payload === 'string') {
+              text = payloadObj.payload;
+            }
+            
+            isDebug = payloadObj.debug === true;
           }
           
-          // Always create a system message, even if text is empty (will show debug info)
-          agenticMessages.push({
-            type: "system_message",
-            subtype: "system.message",
-            data: { message: text || "(empty system message)", debug: isDebug, raw: text ? undefined : envelope.payload },
-            timestamp: innerTs,
-          });
+          if (text) {
+            agenticMessages.push({
+              type: "system_message",
+              subtype: "system.message",
+              data: { message: text, debug: isDebug },
+              timestamp: innerTs,
+            });
+          }
           break;
         }
         case "user.message":
