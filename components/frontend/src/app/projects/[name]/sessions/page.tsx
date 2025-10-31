@@ -209,7 +209,6 @@ export default function ProjectSessionsListPage() {
                             <SessionActions
                               sessionName={sessionName}
                               phase={phase}
-                              interactive={session.spec?.interactive || false}
                               onStop={handleStop}
                               onContinue={handleContinue}
                               onDelete={handleDelete}
@@ -233,13 +232,12 @@ export default function ProjectSessionsListPage() {
 type SessionActionsProps = {
   sessionName: string;
   phase: string;
-  interactive: boolean;
   onStop: (sessionName: string) => void;
   onContinue: (sessionName: string) => void;
   onDelete: (sessionName: string) => void;
 };
 
-function SessionActions({ sessionName, phase, interactive, onStop, onContinue, onDelete }: SessionActionsProps) {
+function SessionActions({ sessionName, phase, onStop, onContinue, onDelete }: SessionActionsProps) {
   type RowAction = {
     key: string;
     label: string;
