@@ -2,7 +2,7 @@
 
 > Kubernetes-native AI automation platform for intelligent agentic sessions with multi-agent collaboration
 
-**Note:** This project was formerly known as "vTeam". While the product has been rebranded to **Ambient Code Platform**, the name "vTeam" still appears in various technical artifacts for backward compatibility (see [Legacy vTeam References](#legacy-vteam-references) below).
+**Note:** This project was formerly known as "vTeam". While the project has been rebranded to **Ambient Code Platform**, the name "vTeam" still appears in various technical artifacts for backward compatibility (see [Legacy vTeam References](#legacy-vteam-references) below).
 
 ## Overview
 
@@ -419,7 +419,7 @@ npm test                      # Run test suite
 
 ## Legacy vTeam References
 
-While the product is now branded as **Ambient Code Platform**, the name "vTeam" still appears in various technical components for backward compatibility and to avoid breaking changes. You will encounter "vTeam" or "vteam" in:
+While the project is now branded as **Ambient Code Platform**, the name "vTeam" still appears in various technical components for backward compatibility and to avoid breaking changes. You will encounter "vTeam" or "vteam" in:
 
 ### Infrastructure & Deployment
 - **GitHub Repository**: `github.com/ambient-code/vTeam` (repository name unchanged)
