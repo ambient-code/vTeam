@@ -312,19 +312,18 @@ export default function ProjectSessionDetailPage({
           } else if (typeof envelope.payload === 'object' && envelope.payload !== null) {
             // Handle multiple payload formats
             const payload = envelope.payload as { message?: string; payload?: string; debug?: boolean };
-            // Check for message first, then payload field, then stringify if neither exists
-            text = payload.message || payload.payload || "";
+            // Check for message first, then payload field
+            text = payload.message || (typeof payload.payload === 'string' ? payload.payload : "");
             isDebug = payload.debug === true;
           }
           
-          if (text) {
-            agenticMessages.push({
-              type: "system_message",
-              subtype: "system.message",
-              data: { message: text, debug: isDebug },
-              timestamp: innerTs,
-            });
-          }
+          // Always create a system message, even if text is empty (will show debug info)
+          agenticMessages.push({
+            type: "system_message",
+            subtype: "system.message",
+            data: { message: text || "(empty system message)", debug: isDebug, raw: text ? undefined : envelope.payload },
+            timestamp: innerTs,
+          });
           break;
         }
         case "user.message":

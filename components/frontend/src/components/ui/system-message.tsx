@@ -14,13 +14,24 @@ export type SystemMessageProps = {
 };
 
 export const SystemMessage: React.FC<SystemMessageProps> = ({ data, className }) => {
-  // Expect a simple string in data.message; fallback to JSON.stringify
-  const text: string = typeof (data?.message) === 'string' ? data.message : (typeof data === 'string' ? data : JSON.stringify(data ?? {}, null, 2));
+  // Expect a simple string in data.message; fallback to raw data or JSON.stringify
+  let text: string;
+  
+  if (typeof data?.message === 'string' && data.message) {
+    text = data.message;
+  } else if (data?.raw) {
+    // If we have raw data, try to show it in a more readable way
+    text = JSON.stringify(data.raw, null, 2);
+  } else if (typeof data === 'string') {
+    text = data;
+  } else {
+    text = JSON.stringify(data ?? {}, null, 2);
+  }
 
   // Compact style: Just small grey text, no card, no avatar
   return (
     <div className={cn("my-1 px-2", className)}>
-      <p className="text-xs text-gray-400 italic">
+      <p className="text-xs text-gray-400 italic whitespace-pre-wrap">
         {text}
       </p>
     </div>
