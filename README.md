@@ -436,6 +436,9 @@ While the project is now branded as **Ambient Code Platform**, the name "vTeam" 
 - **File paths**: Repository directory structure (`/path/to/vTeam/...`)
 - **Go package references**: Internal Kubernetes resource types
 - **RBAC resources**: ClusterRole and RoleBinding names
+- **Makefile targets**: Development commands reference `vteam-dev` namespace
+- **Kubernetes resources**: Deployment names (`vteam-frontend`, `vteam-backend`, `vteam-operator`)
+- **Environment variables**: `VTEAM_VERSION` in frontend deployment
 
 These technical references remain unchanged to maintain compatibility with existing deployments and to avoid requiring migration for current users. Future major versions may fully transition these artifacts to use "Ambient Code Platform" or "ambient-code" naming.
 
