@@ -307,31 +307,35 @@ export default function ProjectSessionDetailPage({
           let text = "";
           let isDebug = false;
           
-          // Handle the payload - it could be a string, or an object with message/payload fields
-          const payloadData = envelope.payload;
+          // The envelope object might have message/payload at different levels
+          // Try envelope.payload first, then fall back to envelope itself
+          const envelopeObj = envelope as { message?: string; payload?: string | { message?: string; payload?: string; debug?: boolean }; debug?: boolean };
           
-          if (typeof payloadData === 'string') {
-            // Direct string payload
-            text = payloadData;
-          } else if (typeof payloadData === 'object' && payloadData !== null) {
-            // Object payload - check for message or payload fields
-            const payloadObj = payloadData as { message?: string; payload?: string | unknown; debug?: boolean };
-            
-            if (typeof payloadObj.message === 'string') {
-              text = payloadObj.message;
-            } else if (typeof payloadObj.payload === 'string') {
-              text = payloadObj.payload;
-            }
-            
+          // Check if envelope.payload is a string
+          if (typeof envelopeObj.payload === 'string') {
+            text = envelopeObj.payload;
+          }
+          // Check if envelope.payload is an object with message or payload
+          else if (typeof envelopeObj.payload === 'object' && envelopeObj.payload !== null) {
+            const payloadObj = envelopeObj.payload as { message?: string; payload?: string; debug?: boolean };
+            text = payloadObj.message || (typeof payloadObj.payload === 'string' ? payloadObj.payload : "");
             isDebug = payloadObj.debug === true;
           }
+          // Fall back to envelope.message directly
+          else if (typeof envelopeObj.message === 'string') {
+            text = envelopeObj.message;
+          }
           
-          // Always create a system message - show the raw payload if we couldn't extract text
+          if (envelopeObj.debug === true) {
+            isDebug = true;
+          }
+          
+          // Always create a system message - show the raw envelope if we couldn't extract text
           agenticMessages.push({
             type: "system_message",
             subtype: "system.message",
             data: { 
-              message: text || `[system event: ${JSON.stringify(payloadData)}]`,
+              message: text || `[system event: ${JSON.stringify(envelope)}]`,
               debug: isDebug 
             },
             timestamp: innerTs,
