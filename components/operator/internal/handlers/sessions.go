@@ -126,7 +126,18 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 			if job.Status.Active > 0 || (job.Status.Succeeded == 0 && job.Status.Failed == 0) {
 				log.Printf("Job %s is still active, cleaning up job and pods", jobName)
 
-				// First, explicitly delete all pods for this job (by job-name label)
+				// First, delete the job itself with foreground propagation
+				deletePolicy := v1.DeletePropagationForeground
+				err = config.K8sClient.BatchV1().Jobs(sessionNamespace).Delete(context.TODO(), jobName, v1.DeleteOptions{
+					PropagationPolicy: &deletePolicy,
+				})
+				if err != nil && !errors.IsNotFound(err) {
+					log.Printf("Failed to delete job %s: %v", jobName, err)
+				} else {
+					log.Printf("Successfully deleted job %s for stopped session", jobName)
+				}
+
+				// Then, explicitly delete all pods for this job (by job-name label)
 				podSelector := fmt.Sprintf("job-name=%s", jobName)
 				log.Printf("Deleting pods with job-name selector: %s", podSelector)
 				err = config.K8sClient.CoreV1().Pods(sessionNamespace).DeleteCollection(context.TODO(), v1.DeleteOptions{}, v1.ListOptions{
@@ -148,17 +159,6 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 					log.Printf("Failed to delete session-labeled pods: %v (continuing anyway)", err)
 				} else {
 					log.Printf("Successfully deleted session-labeled pods")
-				}
-
-				// Then delete the job itself with foreground propagation
-				deletePolicy := v1.DeletePropagationForeground
-				err = config.K8sClient.BatchV1().Jobs(sessionNamespace).Delete(context.TODO(), jobName, v1.DeleteOptions{
-					PropagationPolicy: &deletePolicy,
-				})
-				if err != nil && !errors.IsNotFound(err) {
-					log.Printf("Failed to delete job %s: %v", jobName, err)
-				} else {
-					log.Printf("Successfully deleted job %s for stopped session", jobName)
 				}
 			} else {
 				log.Printf("Job %s already completed (Succeeded: %d, Failed: %d), no cleanup needed", jobName, job.Status.Succeeded, job.Status.Failed)
@@ -698,6 +698,8 @@ func monitorJob(jobName, sessionName, sessionNamespace string) {
 					"message":        "Job completed successfully",
 					"completionTime": time.Now().Format(time.RFC3339),
 				})
+				// Ensure session is interactive so it can be restarted
+				_ = ensureSessionIsInteractive(sessionNamespace, sessionName)
 			} else {
 				log.Printf("Job %s marked succeeded by Kubernetes, but status already %s (not overriding)", jobName, currentPhase)
 			}
@@ -733,6 +735,8 @@ func monitorJob(jobName, sessionName, sessionNamespace string) {
 						"message":        failureMsg,
 						"completionTime": time.Now().Format(time.RFC3339),
 					})
+					// Ensure session is interactive so it can be restarted
+					_ = ensureSessionIsInteractive(sessionNamespace, sessionName)
 				}
 			}
 			_ = deleteJobAndPerJobService(sessionNamespace, jobName, sessionName)
@@ -891,6 +895,9 @@ func monitorJob(jobName, sessionName, sessionNamespace string) {
 			if currentPhase == "Completed" || currentPhase == "Failed" {
 				log.Printf("Runner exited for job %s with phase %s", jobName, currentPhase)
 
+				// Ensure session is interactive so it can be restarted
+				_ = ensureSessionIsInteractive(sessionNamespace, sessionName)
+
 				// Clean up Job/Service immediately
 				_ = deleteJobAndPerJobService(sessionNamespace, jobName, sessionName)
 
@@ -907,6 +914,8 @@ func monitorJob(jobName, sessionName, sessionNamespace string) {
 					"message":        "Runner completed successfully",
 					"completionTime": time.Now().Format(time.RFC3339),
 				})
+				// Ensure session is interactive so it can be restarted
+				_ = ensureSessionIsInteractive(sessionNamespace, sessionName)
 				log.Printf("Runner container exited successfully for job %s", jobName)
 				// Will cleanup on next iteration
 				continue
@@ -921,6 +930,8 @@ func monitorJob(jobName, sessionName, sessionNamespace string) {
 				"phase":   "Failed",
 				"message": msg,
 			})
+			// Ensure session is interactive so it can be restarted
+			_ = ensureSessionIsInteractive(sessionNamespace, sessionName)
 			log.Printf("Runner container failed for job %s: %s", jobName, msg)
 			// Will cleanup on next iteration
 			continue
@@ -1007,6 +1018,59 @@ func updateAgenticSessionStatus(sessionNamespace, name string, statusUpdate map[
 		return fmt.Errorf("failed to update AgenticSession status: %v", err)
 	}
 
+	return nil
+}
+
+// ensureSessionIsInteractive updates a session's spec to set interactive: true
+// This allows completed sessions to be restarted without requiring manual spec file removal
+func ensureSessionIsInteractive(sessionNamespace, name string) error {
+	gvr := types.GetAgenticSessionResource()
+
+	// Get current resource
+	obj, err := config.DynamicClient.Resource(gvr).Namespace(sessionNamespace).Get(context.TODO(), name, v1.GetOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			log.Printf("AgenticSession %s no longer exists, skipping interactive update", name)
+			return nil // Don't treat this as an error - resource was deleted
+		}
+		return fmt.Errorf("failed to get AgenticSession %s: %v", name, err)
+	}
+
+	// Check if spec exists and if interactive is already true
+	spec, found, err := unstructured.NestedMap(obj.Object, "spec")
+	if err != nil {
+		return fmt.Errorf("failed to get spec from AgenticSession %s: %v", name, err)
+	}
+	if !found {
+		log.Printf("AgenticSession %s has no spec, cannot update interactive", name)
+		return nil
+	}
+
+	// Check current interactive value
+	interactive, _, _ := unstructured.NestedBool(spec, "interactive")
+	if interactive {
+		log.Printf("AgenticSession %s is already interactive, no update needed", name)
+		return nil
+	}
+
+	// Update spec to set interactive: true
+	if err := unstructured.SetNestedField(obj.Object, true, "spec", "interactive"); err != nil {
+		return fmt.Errorf("failed to set interactive field for AgenticSession %s: %v", name, err)
+	}
+
+	log.Printf("Setting interactive: true for AgenticSession %s to allow restart", name)
+
+	// Update the resource (not UpdateStatus, since we're modifying spec)
+	_, err = config.DynamicClient.Resource(gvr).Namespace(sessionNamespace).Update(context.TODO(), obj, v1.UpdateOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			log.Printf("AgenticSession %s was deleted during spec update, skipping", name)
+			return nil // Don't treat this as an error - resource was deleted
+		}
+		return fmt.Errorf("failed to update AgenticSession spec: %v", err)
+	}
+
+	log.Printf("Successfully set interactive: true for AgenticSession %s", name)
 	return nil
 }
 

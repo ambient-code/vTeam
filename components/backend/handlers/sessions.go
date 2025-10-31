@@ -1472,7 +1472,24 @@ func StopSession(c *gin.Context) {
 	// Delete the job and its pods
 	log.Printf("Attempting to delete job %s for session %s", jobName, sessionName)
 
-	// First, explicitly delete all pods for this job (by job-name label)
+	// First, delete the job itself with foreground propagation
+	deletePolicy := v1.DeletePropagationForeground
+	err = reqK8s.BatchV1().Jobs(project).Delete(context.TODO(), jobName, v1.DeleteOptions{
+		PropagationPolicy: &deletePolicy,
+	})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			log.Printf("Job %s not found (may have already completed or been deleted)", jobName)
+		} else {
+			log.Printf("Failed to delete job %s: %v", jobName, err)
+			// Don't fail the request if job deletion fails - continue with status update
+			log.Printf("Continuing with status update despite job deletion failure")
+		}
+	} else {
+		log.Printf("Successfully deleted job %s for agentic session %s", jobName, sessionName)
+	}
+
+	// Then, explicitly delete all pods for this job (by job-name label)
 	podSelector := fmt.Sprintf("job-name=%s", jobName)
 	log.Printf("Deleting pods with job-name selector: %s", podSelector)
 	err = reqK8s.CoreV1().Pods(project).DeleteCollection(context.TODO(), v1.DeleteOptions{}, v1.ListOptions{
@@ -1496,27 +1513,24 @@ func StopSession(c *gin.Context) {
 		log.Printf("Successfully deleted session-labeled pods")
 	}
 
-	// Then delete the job itself with foreground propagation
-	deletePolicy := v1.DeletePropagationForeground
-	err = reqK8s.BatchV1().Jobs(project).Delete(context.TODO(), jobName, v1.DeleteOptions{
-		PropagationPolicy: &deletePolicy,
-	})
-	if err != nil {
-		if errors.IsNotFound(err) {
-			log.Printf("Job %s not found (may have already completed or been deleted)", jobName)
-		} else {
-			log.Printf("Failed to delete job %s: %v", jobName, err)
-			// Don't fail the request if job deletion fails - continue with status update
-			log.Printf("Continuing with status update despite job deletion failure")
-		}
-	} else {
-		log.Printf("Successfully deleted job %s for agentic session %s", jobName, sessionName)
-	}
-
 	// Update status to Stopped
 	status["phase"] = "Stopped"
 	status["message"] = "Session stopped by user"
 	status["completionTime"] = time.Now().Format(time.RFC3339)
+
+	// Also set interactive: true in spec so session can be restarted
+	if spec, ok := item.Object["spec"].(map[string]interface{}); ok {
+		if interactive, ok := spec["interactive"].(bool); !ok || !interactive {
+			log.Printf("Setting interactive: true for stopped session %s to allow restart", sessionName)
+			spec["interactive"] = true
+			// Update spec first (must use Update, not UpdateStatus)
+			item, err = reqDyn.Resource(gvr).Namespace(project).Update(context.TODO(), item, v1.UpdateOptions{})
+			if err != nil {
+				log.Printf("Failed to update session spec for %s: %v (continuing with status update)", sessionName, err)
+				// Continue anyway - status update is more important
+			}
+		}
+	}
 
 	// Update the resource using UpdateStatus for status subresource
 	updated, err := reqDyn.Resource(gvr).Namespace(project).UpdateStatus(context.TODO(), item, v1.UpdateOptions{})
