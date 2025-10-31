@@ -1,10 +1,12 @@
-# vTeam: Ambient Agentic Runner
+# Ambient Code Platform
 
 > Kubernetes-native AI automation platform for intelligent agentic sessions with multi-agent collaboration
 
+**Note:** This project was formerly known as "vTeam". While the product has been rebranded to **Ambient Code Platform**, the name "vTeam" still appears in various technical artifacts for backward compatibility (see [Legacy vTeam References](#legacy-vteam-references) below).
+
 ## Overview
 
-**vTeam** is an AI automation platform that combines Claude Code CLI with multi-agent collaboration capabilities. The platform enables teams to create and manage intelligent agentic sessions through a modern web interface.
+The **Ambient Code Platform** is an AI automation platform that combines Claude Code CLI with multi-agent collaboration capabilities. The platform enables teams to create and manage intelligent agentic sessions through a modern web interface.
 
 ### Key Capabilities
 
@@ -290,7 +292,7 @@ make build-runner
 
 ```
 vTeam/
-├── components/                     # 🚀 Ambient Agentic Runner Platform
+├── components/                     # 🚀 Ambient Code Platform Components
 │   ├── frontend/                   # NextJS web interface
 │   ├── backend/                    # Go API service
 │   ├── operator/                   # Kubernetes operator
@@ -414,6 +416,28 @@ npm test                      # Run test suite
 - **OAuth Setup**: [docs/OPENSHIFT_OAUTH.md](docs/OPENSHIFT_OAUTH.md)
 - **Architecture Details**: [diagrams/](diagrams/)
 - **API Documentation**: Available in web interface after deployment
+
+## Legacy vTeam References
+
+While the product is now branded as **Ambient Code Platform**, the name "vTeam" still appears in various technical components for backward compatibility and to avoid breaking changes. You will encounter "vTeam" or "vteam" in:
+
+### Infrastructure & Deployment
+- **GitHub Repository**: `github.com/ambient-code/vTeam` (repository name unchanged)
+- **Container Images**: `vteam_frontend`, `vteam_backend`, `vteam_operator`, `vteam_claude_runner`
+- **Kubernetes API Group**: `vteam.ambient-code` (used in Custom Resource Definitions)
+- **Development Namespace**: `vteam-dev` (local development environment)
+
+### URLs & Routes
+- **Local Development Routes**:
+  - `https://vteam-frontend-vteam-dev.apps-crc.testing`
+  - `https://vteam-backend-vteam-dev.apps-crc.testing`
+
+### Code & Configuration
+- **File paths**: Repository directory structure (`/path/to/vTeam/...`)
+- **Go package references**: Internal Kubernetes resource types
+- **RBAC resources**: ClusterRole and RoleBinding names
+
+These technical references remain unchanged to maintain compatibility with existing deployments and to avoid requiring migration for current users. Future major versions may fully transition these artifacts to use "Ambient Code Platform" or "ambient-code" naming.
 
 ## License
 
