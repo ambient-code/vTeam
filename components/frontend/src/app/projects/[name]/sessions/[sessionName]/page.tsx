@@ -326,14 +326,16 @@ export default function ProjectSessionDetailPage({
             isDebug = payloadObj.debug === true;
           }
           
-          if (text) {
-            agenticMessages.push({
-              type: "system_message",
-              subtype: "system.message",
-              data: { message: text, debug: isDebug },
-              timestamp: innerTs,
-            });
-          }
+          // Always create a system message - show the raw payload if we couldn't extract text
+          agenticMessages.push({
+            type: "system_message",
+            subtype: "system.message",
+            data: { 
+              message: text || `[system event: ${JSON.stringify(payloadData)}]`,
+              debug: isDebug 
+            },
+            timestamp: innerTs,
+          });
           break;
         }
         case "user.message":
