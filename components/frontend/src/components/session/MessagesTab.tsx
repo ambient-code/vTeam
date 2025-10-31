@@ -46,7 +46,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chat
     if (showSystemMessages) return true;
     
     // Hide system_message type by default
-    if (msg.type === "system_message") {
+    // Check if msg has a type property and if it's a system_message
+    if ('type' in msg && msg.type === "system_message") {
       return false;
     }
     

@@ -310,9 +310,10 @@ export default function ProjectSessionDetailPage({
           if (typeof envelope.payload === 'string') {
             text = String(envelope.payload);
           } else if (typeof envelope.payload === 'object' && envelope.payload !== null) {
-            // New format: { message: string, debug: boolean }
-            const payload = envelope.payload as { message?: string; debug?: boolean };
-            text = payload.message || "";
+            // Handle multiple payload formats
+            const payload = envelope.payload as { message?: string; payload?: string; debug?: boolean };
+            // Check for message first, then payload field, then stringify if neither exists
+            text = payload.message || payload.payload || "";
             isDebug = payload.debug === true;
           }
           
