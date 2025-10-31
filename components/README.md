@@ -1,6 +1,6 @@
-# vTeam Components
+# Ambient Code Platform Components
 
-This directory contains the core components of the vTeam Ambient Agentic Runner platform.
+This directory contains the core components of the Ambient Code Platform.
 
 See the main [README.md](../README.md) for complete documentation, deployment instructions, and usage examples.
 

@@ -1,6 +1,6 @@
 # OpenShift Deployment Guide
 
-vTeam is an OpenShift-native platform that deploys a backend API, frontend, and operator into a managed namespace.
+The Ambient Code Platform is an OpenShift-native platform that deploys a backend API, frontend, and operator into a managed namespace.
 
 ## Prerequisites
 

@@ -1,10 +1,10 @@
-# vTeam Documentation
+# Ambient Code Platform Documentation
 
-**vTeam** is a Kubernetes-native AI automation platform that orchestrates intelligent agentic sessions through containerized microservices. Built on OpenShift/Kubernetes, vTeam enables AI-powered automation for code analysis, development tasks, and engineering workflows.
+The **Ambient Code Platform** is a Kubernetes-native AI automation platform that orchestrates intelligent agentic sessions through containerized microservices. Built on OpenShift/Kubernetes, the platform enables AI-powered automation for code analysis, development tasks, and engineering workflows.
 
 ## Architecture Overview
 
-vTeam follows a cloud-native microservices architecture:
+The platform follows a cloud-native microservices architecture:
 
 - **Frontend**: Next.js web application with Shadcn UI for session management and monitoring
 - **Backend API**: Go-based REST API managing Kubernetes Custom Resources with multi-tenant project isolation
@@ -26,7 +26,7 @@ vTeam follows a cloud-native microservices architecture:
 brew install crc
 crc setup
 
-# Clone and deploy vTeam
+# Clone and deploy
 git clone https://github.com/ambient-code/vTeam.git
 cd vTeam
 make dev-start
@@ -65,11 +65,11 @@ For production OpenShift clusters:
 ## Documentation Structure
 
 ### [📘 User Guide](user-guide/index.md)
-Learn how to use vTeam for AI-powered automation:
+Learn how to use the Ambient Code Platform for AI-powered automation:
 - [Getting Started](user-guide/getting-started.md) - Installation and first session
 
 ### [🧪 Labs](labs/index.md)
-Hands-on exercises to master vTeam:
+Hands-on exercises to master the platform:
 - [Lab 1: Your First Agentic Session](labs/basic/lab-1-first-rfe.md)
 
 ### [📖 Reference](reference/index.md)
@@ -91,7 +91,7 @@ Production deployment resources:
 
 ## Quick Links
 
-- New to vTeam? → [Getting Started](user-guide/getting-started.md)
+- New to the platform? → [Getting Started](user-guide/getting-started.md)
 - Want hands-on experience? → [Lab 1](labs/basic/lab-1-first-rfe.md)
 - Need reference docs? → [Glossary](reference/glossary.md)
 - Deploying to production? → [OpenShift Guide](OPENSHIFT_DEPLOY.md)

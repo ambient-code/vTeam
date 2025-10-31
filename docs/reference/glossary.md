@@ -1,6 +1,6 @@
 # Glossary
 
-This glossary defines key terms, concepts, and acronyms used throughout the vTeam system and documentation.
+This glossary defines key terms, concepts, and acronyms used throughout the Ambient Code Platform system and documentation.
 
 ## Core Concepts
 
@@ -14,7 +14,7 @@ A specialized AI character with defined role, expertise, seniority level, and an
 The process of creating Requirements for Enhancement using natural language chat with AI, as opposed to filling out traditional forms.
 
 ### **Kubernetes Operator**
-Custom controller that extends Kubernetes functionality by watching Custom Resources and reconciling them to desired state. vTeam uses an operator to manage agentic sessions.
+Custom controller that extends Kubernetes functionality by watching Custom Resources and reconciling them to desired state. The Ambient Code Platform uses an operator to manage agentic sessions.
 
 ### **Multi-Agent Workflow**  
 The coordinated process where multiple AI agents sequentially analyze an RFE, each contributing specialized expertise to create comprehensive requirements.
@@ -29,12 +29,12 @@ A structured document describing a desired software feature, including business 
 The complete AI-powered system that automates engineering refinement processes, reducing meeting time and improving ticket quality.
 
 ### **Workflow Orchestration**
-The automated management of task sequences, state transitions, and agent coordination within the vTeam system.
+The automated management of task sequences, state transitions, and agent coordination within the Ambient Code Platform.
 
 ## Technical Terms
 
 ### **API Endpoint**
-RESTful web service interface for programmatic access to vTeam functionality.
+RESTful web service interface for programmatic access to platform functionality.
 
 ### **FAISS**
 Facebook AI Similarity Search - vector database used for efficient document retrieval in RAG systems.
@@ -46,7 +46,7 @@ Framework for building RAG applications with document indexing and retrieval cap
 Python library for data validation and serialization using type hints.
 
 ### **Next.js**
-React-based web framework used for vTeam's frontend, providing server-side rendering, routing, and modern UI components via Shadcn UI.
+React-based web framework used for the platform's frontend, providing server-side rendering, routing, and modern UI components via Shadcn UI.
 
 ### **Vector Embedding**
 Numerical representation of text that enables semantic similarity search in AI systems.
@@ -151,24 +151,24 @@ Maximum amount of text content that can be processed by AI agents in a single an
 ## Deployment Terms
 
 ### **Container Orchestration**
-Management of containerized vTeam services using Docker and Kubernetes platforms.
+Management of containerized platform services using Docker and Kubernetes platforms.
 
 ### **Health Check**
 Automated system monitoring endpoint that reports service status and availability.
 
 ### **Horizontal Scaling**
-Adding more instances of vTeam services to handle increased load.
+Adding more instances of platform services to handle increased load.
 
 ### **Load Balancing**
-Distribution of requests across multiple vTeam service instances for optimal performance.
+Distribution of requests across multiple platform service instances for optimal performance.
 
 ### **Production Deployment**
-Enterprise-grade installation of vTeam with high availability, monitoring, and security.
+Enterprise-grade installation of the Ambient Code Platform with high availability, monitoring, and security.
 
 ## Development Terms
 
 ### **CI/CD (Continuous Integration/Continuous Deployment)**
-Automated pipeline for testing, building, and deploying vTeam code changes.
+Automated pipeline for testing, building, and deploying platform code changes.
 
 ### **Pre-commit Hooks**
 Automated code quality checks that run before Git commits are allowed.
@@ -228,4 +228,4 @@ Found a missing term or unclear definition?
 - **Include context** where the term is commonly used
 - **Cross-reference** related terms when helpful
 
-This glossary is a living document that evolves with the vTeam system. Your contributions help make vTeam more accessible to new users and contributors.
+This glossary is a living document that evolves with the Ambient Code Platform. Your contributions help make the platform more accessible to new users and contributors.

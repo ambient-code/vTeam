@@ -1,10 +1,10 @@
 # User Guide
 
-Welcome to the vTeam User Guide! This section provides everything you need to effectively use vTeam for AI-powered automation and agentic development workflows.
+Welcome to the Ambient Code Platform User Guide! This section provides everything you need to effectively use the platform for AI-powered automation and agentic development workflows.
 
 ## What You'll Learn
 
-This guide covers the essential aspects of using vTeam:
+This guide covers the essential aspects of using the Ambient Code Platform:
 
 ### 🚀 [Getting Started](getting-started.md)
 - Complete setup and installation (local and production)
@@ -26,7 +26,7 @@ An AgenticSession is a Kubernetes Custom Resource representing an AI-powered aut
 - Tracks status, results, and per-repo push/abandon decisions
 
 ### **Projects & Namespaces**
-vTeam uses Kubernetes namespaces for multi-tenant isolation:
+The platform uses Kubernetes namespaces for multi-tenant isolation:
 - Each project maps to a namespace
 - Users authenticate with OpenShift OAuth
 - RBAC controls who can create/view sessions
@@ -103,20 +103,20 @@ spec:
 
 ## Prerequisites
 
-Before using vTeam, ensure you have:
+Before using the platform, ensure you have:
 
 - [ ] OpenShift or Kubernetes cluster access
-- [ ] vTeam deployed and running ([Deployment Guides](../OPENSHIFT_DEPLOY.md))
+- [ ] Ambient Code Platform deployed and running ([Deployment Guides](../OPENSHIFT_DEPLOY.md))
 - [ ] Anthropic Claude API key
 - [ ] Project created with your user granted access
 - [ ] Basic familiarity with GitHub workflows
 
 ## Quick Navigation
 
-- **New to vTeam?** → Start with [Getting Started](getting-started.md)
+- **New to the platform?** → Start with [Getting Started](getting-started.md)
 - **Want hands-on practice?** → Try [Lab 1: Your First Agentic Session](../labs/basic/lab-1-first-rfe.md)
 - **Need technical details?** → Check the [Reference Documentation](../reference/index.md)
-- **Deploying vTeam?** → See [OpenShift Deployment Guide](../OPENSHIFT_DEPLOY.md)
+- **Deploying the platform?** → See [OpenShift Deployment Guide](../OPENSHIFT_DEPLOY.md)
 
 ## Getting Help
 
@@ -129,4 +129,4 @@ If you encounter issues:
 
 ---
 
-Ready to get started? Jump to the [Getting Started Guide](getting-started.md) to install vTeam and create your first AgenticSession!
+Ready to get started? Jump to the [Getting Started Guide](getting-started.md) to install the Ambient Code Platform and create your first AgenticSession!

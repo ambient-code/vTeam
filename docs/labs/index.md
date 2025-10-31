@@ -1,10 +1,10 @@
 # Hands-On Labs
 
-Welcome to the vTeam hands-on learning labs! These practical exercises will guide you through mastering AI-powered automation using AgenticSessions in a Kubernetes-native environment.
+Welcome to the Ambient Code Platform hands-on learning labs! These practical exercises will guide you through mastering AI-powered automation using AgenticSessions in a Kubernetes-native environment.
 
 ## Lab 1: Your First Agentic Session
 
-This foundational lab introduces you to vTeam's core workflow by creating and monitoring an AgenticSession. You'll learn how to configure sessions, monitor execution, and interpret results.
+This foundational lab introduces you to the platform's core workflow by creating and monitoring an AgenticSession. You'll learn how to configure sessions, monitor execution, and interpret results.
 
 **[Start Lab 1 →](basic/lab-1-first-rfe.md)**
 
@@ -54,10 +54,10 @@ Summary of concepts mastered
 
 Before starting Lab 1, ensure you have:
 
-- [ ] **vTeam installed and running** - Complete [Getting Started Guide](../user-guide/getting-started.md)
+- [ ] **Ambient Code Platform installed and running** - Complete [Getting Started Guide](../user-guide/getting-started.md)
 - [ ] **Anthropic API key** configured in ProjectSettings
-- [ ] **At least one project** created in vTeam
-- [ ] **Web browser** for accessing the vTeam interface
+- [ ] **At least one project** created
+- [ ] **Web browser** for accessing the platform interface
 - [ ] **Basic Git familiarity** (optional, for multi-repo exercises)
 
 ## Lab Environment Setup
@@ -65,7 +65,7 @@ Before starting Lab 1, ensure you have:
 ### Local Development Setup
 
 ```bash
-# Clone vTeam repository
+# Clone repository
 git clone https://github.com/ambient-code/vTeam.git
 cd vTeam
 
@@ -108,7 +108,7 @@ After completing Lab 1, you should be able to:
 - [ ] Monitor session execution using both UI and CLI
 - [ ] Troubleshoot common session failures
 - [ ] Interpret session results and status information
-- [ ] Explain vTeam's Kubernetes-native architecture
+- [ ] Explain the platform's Kubernetes-native architecture
 
 ## Getting Help
 
@@ -138,4 +138,4 @@ Once you've completed Lab 1, explore advanced AgenticSession capabilities:
 
 **[Begin Lab 1: Your First Agentic Session →](basic/lab-1-first-rfe.md)**
 
-Learn by doing! This lab provides hands-on experience with vTeam's core capabilities in a safe, local development environment.
+Learn by doing! This lab provides hands-on experience with the platform's core capabilities in a safe, local development environment.

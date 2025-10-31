@@ -2,7 +2,7 @@
 
 ## Objective 🎯
 
-Learn to create and monitor an AgenticSession using vTeam's web interface, understanding how AI-powered automation executes tasks in a Kubernetes-native environment.
+Learn to create and monitor an AgenticSession using the Ambient Code Platform web interface, understanding how AI-powered automation executes tasks in a Kubernetes-native environment.
 
 **By the end of this lab, you will:**
 
@@ -13,10 +13,10 @@ Learn to create and monitor an AgenticSession using vTeam's web interface, under
 
 ## Prerequisites 📋
 
-- [ ] vTeam installed and running ([Getting Started Guide](../../user-guide/getting-started.md))
+- [ ] Ambient Code Platform installed and running ([Getting Started Guide](../../user-guide/getting-started.md))
 - [ ] Anthropic API key configured in ProjectSettings
-- [ ] At least one project created in vTeam
-- [ ] Web browser for accessing the vTeam interface
+- [ ] At least one project created
+- [ ] Web browser for accessing the platform interface
 - [ ] Basic understanding of GitHub repositories (optional, for multi-repo exercises)
 
 ## Estimated Time ⏱️
@@ -27,9 +27,9 @@ Learn to create and monitor an AgenticSession using vTeam's web interface, under
 
 You're a developer who wants to automate code analysis and documentation tasks. You'll create your first AgenticSession to analyze a simple Python repository and generate a README file describing its functionality.
 
-## Step 1: Access the vTeam Interface
+## Step 1: Access the Platform Interface
 
-1. **Ensure vTeam is running**. For local development with OpenShift Local (CRC):
+1. **Ensure the platform is running**. For local development with OpenShift Local (CRC):
 
    ```bash
    cd vTeam
@@ -42,14 +42,14 @@ You're a developer who wants to automate code analysis and documentation tasks. 
    echo "https://$(oc get route vteam-frontend -n vteam-dev -o jsonpath='{.spec.host}')"
    ```
 
-3. **Open your browser** to the vTeam frontend URL
+3. **Open your browser** to the frontend URL
 
 4. **Verify the interface**:
-   - You should see the vTeam dashboard
+   - You should see the dashboard
    - Navigate to your project (or create one if needed)
    - Look for the "Agentic Sessions" section
 
-**✅ Checkpoint**: Confirm you can access the vTeam interface and see the sessions list.
+**✅ Checkpoint**: Confirm you can access the interface and see the sessions list.
 
 ## Step 2: Create Your First Session (Single Repository)
 

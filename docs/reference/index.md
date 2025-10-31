@@ -1,15 +1,15 @@
 # Reference Documentation
 
-This section provides comprehensive reference material for the vTeam system, including API documentation, Custom Resource specifications, and configuration details.
+This section provides comprehensive reference material for the Ambient Code Platform, including API documentation, Custom Resource specifications, and configuration details.
 
 ## Quick Reference
 
 ### **[Glossary](glossary.md)** 📖
-Definitions of terms, concepts, and acronyms used throughout the vTeam system and documentation.
+Definitions of terms, concepts, and acronyms used throughout the Ambient Code Platform system and documentation.
 
 ## Custom Resources
 
-vTeam uses Kubernetes Custom Resource Definitions (CRDs) for declarative automation management.
+The platform uses Kubernetes Custom Resource Definitions (CRDs) for declarative automation management.
 
 ### AgenticSession
 
@@ -61,7 +61,7 @@ spec:
 
 ### ProjectSettings
 
-Namespace-scoped configuration for vTeam projects, managing API keys, access control, and default settings.
+Namespace-scoped configuration for platform projects, managing API keys, access control, and default settings.
 
 **API Version**: `vteam.ambient-code/v1alpha1`
 **Kind**: `ProjectSettings`
@@ -110,7 +110,7 @@ This is an advanced feature not covered in the standard user documentation. For 
 
 ## REST API Endpoints
 
-The vTeam backend API provides HTTP endpoints for managing projects and sessions.
+The backend API provides HTTP endpoints for managing projects and sessions.
 
 ### Base URLs
 
@@ -119,7 +119,7 @@ The vTeam backend API provides HTTP endpoints for managing projects and sessions
 
 ### Authentication
 
-vTeam uses OpenShift OAuth for authentication. Include the user's bearer token in all requests:
+The platform uses OpenShift OAuth for authentication. Include the user's bearer token in all requests:
 
 ```http
 Authorization: Bearer <user-oauth-token>
@@ -216,7 +216,7 @@ status:
 
 ## Kubernetes Resources
 
-When you create an AgenticSession, vTeam automatically creates these Kubernetes resources:
+When you create an AgenticSession, the platform automatically creates these Kubernetes resources:
 
 - **Job**: Manages the pod lifecycle for session execution
 - **Pod**: Runs the Claude Code runner container

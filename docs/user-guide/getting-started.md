@@ -1,6 +1,6 @@
 # Getting Started
 
-Get vTeam up and running quickly! This guide walks you through everything needed to create your first AI-powered agentic session.
+Get the Ambient Code Platform up and running quickly! This guide walks you through everything needed to create your first AI-powered agentic session.
 
 ## Prerequisites
 
@@ -60,7 +60,7 @@ After deployment, you need to configure your Anthropic API key:
 
 ```bash
 # Create a project settings with your API key
-# Access the vTeam UI (URL shown after dev-start)
+# Access the UI (URL shown after dev-start)
 # Navigate to Project Settings
 # Add your ANTHROPIC_API_KEY
 ```

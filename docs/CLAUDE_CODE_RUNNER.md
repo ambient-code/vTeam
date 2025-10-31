@@ -1,6 +1,6 @@
-# vTeam Claude Code Runner
+# Claude Code Runner
 
-This document explains how the vTeam Claude Code runner works and details all the prompts being added across the system.
+This document explains how the Ambient Code Platform's Claude Code runner works and details all the prompts being added across the system.
 
 ## How the Claude Code Runner Works
 
