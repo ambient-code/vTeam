@@ -290,7 +290,14 @@ func CreateSession(c *gin.Context) {
 		return
 	}
 
-	// Validation for multi-repo can be added here if needed
+	// Validate that all repos exist in ProjectSettings
+	_, reqDyn := GetK8sClientsForRequest(c)
+	if reqDyn != nil && len(req.Repos) > 0 {
+		if err := ValidateSessionReposAgainstProjectSettings(c.Request.Context(), reqDyn, project, req.Repos); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+	}
 
 	// Set defaults for LLM settings if not provided
 	llmSettings := types.LLMSettings{

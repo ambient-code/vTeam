@@ -31,6 +31,7 @@ export type ProjectSettings = {
   defaultSettings: ProjectDefaultSettings;
   resourceLimits: ProjectResourceLimits;
   metadata: ObjectMeta;
+  repos?: ProjectRepo[];
 };
 
 export type ProjectSettingsUpdateRequest = {
@@ -38,4 +39,17 @@ export type ProjectSettingsUpdateRequest = {
   adminUsers: string[];
   defaultSettings: ProjectDefaultSettings;
   resourceLimits: ProjectResourceLimits;
+  repos?: ProjectRepo[];
+};
+
+// New types for repository management
+export type GroupAccess = {
+  groupName: string;
+  role: 'admin' | 'edit' | 'view';
+};
+
+export type ProjectRepo = {
+  name: string;
+  url: string;
+  defaultBranch?: string;
 };

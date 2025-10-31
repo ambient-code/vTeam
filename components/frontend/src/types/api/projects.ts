@@ -19,11 +19,18 @@ export type Project = {
   uid?: string;
 };
 
+export type ProjectRepo = {
+  name: string;
+  url: string;
+  defaultBranch?: string;
+};
+
 export type CreateProjectRequest = {
   name: string;
   displayName?: string; // Optional: only used on OpenShift
   description?: string; // Optional: only used on OpenShift
   labels?: Record<string, string>;
+  repos?: ProjectRepo[]; // Optional: repositories for ProjectSettings
 };
 
 export type CreateProjectResponse = {

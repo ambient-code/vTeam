@@ -46,16 +46,6 @@ type rfeLinkSessionRequest struct {
 	Phase        string `json:"phase"`
 }
 
-// normalizeRepoURL normalizes a repository URL for comparison
-func normalizeRepoURL(repoURL string) string {
-	normalized := strings.ToLower(strings.TrimSpace(repoURL))
-	// Remove .git suffix
-	normalized = strings.TrimSuffix(normalized, ".git")
-	// Remove trailing slash
-	normalized = strings.TrimSuffix(normalized, "/")
-	return normalized
-}
-
 // validateUniqueRepositories checks that all repository URLs are unique
 func validateUniqueRepositories(umbrellaRepo *GitRepository, supportingRepos []GitRepository) error {
 	seen := make(map[string]bool)
@@ -160,8 +150,21 @@ func CreateProjectRFEWorkflow(c *gin.Context) {
 		return
 	}
 
+	// Get K8s client for validation and CR creation
+	_, reqDyn := GetK8sClientsForRequest(c)
+	if reqDyn == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
+		return
+	}
+
 	// Validate no duplicate repository URLs
 	if err := validateUniqueRepositories(&req.UmbrellaRepo, req.SupportingRepos); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Validate that all repos exist in ProjectSettings
+	if err := ValidateReposAgainstProjectSettings(c.Request.Context(), reqDyn, project, &req.UmbrellaRepo, req.SupportingRepos); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -178,7 +181,6 @@ func CreateProjectRFEWorkflow(c *gin.Context) {
 		CreatedAt:       now,
 		UpdatedAt:       now,
 	}
-	_, reqDyn := GetK8sClientsForRequest(c)
 	if err := UpsertProjectRFEWorkflowCR(reqDyn, workflow); err != nil {
 		log.Printf("⚠️ Failed to upsert RFEWorkflow CR: %v", err)
 	}

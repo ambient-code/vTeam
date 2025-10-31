@@ -56,6 +56,11 @@ rules:
   resources: ["rfeworkflows/status"]
   verbs: ["get", "update", "patch"]
 
+# ProjectSettings custom resources (full CRUD)
+- apiGroups: ["vteam.ambient-code"]
+  resources: ["projectsettings"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
 # Namespaces - backend creates namespaces and manages labels for Ambient projects
 # Also handles deletion on vanilla Kubernetes after permission verification
 - apiGroups: [""]

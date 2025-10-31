@@ -246,6 +246,18 @@ func CreateProject(c *gin.Context) {
 		return
 	}
 
+	// Validate repos if provided
+	if len(req.Repos) > 0 {
+		if err := validateUniqueRepoNames(req.Repos); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		if err := validateUniqueRepoURLs(req.Repos); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+	}
+
 	// Extract user identity from token
 	userSubject, err := getUserSubjectFromContext(c)
 	if err != nil {
@@ -362,6 +374,90 @@ func CreateProject(c *gin.Context) {
 
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create project permissions"})
 		return
+	}
+
+	// Create or update ProjectSettings CR for the new project
+	// This ensures every project has ProjectSettings with repos configuration
+	if DynamicClient != nil {
+		ctx5, cancel5 := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel5()
+
+		psGvr := GetProjectSettingsResource()
+
+		// Try to get existing ProjectSettings
+		existing, getErr := DynamicClient.Resource(psGvr).Namespace(req.Name).Get(ctx5, "projectsettings", v1.GetOptions{})
+
+		if getErr != nil && !errors.IsNotFound(getErr) {
+			log.Printf("WARNING: Failed to check ProjectSettings for project %s: %v", req.Name, getErr)
+		} else if errors.IsNotFound(getErr) {
+			// Create new ProjectSettings
+			projectSettings := &types.ProjectSettings{
+				GroupAccess: []types.GroupAccess{}, // Empty by default, will be managed separately
+				Repos:       req.Repos,              // Use repos from request (may be empty)
+			}
+
+			psObj := &unstructured.Unstructured{
+				Object: map[string]interface{}{
+					"apiVersion": "vteam.ambient-code/v1alpha1",
+					"kind":       "ProjectSettings",
+					"metadata": map[string]interface{}{
+						"name":      "projectsettings",
+						"namespace": req.Name,
+					},
+					"spec": buildProjectSettingsSpec(projectSettings),
+				},
+			}
+
+			_, err = DynamicClient.Resource(psGvr).Namespace(req.Name).Create(ctx5, psObj, v1.CreateOptions{})
+			if err != nil {
+				log.Printf("WARNING: Failed to create ProjectSettings for project %s: %v", req.Name, err)
+			} else {
+				log.Printf("Created ProjectSettings for project %s with %d repos", req.Name, len(req.Repos))
+			}
+		} else if len(req.Repos) > 0 {
+			// Update existing ProjectSettings with repos if provided
+			// Validate repos before updating
+			if err := validateUniqueRepoNames(req.Repos); err != nil {
+				log.Printf("WARNING: Invalid repos for project %s: %v", req.Name, err)
+				// Continue without updating repos - don't fail project creation
+			} else if err := validateUniqueRepoURLs(req.Repos); err != nil {
+				log.Printf("WARNING: Invalid repos for project %s: %v", req.Name, err)
+				// Continue without updating repos - don't fail project creation
+			} else {
+				// Validation passed, proceed with update
+				// Get current spec to preserve other fields
+				spec, specFound, _ := unstructured.NestedMap(existing.Object, "spec")
+				if !specFound {
+					spec = make(map[string]interface{})
+				}
+
+				// Build repos array
+				repos := make([]map[string]interface{}, len(req.Repos))
+				for i, repo := range req.Repos {
+					repoObj := map[string]interface{}{
+						"name": repo.Name,
+						"url":  repo.URL,
+					}
+					if repo.DefaultBranch != "" {
+						repoObj["defaultBranch"] = repo.DefaultBranch
+					} else {
+						repoObj["defaultBranch"] = "main"
+					}
+					repos[i] = repoObj
+				}
+				spec["repos"] = repos
+
+				// Update the object
+				existing.Object["spec"] = spec
+
+				_, err = DynamicClient.Resource(psGvr).Namespace(req.Name).Update(ctx5, existing, v1.UpdateOptions{})
+				if err != nil {
+					log.Printf("WARNING: Failed to update ProjectSettings repos for project %s: %v", req.Name, err)
+				} else {
+					log.Printf("Updated ProjectSettings for project %s with %d repos", req.Name, len(req.Repos))
+				}
+			}
+		}
 	}
 
 	// On OpenShift: Update the Project resource with display metadata
@@ -733,4 +829,108 @@ func getUserSubjectNamespace(subject string) string {
 		}
 	}
 	return ""
+}
+
+// GetProjectSettingsHandler retrieves the ProjectSettings for a project
+func GetProjectSettingsHandler(c *gin.Context) {
+	project := c.GetString("project")
+
+	_, reqDyn := GetK8sClientsForRequest(c)
+	if reqDyn == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
+		return
+	}
+
+	settings, err := GetProjectSettings(c.Request.Context(), reqDyn, project)
+	if err != nil {
+		if errors.IsNotFound(err) || strings.Contains(err.Error(), "not found") {
+			c.JSON(http.StatusNotFound, gin.H{"error": fmt.Sprintf("ProjectSettings not found for project %s", project)})
+		} else {
+			log.Printf("Failed to get ProjectSettings for project %s: %v", project, err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve ProjectSettings"})
+		}
+		return
+	}
+
+	c.JSON(http.StatusOK, settings)
+}
+
+// UpdateProjectSettingsHandler updates the ProjectSettings for a project
+func UpdateProjectSettingsHandler(c *gin.Context) {
+	project := c.GetString("project")
+
+	var req types.ProjectSettings
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Validation failed: " + err.Error()})
+		return
+	}
+
+	// Validate repo names are unique
+	if err := validateUniqueRepoNames(req.Repos); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Validate repo URLs are unique
+	if err := validateUniqueRepoURLs(req.Repos); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Use backend service account for CR writes
+	if DynamicClient == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "backend not initialized"})
+		return
+	}
+
+	gvr := GetProjectSettingsResource()
+	ctx := c.Request.Context()
+
+	// Get existing ProjectSettings
+	existing, err := DynamicClient.Resource(gvr).Namespace(project).Get(ctx, "projectsettings", v1.GetOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			// Create if doesn't exist
+			psObj := &unstructured.Unstructured{
+				Object: map[string]interface{}{
+					"apiVersion": "vteam.ambient-code/v1alpha1",
+					"kind":       "ProjectSettings",
+					"metadata": map[string]interface{}{
+						"name":      "projectsettings",
+						"namespace": project,
+					},
+					"spec": buildProjectSettingsSpec(&req),
+				},
+			}
+
+			_, err = DynamicClient.Resource(gvr).Namespace(project).Create(ctx, psObj, v1.CreateOptions{})
+			if err != nil {
+				log.Printf("Failed to create ProjectSettings for project %s: %v", project, err)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create ProjectSettings"})
+				return
+			}
+
+			log.Printf("Created ProjectSettings for project %s", project)
+			c.JSON(http.StatusCreated, gin.H{"message": "ProjectSettings created", "project": project})
+			return
+		}
+
+		log.Printf("Failed to get ProjectSettings for project %s: %v", project, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve ProjectSettings"})
+		return
+	}
+
+	// Update existing
+	obj := existing.DeepCopy()
+	obj.Object["spec"] = buildProjectSettingsSpec(&req)
+
+	_, err = DynamicClient.Resource(gvr).Namespace(project).Update(ctx, obj, v1.UpdateOptions{})
+	if err != nil {
+		log.Printf("Failed to update ProjectSettings for project %s: %v", project, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update ProjectSettings"})
+		return
+	}
+
+	log.Printf("Updated ProjectSettings for project %s", project)
+	c.JSON(http.StatusOK, gin.H{"message": "ProjectSettings updated", "project": project})
 }

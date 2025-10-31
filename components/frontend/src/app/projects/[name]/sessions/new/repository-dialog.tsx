@@ -5,7 +5,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { useGitHubForks } from "@/services/queries";
+import { useGitHubForks, useProjectSettings } from "@/services/queries";
+import { Loader2 } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Info } from "lucide-react";
 
 type Repo = {
   input: { url: string; branch: string };
@@ -33,10 +36,14 @@ export function RepositoryDialog({
 }: RepositoryDialogProps) {
   const [forkOptions, setForkOptions] = useState<Array<{ fullName: string; url: string }>>([]);
   const [outputBranchMode, setOutputBranchMode] = useState<"same" | "auto">("auto");
+  const [selectedRepoName, setSelectedRepoName] = useState<string>("");
+
+  // Fetch ProjectSettings to get available repos
+  const { data: projectSettings, isLoading: settingsLoading, error: settingsError } = useProjectSettings(projectName);
 
   // Fetch forks using React Query - only when we have an input URL
   const { data: forksData } = useGitHubForks(projectName, repo.input.url);
-  
+
   useEffect(() => {
     if (open && repo.input.url && forksData) {
       // Filter forks based on the input URL
@@ -48,6 +55,18 @@ export function RepositoryDialog({
     }
   }, [open, repo.input.url, forksData]);
 
+  // Initialize selectedRepoName when editing
+  useEffect(() => {
+    if (open && isEditing && repo.input.url && projectSettings?.repos) {
+      const matchingRepo = projectSettings.repos.find(r => r.url === repo.input.url);
+      if (matchingRepo) {
+        setSelectedRepoName(matchingRepo.name);
+      }
+    } else if (open && !isEditing) {
+      setSelectedRepoName("");
+    }
+  }, [open, isEditing, repo.input.url, projectSettings]);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
@@ -56,22 +75,71 @@ export function RepositoryDialog({
           <DialogDescription>Configure input and optional output repository settings</DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-4">
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Input Repository URL</label>
-            <Input
-              placeholder="https://github.com/org/repo.git"
-              value={repo.input.url}
-              onChange={(e) => onRepoChange({ ...repo, input: { ...repo.input, url: e.target.value } })}
-            />
-          </div>
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Input Branch</label>
-            <Input
-              placeholder="main"
-              value={repo.input.branch}
-              onChange={(e) => onRepoChange({ ...repo, input: { ...repo.input, branch: e.target.value } })}
-            />
-          </div>
+          {settingsLoading ? (
+            <div className="flex items-center gap-2 text-muted-foreground py-4">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Loading available repositories...
+            </div>
+          ) : settingsError ? (
+            <Alert>
+              <Info className="h-4 w-4" />
+              <AlertDescription>
+                Failed to load project repositories. Please refresh the page or contact support.
+              </AlertDescription>
+            </Alert>
+          ) : !projectSettings?.repos || projectSettings.repos.length === 0 ? (
+            <Alert>
+              <Info className="h-4 w-4" />
+              <AlertDescription>
+                No repositories configured for this project. Please configure repositories in Project Settings first.
+              </AlertDescription>
+            </Alert>
+          ) : (
+            <>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Input Repository</label>
+                <Select
+                  value={selectedRepoName}
+                  onValueChange={(repoName) => {
+                    const selectedRepo = projectSettings.repos?.find(r => r.name === repoName);
+                    if (selectedRepo) {
+                      setSelectedRepoName(repoName);
+                      onRepoChange({
+                        ...repo,
+                        input: {
+                          url: selectedRepo.url,
+                          branch: selectedRepo.defaultBranch || "main",
+                        },
+                      });
+                    }
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a repository" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {projectSettings.repos?.map((r) => (
+                      <SelectItem key={r.name} value={r.name}>
+                        {r.name} ({r.url})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">Select from repositories configured in Project Settings</p>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Input Branch</label>
+                <Input
+                  placeholder="main"
+                  value={repo.input.branch}
+                  onChange={(e) => onRepoChange({ ...repo, input: { ...repo.input, branch: e.target.value } })}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Default: {projectSettings.repos?.find(r => r.name === selectedRepoName)?.defaultBranch || "main"}
+                </p>
+              </div>
+            </>
+          )}
           <div className="space-y-2">
             <label className="text-sm font-medium">Output Repository (optional)</label>
             <Select

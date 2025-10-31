@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { useForm, useFieldArray } from 'react-hook-form';
+import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import Link from 'next/link';
@@ -15,15 +15,13 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { ErrorMessage } from '@/components/error-message';
 
-import { useCreateRfeWorkflow } from '@/services/queries';
+import { useCreateRfeWorkflow, useProjectSettings } from '@/services/queries';
 import { successToast, errorToast } from '@/hooks/use-toast';
 import { Breadcrumbs } from '@/components/breadcrumbs';
 import type { CreateRFEWorkflowRequest } from '@/types/api';
-
-const repoSchema = z.object({
-  url: z.string().url('Please enter a valid repository URL'),
-  branch: z.string().min(1, 'Branch is required').default('main'),
-});
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Info } from 'lucide-react';
 
 const formSchema = z.object({
   title: z.string().min(5, 'Title must be at least 5 characters long'),
@@ -31,41 +29,11 @@ const formSchema = z.object({
   branchName: z.string().min(1, 'Branch name is required'),
   workspacePath: z.string().optional(),
   parentOutcome: z.string().optional(),
-  umbrellaRepo: repoSchema,
-  supportingRepos: z.array(repoSchema).optional().default([]),
-}).refine(
-  (data) => {
-    // Check for duplicate repositories
-    const allUrls: string[] = [];
-
-    // Add umbrella repo URL if present
-    if (data.umbrellaRepo?.url) {
-      allUrls.push(normalizeRepoUrl(data.umbrellaRepo.url));
-    }
-
-    // Add supporting repo URLs if present
-    const supportingUrls = (data.supportingRepos || [])
-      .filter(r => r?.url)
-      .map(r => normalizeRepoUrl(r.url));
-
-    allUrls.push(...supportingUrls);
-
-    // Check for duplicates
-    const uniqueUrls = new Set(allUrls);
-    return uniqueUrls.size === allUrls.length;
-  },
-  {
-    message: 'Duplicate repository URLs are not allowed. Each repository must be unique.',
-    path: ['supportingRepos'],
-  }
-);
+  umbrellaRepoName: z.string().min(1, 'Please select an umbrella repository'),
+  supportingRepoNames: z.array(z.string()).optional().default([]),
+});
 
 type FormValues = z.input<typeof formSchema>;
-
-// Normalize repository URL for comparison (remove trailing slash and .git)
-function normalizeRepoUrl(url: string): string {
-  return url.trim().toLowerCase().replace(/\.git$/, '').replace(/\/$/, '');
-}
 
 // Generate branch name from title (ambient-first-three-words)
 function generateBranchName(title: string): string {
@@ -82,6 +50,9 @@ export default function ProjectNewRFEWorkflowPage() {
   const params = useParams();
   const projectName = params?.name as string;
 
+  // Fetch ProjectSettings to get available repos
+  const { data: projectSettings, isLoading: settingsLoading, error: settingsError } = useProjectSettings(projectName);
+
   // React Query mutation replaces manual fetch
   const createWorkflowMutation = useCreateRfeWorkflow();
 
@@ -94,14 +65,9 @@ export default function ProjectNewRFEWorkflowPage() {
       branchName: '',
       workspacePath: '',
       parentOutcome: '',
-      umbrellaRepo: { url: '', branch: 'main' },
-      supportingRepos: [],
+      umbrellaRepoName: '',
+      supportingRepoNames: [],
     },
-  });
-
-  const { fields, append, remove } = useFieldArray({
-    control: form.control,
-    name: 'supportingRepos',
   });
 
   // Watch the title field and auto-populate branchName
@@ -123,6 +89,24 @@ export default function ProjectNewRFEWorkflowPage() {
   }, [title, form]);
 
   const onSubmit = async (values: FormValues) => {
+    if (!projectSettings?.repos || projectSettings.repos.length === 0) {
+      errorToast('No repositories configured for this project. Please configure repositories in Project Settings first.');
+      return;
+    }
+
+    // Find the umbrella repo from project settings
+    const umbrellaRepo = projectSettings.repos.find(r => r.name === values.umbrellaRepoName);
+    if (!umbrellaRepo) {
+      errorToast('Selected umbrella repository not found');
+      return;
+    }
+
+    // Find supporting repos from project settings
+    const supportingRepos = (values.supportingRepoNames || [])
+      .map(name => projectSettings.repos?.find(r => r.name === name))
+      .filter(r => r !== undefined)
+      .map(r => ({ url: r!.url, branch: r!.defaultBranch || 'main' }));
+
     const request: CreateRFEWorkflowRequest = {
       title: values.title,
       description: values.description,
@@ -130,12 +114,10 @@ export default function ProjectNewRFEWorkflowPage() {
       workspacePath: values.workspacePath || undefined,
       parentOutcome: values.parentOutcome?.trim() || undefined,
       umbrellaRepo: {
-        url: values.umbrellaRepo.url.trim(),
-        branch: (values.umbrellaRepo.branch || 'main').trim(),
+        url: umbrellaRepo.url,
+        branch: umbrellaRepo.defaultBranch || 'main',
       },
-      supportingRepos: (values.supportingRepos || [])
-        .filter((r) => r && r.url && r.url.trim() !== '')
-        .map((r) => ({ url: r.url.trim(), branch: r.branch?.trim() || 'main' })),
+      supportingRepos,
     };
 
     createWorkflowMutation.mutate(
@@ -274,99 +256,99 @@ export default function ProjectNewRFEWorkflowPage() {
                   Repositories
                 </CardTitle>
                 <CardDescription>
-                  Set the spec repo and optional supporting repos. Base branch is the branch from which the feature branch{branchName && ` (${branchName})`} will be set up. All modifications will be made to the feature branch.
+                  Select repositories from your project settings. Feature branch{branchName && ` (${branchName})`} will be created from the default branch of each repository.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
-                  <div className="md:col-span-3">
+                {settingsLoading ? (
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Loading project repositories...
+                  </div>
+                ) : settingsError ? (
+                  <Alert>
+                    <Info className="h-4 w-4" />
+                    <AlertDescription>
+                      Failed to load project settings. Please refresh the page or contact support.
+                    </AlertDescription>
+                  </Alert>
+                ) : !projectSettings?.repos || projectSettings.repos.length === 0 ? (
+                  <Alert>
+                    <Info className="h-4 w-4" />
+                    <AlertDescription>
+                      No repositories configured for this project. Please configure repositories in Project Settings first.
+                      <Link href={`/projects/${projectName}/settings`} className="ml-2 underline">
+                        Go to Settings
+                      </Link>
+                    </AlertDescription>
+                  </Alert>
+                ) : (
+                  <>
                     <FormField
                       control={form.control}
-                      name={`umbrellaRepo.url`}
+                      name="umbrellaRepoName"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Spec Repo URL</FormLabel>
-                          <FormControl>
-                            <Input placeholder="https://github.com/org/repo.git" {...field} />
-                          </FormControl>
+                          <FormLabel>Spec Repository</FormLabel>
+                          <Select onValueChange={field.onChange} defaultValue={field.value}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select a repository" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {projectSettings.repos?.map((repo) => (
+                                <SelectItem key={repo.name} value={repo.name}>
+                                  {repo.name} ({repo.url})
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                           <FormDescription>
-                            The spec repository contains your feature specifications, planning documents, and agent configurations for this RFE workspace
+                            The spec repository contains your feature specifications, planning documents, and agent configurations
                           </FormDescription>
                           <FormMessage />
                         </FormItem>
                       )}
                     />
-                  </div>
-                  <div className="md:col-span-1">
+
                     <FormField
                       control={form.control}
-                      name={`umbrellaRepo.branch`}
+                      name="supportingRepoNames"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Base Branch</FormLabel>
-                          <FormControl>
-                            <Input placeholder="main" {...field} />
-                          </FormControl>
+                          <FormLabel>Supporting Repositories (optional)</FormLabel>
+                          <FormDescription className="mb-2">
+                            Select additional repositories that will be cloned alongside the spec repository
+                          </FormDescription>
+                          <div className="space-y-2">
+                            {projectSettings.repos
+                              ?.filter(r => r.name !== form.watch('umbrellaRepoName'))
+                              .map((repo) => (
+                                <label key={repo.name} className="flex items-center gap-2 cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={field.value?.includes(repo.name) || false}
+                                    onChange={(e) => {
+                                      const currentValue = field.value || [];
+                                      if (e.target.checked) {
+                                        field.onChange([...currentValue, repo.name]);
+                                      } else {
+                                        field.onChange(currentValue.filter(name => name !== repo.name));
+                                      }
+                                    }}
+                                    className="h-4 w-4"
+                                  />
+                                  <span className="text-sm">{repo.name} ({repo.url})</span>
+                                </label>
+                              ))}
+                          </div>
                           <FormMessage />
                         </FormItem>
                       )}
                     />
-                  </div>
-                </div>
-
-                <div className="pt-2">
-                  <div className="text-sm font-medium">Supporting Repositories (optional)</div>
-                </div>
-                {fields.map((field, index) => (
-                  <div key={field.id} className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
-                    <div className="md:col-span-3">
-                      <FormField
-                        control={form.control}
-                        name={`supportingRepos.${index}.url`}
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Repository URL</FormLabel>
-                            <FormControl>
-                              <Input placeholder="https://github.com/org/repo.git" {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </div>
-                    <div className="md:col-span-1">
-                      <FormField
-                        control={form.control}
-                        name={`supportingRepos.${index}.branch`}
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Base Branch</FormLabel>
-                            <FormControl>
-                              <Input placeholder="main" {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </div>
-
-                    <div className="md:col-span-6 flex justify-end">
-                      <Button type="button" variant="outline" size="sm" onClick={() => remove(index)}>
-                        Remove
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-                <div className="space-y-2">
-                  <Button type="button" variant="secondary" size="sm" onClick={() => append({ url: '', branch: 'main' })}>
-                    Add supporting repo
-                  </Button>
-                  {form.formState.errors.supportingRepos?.message && (
-                    <p className="text-sm font-medium text-destructive">
-                      {form.formState.errors.supportingRepos.message}
-                    </p>
-                  )}
-                </div>
+                  </>
+                )}
               </CardContent>
             </Card>
 

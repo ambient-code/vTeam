@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { BACKEND_URL } from "@/lib/config";
+import { buildForwardHeadersAsync } from "@/lib/auth";
 
 export async function GET(
   request: NextRequest,
@@ -8,15 +9,11 @@ export async function GET(
   try {
     const { name: projectName } = await params;
 
-    // Forward the request to the backend
+    // Forward the request to the backend with proper auth headers
+    const headers = await buildForwardHeadersAsync(request);
     const response = await fetch(`${BACKEND_URL}/projects/${projectName}/settings`, {
       method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-        // Forward authentication headers from the client request
-        "X-User-ID": request.headers.get("X-User-ID") || "",
-        "X-User-Groups": request.headers.get("X-User-Groups") || "",
-      },
+      headers,
     });
 
     // Forward the response from backend
@@ -45,15 +42,11 @@ export async function PUT(
     const { name: projectName } = await params;
     const body = await request.text();
 
-    // Forward the request to the backend
+    // Forward the request to the backend with proper auth headers
+    const headers = await buildForwardHeadersAsync(request);
     const response = await fetch(`${BACKEND_URL}/projects/${projectName}/settings`, {
       method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-        // Forward authentication headers from the client request
-        "X-User-ID": request.headers.get("X-User-ID") || "",
-        "X-User-Groups": request.headers.get("X-User-Groups") || "",
-      },
+      headers,
       body: body,
     });
 

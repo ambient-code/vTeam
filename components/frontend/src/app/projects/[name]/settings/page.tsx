@@ -16,6 +16,8 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { successToast, errorToast } from "@/hooks/use-toast";
 import { useProject, useUpdateProject } from "@/services/queries/use-projects";
 import { useSecretsList, useSecretsConfig, useSecretsValues, useUpdateSecretsConfig, useUpdateSecrets } from "@/services/queries/use-secrets";
+import { useProjectSettings, useUpdateProjectSettings } from "@/services/queries/use-project-settings";
+import type { ProjectRepo } from "@/types/project-settings";
 import { useMemo } from "react";
 
 export default function ProjectSettingsPage({ params }: { params: Promise<{ name: string }> }) {
@@ -36,6 +38,7 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ name
   const [jiraEmail, setJiraEmail] = useState<string>("");
   const [jiraToken, setJiraToken] = useState<string>("");
   const [showJiraToken, setShowJiraToken] = useState<boolean>(false);
+  const [repos, setRepos] = useState<ProjectRepo[]>([]);
   const FIXED_KEYS = useMemo(() => ["ANTHROPIC_API_KEY","GIT_USER_NAME","GIT_USER_EMAIL","GIT_TOKEN","JIRA_URL","JIRA_PROJECT","JIRA_EMAIL","JIRA_API_TOKEN"] as const, []);
 
   // React Query hooks
@@ -43,9 +46,11 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ name
   const { data: secretsList } = useSecretsList(projectName);
   const { data: secretsConfig } = useSecretsConfig(projectName);
   const { data: secretsValues } = useSecretsValues(projectName);
+  const { data: projectSettings, isLoading: settingsLoading } = useProjectSettings(projectName);
   const updateProjectMutation = useUpdateProject();
   const updateSecretsConfigMutation = useUpdateSecretsConfig();
   const updateSecretsMutation = useUpdateSecrets();
+  const updateProjectSettingsMutation = useUpdateProjectSettings();
 
   // Extract projectName from params
   useEffect(() => {
@@ -87,6 +92,13 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ name
       setSecrets(secretsValues.filter(s => !FIXED_KEYS.includes(s.key as typeof FIXED_KEYS[number])));
     }
   }, [secretsValues, FIXED_KEYS]);
+
+  // Sync ProjectSettings repos to state
+  useEffect(() => {
+    if (projectSettings?.repos) {
+      setRepos(projectSettings.repos);
+    }
+  }, [projectSettings]);
 
   const handleRefresh = () => {
     void refetchProject();
@@ -173,6 +185,52 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ name
     setSecrets((prev) => prev.filter((_, i) => i !== idx));
   };
 
+  const addRepo = () => {
+    setRepos((prev) => [...prev, { name: "", url: "", defaultBranch: "main" }]);
+  };
+
+  const removeRepo = (idx: number) => {
+    setRepos((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  const updateRepo = (idx: number, field: keyof ProjectRepo, value: string) => {
+    setRepos((prev) => prev.map((r, i) => (i === idx ? { ...r, [field]: value } : r)));
+  };
+
+  const handleSaveRepos = () => {
+    if (!projectName || !projectSettings) return;
+
+    // Validate repos
+    const validRepos = repos.filter(r => r.name && r.url);
+
+    // Check for duplicate names
+    const names = validRepos.map(r => r.name);
+    const uniqueNames = new Set(names);
+    if (names.length !== uniqueNames.size) {
+      errorToast("Repository names must be unique");
+      return;
+    }
+
+    updateProjectSettingsMutation.mutate(
+      {
+        projectName,
+        data: {
+          ...projectSettings,
+          repos: validRepos,
+        },
+      },
+      {
+        onSuccess: () => {
+          successToast("Repositories saved successfully!");
+        },
+        onError: (error) => {
+          const message = error instanceof Error ? error.message : "Failed to save repositories";
+          errorToast(message);
+        },
+      }
+    );
+  };
+
   return (
     <div className="container mx-auto p-6 max-w-4xl">
       <Breadcrumbs
@@ -253,6 +311,113 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ name
           </AlertDescription>
         </Alert>
       )}
+
+      <div className="h-6" />
+
+      {/* Project Repositories Section */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Project Repositories</CardTitle>
+          <CardDescription>
+            Manage repositories that can be used in RFE workflows and agentic sessions
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {settingsLoading ? (
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Loading repositories...
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center justify-between">
+                <Label className="text-base font-semibold">Repositories</Label>
+                <Button variant="outline" size="sm" onClick={addRepo}>
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add Repository
+                </Button>
+              </div>
+              {repos.length === 0 ? (
+                <div className="p-8 text-center border-2 border-dashed rounded-md">
+                  <p className="text-sm text-muted-foreground">
+                    No repositories configured. Click &quot;Add Repository&quot; to get started.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {repos.map((repo, idx) => (
+                    <Card key={idx}>
+                      <CardContent className="pt-6">
+                        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                          <div className="space-y-2">
+                            <Label htmlFor={`repo-name-${idx}`}>Name</Label>
+                            <Input
+                              id={`repo-name-${idx}`}
+                              value={repo.name}
+                              onChange={(e) => updateRepo(idx, "name", e.target.value)}
+                              placeholder="platform"
+                            />
+                            <p className="text-xs text-muted-foreground">
+                              Unique identifier for this repository
+                            </p>
+                          </div>
+                          <div className="space-y-2 md:col-span-2">
+                            <Label htmlFor={`repo-url-${idx}`}>URL</Label>
+                            <div className="flex gap-2">
+                              <Input
+                                id={`repo-url-${idx}`}
+                                value={repo.url}
+                                onChange={(e) => updateRepo(idx, "url", e.target.value)}
+                                placeholder="https://github.com/org/repo"
+                                className="flex-1"
+                              />
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => removeRepo(idx)}
+                              >
+                                <Trash2 className="w-4 h-4 text-red-600" />
+                              </Button>
+                            </div>
+                          </div>
+                          <div className="space-y-2 md:col-span-3">
+                            <Label htmlFor={`repo-branch-${idx}`}>Default Branch</Label>
+                            <Input
+                              id={`repo-branch-${idx}`}
+                              value={repo.defaultBranch || "main"}
+                              onChange={(e) => updateRepo(idx, "defaultBranch", e.target.value)}
+                              placeholder="main"
+                            />
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+              <div className="pt-2">
+                <Button
+                  onClick={handleSaveRepos}
+                  disabled={updateProjectSettingsMutation.isPending || settingsLoading || !projectSettings}
+                >
+                  {updateProjectSettingsMutation.isPending ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-4 h-4 mr-2" />
+                      Save Repositories
+                    </>
+                  )}
+                </Button>
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
 
       <div className="h-6" />
 

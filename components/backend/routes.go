@@ -86,6 +86,9 @@ func registerRoutes(r *gin.Engine, jiraHandler *jira.Handler) {
 			projectGroup.PUT("/runner-secrets/config", handlers.UpdateRunnerSecretsConfig)
 			projectGroup.GET("/runner-secrets", handlers.ListRunnerSecrets)
 			projectGroup.PUT("/runner-secrets", handlers.UpdateRunnerSecrets)
+
+			projectGroup.GET("/settings", handlers.GetProjectSettingsHandler)
+			projectGroup.PUT("/settings", handlers.UpdateProjectSettingsHandler)
 		}
 
 		api.POST("/auth/github/install", handlers.LinkGitHubInstallationGlobal)

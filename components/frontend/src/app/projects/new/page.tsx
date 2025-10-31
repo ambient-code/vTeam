@@ -14,8 +14,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { CreateProjectRequest } from "@/types/project";
-import { ArrowLeft, Save, Loader2, Info } from "lucide-react";
+import type { CreateProjectRequest, ProjectRepo } from "@/types/api/projects";
+import { ArrowLeft, Save, Loader2, Info, Plus, Trash2 } from "lucide-react";
 import { successToast, errorToast } from "@/hooks/use-toast";
 import { Breadcrumbs } from "@/components/breadcrumbs";
 import { useCreateProject } from "@/services/queries";
@@ -31,9 +31,11 @@ export default function NewProjectPage() {
     name: "",
     displayName: "",
     description: "",
+    repos: [],
   });
 
   const [nameError, setNameError] = useState<string | null>(null);
+  const [repos, setRepos] = useState<ProjectRepo[]>([]);
 
   const validateProjectName = (name: string) => {
     // Validate name pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
@@ -59,6 +61,20 @@ export default function NewProjectPage() {
     setNameError(validateProjectName(name));
   };
 
+  const addRepo = () => {
+    setRepos([...repos, { name: "", url: "", defaultBranch: "main" }]);
+  };
+
+  const removeRepo = (index: number) => {
+    setRepos(repos.filter((_, i) => i !== index));
+  };
+
+  const updateRepo = (index: number, field: keyof ProjectRepo, value: string) => {
+    const updated = [...repos];
+    updated[index] = { ...updated[index], [field]: value };
+    setRepos(updated);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -77,6 +93,8 @@ export default function NewProjectPage() {
       // Only include displayName and description on OpenShift
       ...(isOpenShift && formData.displayName?.trim() && { displayName: formData.displayName.trim() }),
       ...(isOpenShift && formData.description?.trim() && { description: formData.description.trim() }),
+      // Include repos if any were added
+      ...(repos.length > 0 && { repos: repos.filter(r => r.name && r.url) }),
     };
 
     createProjectMutation.mutate(payload, {
@@ -185,7 +203,79 @@ export default function NewProjectPage() {
               )}
             </div>
 
-            {/* Resource quota inputs removed */}
+            {/* Repositories Section */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold">Repositories (Optional)</h3>
+                <Button type="button" variant="outline" size="sm" onClick={addRepo}>
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add Repository
+                </Button>
+              </div>
+              <p className="text-sm text-gray-600">
+                Define repositories that RFE workflows and sessions can use in this project.
+              </p>
+
+              {repos.length === 0 ? (
+                <div className="p-8 text-center border-2 border-dashed rounded-md">
+                  <p className="text-sm text-gray-500">
+                    No repositories added yet. Click &quot;Add Repository&quot; to get started.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {repos.map((repo, index) => (
+                    <Card key={index}>
+                      <CardContent className="pt-6">
+                        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                          <div className="space-y-2">
+                            <Label htmlFor={`repo-name-${index}`}>Name</Label>
+                            <Input
+                              id={`repo-name-${index}`}
+                              value={repo.name}
+                              onChange={(e) => updateRepo(index, "name", e.target.value)}
+                              placeholder="platform"
+                            />
+                            <p className="text-xs text-gray-500">
+                              Unique identifier
+                            </p>
+                          </div>
+                          <div className="space-y-2 md:col-span-2">
+                            <Label htmlFor={`repo-url-${index}`}>URL</Label>
+                            <div className="flex gap-2">
+                              <Input
+                                id={`repo-url-${index}`}
+                                value={repo.url}
+                                onChange={(e) => updateRepo(index, "url", e.target.value)}
+                                placeholder="https://github.com/org/repo"
+                                className="flex-1"
+                              />
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => removeRepo(index)}
+                              >
+                                <Trash2 className="w-4 h-4 text-red-600" />
+                              </Button>
+                            </div>
+                          </div>
+                          <div className="space-y-2 md:col-span-3">
+                            <Label htmlFor={`repo-branch-${index}`}>Default Branch</Label>
+                            <Input
+                              id={`repo-branch-${index}`}
+                              value={repo.defaultBranch || "main"}
+                              onChange={(e) => updateRepo(index, "defaultBranch", e.target.value)}
+                              placeholder="main"
+                            />
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </div>
 
             {error && (
               <div className="p-4 bg-red-50 border border-red-200 rounded-md">

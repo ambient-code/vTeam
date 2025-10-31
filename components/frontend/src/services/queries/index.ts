@@ -5,6 +5,7 @@
 
 export * from './use-cluster';
 export * from './use-projects';
+export * from './use-project-settings';
 export * from './use-sessions';
 export * from './use-rfe';
 export * from './use-github';

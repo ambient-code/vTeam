@@ -13,7 +13,8 @@ type AmbientProject struct {
 }
 
 type CreateProjectRequest struct {
-	Name        string `json:"name" binding:"required"`
-	DisplayName string `json:"displayName,omitempty"` // Optional: only used on OpenShift
-	Description string `json:"description,omitempty"` // Optional: only used on OpenShift
+	Name        string        `json:"name" binding:"required"`
+	DisplayName string        `json:"displayName,omitempty"` // Optional: only used on OpenShift
+	Description string        `json:"description,omitempty"` // Optional: only used on OpenShift
+	Repos       []ProjectRepo `json:"repos,omitempty"`       // Optional: repositories for ProjectSettings
 }

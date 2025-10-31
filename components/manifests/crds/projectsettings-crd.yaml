@@ -17,8 +17,6 @@ spec:
         properties:
           spec:
             type: object
-            required:
-            - groupAccess
             properties:
               groupAccess:
                 type: array
@@ -42,6 +40,25 @@ spec:
               runnerSecretsName:
                 type: string
                 description: "Name of the Kubernetes Secret in this namespace that stores runner configuration key/value pairs"
+              repos:
+                type: array
+                description: "List of available repositories for this project. RFEWorkflows and AgenticSessions can only reference repos defined here."
+                items:
+                  type: object
+                  required:
+                  - name
+                  - url
+                  properties:
+                    name:
+                      type: string
+                      description: "Unique identifier for this repository within the project (e.g., 'platform', 'docs', 'components')"
+                    url:
+                      type: string
+                      description: "Git repository URL"
+                    defaultBranch:
+                      type: string
+                      default: "main"
+                      description: "Default branch to checkout"
           status:
             type: object
             properties:
