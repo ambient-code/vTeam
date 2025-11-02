@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -200,14 +200,6 @@ export default function NewProjectSessionPage({ params }: { params: Promise<{ na
         ]}
         className="mb-4"
       />
-      <div className="flex items-center mb-6">
-        <Link href={`/projects/${encodeURIComponent(projectName)}/sessions`}>
-          <Button variant="ghost" size="sm">
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Sessions
-          </Button>
-        </Link>
-      </div>
 
       <Card>
         <CardHeader>

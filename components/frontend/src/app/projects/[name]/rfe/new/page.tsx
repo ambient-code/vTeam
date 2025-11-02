@@ -6,7 +6,7 @@ import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import Link from 'next/link';
-import { ArrowLeft, Loader2, GitBranch } from 'lucide-react';
+import { Loader2, GitBranch } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -164,17 +164,9 @@ export default function ProjectNewRFEWorkflowPage() {
           ]}
           className="mb-4"
         />
-        <div className="flex items-center gap-4 mb-8">
-          <Link href={`/projects/${encodeURIComponent(projectName)}/rfe`}>
-            <Button variant="ghost" size="sm">
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to RFE Workspaces
-            </Button>
-          </Link>
-          <div>
-            <h1 className="text-3xl font-bold">Create RFE Workspace</h1>
-            <p className="text-muted-foreground">Set up a new Request for Enhancement workflow with AI agents</p>
-          </div>
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold">Create RFE Workspace</h1>
+          <p className="text-muted-foreground">Set up a new Request for Enhancement workflow with AI agents</p>
         </div>
 
         {/* Error state from mutation */}

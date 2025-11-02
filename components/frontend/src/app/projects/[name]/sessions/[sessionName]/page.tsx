@@ -1,9 +1,8 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback } from "react";
-import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
-import { ArrowLeft, Square, Trash2, Copy, Play, MoreVertical } from "lucide-react";
+import { Square, Trash2, Copy, Play, MoreVertical } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 // Custom components
@@ -59,7 +58,6 @@ export default function ProjectSessionDetailPage({
   const [promptExpanded, setPromptExpanded] = useState(false);
   const [chatInput, setChatInput] = useState("");
   const [backHref, setBackHref] = useState<string | null>(null);
-  const [backLabel, setBackLabel] = useState<string | null>(null);
   const [contentPodSpawning, setContentPodSpawning] = useState(false);
   const [contentPodReady, setContentPodReady] = useState(false);
   const [contentPodError, setContentPodError] = useState<string | null>(null);
@@ -72,7 +70,6 @@ export default function ProjectSessionDetailPage({
       try {
         const url = new URL(window.location.href);
         setBackHref(url.searchParams.get("backHref"));
-        setBackLabel(url.searchParams.get("backLabel"));
       } catch {}
     });
   }, [params]);
@@ -674,14 +671,6 @@ export default function ProjectSessionDetailPage({
   if (error || !session) {
     return (
       <div className="container mx-auto p-6">
-        <div className="flex items-center mb-6">
-          <Link href={backHref || `/projects/${encodeURIComponent(projectName)}/sessions`}>
-            <Button variant="ghost" size="sm">
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              {backLabel || "Back to Sessions"}
-            </Button>
-          </Link>
-        </div>
         <Card className="border-red-200 bg-red-50">
           <CardContent className="pt-6">
             <p className="text-red-700">Error: {error instanceof Error ? error.message : "Session not found"}</p>
@@ -702,14 +691,6 @@ export default function ProjectSessionDetailPage({
         ]}
         className="mb-4"
       />
-      <div className="flex items-center justify-start mb-6">
-        <Link href={backHref || `/projects/${encodeURIComponent(projectName)}/sessions`}>
-          <Button variant="ghost" size="sm">
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            {backLabel || "Back to Sessions"}
-          </Button>
-        </Link>
-      </div>
 
       <div className="space-y-6">
         {/* Header */}

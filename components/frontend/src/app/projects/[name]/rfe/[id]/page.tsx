@@ -251,7 +251,6 @@ export default function ProjectRFEDetailPage() {
         />
         <RfeHeader
           workflow={workflow}
-          projectName={project}
           deleting={deleteWorkflowMutation.isPending}
           onDelete={deleteWorkflow}
         />
