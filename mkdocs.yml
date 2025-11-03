@@ -41,11 +41,42 @@ nav:
   - User Guide:
     - Overview: user-guide/index.md
     - Getting Started: user-guide/getting-started.md
+    - Creating RFEs: user-guide/creating-rfes.md
+    - RFE Workflow: user-guide/rfe-workflow.md
+    - Agent Framework: user-guide/agent-framework.md
+    - Configuration: user-guide/configuration.md
+    - Troubleshooting: user-guide/troubleshooting.md
+  - Developer Guide:
+    - Development Setup: developer-guide/setup.md
+    - Architecture: developer-guide/architecture.md
+    - API Reference: developer-guide/api-reference.md
+    - Plugin Development: developer-guide/plugin-development.md
+    - Testing: developer-guide/testing.md
+    - Contributing: developer-guide/contributing.md
+    - Migration Guide: developer-guide/migration.md
   - Labs:
     - Overview: labs/index.md
-    - Lab 1 - Your First Agentic Session: labs/basic/lab-1-first-rfe.md
+    - Basic Labs:
+      - Lab 1 - Your First Agentic Session: labs/basic/lab-1-first-rfe.md
+      - Lab 2 - Agent Interaction: labs/basic/lab-2-agent-interaction.md
+      - Lab 3 - Workflow Basics: labs/basic/lab-3-workflow-basics.md
+    - Advanced Labs:
+      - Lab 4 - Custom Agents: labs/advanced/lab-4-custom-agents.md
+      - Lab 5 - Workflow Modification: labs/advanced/lab-5-workflow-modification.md
+      - Lab 6 - Integration Testing: labs/advanced/lab-6-integration-testing.md
+    - Production Labs:
+      - Lab 7 - Jira Integration: labs/production/lab-7-jira-integration.md
+      - Lab 8 - OpenShift Deployment: labs/production/lab-8-openshift-deployment.md
+      - Lab 9 - Scaling & Optimization: labs/production/lab-9-scaling-optimization.md
+    - Solutions:
+      - Basic Labs Solutions: labs/solutions/solutions-basic.md
+      - Advanced Labs Solutions: labs/solutions/solutions-advanced.md
+      - Production Labs Solutions: labs/solutions/solutions-production.md
   - Reference:
     - Overview: reference/index.md
+    - Agent Personas: reference/agent-personas.md
+    - API Endpoints: reference/api-endpoints.md
+    - Configuration Schema: reference/configuration-schema.md
     - Glossary: reference/glossary.md
   - Deployment Guides:
     - GitHub App Setup: GITHUB_APP_SETUP.md
