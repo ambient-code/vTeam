@@ -39,7 +39,7 @@ crc setup
 
 ```bash
 # Clone the repository
-git clone https://github.com/red-hat-data-services/vTeam.git
+git clone https://github.com/ambient-code/vTeam.git
 cd vTeam
 
 # Single command to start everything
@@ -178,7 +178,7 @@ Now that vTeam is running, you're ready to:
 If you encounter issues not covered here:
 
 - **Check CLAUDE.md** in the repository root for detailed development documentation
-- **Search existing issues** → [GitHub Issues](https://github.com/red-hat-data-services/vTeam/issues)
+- **Search existing issues** → [GitHub Issues](https://github.com/ambient-code/vTeam/issues)
 - **Create a new issue** with your error details and environment info
 
 Welcome to Kubernetes-native AI automation! 🚀

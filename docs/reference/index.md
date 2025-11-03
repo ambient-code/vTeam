@@ -220,8 +220,8 @@ Upgrading from v1.x? See the [Migration Guide](../developer-guide/migration.md) 
 
 ### Getting Help
 
-- **Documentation Issues**: [GitHub Issues](https://github.com/red-hat-data-services/vTeam/issues)
-- **API Questions**: [GitHub Discussions](https://github.com/red-hat-data-services/vTeam/discussions)
+- **Documentation Issues**: [GitHub Issues](https://github.com/ambient-code/vTeam/issues)
+- **API Questions**: [GitHub Discussions](https://github.com/ambient-code/vTeam/discussions)
 - **Bug Reports**: Include system info, error messages, and reproduction steps
 
 ### System Information
@@ -242,4 +242,4 @@ kubectl get pods -n ambient-code -o jsonpath='{.items[*].spec.containers[*].imag
 
 ---
 
-This reference documentation is maintained alongside the codebase. Found an error or missing information? [Submit a pull request](https://github.com/red-hat-data-services/vTeam/pulls) or [create an issue](https://github.com/red-hat-data-services/vTeam/issues).
+This reference documentation is maintained alongside the codebase. Found an error or missing information? [Submit a pull request](https://github.com/ambient-code/vTeam/pulls) or [create an issue](https://github.com/ambient-code/vTeam/issues).

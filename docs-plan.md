@@ -83,8 +83,8 @@ site_description: AI-powered automation system for engineering refinement
 site_author: Red Hat AI Engineering Team
 site_url: https://vteam-docs.example.com
 
-repo_name: red-hat-data-services/vTeam
-repo_url: https://github.com/red-hat-data-services/vTeam
+repo_name: ambient-code/vTeam
+repo_url: https://github.com/ambient-code/vTeam
 edit_uri: edit/main/docs/
 
 theme:

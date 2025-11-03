@@ -38,7 +38,7 @@ When the team grows beyond solo development, consider re-enabling:
 
 ```bash
 # Re-enable required reviews (example)
-gh api --method PUT repos/red-hat-data-services/vTeam/branches/main/protection \
+gh api --method PUT repos/ambient-code/vTeam/branches/main/protection \
   --field required_status_checks=null \
   --field enforce_admins=true \
   --field required_pull_request_reviews='{"required_approving_review_count":1,"dismiss_stale_reviews":true,"require_code_owner_reviews":false}' \
@@ -49,7 +49,7 @@ gh api --method PUT repos/red-hat-data-services/vTeam/branches/main/protection \
 
 To disable branch protection (current state):
 ```bash
-gh api --method PUT repos/red-hat-data-services/vTeam/branches/main/protection \
+gh api --method PUT repos/ambient-code/vTeam/branches/main/protection \
   --field required_status_checks=null \
   --field enforce_admins=true \
   --field required_pull_request_reviews=null \
@@ -58,5 +58,5 @@ gh api --method PUT repos/red-hat-data-services/vTeam/branches/main/protection \
 
 To check current protection status:
 ```bash
-gh api repos/red-hat-data-services/vTeam/branches/main/protection
+gh api repos/ambient-code/vTeam/branches/main/protection
 ```

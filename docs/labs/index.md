@@ -93,7 +93,7 @@ Before starting the labs, ensure you have:
 
 ```bash
 # Clone vTeam repository
-git clone https://github.com/red-hat-data-services/vTeam.git
+git clone https://github.com/ambient-code/vTeam.git
 cd vTeam
 
 # Follow the deployment guide for your environment
@@ -165,8 +165,8 @@ After completing the lab series, you should be able to:
 
 ### Community Support
 
-- **Questions about labs**: [GitHub Discussions](https://github.com/red-hat-data-services/vTeam/discussions)
-- **Bug reports**: [GitHub Issues](https://github.com/red-hat-data-services/vTeam/issues)
+- **Questions about labs**: [GitHub Discussions](https://github.com/ambient-code/vTeam/discussions)
+- **Bug reports**: [GitHub Issues](https://github.com/ambient-code/vTeam/issues)
 - **Lab improvements**: Submit pull requests with your suggestions
 
 ## Solutions & Answers
