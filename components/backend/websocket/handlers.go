@@ -217,3 +217,7 @@ func PostSessionMessageWS(c *gin.Context) {
 
 	c.JSON(http.StatusAccepted, gin.H{"status": "queued"})
 }
+
+// NOTE: GetSessionMessagesClaudeFormat removed - session continuation now uses
+// SDK's built-in resume functionality with persisted ~/.claude state
+// See: https://docs.claude.com/en/api/agent-sdk/sessions

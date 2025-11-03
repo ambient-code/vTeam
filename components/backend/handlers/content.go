@@ -128,11 +128,22 @@ func ContentGitDiff(c *gin.Context) {
 
 	summary, err := GitDiffRepo(c.Request.Context(), repoDir)
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"total_added": 0, "total_removed": 0})
+		c.JSON(http.StatusOK, gin.H{
+			"files": gin.H{
+				"added":   0,
+				"removed": 0,
+			},
+			"total_added":   0,
+			"total_removed": 0,
+		})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
+		"files": gin.H{
+			"added":   summary.FilesAdded,
+			"removed": summary.FilesRemoved,
+		},
 		"total_added":   summary.TotalAdded,
 		"total_removed": summary.TotalRemoved,
 	})
@@ -146,16 +157,23 @@ func ContentWrite(c *gin.Context) {
 		Encoding string `json:"encoding"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
+		log.Printf("ContentWrite: bind JSON failed: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	log.Printf("ContentWrite: path=%q contentLen=%d encoding=%q StateBaseDir=%q", req.Path, len(req.Content), req.Encoding, StateBaseDir)
+
 	path := filepath.Clean("/" + strings.TrimSpace(req.Path))
 	if path == "/" || strings.Contains(path, "..") {
+		log.Printf("ContentWrite: invalid path rejected: path=%q", path)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid path"})
 		return
 	}
 	abs := filepath.Join(StateBaseDir, path)
+	log.Printf("ContentWrite: absolute path=%q", abs)
+
 	if err := os.MkdirAll(filepath.Dir(abs), 0755); err != nil {
+		log.Printf("ContentWrite: mkdir failed for %q: %v", filepath.Dir(abs), err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create directory"})
 		return
 	}
@@ -163,6 +181,7 @@ func ContentWrite(c *gin.Context) {
 	if strings.EqualFold(req.Encoding, "base64") {
 		b, err := base64.StdEncoding.DecodeString(req.Content)
 		if err != nil {
+			log.Printf("ContentWrite: base64 decode failed: %v", err)
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid base64 content"})
 			return
 		}
@@ -171,22 +190,31 @@ func ContentWrite(c *gin.Context) {
 		data = []byte(req.Content)
 	}
 	if err := os.WriteFile(abs, data, 0644); err != nil {
+		log.Printf("ContentWrite: write failed for %q: %v", abs, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to write file"})
 		return
 	}
+	log.Printf("ContentWrite: successfully wrote %d bytes to %q", len(data), abs)
 	c.JSON(http.StatusOK, gin.H{"message": "ok"})
 }
 
 // ContentRead handles GET /content/file?path=
 func ContentRead(c *gin.Context) {
 	path := filepath.Clean("/" + strings.TrimSpace(c.Query("path")))
+	log.Printf("ContentRead: requested path=%q StateBaseDir=%q", c.Query("path"), StateBaseDir)
+	log.Printf("ContentRead: cleaned path=%q", path)
+
 	if path == "/" || strings.Contains(path, "..") {
+		log.Printf("ContentRead: invalid path rejected: path=%q", path)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid path"})
 		return
 	}
 	abs := filepath.Join(StateBaseDir, path)
+	log.Printf("ContentRead: absolute path=%q", abs)
+
 	b, err := os.ReadFile(abs)
 	if err != nil {
+		log.Printf("ContentRead: read failed for %q: %v", abs, err)
 		if os.IsNotExist(err) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
 		} else {
@@ -194,19 +222,28 @@ func ContentRead(c *gin.Context) {
 		}
 		return
 	}
+	log.Printf("ContentRead: successfully read %d bytes from %q", len(b), abs)
 	c.Data(http.StatusOK, "application/octet-stream", b)
 }
 
 // ContentList handles GET /content/list?path=
 func ContentList(c *gin.Context) {
 	path := filepath.Clean("/" + strings.TrimSpace(c.Query("path")))
+	log.Printf("ContentList: requested path=%q", c.Query("path"))
+	log.Printf("ContentList: cleaned path=%q", path)
+	log.Printf("ContentList: StateBaseDir=%q", StateBaseDir)
+
 	if path == "/" || strings.Contains(path, "..") {
+		log.Printf("ContentList: invalid path rejected: path=%q", path)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid path"})
 		return
 	}
 	abs := filepath.Join(StateBaseDir, path)
+	log.Printf("ContentList: absolute path=%q", abs)
+
 	info, err := os.Stat(abs)
 	if err != nil {
+		log.Printf("ContentList: stat failed for %q: %v", abs, err)
 		if os.IsNotExist(err) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
 		} else {
@@ -241,5 +278,6 @@ func ContentList(c *gin.Context) {
 			"modifiedAt": info.ModTime().UTC().Format(time.RFC3339),
 		})
 	}
+	log.Printf("ContentList: returning %d items for path=%q", len(items), path)
 	c.JSON(http.StatusOK, gin.H{"items": items})
 }

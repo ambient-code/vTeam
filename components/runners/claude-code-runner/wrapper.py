@@ -82,7 +82,6 @@ class ClaudeCodeAdapter:
 
             # Send completion
             await self._send_log("Claude Code session completed")
-            
 
             # Optional auto-push on completion (default: disabled)
             try:
@@ -158,6 +157,11 @@ class ClaudeCodeAdapter:
             if not api_key:
                 raise RuntimeError("ANTHROPIC_API_KEY is required for Claude Code SDK")
 
+            # Check if continuing from previous session
+            # If PARENT_SESSION_ID is set, use SDK's built-in resume functionality
+            parent_session_id = self.context.get_env('PARENT_SESSION_ID', '').strip()
+            is_continuation = bool(parent_session_id)
+
             # Determine cwd and additional dirs from multi-repo config
             repos_cfg = self._get_repos_config()
             cwd_path = self.context.workspace_path
@@ -200,6 +204,7 @@ class ClaudeCodeAdapter:
                     allowed_tools.append(f"mcp__{server_name}")
                 logging.info(f"MCP tool permissions granted for servers: {list(mcp_servers.keys())}")
 
+            # Configure SDK options with session resumption if continuing
             options = ClaudeAgentOptions(
                 cwd=cwd_path, 
                 permission_mode="acceptEdits",
@@ -209,6 +214,25 @@ class ClaudeCodeAdapter:
                 system_prompt={"type":"preset",
                                "preset":"claude_code"}
                 )
+            
+            # Use SDK's built-in session resumption if continuing
+            # The CLI stores session state in /app/.claude which is now persisted in PVC
+            # We need to get the SDK's UUID session ID, not our K8s session name
+            if is_continuation and parent_session_id:
+                try:
+                    # Fetch the SDK session ID from the parent session's CR status
+                    sdk_resume_id = await self._get_sdk_session_id(parent_session_id)
+                    if sdk_resume_id:
+                        options.resume = sdk_resume_id  # type: ignore[attr-defined]
+                        options.fork_session = False  # type: ignore[attr-defined]
+                        logging.info(f"Enabled SDK session resumption: resume={sdk_resume_id[:8]}, fork=False")
+                        await self._send_log(f"🔄 Resuming SDK session {sdk_resume_id[:8]}")
+                    else:
+                        logging.warning(f"Parent session {parent_session_id} has no stored SDK session ID, starting fresh")
+                        await self._send_log("⚠️ No SDK session ID found, starting fresh")
+                except Exception as e:
+                    logging.warning(f"Failed to set resume options: {e}")
+                    await self._send_log(f"⚠️ SDK resume failed: {e}")
 
             # Best-effort set add_dirs if supported by SDK version
             try:
@@ -260,10 +284,23 @@ class ClaudeCodeAdapter:
             # Determine interactive mode once for this run
             interactive = str(self.context.get_env('INTERACTIVE', 'false')).strip().lower() in ('1', 'true', 'yes')
 
+            sdk_session_id = None
+            
             async def process_response_stream(client_obj):
-                nonlocal result_payload
+                nonlocal result_payload, sdk_session_id
                 async for message in client_obj.receive_response():
                     logging.info(f"[ClaudeSDKClient]: {message}")
+
+                    # Capture SDK session ID from init message
+                    if isinstance(message, SystemMessage):
+                        if message.subtype == 'init' and message.data.get('session_id'):
+                            sdk_session_id = message.data.get('session_id')
+                            logging.info(f"Captured SDK session ID: {sdk_session_id}")
+                            # Store it in annotations (not status - status gets cleared on restart)
+                            try:
+                                await self._update_cr_annotation("ambient-code.io/sdk-session-id", sdk_session_id)
+                            except Exception as e:
+                                logging.warning(f"Failed to store SDK session ID in CR annotations: {e}")
 
                     if isinstance(message, (AssistantMessage, UserMessage)):
                         for block in getattr(message, 'content', []) or []:
@@ -327,15 +364,28 @@ class ClaudeCodeAdapter:
                                 {"type": "result.message", "payload": result_payload},
                             )
 
+            # Use async with - SDK will automatically resume if options.resume is set
             async with ClaudeSDKClient(options=options) as client:
+                if is_continuation and parent_session_id:
+                    await self._send_log("✅ SDK resuming session with full context")
+                    logging.info(f"SDK is handling session resumption for {parent_session_id}")
+                
                 async def process_one_prompt(text: str):
                     await self.shell._send_message(MessageType.AGENT_RUNNING, {})
                     await client.query(text)
                     await process_response_stream(client)
 
                 # Initial prompt (if any)
-                if prompt and prompt.strip():
+                # Skip if this is a continuation - SDK already has the full context
+                if prompt and prompt.strip() and not is_continuation:
+                    # Store the initial prompt as a user message so it appears in history for continuation
+                    await self.shell._send_message(
+                        MessageType.USER_MESSAGE,
+                        {"content": prompt},
+                    )
                     await process_one_prompt(prompt)
+                elif is_continuation:
+                    logging.info("Skipping initial prompt - SDK resuming with full context")
 
                 if interactive:
                     await self._send_log({"level": "system", "message": "Chat ready"})
@@ -387,6 +437,15 @@ class ClaudeCodeAdapter:
         workspace = Path(self.context.workspace_path)
         workspace.mkdir(parents=True, exist_ok=True)
 
+        # Check if reusing workspace from previous session
+        parent_session_id = self.context.get_env('PARENT_SESSION_ID', '').strip()
+        reusing_workspace = bool(parent_session_id)
+        
+        logging.info(f"Workspace preparation: parent_session_id={parent_session_id[:8] if parent_session_id else 'None'}, reusing={reusing_workspace}")
+        if reusing_workspace:
+            await self._send_log(f"♻️ Reusing workspace from session {parent_session_id[:8]}")
+            logging.info("Preserving existing workspace state for continuation")
+
         repos_cfg = self._get_repos_config()
         if repos_cfg:
             # Multi-repo: clone each into workspace/<name>
@@ -399,16 +458,33 @@ class ClaudeCodeAdapter:
                     if not name or not url:
                         continue
                     repo_dir = workspace / name
-                    if not repo_dir.exists():
-                        await self._send_log(f"Cloning {name}...")
+                    
+                    # Check if repo already exists
+                    repo_exists = repo_dir.exists() and (repo_dir / ".git").exists()
+                    
+                    if not repo_exists:
+                        # Clone fresh copy
+                        await self._send_log(f"📥 Cloning {name}...")
+                        logging.info(f"Cloning {name} from {url} (branch: {branch})")
                         clone_url = self._url_with_token(url, token) if token else url
                         await self._run_cmd(["git", "clone", "--branch", branch, "--single-branch", clone_url, str(repo_dir)], cwd=str(workspace))
+                        logging.info(f"Successfully cloned {name}")
+                    elif reusing_workspace:
+                        # Reusing workspace - preserve local changes from previous session
+                        await self._send_log(f"✓ Preserving {name} (continuation)")
+                        logging.info(f"Repo {name} exists and reusing workspace - preserving all local changes")
+                        # Update remote URL in case credentials changed
+                        await self._run_cmd(["git", "remote", "set-url", "origin", self._url_with_token(url, token) if token else url], cwd=str(repo_dir), ignore_errors=True)
+                        # Don't fetch, don't reset - keep all changes!
                     else:
-                        # Fetch/reset existing repo
+                        # Repo exists but NOT reusing - reset to clean state
+                        await self._send_log(f"🔄 Resetting {name} to clean state")
+                        logging.info(f"Repo {name} exists but not reusing - resetting to clean state")
                         await self._run_cmd(["git", "remote", "set-url", "origin", self._url_with_token(url, token) if token else url], cwd=str(repo_dir), ignore_errors=True)
                         await self._run_cmd(["git", "fetch", "origin", branch], cwd=str(repo_dir))
                         await self._run_cmd(["git", "checkout", branch], cwd=str(repo_dir))
                         await self._run_cmd(["git", "reset", "--hard", f"origin/{branch}"], cwd=str(repo_dir))
+                        logging.info(f"Reset {name} to origin/{branch}")
 
                     # Git identity with fallbacks
                     user_name = os.getenv("GIT_USER_NAME", "").strip() or "Ambient Code Bot"
@@ -432,19 +508,37 @@ class ClaudeCodeAdapter:
         # Single-repo legacy flow
         input_repo = os.getenv("INPUT_REPO_URL", "").strip()
         if not input_repo:
+            logging.info("No INPUT_REPO_URL configured, skipping single-repo setup")
             return
         input_branch = os.getenv("INPUT_BRANCH", "").strip() or "main"
         output_repo = os.getenv("OUTPUT_REPO_URL", "").strip()
+        
+        workspace_has_git = (workspace / ".git").exists()
+        logging.info(f"Single-repo setup: workspace_has_git={workspace_has_git}, reusing={reusing_workspace}")
+        
         try:
-            if not (workspace / ".git").exists():
-                await self._send_log("Cloning input repository...")
+            if not workspace_has_git:
+                # Clone fresh copy
+                await self._send_log("📥 Cloning input repository...")
+                logging.info(f"Cloning from {input_repo} (branch: {input_branch})")
                 clone_url = self._url_with_token(input_repo, token) if token else input_repo
                 await self._run_cmd(["git", "clone", "--branch", input_branch, "--single-branch", clone_url, str(workspace)], cwd=str(workspace.parent))
+                logging.info("Successfully cloned repository")
+            elif reusing_workspace:
+                # Reusing workspace - preserve local changes from previous session
+                await self._send_log("✓ Preserving workspace (continuation)")
+                logging.info("Workspace exists and reusing - preserving all local changes")
+                await self._run_cmd(["git", "remote", "set-url", "origin", self._url_with_token(input_repo, token) if token else input_repo], cwd=str(workspace), ignore_errors=True)
+                # Don't fetch, don't reset - keep all changes!
             else:
+                # Reset to clean state
+                await self._send_log("🔄 Resetting workspace to clean state")
+                logging.info("Workspace exists but not reusing - resetting to clean state")
                 await self._run_cmd(["git", "remote", "set-url", "origin", self._url_with_token(input_repo, token) if token else input_repo], cwd=str(workspace))
                 await self._run_cmd(["git", "fetch", "origin", input_branch], cwd=str(workspace))
                 await self._run_cmd(["git", "checkout", input_branch], cwd=str(workspace))
                 await self._run_cmd(["git", "reset", "--hard", f"origin/{input_branch}"], cwd=str(workspace))
+                logging.info(f"Reset workspace to origin/{input_branch}")
 
             # Git identity with fallbacks
             user_name = os.getenv("GIT_USER_NAME", "").strip() or "Ambient Code Bot"
@@ -809,6 +903,54 @@ class ClaudeCodeAdapter:
             return None
         return None
 
+    async def _update_cr_annotation(self, key: str, value: str):
+        """Update a single annotation on the AgenticSession CR."""
+        status_url = self._compute_status_url()
+        if not status_url:
+            return
+        
+        # Transform status URL to patch endpoint
+        try:
+            from urllib.parse import urlparse as _up, urlunparse as _uu
+            p = _up(status_url)
+            # Remove /status suffix to get base resource URL
+            new_path = p.path.rstrip("/")
+            if new_path.endswith("/status"):
+                new_path = new_path[:-7]
+            url = _uu((p.scheme, p.netloc, new_path, '', '', ''))
+            
+            # JSON merge patch to update annotations
+            patch = _json.dumps({
+                "metadata": {
+                    "annotations": {
+                        key: value
+                    }
+                }
+            }).encode('utf-8')
+            
+            req = _urllib_request.Request(url, data=patch, headers={
+                'Content-Type': 'application/merge-patch+json'
+            }, method='PATCH')
+            
+            token = (os.getenv('BOT_TOKEN') or '').strip()
+            if token:
+                req.add_header('Authorization', f'Bearer {token}')
+            
+            loop = asyncio.get_event_loop()
+            def _do():
+                try:
+                    with _urllib_request.urlopen(req, timeout=10) as resp:
+                        _ = resp.read()
+                    logging.info(f"Annotation {key} updated successfully")
+                    return True
+                except Exception as e:
+                    logging.error(f"Annotation update failed: {e}")
+                    return False
+            
+            await loop.run_in_executor(None, _do)
+        except Exception as e:
+            logging.error(f"Failed to update annotation: {e}")
+    
     async def _update_cr_status(self, fields: dict, blocking: bool = False):
         """Update CR status. Set blocking=True for critical final updates before container exit."""
         url = self._compute_status_url()
@@ -895,11 +1037,6 @@ class ClaudeCodeAdapter:
                 return
 
             try:
-                # Try to send a test message
-                await self.shell._send_message(
-                    MessageType.SYSTEM_MESSAGE,
-                    "WebSocket connection test",
-                )
                 logging.info(f"WebSocket connection established (attempt {attempt + 1})")
                 return  # Success!
             except Exception as e:
@@ -910,7 +1047,11 @@ class ClaudeCodeAdapter:
                 await asyncio.sleep(0.2)
 
     async def _send_log(self, payload):
-        """Send a system-level message. Accepts either a string or a dict payload."""
+        """Send a system-level message. Accepts either a string or a dict payload.
+        
+        Args:
+            payload: String message or dict with 'message' key
+        """
         if not self.shell:
             return
         text: str
@@ -920,9 +1061,15 @@ class ClaudeCodeAdapter:
             text = str(payload.get("message", ""))
         else:
             text = str(payload)
+        
+        # Create payload dict
+        message_payload = {
+            "message": text
+        }
+        
         await self.shell._send_message(
             MessageType.SYSTEM_MESSAGE,
-            text,
+            message_payload,
         )
 
     def _url_with_token(self, url: str, token: str) -> str:
@@ -952,6 +1099,76 @@ class ClaudeCodeAdapter:
         # Redact basic auth credentials
         text = re.sub(r'://[^:@\s]+:[^@\s]+@', '://***REDACTED***@', text)
         return text
+
+    async def _get_sdk_session_id(self, session_name: str) -> str:
+        """Fetch the SDK session ID (UUID) from the parent session's CR status."""
+        status_url = self._compute_status_url()
+        if not status_url:
+            logging.warning("Cannot fetch SDK session ID: status URL not available")
+            return ""
+        
+        try:
+            # Transform status URL to point to parent session
+            from urllib.parse import urlparse as _up, urlunparse as _uu
+            p = _up(status_url)
+            path_parts = [pt for pt in p.path.split('/') if pt]
+            
+            if 'projects' in path_parts and 'agentic-sessions' in path_parts:
+                proj_idx = path_parts.index('projects')
+                project = path_parts[proj_idx + 1] if len(path_parts) > proj_idx + 1 else ''
+                # Point to parent session's status
+                new_path = f"/api/projects/{project}/agentic-sessions/{session_name}"
+                url = _uu((p.scheme, p.netloc, new_path, '', '', ''))
+                logging.info(f"Fetching SDK session ID from: {url}")
+            else:
+                logging.error("Could not parse project path from status URL")
+                return ""
+        except Exception as e:
+            logging.error(f"Failed to construct session URL: {e}")
+            return ""
+        
+        req = _urllib_request.Request(url, headers={'Content-Type': 'application/json'}, method='GET')
+        bot = (os.getenv('BOT_TOKEN') or '').strip()
+        if bot:
+            req.add_header('Authorization', f'Bearer {bot}')
+        
+        loop = asyncio.get_event_loop()
+        def _do_req():
+            try:
+                with _urllib_request.urlopen(req, timeout=15) as resp:
+                    return resp.read().decode('utf-8', errors='replace')
+            except _urllib_error.HTTPError as he:
+                logging.warning(f"SDK session ID fetch HTTP {he.code}")
+                return ''
+            except Exception as e:
+                logging.warning(f"SDK session ID fetch failed: {e}")
+                return ''
+        
+        resp_text = await loop.run_in_executor(None, _do_req)
+        if not resp_text:
+            return ""
+        
+        try:
+            data = _json.loads(resp_text)
+            # Look for SDK session ID in annotations (persists across restarts)
+            metadata = data.get('metadata', {})
+            annotations = metadata.get('annotations', {})
+            sdk_session_id = annotations.get('ambient-code.io/sdk-session-id', '')
+            
+            if sdk_session_id:
+                # Validate it's a UUID
+                if '-' in sdk_session_id and len(sdk_session_id) == 36:
+                    logging.info(f"Found SDK session ID in annotations: {sdk_session_id}")
+                    return sdk_session_id
+                else:
+                    logging.warning(f"Invalid SDK session ID format: {sdk_session_id}")
+                    return ""
+            else:
+                logging.warning(f"Parent session {session_name} has no sdk-session-id annotation")
+                return ""
+        except Exception as e:
+            logging.error(f"Failed to parse SDK session ID: {e}")
+            return ""
 
     async def _fetch_github_token(self) -> str:
         # Try cached value from env first

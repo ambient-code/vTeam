@@ -39,7 +39,7 @@ crc setup
 
 ```bash
 # Clone the repository
-git clone https://github.com/red-hat-data-services/vTeam.git
+git clone https://github.com/ambient-code/vTeam.git
 cd vTeam
 
 # Single command to start everything
@@ -68,17 +68,30 @@ After deployment, you need to configure your Anthropic API key:
 Alternatively, create it via CLI:
 
 ```bash
+# Create the Secret with your API key
+oc apply -f - <<EOF
+apiVersion: v1
+kind: Secret
+metadata:
+  name: runner-secrets
+  namespace: vteam-dev
+type: Opaque
+stringData:
+  ANTHROPIC_API_KEY: "sk-ant-api03-your-key-here"
+EOF
+
+# Create the ProjectSettings referencing the Secret
 oc apply -f - <<EOF
 apiVersion: vteam.ambient-code/v1alpha1
 kind: ProjectSettings
 metadata:
-  name: default-settings
+  name: projectsettings
   namespace: vteam-dev
 spec:
-  apiKeys:
-    anthropic: "sk-ant-api03-your-key-here"
-  defaultModel: "claude-3-5-sonnet-20241022"
-  timeout: 300
+  groupAccess:
+    - groupName: "developers"
+      role: "edit"
+  runnerSecretsName: "runner-secrets"
 EOF
 ```
 
@@ -168,17 +181,16 @@ oc get pods -n vteam-dev -o jsonpath='{.items[*].spec.containers[*].image}'
 
 Now that vTeam is running, you're ready to:
 
-1. **Explore the architecture** → [Developer Guide](../developer-guide/index.md)
-2. **Try RFE workflows** → [RFE Workflow Guide](rfe-workflow.md)
-3. **Try hands-on exercises** → [Labs](../labs/index.md)
-4. **Customize your deployment** → [Configuration Guide](configuration.md)
+1. **Try hands-on exercises** → [Lab 1: Your First Agentic Session](../labs/basic/lab-1-first-rfe.md)
+2. **Explore the reference documentation** → [Reference Guide](../reference/index.md)
+3. **Review deployment options** → [OpenShift Deployment](../OPENSHIFT_DEPLOY.md)
 
 ## Getting Help
 
 If you encounter issues not covered here:
 
 - **Check CLAUDE.md** in the repository root for detailed development documentation
-- **Search existing issues** → [GitHub Issues](https://github.com/red-hat-data-services/vTeam/issues)
+- **Search existing issues** → [GitHub Issues](https://github.com/ambient-code/vTeam/issues)
 - **Create a new issue** with your error details and environment info
 
 Welcome to Kubernetes-native AI automation! 🚀

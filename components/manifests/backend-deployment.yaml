@@ -40,6 +40,10 @@ spec:
         # Spec-kit templates are only used when version is a tagged release
         - name: SPEC_KIT_TEMPLATE
           value: "spec-kit-template-claude-sh"
+        - name: CONTENT_SERVICE_IMAGE
+          value: "quay.io/ambient_code/vteam_backend:latest"
+        - name: IMAGE_PULL_POLICY
+          value: "Always"
         # GitHub App authentication (optional - use this OR git-secret)
         - name: GITHUB_APP_ID
           valueFrom:

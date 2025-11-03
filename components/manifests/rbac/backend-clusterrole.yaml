@@ -67,4 +67,31 @@ rules:
   resources: ["projects"]
   verbs: ["get", "list", "watch", "update", "patch"]
 
+# Jobs (for monitoring and cleanup when stopping sessions)
+- apiGroups: ["batch"]
+  resources: ["jobs"]
+  verbs: ["get", "list", "watch", "delete"]
+
+# Pods (for cleanup when stopping sessions and spawning temp content pods)
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list", "watch", "create", "delete", "deletecollection"]
+- apiGroups: [""]
+  resources: ["pods/log"]
+  verbs: ["get"]
+
+# PVCs (for checking workspace status and spawning temp content pods)
+- apiGroups: [""]
+  resources: ["persistentvolumeclaims"]
+  verbs: ["get", "list", "watch"]
+
+# Services (for temp content pod services)
+- apiGroups: [""]
+  resources: ["services"]
+  verbs: ["get", "list", "create", "delete"]
+
+# SubjectAccessReviews (for permission validation)
+- apiGroups: ["authorization.k8s.io"]
+  resources: ["subjectaccessreviews", "selfsubjectaccessreviews"]
+  verbs: ["create"]
 

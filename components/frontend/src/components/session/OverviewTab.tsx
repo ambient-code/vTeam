@@ -4,7 +4,7 @@ import React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Brain, Clock, RefreshCw, Sparkle, ExternalLink } from "lucide-react";
+import { Brain, Clock, RefreshCw, Sparkle, ExternalLink, Box, Container, HardDrive } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import type { AgenticSession } from "@/types/agentic-session";
@@ -21,10 +21,68 @@ type Props = {
   busyRepo: Record<number, 'push' | 'abandon' | null>;
   buildGithubCompareUrl: (inUrl: string, inBranch?: string, outUrl?: string, outBranch?: string) => string | null;
   onRefreshDiff: () => Promise<void>;
+  k8sResources?: {
+    jobName?: string;
+    jobStatus?: string;
+    pods?: Array<{
+      name: string;
+      phase: string;
+      containers: Array<{
+        name: string;
+        state: string;
+        exitCode?: number;
+        reason?: string;
+      }>;
+      isTempPod?: boolean;
+    }>;
+    pvcName?: string;
+    pvcExists?: boolean;
+    pvcSize?: string;
+  };
 };
 
-export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromptExpanded, latestLiveMessage, diffTotals, onPush, onAbandon, busyRepo, buildGithubCompareUrl, onRefreshDiff }) => {
+// Utility to generate OpenShift console URLs
+const getOpenShiftConsoleUrl = (namespace: string, resourceType: 'Job' | 'Pod' | 'PVC', resourceName: string): string | null => {
+  // Try to derive console URL from current window location
+  // OpenShift console is typically at console-openshift-console.apps.<cluster-domain>
+  const hostname = window.location.hostname;
+  
+  // Check if we're on an OpenShift route (apps.*)
+  if (hostname.includes('.apps.')) {
+    const clusterDomain = hostname.split('.apps.')[1];
+    const consoleUrl = `https://console-openshift-console.apps.${clusterDomain}`;
+    
+    const resourceMap = {
+      'Job': 'batch~v1~Job',
+      'Pod': 'core~v1~Pod',
+      'PVC': 'core~v1~PersistentVolumeClaim',
+    };
+    
+    return `${consoleUrl}/k8s/ns/${namespace}/${resourceMap[resourceType]}/${resourceName}`;
+  }
+  
+  // Fallback: For local development or non-standard setups, return null
+  return null;
+};
+
+export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromptExpanded, latestLiveMessage, diffTotals, onPush, onAbandon, busyRepo, buildGithubCompareUrl, onRefreshDiff, k8sResources }) => {
   const [refreshingDiff, setRefreshingDiff] = React.useState(false);
+  const [expandedPods, setExpandedPods] = React.useState<Record<string, boolean>>({});
+  
+  const projectNamespace = session.metadata?.namespace || '';
+  
+  const getStatusColor = (status: string) => {
+    const lower = status.toLowerCase();
+    if (lower.includes('running') || lower.includes('active')) return 'bg-blue-100 text-blue-800 border-blue-300';
+    if (lower.includes('succeeded') || lower.includes('completed')) return 'bg-green-100 text-green-800 border-green-300';
+    if (lower.includes('failed') || lower.includes('error')) return 'bg-red-100 text-red-800 border-red-300';
+    if (lower.includes('waiting') || lower.includes('pending')) return 'bg-yellow-100 text-yellow-800 border-yellow-300';
+    if (lower.includes('terminating')) return 'bg-purple-100 text-purple-800 border-purple-300';
+    if (lower.includes('notfound') || lower.includes('not found')) return 'bg-orange-100 text-orange-800 border-orange-300';
+    if (lower.includes('terminated')) return 'bg-gray-100 text-gray-800 border-gray-300';
+    return 'bg-gray-100 text-gray-800 border-gray-300';
+  };
+  
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -155,6 +213,211 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                   </div>
                 </div>
 
+                {k8sResources && (
+                  <div>
+                    <div className="text-xs font-semibold text-muted-foreground mb-2">Kubernetes Resources</div>
+                    <div className="space-y-2">
+                      {/* PVC - Always shown at root level (owned by AgenticSession CR) */}
+                      {k8sResources.pvcName && (
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline" className="text-xs">
+                            <HardDrive className="w-3 h-3 mr-1" />
+                            PVC
+                          </Badge>
+                          {(() => {
+                            const consoleUrl = getOpenShiftConsoleUrl(projectNamespace, 'PVC', k8sResources.pvcName);
+                            return consoleUrl ? (
+                              <a
+                                href={consoleUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="font-mono text-xs text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1"
+                              >
+                                {k8sResources.pvcName}
+                                <ExternalLink className="w-3 h-3" />
+                              </a>
+                            ) : (
+                              <span className="font-mono text-xs">{k8sResources.pvcName}</span>
+                            );
+                          })()}
+                          <Badge className={`text-xs ${k8sResources.pvcExists ? 'bg-green-100 text-green-800 border-green-300' : 'bg-red-100 text-red-800 border-red-300'}`}>
+                            {k8sResources.pvcExists ? 'Exists' : 'Not Found'}
+                          </Badge>
+                          {k8sResources.pvcSize && <span className="text-xs text-gray-500">{k8sResources.pvcSize}</span>}
+                        </div>
+                      )}
+                      
+                      {/* Temp Content Pods - Always at root level (for completed sessions) */}
+                      {k8sResources.pods && k8sResources.pods.filter(p => p.isTempPod).map((pod) => (
+                        <div key={pod.name} className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => setExpandedPods(prev => ({ ...prev, [pod.name]: !prev[pod.name] }))}
+                              className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+                            >
+                              {expandedPods[pod.name] ? 'Hide' : 'Show'}
+                            </button>
+                            <Badge variant="outline" className="text-xs">
+                              <Container className="w-3 h-3 mr-1" />
+                              Temp Pod
+                            </Badge>
+                            {(() => {
+                              const consoleUrl = getOpenShiftConsoleUrl(projectNamespace, 'Pod', pod.name);
+                              return consoleUrl ? (
+                                <a
+                                  href={consoleUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="font-mono text-xs text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1 truncate max-w-[250px]"
+                                  title={pod.name}
+                                >
+                                  {pod.name}
+                                  <ExternalLink className="w-3 h-3 flex-shrink-0" />
+                                </a>
+                              ) : (
+                                <span className="font-mono text-xs truncate max-w-[250px]" title={pod.name}>
+                                  {pod.name}
+                                </span>
+                              );
+                            })()}
+                            <Badge className={`text-xs ${getStatusColor(pod.phase)}`}>
+                              {pod.phase}
+                            </Badge>
+                            <Badge variant="outline" className="text-xs bg-purple-50 text-purple-700 border-purple-200">
+                              Workspace viewer
+                            </Badge>
+                          </div>
+                          
+                          {/* Temp pod containers */}
+                          {expandedPods[pod.name] && pod.containers && pod.containers.length > 0 && (
+                            <div className="ml-4 space-y-1 border-l-2 border-gray-200 pl-3">
+                              {pod.containers.map((container) => (
+                                <div key={container.name} className="flex items-center gap-2">
+                                  <Badge variant="outline" className="text-xs">
+                                    <Box className="w-3 h-3 mr-1" />
+                                    {container.name}
+                                  </Badge>
+                                  <Badge className={`text-xs ${getStatusColor(container.state)}`}>
+                                    {container.state}
+                                  </Badge>
+                                  {container.exitCode !== undefined && (
+                                    <span className="text-xs text-gray-500">Exit: {container.exitCode}</span>
+                                  )}
+                                  {container.reason && (
+                                    <span className="text-xs text-gray-500">({container.reason})</span>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                      
+                      {/* Job - Only shown when job exists */}
+                      {k8sResources.jobName && (
+                      <div className="text-xs space-y-1">
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline" className="text-xs">
+                            <Box className="w-3 h-3 mr-1" />
+                            Job
+                          </Badge>
+                          {(() => {
+                            const consoleUrl = getOpenShiftConsoleUrl(projectNamespace, 'Job', k8sResources.jobName);
+                            return consoleUrl ? (
+                              <a
+                                href={consoleUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="font-mono text-xs text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1"
+                              >
+                                {k8sResources.jobName}
+                                <ExternalLink className="w-3 h-3" />
+                              </a>
+                            ) : (
+                              <span className="font-mono text-xs">{k8sResources.jobName}</span>
+                            );
+                          })()}
+                          <Badge className={`text-xs ${getStatusColor(k8sResources.jobStatus || 'Unknown')}`}>
+                            {k8sResources.jobStatus || 'Unknown'}
+                          </Badge>
+                        </div>
+                        
+                        {/* Job Pods - Only non-temp pods */}
+                        {k8sResources.pods && k8sResources.pods.filter(p => !p.isTempPod).length > 0 && (
+                          <div className="ml-4 space-y-1 border-l-2 border-gray-200 pl-3">
+                            {k8sResources.pods.filter(p => !p.isTempPod).map((pod) => (
+                              <div key={pod.name} className="space-y-1">
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    onClick={() => setExpandedPods(prev => ({ ...prev, [pod.name]: !prev[pod.name] }))}
+                                    className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+                                  >
+                                    {expandedPods[pod.name] ? 'Hide' : 'Show'}
+                                  </button>
+                                  <Badge variant="outline" className="text-xs">
+                                    <Container className="w-3 h-3 mr-1" />
+                                    Pod
+                                  </Badge>
+                                  {(() => {
+                                    const consoleUrl = getOpenShiftConsoleUrl(projectNamespace, 'Pod', pod.name);
+                                    return consoleUrl ? (
+                                      <a
+                                        href={consoleUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="font-mono text-xs text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1 truncate max-w-[200px]"
+                                        title={pod.name}
+                                      >
+                                        {pod.name}
+                                        <ExternalLink className="w-3 h-3 flex-shrink-0" />
+                                      </a>
+                                    ) : (
+                                      <span className="font-mono text-xs truncate max-w-[200px]" title={pod.name}>
+                                        {pod.name}
+                                      </span>
+                                    );
+                                  })()}
+                                  <Badge className={`text-xs ${getStatusColor(pod.phase)}`}>
+                                    {pod.phase}
+                                  </Badge>
+                                  {pod.isTempPod && (
+                                    <Badge variant="outline" className="text-xs bg-purple-50 text-purple-700 border-purple-200">
+                                      Workspace viewer
+                                    </Badge>
+                                  )}
+                                </div>
+                                
+                                {expandedPods[pod.name] && pod.containers && (
+                                  <div className="ml-4 space-y-1 border-l-2 border-gray-200 pl-3">
+                                    {pod.containers.map((container) => (
+                                      <div key={container.name} className="flex items-center gap-2">
+                                        <Badge variant="outline" className="text-xs">
+                                          <Box className="w-3 h-3 mr-1" />
+                                          {container.name}
+                                        </Badge>
+                                        <Badge className={`text-xs ${getStatusColor(container.state)}`}>
+                                          {container.state}
+                                        </Badge>
+                                        {container.exitCode !== undefined && (
+                                          <span className="text-xs text-gray-500">Exit: {container.exitCode}</span>
+                                        )}
+                                        {container.reason && (
+                                          <span className="text-xs text-gray-500">({container.reason})</span>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 <div>
                   <div className="flex items-center justify-between mb-2">
                     <div className="text-xs font-semibold text-muted-foreground">Repositories</div>
@@ -184,8 +447,13 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                           ? repo.output.branch 
                           : `sessions/${session.metadata.name}`;
                         const compareUrl = buildGithubCompareUrl(repo.input.url, repo.input.branch || 'main', repo.output?.url, outBranch);
+                        
+                        // Check if temp pod is running and ready
+                        const tempPod = k8sResources?.pods?.find(p => p.isTempPod);
+                        const tempPodReady = tempPod?.phase === 'Running';
+                        
                         const br = diffTotals[idx] || { total_added: 0, total_removed: 0 };
-                        const hasChanges = br.total_added > 0 || br.total_removed > 0;
+                        const hasChanges = tempPodReady && (br.total_added > 0 || br.total_removed > 0);
                         return (
                           <div key={idx} className="flex items-center gap-2 text-sm font-mono">
                             {isMain && <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded font-sans">MAIN</span>}
@@ -209,7 +477,12 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                               </span>
                             )}
                             <span className="flex-1" />
-                            {!hasChanges ? (
+                            
+                            {!tempPodReady ? (
+                              <span className="text-xs text-muted-foreground italic">
+                                (read-only - temp service not running)
+                              </span>
+                            ) : !hasChanges ? (
                               repo.status === 'pushed' && compareUrl ? (
                                 <a 
                                   href={compareUrl} 
@@ -248,14 +521,14 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                                 <ExternalLink className="h-3 w-3" />
                               </a>
                             ) : null}
-                            {hasChanges && (
+                            {hasChanges && tempPodReady && (
                               repo.output?.url ? (
                                 <div className="flex items-center gap-2">
-                                  <Button size="sm" variant="secondary" onClick={() => onPush(idx)}>{busyRepo[idx] === 'push' ? 'Pushing…' : 'Push'}</Button>
-                                  <Button size="sm" variant="outline" onClick={() => onAbandon(idx)}>{busyRepo[idx] === 'abandon' ? 'Abandoning…' : 'Abandon'}</Button>
+                                  <Button size="sm" variant="secondary" onClick={() => onPush(idx)} disabled={!tempPodReady}>{busyRepo[idx] === 'push' ? 'Pushing…' : 'Push'}</Button>
+                                  <Button size="sm" variant="outline" onClick={() => onAbandon(idx)} disabled={!tempPodReady}>{busyRepo[idx] === 'abandon' ? 'Abandoning…' : 'Abandon'}</Button>
                                 </div>
                               ) : (
-                                <Button size="sm" variant="outline" onClick={() => onAbandon(idx)}>{busyRepo[idx] === 'abandon' ? 'Abandoning…' : 'Abandon changes'}</Button>
+                                <Button size="sm" variant="outline" onClick={() => onAbandon(idx)} disabled={!tempPodReady}>{busyRepo[idx] === 'abandon' ? 'Abandoning…' : 'Abandon changes'}</Button>
                               )
                             )}
                           </div>

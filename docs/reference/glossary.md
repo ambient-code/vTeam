@@ -13,8 +13,8 @@ A specialized AI character with defined role, expertise, seniority level, and an
 ### **Conversational RFE Creation**
 The process of creating Requirements for Enhancement using natural language chat with AI, as opposed to filling out traditional forms.
 
-### **LlamaDeploy**
-Production workflow orchestration framework used by vTeam to coordinate multi-agent analysis in enterprise environments.
+### **Kubernetes Operator**
+Custom controller that extends Kubernetes functionality by watching Custom Resources and reconciling them to desired state. vTeam uses an operator to manage agentic sessions.
 
 ### **Multi-Agent Workflow**  
 The coordinated process where multiple AI agents sequentially analyze an RFE, each contributing specialized expertise to create comprehensive requirements.
@@ -45,8 +45,8 @@ Framework for building RAG applications with document indexing and retrieval cap
 ### **Pydantic**
 Python library for data validation and serialization using type hints.
 
-### **@llamaindex/server**
-TypeScript framework for building chat interfaces with LlamaIndex integration, used for vTeam's modern frontend user interface.
+### **Next.js**
+React-based web framework used for vTeam's frontend, providing server-side rendering, routing, and modern UI components via Shadcn UI.
 
 ### **Vector Embedding**
 Numerical representation of text that enables semantic similarity search in AI systems.

@@ -1,66 +1,132 @@
 # User Guide
 
-Welcome to the vTeam User Guide! This section provides everything you need to effectively use the Refinement Agent Team system.
+Welcome to the vTeam User Guide! This section provides everything you need to effectively use vTeam for AI-powered automation and agentic development workflows.
 
 ## What You'll Learn
 
-This guide covers the essential aspects of using vTeam as an end user:
+This guide covers the essential aspects of using vTeam:
 
 ### 🚀 [Getting Started](getting-started.md)
-- Complete setup and installation
-- First-time configuration
+- Complete setup and installation (local and production)
+- Configure your Anthropic API key
+- Create your first AgenticSession
 - Verify your environment is working
+- Troubleshoot common issues
 
-### 📝 [Creating RFEs](creating-rfes.md) 
-- Conversational RFE creation with AI
-- Form-based RFE submission
-- Best practices for clear requirements
+## Core Concepts
 
-### 🤖 [Agent Framework](agent-framework.md)
-- Understanding the 7-agent council
-- Agent roles and specializations  
-- How agents collaborate on your RFEs
+Before diving in, understand these key concepts:
 
-### ⚙️ [Configuration](configuration.md)
-- Customizing your vTeam setup
-- API configurations and secrets
-- Integration settings
+### **AgenticSession**
+An AgenticSession is a Kubernetes Custom Resource representing an AI-powered automation task. Each session:
+- Executes a prompt using Claude Code
+- Can operate on one or multiple GitHub repositories
+- Runs as a Kubernetes Job with isolated workspace
+- Supports interactive (long-running) and headless (batch) modes
+- Tracks status, results, and per-repo push/abandon decisions
 
-### 🛠️ [Troubleshooting](troubleshooting.md)
-- Common issues and solutions
-- Performance optimization tips
-- Getting help and support
+### **Projects & Namespaces**
+vTeam uses Kubernetes namespaces for multi-tenant isolation:
+- Each project maps to a namespace
+- Users authenticate with OpenShift OAuth
+- RBAC controls who can create/view sessions
+- ProjectSettings CR manages API keys and defaults
 
-## User Personas
+### **Session Modes**
 
-This guide serves different types of users:
+**Headless Mode** (`interactive: false`):
+- Single-prompt execution with timeout
+- Ideal for batch tasks, CI/CD automation
+- Session completes and exits automatically
 
-### **Product Managers**
-Focus on RFE creation, business value articulation, and stakeholder communication through the agent workflow.
+**Interactive Mode** (`interactive: true`):
+- Long-running chat sessions
+- Uses inbox/outbox files for communication
+- Ideal for iterative development, debugging
+- Runs until explicitly stopped
 
-### **Engineering Teams** 
-Learn how refined RFEs accelerate development velocity and reduce time spent in refinement meetings.
+## User Workflows
 
-### **Team Leads**
-Understand workflow management, agent oversight, and integration with existing development processes.
+### For Developers
 
-### **QA/Test Engineers**
-Explore how agent-generated acceptance criteria improve test planning and validation.
+**Automate repetitive tasks:**
+- Code analysis and documentation generation
+- Refactoring and modernization
+- Test generation and coverage improvements
+- Security vulnerability scanning
+
+**Example session:**
+```yaml
+apiVersion: vteam.ambient-code/v1alpha1
+kind: AgenticSession
+metadata:
+  name: analyze-repo
+  namespace: my-project
+spec:
+  prompt: "Analyze this codebase and generate comprehensive API documentation"
+  repos:
+    - input:
+        url: https://github.com/myorg/myrepo
+        branch: main
+  interactive: false
+  timeout: 3600
+```
+
+### For Engineering Teams
+
+**Improve development velocity:**
+- Automated code reviews
+- Cross-repository analysis
+- Migration and upgrade automation
+- Consistency checking across microservices
+
+**Multi-repo session example:**
+```yaml
+spec:
+  prompt: "Compare authentication patterns in these services and create a unified approach"
+  repos:
+    - input:
+        url: https://github.com/myorg/service-a
+    - input:
+        url: https://github.com/myorg/service-b
+  mainRepoIndex: 0  # service-a is the working directory
+```
+
+### For Team Leads
+
+**Manage automation at scale:**
+- Configure ProjectSettings for your team
+- Set default models and timeouts
+- Manage API keys via Kubernetes Secrets
+- Monitor session execution and costs
+- Review session results and approve PRs
 
 ## Prerequisites
 
-Before diving into the user guide, ensure you have:
+Before using vTeam, ensure you have:
 
-- [ ] Python 3.12+ installed
-- [ ] Access to Anthropic Claude API
-- [ ] Basic familiarity with software requirements
-- [ ] Understanding of your team's development workflow
+- [ ] OpenShift or Kubernetes cluster access
+- [ ] vTeam deployed and running ([Deployment Guides](../OPENSHIFT_DEPLOY.md))
+- [ ] Anthropic Claude API key
+- [ ] Project created with your user granted access
+- [ ] Basic familiarity with GitHub workflows
 
 ## Quick Navigation
 
-- **New to AI-assisted refinement?** → Start with [Getting Started](getting-started.md)
-- **Ready to create your first RFE?** → Jump to [Creating RFEs](creating-rfes.md)  
-- **Want to understand the AI agents?** → Read [Agent Framework](agent-framework.md)
-- **Having issues?** → Check [Troubleshooting](troubleshooting.md)
+- **New to vTeam?** → Start with [Getting Started](getting-started.md)
+- **Want hands-on practice?** → Try [Lab 1: Your First Agentic Session](../labs/basic/lab-1-first-rfe.md)
+- **Need technical details?** → Check the [Reference Documentation](../reference/index.md)
+- **Deploying vTeam?** → See [OpenShift Deployment Guide](../OPENSHIFT_DEPLOY.md)
 
-Let's get started transforming your refinement process!
+## Getting Help
+
+If you encounter issues:
+
+- **Common problems**: See the [Troubleshooting section](getting-started.md#common-issues) in Getting Started
+- **Documentation bugs**: [Submit an issue](https://github.com/ambient-code/vTeam/issues)
+- **Questions**: [GitHub Discussions](https://github.com/ambient-code/vTeam/discussions)
+- **CLAUDE.md**: Check the project root for detailed development documentation
+
+---
+
+Ready to get started? Jump to the [Getting Started Guide](getting-started.md) to install vTeam and create your first AgenticSession!

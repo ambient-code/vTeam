@@ -81,7 +81,7 @@ export default function NewProjectPage() {
 
     createProjectMutation.mutate(payload, {
       onSuccess: (project) => {
-        successToast(`Project "${formData.displayName}" created successfully`);
+        successToast(`Project "${formData.displayName || formData.name}" created successfully`);
         router.push(`/projects/${encodeURIComponent(project.name)}`);
       },
       onError: (err) => {

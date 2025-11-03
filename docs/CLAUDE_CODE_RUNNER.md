@@ -230,6 +230,13 @@ This creates a sophisticated multi-agent system where each AI persona brings dom
 4. **Continuous Updates**: Real-time workspace sync and status updates
 5. **Graceful Termination**: User can end session with `/end` command
 
+### Session Continuation
+Both headless and interactive sessions can be continued after completion:
+- **Interactive Sessions**: Can be restarted to continue the conversation from where it left off
+- **Headless Sessions**: When continued, automatically convert to interactive mode for chat-based interaction
+- **Workspace Persistence**: Continued sessions reuse the same PVC, preserving all work from the previous run
+- **Token Regeneration**: Runner tokens are automatically regenerated for security
+
 ## Configuration
 
 ### Environment Variables

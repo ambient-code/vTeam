@@ -28,6 +28,9 @@ func main() {
 	// Start watching ProjectSettings resources
 	go handlers.WatchProjectSettings()
 
+	// Start cleanup of expired temporary content pods
+	go handlers.CleanupExpiredTempContentPods()
+
 	// Keep the operator running
 	select {}
 }

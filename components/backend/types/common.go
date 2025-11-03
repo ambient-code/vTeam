@@ -39,3 +39,16 @@ type Paths struct {
 	Messages  string `json:"messages,omitempty"`
 	Inbox     string `json:"inbox,omitempty"`
 }
+
+// Helper functions for pointer types
+func BoolPtr(b bool) *bool {
+	return &b
+}
+
+func StringPtr(s string) *string {
+	return &s
+}
+
+func IntPtr(i int) *int {
+	return &i
+}

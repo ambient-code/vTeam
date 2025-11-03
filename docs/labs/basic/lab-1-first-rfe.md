@@ -1,30 +1,31 @@
-# Lab 1: Create Your First RFE
+# Lab 1: Your First Agentic Session
 
 ## Objective 🎯
 
-Learn to create a Request for Enhancement (RFE) using vTeam's conversational AI interface and understand how the 7-agent council processes your requirements.
+Learn to create and monitor an AgenticSession using vTeam's web interface, understanding how AI-powered automation executes tasks in a Kubernetes-native environment.
 
 **By the end of this lab, you will:**
 
-- Successfully create an RFE using natural language
-- Understand the agent workflow stages  
-- Interpret agent analysis and recommendations
-- Generate implementation-ready requirements
+- Successfully create an AgenticSession using the web UI
+- Understand session configuration options (interactive vs headless, single vs multi-repo)
+- Monitor real-time session execution and status
+- Review session results and understand output artifacts
 
 ## Prerequisites 📋
 
 - [ ] vTeam installed and running ([Getting Started Guide](../../user-guide/getting-started.md))
-- [ ] Anthropic API key configured in your project settings
-- [ ] Basic understanding of software requirements
+- [ ] Anthropic API key configured in ProjectSettings
+- [ ] At least one project created in vTeam
 - [ ] Web browser for accessing the vTeam interface
+- [ ] Basic understanding of GitHub repositories (optional, for multi-repo exercises)
 
 ## Estimated Time ⏱️
 
-**30-45 minutes** (including agent processing time)
+**30-45 minutes** (including session execution time)
 
 ## Lab Scenario
 
-You're a Product Manager at a software company. Your development team has been asking for a **dark mode feature** to improve user experience and reduce eye strain during late-night coding sessions. You need to create a comprehensive RFE that the engineering team can implement immediately.
+You're a developer who wants to automate code analysis and documentation tasks. You'll create your first AgenticSession to analyze a simple Python repository and generate a README file describing its functionality.
 
 ## Step 1: Access the vTeam Interface
 
@@ -35,235 +36,311 @@ You're a Product Manager at a software company. Your development team has been a
    make dev-start
    ```
 
-2. **Open your browser** to the vTeam frontend URL (displayed after deployment)
+2. **Get the frontend URL**:
 
-3. **Verify the interface**:
-   - You should see the vTeam web interface
-   - Look for project creation or session options
-   - The interface should be ready to accept your input
-
-**✅ Checkpoint**: Confirm you can access the vTeam interface and navigate the UI.
-
-## Step 2: Initiate RFE Creation
-
-Now let's create your first RFE using natural language.
-
-1. **Start with a basic description** in the chat:
-
-   ```
-   I want to add a dark mode toggle to our application. Users should be able to switch between light and dark themes, and their preference should be saved.
+   ```bash
+   echo "https://$(oc get route vteam-frontend -n vteam-dev -o jsonpath='{.spec.host}')"
    ```
 
-2. **Send the message** and wait for the AI response
+3. **Open your browser** to the vTeam frontend URL
 
-3. **Observe the AI's follow-up questions** - the system will ask clarifying questions like:
-   - What type of application is this?
-   - Where should the toggle be located?
-   - Are there any specific design requirements?
+4. **Verify the interface**:
+   - You should see the vTeam dashboard
+   - Navigate to your project (or create one if needed)
+   - Look for the "Agentic Sessions" section
 
-**✅ Checkpoint**: The vTeam workflow should begin processing and respond within 10-15 seconds.
+**✅ Checkpoint**: Confirm you can access the vTeam interface and see the sessions list.
 
-## Step 3: Provide Additional Context
+## Step 2: Create Your First Session (Single Repository)
 
-The AI will guide you through refining your requirements. Respond to its questions with details like:
+Let's start with a simple single-repository session.
 
-**When asked about application type:**
+1. **Click "Create Session"** or similar button in the UI
 
+2. **Configure the session**:
+
+   **Basic Settings:**
+   - **Prompt**: `Analyze this Python repository and create a comprehensive README.md file`
+   - **Repository URL**: `https://github.com/anthropics/anthropic-sdk-python` (or any small Python repo)
+   - **Branch**: `main`
+   - **Interactive Mode**: `false` (headless/batch mode)
+
+   **Advanced Settings** (optional):
+   - **Timeout**: `3600` (1 hour, default is fine)
+   - **Model**: `claude-sonnet-4` (default)
+
+3. **Click "Create Session"** to submit
+
+4. **Observe the Kubernetes resources**:
+
+   ```bash
+   # Watch the AgenticSession Custom Resource
+   oc get agenticsessions -n your-project-name -w
+
+   # Watch the Job that gets created
+   oc get jobs -n your-project-name -w
+
+   # Watch the Pod executing Claude Code
+   oc get pods -n your-project-name -w
+   ```
+
+**✅ Checkpoint**: You should see an AgenticSession CR created, followed by a Job and Pod spawning.
+
+## Step 3: Monitor Session Execution
+
+Real-time monitoring is crucial for understanding session progress.
+
+### Via Web Interface
+
+1. **Navigate to the session detail page** by clicking on your session
+2. **Watch the status updates**:
+   - `Pending`: Session created, waiting for Job
+   - `Running`: Job pod is executing Claude Code
+   - `Completed`: Session finished successfully
+   - `Failed`: Session encountered an error
+
+3. **View real-time logs** (if UI provides streaming)
+
+### Via CLI
+
+```bash
+# Get session status
+oc get agenticsession <session-name> -n <project-name> -o yaml
+
+# Watch Job status
+oc describe job <session-name> -n <project-name>
+
+# Stream pod logs
+oc logs -f job/<session-name> -n <project-name>
 ```
-This is a web-based project management application built with React. We have about 5,000 active users who work in different time zones.
+
+**Sample log output:**
+```
+Cloning repository https://github.com/anthropics/anthropic-sdk-python...
+Running Claude Code CLI with prompt: Analyze this Python repository...
+Claude: I'll analyze this repository structure...
+Creating README.md with comprehensive documentation...
+Session completed successfully.
 ```
 
-**When asked about toggle placement:**
+**✅ Checkpoint**: Session should transition through Pending → Running → Completed within 5-10 minutes.
 
-```
-The toggle should be in the user settings page, but also accessible from the main navigation bar for quick switching.
-```
+## Step 4: Review Session Results
 
-**When asked about design requirements:**
+Once the session completes, examine the results.
 
-```
-We want to follow our existing design system. Dark mode should use our brand colors - dark gray (#2D3748) backgrounds with white text, and our signature blue (#3182CE) for accents.
-```
+1. **Check the session status** in the UI:
+   - Look for completion timestamp
+   - Check for any error messages
+   - Review execution summary
 
-**✅ Checkpoint**: The multi-agent workflow will automatically process your input without requiring back-and-forth exchanges.
+2. **View the output** (if repository forking is enabled):
+   - A pull request may be created with the generated README.md
+   - Or changes may be pushed to the output repository
 
-## Step 4: Review Generated RFE
+3. **Inspect the AgenticSession CR**:
 
-The AI will present a structured RFE with sections like:
+   ```bash
+   oc get agenticsession <session-name> -n <project-name> -o jsonpath='{.status}' | jq
+   ```
 
-- **Title**: Clear, actionable feature name
-- **Description**: Detailed feature explanation  
-- **Business Justification**: Why this feature matters
-- **Acceptance Criteria**: Specific, testable requirements
-- **Technical Considerations**: Implementation notes
+   **Expected status fields:**
+   ```json
+   {
+     "phase": "Completed",
+     "startTime": "2025-10-30T10:00:00Z",
+     "completionTime": "2025-10-30T10:08:32Z",
+     "results": "Successfully created README.md with 250 lines...",
+     "repos": [
+       {
+         "url": "https://github.com/anthropics/anthropic-sdk-python",
+         "status": "pushed"
+       }
+     ]
+   }
+   ```
 
-**Review the generated content and verify:**
+**✅ Checkpoint**: Session status should show "Completed" with results summary.
 
-- [ ] Title accurately reflects your request
-- [ ] Description captures all discussed details
-- [ ] Business justification makes sense for your user base
-- [ ] Acceptance criteria are specific and measurable
+## Step 5: Create an Interactive Session
 
-**✅ Checkpoint**: The generated RFE should be comprehensive and ready for engineering review.
+Interactive sessions allow back-and-forth conversation with Claude Code.
 
-## Step 5: Watch Multi-Agent Analysis
+1. **Create a new session** with these settings:
+   - **Prompt**: `Help me refactor this Python codebase for better maintainability`
+   - **Repository**: Same as before
+   - **Interactive Mode**: `true`
 
-The vTeam workflow automatically orchestrates all 7 agents:
+2. **Understand interactive mode**:
+   - Session runs indefinitely until you signal completion
+   - Uses inbox/outbox files for asynchronous communication
+   - Allows multi-turn conversations
 
-1. **Monitor the progress** in real-time
-2. **Observe agent coordination**:
-   - All 7 agents analyze your RFE simultaneously
-   - vTeam orchestrates the workflow execution via Kubernetes
-   - Real-time updates show agent progress
-3. **Watch for specialized analysis** from each agent perspective
+3. **Interact with the session**:
 
-**The 7-agent process:**
+   ```bash
+   # Write to inbox file (send message to Claude)
+   oc exec -it <session-pod-name> -n <project-name> -- \
+     bash -c 'echo "Focus on the authentication module first" > /workspace/inbox.txt'
 
-1. **Parker (PM)**: Prioritizes business value and stakeholder impact
-2. **Archie (Architect)**: Evaluates technical feasibility and design approach
-3. **Stella (Staff Engineer)**: Reviews implementation complexity and completeness  
-4. **Archie (Architect)**: Refines acceptance criteria for testability
-5. **Stella (Staff Engineer)**: Makes final accept/reject recommendation
-6. **Parker (PM)**: Communicates decision and next steps
-7. **Derek (Delivery Owner)**: Creates implementation tickets and timeline
+   # Read from outbox file (get Claude's response)
+   oc exec -it <session-pod-name> -n <project-name> -- \
+     cat /workspace/outbox.txt
+   ```
 
-**✅ Checkpoint**: All 7 agents should process your RFE within 2-3 minutes.
+4. **Stop the interactive session** when done:
+   - Write `EXIT` to inbox.txt
+   - Or delete the AgenticSession CR
 
-## Step 6: Analyze Agent Results
+**✅ Checkpoint**: Interactive session should remain in "Running" state until you signal completion.
 
-Each agent provides specialized analysis. Review their outputs:
+## Step 6: Multi-Repository Session (Advanced)
 
-### **Parker (PM) Analysis**
+vTeam supports operating on multiple repositories simultaneously.
 
-- Business value assessment (1-10 scale)
-- User impact evaluation  
-- Resource requirement estimates
-- Stakeholder communication recommendations
+1. **Create a multi-repo session**:
 
-### **Archie (Architect) Analysis**  
+   **Prompt**: `Compare the API design patterns in these two SDK repositories and create a best practices document`
 
-- Technical feasibility score
-- Architecture impact assessment
-- Integration points identified
-- Risk factors and mitigation strategies
+   **Repositories**:
+   - Repo 1 (main workspace):
+     - URL: `https://github.com/anthropics/anthropic-sdk-python`
+     - Branch: `main`
+   - Repo 2 (reference):
+     - URL: `https://github.com/anthropics/anthropic-sdk-typescript`
+     - Branch: `main`
 
-### **Stella (Staff Engineer) Analysis**
+   **Main Repo Index**: `0` (Python SDK is the working directory)
 
-- Implementation complexity rating
-- Development time estimates
-- Required skills and resources
-- Quality assurance considerations
+2. **Understand multi-repo behavior**:
+   - All repos are cloned to the workspace
+   - `mainRepoIndex` specifies which repo Claude works in
+   - Claude can reference and analyze all repos
+   - Changes are typically made to the main repo
 
-**✅ Checkpoint**: Each agent should provide relevant, role-specific insights about your dark mode RFE.
+3. **Review per-repo status**:
 
-## Step 7: Interpret Recommendations
+   ```bash
+   oc get agenticsession <session-name> -n <project-name> -o jsonpath='{.status.repos}' | jq
+   ```
 
-Based on the agent analysis, you should see:
+   **Expected output:**
+   ```json
+   [
+     {
+       "url": "https://github.com/anthropics/anthropic-sdk-python",
+       "status": "pushed"
+     },
+     {
+       "url": "https://github.com/anthropics/anthropic-sdk-typescript",
+       "status": "abandoned"
+     }
+   ]
+   ```
 
-**Positive Indicators:**
-
-- High business value score (7-9/10)
-- Low-to-medium technical complexity
-- Clear implementation path
-- Strong user benefit justification
-
-**Potential Concerns:**
-
-- Design system impact
-- Testing requirements for multiple themes
-- Browser compatibility considerations
-- Performance implications
-
-**✅ Checkpoint**: The overall recommendation should be positive with actionable next steps.
-
-## Step 8: Generate Implementation Artifacts
-
-If the RFE is accepted, Derek (Delivery Owner) will create:
-
-- **Epic**: High-level feature description
-- **User Stories**: Specific implementation tasks
-- **Acceptance Criteria**: Detailed testing requirements  
-- **Implementation Timeline**: Development phases and milestones
-
-**Review these artifacts for:**
-
-- [ ] Clear, actionable user stories
-- [ ] Testable acceptance criteria
-- [ ] Realistic timeline estimates
-- [ ] Proper story point estimates
-
-**✅ Checkpoint**: Implementation artifacts should be ready for sprint planning.
+**✅ Checkpoint**: Multi-repo session should successfully clone and analyze multiple repositories.
 
 ## Validation & Testing
 
 ### Test Your Understanding
 
-**Question 1**: What was Parker's business value score for your RFE, and why?
+**Question 1**: What are the two session modes, and when would you use each?
+- **Headless (interactive: false)**: Single-prompt execution with timeout, ideal for batch tasks
+- **Interactive (interactive: true)**: Long-running chat sessions, ideal for iterative development
 
-**Question 2**: Which technical risks did Archie identify, and how can they be mitigated?
+**Question 2**: What Kubernetes resources are created when you submit an AgenticSession?
+- AgenticSession Custom Resource
+- Job (managed by the Operator)
+- Pod (executes Claude Code runner)
+- Secret (for API keys, via ProjectSettings)
+- PersistentVolumeClaim (workspace storage)
 
-**Question 3**: What was Stella's complexity rating, and does it align with your expectations?
+**Question 3**: How can you tell if a session completed successfully?
+- Status phase is "Completed"
+- No error messages in status
+- Completion timestamp is set
+- Results field contains summary
 
-### Verify the RFE Quality
+### Verify Session Quality
 
-A well-refined RFE should have:
+A successful AgenticSession should have:
 
-- [ ] **Specific title** that clearly communicates the feature
-- [ ] **Detailed description** with user context and motivation
-- [ ] **Quantified business justification** with user impact metrics
-- [ ] **Measurable acceptance criteria** that can be tested
-- [ ] **Technical considerations** for implementation planning
-- [ ] **Clear timeline** with realistic milestones
+- [ ] **Valid Custom Resource** with spec and status fields
+- [ ] **Job completion** without errors
+- [ ] **Results summary** in status.results
+- [ ] **Proper phase transition** (Pending → Running → Completed)
+- [ ] **Per-repo status** showing push/abandon decisions
 
 ## Troubleshooting 🛠️
 
-### Agent Analysis Takes Too Long
+### Session Stuck in Pending
 
-- **Cause**: High API usage or network issues
-- **Solution**: Check your internet connection and Anthropic API status
-- **Workaround**: Try during off-peak hours
+- **Cause**: Operator not running or Job creation failed
+- **Solution**: Check operator logs and RBAC permissions
+  ```bash
+  oc logs deployment/vteam-operator -n vteam-dev
+  oc describe job <session-name> -n <project-name>
+  ```
 
-### Unclear Agent Recommendations  
+### Session Fails Immediately
 
-- **Cause**: Insufficient initial requirements
-- **Solution**: Provide more context about your application, users, and constraints
-- **Tip**: Include technical stack, user base size, and business priorities
+- **Cause**: Invalid API key, repository access issues, or misconfigured ProjectSettings
+- **Solution**: Verify API key in Secret and check pod logs
+  ```bash
+  oc get secret runner-secrets -n <project-name> -o yaml
+  oc logs job/<session-name> -n <project-name>
+  ```
 
-### RFE Rejected by Agents
+### Pod ImagePullBackOff
 
-- **Cause**: Low business value, high complexity, or unclear requirements
-- **Solution**: Refine your requirements based on agent feedback
-- **Next Step**: Address specific concerns and resubmit
+- **Cause**: Container image not accessible or wrong registry
+- **Solution**: Verify image tag and registry permissions
+  ```bash
+  oc describe pod <pod-name> -n <project-name>
+  oc get pods -n <project-name> -o jsonpath='{.items[*].spec.containers[*].image}'
+  ```
+
+### Session Timeout
+
+- **Cause**: Task took longer than configured timeout
+- **Solution**: Increase timeout value or simplify prompt
+  ```yaml
+  spec:
+    timeout: 7200  # 2 hours
+  ```
 
 ## Key Learnings 📚
 
 After completing this lab, you should understand:
 
-1. **Conversational RFE Creation**: How to effectively communicate feature ideas to AI
-2. **Agent Specializations**: What each agent brings to the refinement process
-3. **Quality Indicators**: How to recognize well-refined requirements
-4. **Implementation Readiness**: When an RFE is ready for development
+1. **AgenticSession Lifecycle**: How sessions are created, executed, and completed
+2. **Kubernetes Integration**: How vTeam uses CRs, Operators, and Jobs
+3. **Session Modes**: When to use interactive vs headless execution
+4. **Multi-Repo Support**: How to work with multiple repositories simultaneously
+5. **Monitoring**: How to track session progress via UI and CLI
 
 ## Further Exploration 🔍
 
 Ready to dig deeper?
 
-- **Try a more complex RFE**: Multi-step workflow or integration feature
-- **Explore agent reasoning**: Review detailed agent analysis for insights
-- **Compare approaches**: Create the same RFE using the form interface
-- **Next lab**: [Lab 2: Agent Interaction Deep Dive](lab-2-agent-interaction.md)
+- **Try complex prompts**: Multi-step refactoring or feature implementation
+- **Experiment with timeouts**: Find optimal values for different task types
+- **Explore multi-repo workflows**: Cross-repository analysis and migration
+- **Customize ProjectSettings**: Configure default models, timeouts, and API keys
+- **Review CLAUDE.md**: Understand the complete AgenticSession specification
 
 ## Success Criteria ✅
 
 You've successfully completed Lab 1 when:
 
-- [ ] Created an RFE using conversational AI
-- [ ] Understood each agent's role and analysis
-- [ ] Received implementation-ready artifacts
-- [ ] Can explain the value of AI-assisted refinement
+- [ ] Created at least one successful AgenticSession
+- [ ] Monitored session execution via UI and CLI
+- [ ] Understood the difference between interactive and headless modes
+- [ ] Reviewed session results and status
+- [ ] Can explain how vTeam uses Kubernetes resources
 
-**Congratulations!** You've experienced the power of AI-assisted requirement refinement. Your dark mode RFE is now ready for sprint planning and implementation.
+**Congratulations!** You've mastered the fundamentals of vTeam's AgenticSession workflow. You're now ready to automate development tasks using AI-powered agents in a Kubernetes-native environment.
 
 ---
 
-**Next**: Ready to understand how agents collaborate? Continue with [Lab 2: Agent Interaction Deep Dive](lab-2-agent-interaction.md)
+**Next Steps**: Explore advanced configuration options in the [User Guide](../../user-guide/getting-started.md) or dive into the [Reference Documentation](../../reference/index.md) to understand all AgenticSession capabilities.

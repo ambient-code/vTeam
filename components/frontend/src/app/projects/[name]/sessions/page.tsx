@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { formatDistanceToNow } from 'date-fns';
-import { Plus, RefreshCw, MoreVertical, Square, RefreshCcw, Trash2, Play } from 'lucide-react';
+import { Plus, RefreshCw, MoreVertical, Square, Trash2, ArrowRight, Brain } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -15,7 +15,7 @@ import { ErrorMessage } from '@/components/error-message';
 import { SessionPhaseBadge } from '@/components/status-badge';
 import { Breadcrumbs } from '@/components/breadcrumbs';
 
-import { useSessions, useStopSession, useStartSession, useDeleteSession } from '@/services/queries';
+import { useSessions, useStopSession, useDeleteSession, useContinueSession } from '@/services/queries';
 import { successToast, errorToast } from '@/hooks/use-toast';
 
 export default function ProjectSessionsListPage() {
@@ -25,8 +25,8 @@ export default function ProjectSessionsListPage() {
   // React Query hooks replace all manual state management
   const { data: sessions = [], isLoading, error, refetch } = useSessions(projectName);
   const stopSessionMutation = useStopSession();
-  const startSessionMutation = useStartSession();
   const deleteSessionMutation = useDeleteSession();
+  const continueSessionMutation = useContinueSession();
 
   const handleStop = async (sessionName: string) => {
     stopSessionMutation.mutate(
@@ -42,19 +42,6 @@ export default function ProjectSessionsListPage() {
     );
   };
 
-  const handleRestart = async (sessionName: string) => {
-    startSessionMutation.mutate(
-      { projectName, sessionName },
-      {
-        onSuccess: () => {
-          successToast(`Session "${sessionName}" restarted successfully`);
-        },
-        onError: (error) => {
-          errorToast(error instanceof Error ? error.message : 'Failed to restart session');
-        },
-      }
-    );
-  };
 
   const handleDelete = async (sessionName: string) => {
     if (!confirm(`Delete agentic session "${sessionName}"? This action cannot be undone.`)) return;
@@ -66,6 +53,20 @@ export default function ProjectSessionsListPage() {
         },
         onError: (error) => {
           errorToast(error instanceof Error ? error.message : 'Failed to delete session');
+        },
+      }
+    );
+  };
+
+  const handleContinue = async (sessionName: string) => {
+    continueSessionMutation.mutate(
+      { projectName, parentSessionName: sessionName },
+      {
+        onSuccess: () => {
+          successToast(`Session "${sessionName}" restarted successfully`);
+        },
+        onError: (error) => {
+          errorToast(error instanceof Error ? error.message : 'Failed to restart session');
         },
       }
     );
@@ -130,7 +131,7 @@ export default function ProjectSessionsListPage() {
         <CardContent>
           {sessions.length === 0 ? (
             <EmptyState
-              icon={Play}
+              icon={Brain}
               title="No sessions found"
               description="Create your first agentic session"
               action={{
@@ -209,7 +210,7 @@ export default function ProjectSessionsListPage() {
                               sessionName={sessionName}
                               phase={phase}
                               onStop={handleStop}
-                              onRestart={handleRestart}
+                              onContinue={handleContinue}
                               onDelete={handleDelete}
                             />
                           )}
@@ -232,11 +233,11 @@ type SessionActionsProps = {
   sessionName: string;
   phase: string;
   onStop: (sessionName: string) => void;
-  onRestart: (sessionName: string) => void;
+  onContinue: (sessionName: string) => void;
   onDelete: (sessionName: string) => void;
 };
 
-function SessionActions({ sessionName, phase, onStop, onRestart, onDelete }: SessionActionsProps) {
+function SessionActions({ sessionName, phase, onStop, onContinue, onDelete }: SessionActionsProps) {
   type RowAction = {
     key: string;
     label: string;
@@ -257,17 +258,19 @@ function SessionActions({ sessionName, phase, onStop, onRestart, onDelete }: Ses
     });
   }
 
+  // Allow continue for all completed sessions (converts headless to interactive)
   if (phase === 'Completed' || phase === 'Failed' || phase === 'Stopped' || phase === 'Error') {
     actions.push({
-      key: 'restart',
-      label: 'Restart',
-      onClick: () => onRestart(sessionName),
-      icon: <RefreshCcw className="h-4 w-4" />,
-      className: 'text-blue-600',
+      key: 'continue',
+      label: 'Continue',
+      onClick: () => onContinue(sessionName),
+      icon: <ArrowRight className="h-4 w-4" />,
+      className: 'text-green-600',
     });
   }
 
-  if (phase !== 'Running' && phase !== 'Creating') {
+  // Delete is always available except when Creating
+  if (phase !== 'Creating') {
     actions.push({
       key: 'delete',
       label: 'Delete',

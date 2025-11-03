@@ -1,27 +1,97 @@
-# vTeam
+# vTeam Documentation
 
-vTeam is an OpenShift-native platform for AI-assisted engineering and agentic automation. It consists of a Next.js frontend, a Go backend API, and a Go operator that reconciles Kubernetes resources.
+**vTeam** is a Kubernetes-native AI automation platform that orchestrates intelligent agentic sessions through containerized microservices. Built on OpenShift/Kubernetes, vTeam enables AI-powered automation for code analysis, development tasks, and engineering workflows.
 
-## Current Architecture
+## Architecture Overview
 
-- Projects map to OpenShift namespaces labeled `ambient-code.io/managed=true`.
-- Frontend authenticates via oauth-proxy and forwards identity headers to the backend.
-- Backend exposes project-scoped APIs for sessions, RFE workflows, permissions, keys, and runner secrets. All Kubernetes calls are done strictly with the caller’s token.
-- Operator watches `AgenticSession` CRs and creates per-session Jobs with a PVC and a content sidecar, and updates session status.
+vTeam follows a cloud-native microservices architecture:
+
+- **Frontend**: Next.js web application with Shadcn UI for session management and monitoring
+- **Backend API**: Go-based REST API managing Kubernetes Custom Resources with multi-tenant project isolation
+- **Agentic Operator**: Kubernetes controller watching CRs and orchestrating Job execution
+- **Claude Code Runner**: Python-based job pods executing Claude Code CLI with multi-agent collaboration
+
+**Key Architectural Patterns:**
+- Projects map to Kubernetes namespaces with RBAC-based isolation
+- OpenShift OAuth integration for authentication with user bearer tokens
+- Custom Resource Definitions (AgenticSession, ProjectSettings, RFEWorkflow)
+- Operator-based reconciliation for declarative session management
 
 ## Quick Start
 
-See `docs/OPENSHIFT_DEPLOY.md` to deploy on OpenShift, and `docs/OPENSHIFT_OAUTH.md` to enable oauth-proxy login.
+### Local Development
+
+```bash
+# Install OpenShift Local (CRC)
+brew install crc
+crc setup
+
+# Clone and deploy vTeam
+git clone https://github.com/ambient-code/vTeam.git
+cd vTeam
+make dev-start
+```
+
+See the [Getting Started Guide](user-guide/getting-started.md) for detailed setup instructions.
+
+### Production Deployment
+
+For production OpenShift clusters:
+- [OpenShift Deployment Guide](OPENSHIFT_DEPLOY.md)
+- [OAuth Configuration](OPENSHIFT_OAUTH.md)
+- [GitHub App Setup](GITHUB_APP_SETUP.md)
 
 ## Key Features
 
-- Agentic sessions (CRD) with start/stop, real-time messages via WebSocket, and runner token provisioning
-- RFE workflows (CRD) with umbrella/supporting repos, Jira link management, and optional seeding
-- GitHub App installation linking and repo browsing proxies
-- RBAC-backed project permissions and access keys
+**AgenticSession Management:**
+- Create AI-powered automation sessions via web UI or API
+- Interactive and headless execution modes
+- Multi-repository support for cross-repo analysis
+- Real-time status monitoring via WebSocket
+- Kubernetes Job-based execution with automatic cleanup
 
-## Where to next
+**Multi-Tenancy & Security:**
+- Project-scoped namespaces with RBAC isolation
+- User token-based authentication (no shared credentials)
+- Secure API key management via Kubernetes Secrets
+- Fine-grained access control through ProjectSettings
 
-- Developer overview: `docs/developer-guide/index.md`
-- API reference: `docs/reference/api-endpoints.md`
-- User guide: `docs/user-guide/index.md`
+**Developer Experience:**
+- Modern Next.js frontend with React Query
+- RESTful API with OpenAPI documentation
+- Kubernetes-native tooling (kubectl, oc CLI)
+- Comprehensive logging and troubleshooting
+
+## Documentation Structure
+
+### [📘 User Guide](user-guide/index.md)
+Learn how to use vTeam for AI-powered automation:
+- [Getting Started](user-guide/getting-started.md) - Installation and first session
+
+### [🧪 Labs](labs/index.md)
+Hands-on exercises to master vTeam:
+- [Lab 1: Your First Agentic Session](labs/basic/lab-1-first-rfe.md)
+
+### [📖 Reference](reference/index.md)
+Technical reference documentation:
+- [Glossary](reference/glossary.md) - Key terms and concepts
+
+### [🚀 Deployment Guides](OPENSHIFT_DEPLOY.md)
+Production deployment resources:
+- [OpenShift Deployment](OPENSHIFT_DEPLOY.md)
+- [OAuth Setup](OPENSHIFT_OAUTH.md)
+- [GitHub App Configuration](GITHUB_APP_SETUP.md)
+- [Claude Code Runner](CLAUDE_CODE_RUNNER.md)
+
+## Getting Help
+
+- **Documentation Issues**: [GitHub Issues](https://github.com/ambient-code/vTeam/issues)
+- **Questions**: [GitHub Discussions](https://github.com/ambient-code/vTeam/discussions)
+- **Source Code**: [GitHub Repository](https://github.com/ambient-code/vTeam)
+
+## Quick Links
+
+- New to vTeam? → [Getting Started](user-guide/getting-started.md)
+- Want hands-on experience? → [Lab 1](labs/basic/lab-1-first-rfe.md)
+- Need reference docs? → [Glossary](reference/glossary.md)
+- Deploying to production? → [OpenShift Guide](OPENSHIFT_DEPLOY.md)

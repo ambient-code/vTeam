@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
-import { ArrowLeft, Square, Trash2, Copy } from "lucide-react";
+import { ArrowLeft, Square, Trash2, Copy, Play, MoreVertical } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 // Custom components
@@ -18,6 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CloneSessionDialog } from "@/components/clone-session-dialog";
 import { Breadcrumbs } from "@/components/breadcrumbs";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import type { FileTreeNode } from "@/components/file-tree";
 
 import type { SessionMessage } from "@/types";
@@ -37,6 +38,8 @@ import {
   useWorkspaceList,
   useWriteWorkspaceFile,
   useAllSessionGitHubDiffs,
+  useSessionK8sResources,
+  useContinueSession,
   workspaceKeys,
 } from "@/services/queries";
 import { successToast, errorToast } from "@/hooks/use-toast";
@@ -57,6 +60,9 @@ export default function ProjectSessionDetailPage({
   const [chatInput, setChatInput] = useState("");
   const [backHref, setBackHref] = useState<string | null>(null);
   const [backLabel, setBackLabel] = useState<string | null>(null);
+  const [contentPodSpawning, setContentPodSpawning] = useState(false);
+  const [contentPodReady, setContentPodReady] = useState(false);
+  const [contentPodError, setContentPodError] = useState<string | null>(null);
 
   // Extract params
   useEffect(() => {
@@ -73,9 +79,11 @@ export default function ProjectSessionDetailPage({
 
   // React Query hooks
   const { data: session, isLoading, error, refetch: refetchSession } = useSession(projectName, sessionName);
-  const { data: messages = [] } = useSessionMessages(projectName, sessionName);
+  const { data: messages = [] } = useSessionMessages(projectName, sessionName, session?.status?.phase);
+  const { data: k8sResources } = useSessionK8sResources(projectName, sessionName);
   const stopMutation = useStopSession();
   const deleteMutation = useDeleteSession();
+  const continueMutation = useContinueSession();
   const sendChatMutation = useSendChatMessage();
   const sendControlMutation = useSendControlMessage();
   const pushToGitHubMutation = usePushSessionToGitHub();
@@ -158,7 +166,7 @@ export default function ProjectSessionDetailPage({
     session?.spec?.repos as Array<{ input: { url: string; branch: string }; output?: { url: string; branch: string } }> | undefined,
     deriveRepoFolderFromUrl,
     { 
-      enabled: !!session?.spec?.repos && activeTab === 'overview',
+      enabled: !!session?.spec?.repos,
       sessionPhase: session?.status?.phase 
     }
   );
@@ -296,15 +304,42 @@ export default function ProjectSessionDetailPage({
           break;
         }
         case "system.message": {
-          const text = (typeof envelope.payload === 'string') ? String(envelope.payload) : "";
-          if (text) {
-            agenticMessages.push({
-              type: "system_message",
-              subtype: "system.message",
-              data: { message: text },
-              timestamp: innerTs,
-            });
+          let text = "";
+          let isDebug = false;
+          
+          // The envelope object might have message/payload at different levels
+          // Try envelope.payload first, then fall back to envelope itself
+          const envelopeObj = envelope as { message?: string; payload?: string | { message?: string; payload?: string; debug?: boolean }; debug?: boolean };
+          
+          // Check if envelope.payload is a string
+          if (typeof envelopeObj.payload === 'string') {
+            text = envelopeObj.payload;
           }
+          // Check if envelope.payload is an object with message or payload
+          else if (typeof envelopeObj.payload === 'object' && envelopeObj.payload !== null) {
+            const payloadObj = envelopeObj.payload as { message?: string; payload?: string; debug?: boolean };
+            text = payloadObj.message || (typeof payloadObj.payload === 'string' ? payloadObj.payload : "");
+            isDebug = payloadObj.debug === true;
+          }
+          // Fall back to envelope.message directly
+          else if (typeof envelopeObj.message === 'string') {
+            text = envelopeObj.message;
+          }
+          
+          if (envelopeObj.debug === true) {
+            isDebug = true;
+          }
+          
+          // Always create a system message - show the raw envelope if we couldn't extract text
+          agenticMessages.push({
+            type: "system_message",
+            subtype: "system.message",
+            data: { 
+              message: text || `[system event: ${JSON.stringify(envelope)}]`,
+              debug: isDebug 
+            },
+            timestamp: innerTs,
+          });
           break;
         }
         case "user.message":
@@ -395,6 +430,18 @@ export default function ProjectSessionDetailPage({
     );
   };
 
+  const handleContinue = () => {
+    continueMutation.mutate(
+      { projectName, parentSessionName: sessionName },
+      {
+        onSuccess: () => {
+          successToast("Session restarted successfully");
+        },
+        onError: (err) => errorToast(err instanceof Error ? err.message : "Failed to restart session"),
+      }
+    );
+  };
+
   const sendChat = () => {
     if (!chatInput.trim()) return;
 
@@ -428,6 +475,88 @@ export default function ProjectSessionDetailPage({
         onError: (err) => errorToast(err instanceof Error ? err.message : "Failed to end session"),
       }
     );
+  };
+
+  // Check if session is completed
+  const sessionCompleted = (
+    session?.status?.phase === 'Completed' ||
+    session?.status?.phase === 'Failed' ||
+    session?.status?.phase === 'Stopped'
+  );
+
+  // Auto-spawn content pod when workspace tab clicked on completed session
+  // Don't auto-retry if we already encountered an error - user must explicitly retry
+  useEffect(() => {
+    if (activeTab === 'workspace' && sessionCompleted && !contentPodReady && !contentPodSpawning && !contentPodError) {
+      spawnContentPodAsync();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, sessionCompleted, contentPodReady, contentPodSpawning, contentPodError]);
+
+  const spawnContentPodAsync = async () => {
+    if (!projectName || !sessionName) return;
+    
+    setContentPodSpawning(true);
+    setContentPodError(null); // Clear any previous errors
+    
+    try {
+      // Import API function
+      const { spawnContentPod, getContentPodStatus } = await import('@/services/api/sessions');
+      
+      // Spawn pod
+      const spawnResult = await spawnContentPod(projectName, sessionName);
+      
+      // If already exists and ready, we're done
+      if (spawnResult.status === 'exists' && spawnResult.ready) {
+        setContentPodReady(true);
+        setContentPodSpawning(false);
+        setContentPodError(null);
+        return;
+      }
+      
+      // Poll for readiness
+      let attempts = 0;
+      const maxAttempts = 30; // 30 seconds
+      
+      const pollInterval = setInterval(async () => {
+        attempts++;
+        
+        try {
+          const status = await getContentPodStatus(projectName, sessionName);
+          
+          if (status.ready) {
+            clearInterval(pollInterval);
+            setContentPodReady(true);
+            setContentPodSpawning(false);
+            setContentPodError(null);
+            successToast('Workspace viewer ready');
+          }
+          
+          if (attempts >= maxAttempts) {
+            clearInterval(pollInterval);
+            setContentPodSpawning(false);
+            const errorMsg = 'Workspace viewer failed to start within 30 seconds';
+            setContentPodError(errorMsg);
+            errorToast(errorMsg);
+          }
+        } catch {
+          // Not found yet, keep polling
+          if (attempts >= maxAttempts) {
+            clearInterval(pollInterval);
+            setContentPodSpawning(false);
+            const errorMsg = 'Workspace viewer failed to start';
+            setContentPodError(errorMsg);
+            errorToast(errorMsg);
+          }
+        }
+      }, 1000);
+      
+    } catch (error) {
+      setContentPodSpawning(false);
+      const errorMsg = error instanceof Error ? error.message : 'Failed to spawn workspace viewer';
+      setContentPodError(errorMsg);
+      errorToast(errorMsg);
+    }
   };
 
   // Workspace operations - using React Query with queryClient for imperative fetching
@@ -600,38 +729,58 @@ export default function ProjectSessionDetailPage({
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <CloneSessionDialog
-              session={session}
-              onSuccess={() => refetchSession()}
-              trigger={
-                <Button variant="outline">
-                  <Copy className="w-4 h-4 mr-2" />
-                  Clone
-                </Button>
-              }
-            />
-
-            {session.status?.phase !== "Running" && session.status?.phase !== "Creating" && (
+            {/* Continue button for completed sessions (converts headless to interactive) */}
+            {(session.status?.phase === "Completed" || session.status?.phase === "Failed" || session.status?.phase === "Stopped") && (
               <Button
-                variant="destructive"
-                onClick={handleDelete}
-                disabled={deleteMutation.isPending}
+                onClick={handleContinue}
+                disabled={continueMutation.isPending}
               >
-                <Trash2 className="w-4 h-4 mr-2" />
-                {deleteMutation.isPending ? "Deleting..." : "Delete"}
+                <Play className="w-4 h-4 mr-2" />
+                {continueMutation.isPending ? "Starting..." : "Continue"}
               </Button>
             )}
 
+            {/* Stop button for active sessions */}
             {(session.status?.phase === "Pending" || session.status?.phase === "Creating" || session.status?.phase === "Running") && (
               <Button
                 variant="secondary"
                 onClick={handleStop}
                 disabled={stopMutation.isPending}
               >
-                  <Square className="w-4 h-4 mr-2" />
+                <Square className="w-4 h-4 mr-2" />
                 {stopMutation.isPending ? "Stopping..." : "Stop"}
-                </Button>
+              </Button>
             )}
+
+            {/* Actions dropdown menu */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="icon">
+                  <MoreVertical className="w-4 h-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <CloneSessionDialog
+                  session={session}
+                  onSuccess={() => refetchSession()}
+                  trigger={
+                    <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
+                      <Copy className="w-4 h-4 mr-2" />
+                      Clone
+                    </DropdownMenuItem>
+                  }
+                />
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={handleDelete}
+                  disabled={deleteMutation.isPending}
+                  className="text-red-600"
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  {deleteMutation.isPending ? "Deleting..." : "Delete"}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
 
@@ -673,6 +822,7 @@ export default function ProjectSessionDetailPage({
               setPromptExpanded={setPromptExpanded}
               latestLiveMessage={latestLiveMessage as SessionMessage | null}
               diffTotals={diffTotals}
+              k8sResources={k8sResources}
               onPush={async (idx) => {
                   const repo = session.spec.repos?.[idx];
                   if (!repo) return;
@@ -729,24 +879,52 @@ export default function ProjectSessionDetailPage({
               onInterrupt={() => Promise.resolve(handleInterrupt())}
               onEndSession={() => Promise.resolve(handleEndSession())}
               onGoToResults={() => setActiveTab('results')}
-              isEndingSession={sendControlMutation.isPending}
+              onContinue={handleContinue}
             />
           </TabsContent>
 
           <TabsContent value="workspace">
-            <WorkspaceTab
-              session={session}
-              wsLoading={wsLoading}
-              wsUnavailable={wsUnavailable}
-              wsTree={wsTree}
-              wsSelectedPath={wsSelectedPath}
-              wsFileContent={wsFileContent}
-              onRefresh={handleRefreshWorkspace}
-              onSelect={onWsSelect}
-              onToggle={onWsToggle}
-              onSave={writeWsFile}
-              setWsFileContent={setWsFileContent}
-            />
+            {sessionCompleted && !contentPodReady ? (
+              <Card className="p-8">
+                <div className="text-center space-y-4">
+                  {contentPodSpawning ? (
+                    <>
+                      <div className="flex items-center justify-center">
+                        <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
+                      </div>
+                      <p className="text-sm font-medium">Starting workspace viewer...</p>
+                      <p className="text-xs text-gray-500">This may take up to 30 seconds</p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-sm text-gray-600">
+                        Session has completed. To view and edit your workspace files, please start a workspace viewer.
+                      </p>
+                      <Button onClick={spawnContentPodAsync}>
+                        Start Workspace Viewer
+                      </Button>
+                    </>
+                  )}
+                </div>
+              </Card>
+            ) : (
+              <WorkspaceTab
+                session={session}
+                wsLoading={wsLoading}
+                wsUnavailable={wsUnavailable}
+                wsTree={wsTree}
+                wsSelectedPath={wsSelectedPath}
+                wsFileContent={wsFileContent}
+                onRefresh={handleRefreshWorkspace}
+                onSelect={onWsSelect}
+                onToggle={onWsToggle}
+                onSave={writeWsFile}
+                setWsFileContent={setWsFileContent}
+                k8sResources={k8sResources}
+                contentPodError={contentPodError}
+                onRetrySpawn={spawnContentPodAsync}
+              />
+            )}
           </TabsContent>
 
           <TabsContent value="results">

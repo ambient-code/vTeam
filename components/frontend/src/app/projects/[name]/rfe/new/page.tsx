@@ -142,7 +142,7 @@ export default function ProjectNewRFEWorkflowPage() {
       { projectName, data: request },
       {
         onSuccess: (workflow) => {
-          successToast(`RFE workflow "${values.title}" created successfully`);
+          successToast(`RFE workspace "${values.title}" created successfully`);
           router.push(`/projects/${encodeURIComponent(projectName)}/rfe/${encodeURIComponent(workflow.id)}`);
         },
         onError: (error) => {

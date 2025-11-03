@@ -3,8 +3,8 @@ site_description: AI-powered automation system for engineering refinement
 site_author: Red Hat AI Engineering Team
 site_url: https://vteam-docs.example.com
 
-repo_name: red-hat-data-services/vTeam
-repo_url: https://github.com/red-hat-data-services/vTeam
+repo_name: ambient-code/vTeam
+repo_url: https://github.com/ambient-code/vTeam
 edit_uri: edit/main/docs/
 
 # Exclude files from the documentation build
@@ -39,46 +39,19 @@ theme:
 nav:
   - Home: index.md
   - User Guide:
-    - user-guide/index.md
+    - Overview: user-guide/index.md
     - Getting Started: user-guide/getting-started.md
-    - Creating RFEs: user-guide/creating-rfes.md
-    - Agent Framework: user-guide/agent-framework.md
-    - Configuration: user-guide/configuration.md
-    - Troubleshooting: user-guide/troubleshooting.md
-  - Developer Guide:
-    - developer-guide/index.md
-    - Setup: developer-guide/setup.md
-    - Architecture: developer-guide/architecture.md
-    - Plugin Development: developer-guide/plugin-development.md
-    - API Reference: developer-guide/api-reference.md
-    - Contributing: developer-guide/contributing.md
-    - Testing: developer-guide/testing.md
   - Labs:
-    - labs/index.md
-    - Basic:
-      - First RFE: labs/basic/lab-1-first-rfe.md
-      - Agent Interaction: labs/basic/lab-2-agent-interaction.md
-      - Workflow Basics: labs/basic/lab-3-workflow-basics.md
-    - Advanced:
-      - Custom Agents: labs/advanced/lab-4-custom-agents.md
-      - Workflow Modification: labs/advanced/lab-5-workflow-modification.md
-      - Integration Testing: labs/advanced/lab-6-integration-testing.md
-    - Production:
-      - Jira Integration: labs/production/lab-7-jira-integration.md
-      - OpenShift Deployment: labs/production/lab-8-openshift-deployment.md
-      - Scaling & Optimization: labs/production/lab-9-scaling-optimization.md
-    - Solutions: 
-      - Basic Solutions: labs/solutions/solutions-basic.md
-      - Advanced Solutions: labs/solutions/solutions-advanced.md
-      - Production Solutions: labs/solutions/solutions-production.md
+    - Overview: labs/index.md
+    - Lab 1 - Your First Agentic Session: labs/basic/lab-1-first-rfe.md
   - Reference:
-    - reference/index.md
-    - Agent Personas: reference/agent-personas.md
-    - API Endpoints: reference/api-endpoints.md
-    - Configuration Schema: reference/configuration-schema.md
+    - Overview: reference/index.md
     - Glossary: reference/glossary.md
-  - Integrations:
+  - Deployment Guides:
     - GitHub App Setup: GITHUB_APP_SETUP.md
+    - OpenShift Deployment: OPENSHIFT_DEPLOY.md
+    - OpenShift OAuth: OPENSHIFT_OAUTH.md
+    - Claude Code Runner: CLAUDE_CODE_RUNNER.md
 
 plugins:
   - search

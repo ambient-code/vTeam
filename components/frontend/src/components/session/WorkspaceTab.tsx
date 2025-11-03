@@ -2,7 +2,7 @@
 
 import React from "react";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, FolderOpen, FileText } from "lucide-react";
+import { RefreshCw, FolderOpen, FileText, HardDrive } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { FileTree, type FileTreeNode } from "@/components/file-tree";
@@ -21,9 +21,16 @@ export type WorkspaceTabProps = {
   onToggle: (node: FileTreeNode) => void;
   onSave: (path: string, content: string) => Promise<void>;
   setWsFileContent: (v: string) => void;
+  k8sResources?: {
+    pvcName?: string;
+    pvcExists?: boolean;
+    pvcSize?: string;
+  };
+  contentPodError?: string | null;
+  onRetrySpawn?: () => void;
 };
 
-const WorkspaceTab: React.FC<WorkspaceTabProps> = ({ session, wsLoading, wsUnavailable, wsTree, wsSelectedPath, wsFileContent, onRefresh, onSelect, onToggle, onSave, setWsFileContent }) => {
+const WorkspaceTab: React.FC<WorkspaceTabProps> = ({ session, wsLoading, wsUnavailable, wsTree, wsSelectedPath, wsFileContent, onRefresh, onSelect, onToggle, onSave, setWsFileContent, k8sResources, contentPodError, onRetrySpawn }) => {
   if (wsLoading) {
     return (
       <div className="flex items-center justify-center h-32 text-sm text-muted-foreground">
@@ -31,6 +38,22 @@ const WorkspaceTab: React.FC<WorkspaceTabProps> = ({ session, wsLoading, wsUnava
       </div>
     );
   }
+  
+  // Show error with retry button if content pod failed to spawn
+  if (contentPodError) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 text-sm text-center p-6">
+        <div className="text-destructive font-medium mb-2">Workspace Viewer Error</div>
+        <div className="text-muted-foreground mb-4 max-w-md">{contentPodError}</div>
+        {onRetrySpawn && (
+          <Button onClick={onRetrySpawn} variant="outline" size="sm">
+            <RefreshCw className="h-4 w-4 mr-2" /> Retry
+          </Button>
+        )}
+      </div>
+    );
+  }
+  
   if (wsUnavailable) {
     return (
       <div className="flex items-center justify-center h-32 text-sm text-muted-foreground text-center">
@@ -52,9 +75,24 @@ const WorkspaceTab: React.FC<WorkspaceTabProps> = ({ session, wsLoading, wsUnava
     <div className="grid grid-cols-1 md:grid-cols-2 gap-0">
       <div className="border rounded-md overflow-hidden">
         <div className="p-3 border-b flex items-center justify-between">
-          <div>
-            <h3 className="font-medium text-sm">Files</h3>
-            <p className="text-xs text-muted-foreground">{wsTree.length} items</p>
+          <div className="flex-1">
+            {k8sResources?.pvcName ? (
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="text-xs">
+                  <HardDrive className="w-3 h-3 mr-1" />
+                  PVC
+                </Badge>
+                <span className="font-mono text-xs text-muted-foreground">{k8sResources.pvcName}</span>
+                <Badge className={`text-xs ${k8sResources.pvcExists ? 'bg-green-100 text-green-800 border-green-300' : 'bg-red-100 text-red-800 border-red-300'}`}>
+                  {k8sResources.pvcExists ? 'Exists' : 'Not Found'}
+                </Badge>
+                {k8sResources.pvcSize && (
+                  <span className="text-xs text-muted-foreground">{k8sResources.pvcSize}</span>
+                )}
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">{wsTree.length} items</p>
+            )}
           </div>
           <Button size="sm" variant="outline" onClick={() => onRefresh(false)} disabled={wsLoading} className="h-8">
             <RefreshCw className="h-4 w-4" />

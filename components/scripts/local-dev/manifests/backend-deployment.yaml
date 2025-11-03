@@ -15,6 +15,18 @@ spec:
         app: vteam-backend
     spec:
       serviceAccountName: backend-api
+      initContainers:
+      - name: init-workspace
+        image: registry.access.redhat.com/ubi9/ubi-minimal:9.5
+        command: ['sh', '-c', 'mkdir -p /workspace/sessions && chmod 755 /workspace/sessions']
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+        volumeMounts:
+        - name: backend-state
+          mountPath: /workspace
       containers:
       - name: backend
         image: image-registry.openshift-image-registry.svc:5000/vteam-dev/vteam-backend:latest
@@ -28,6 +40,8 @@ spec:
               fieldPath: metadata.namespace
         - name: PORT
           value: "8080"
+        - name: STATE_BASE_DIR
+          value: "/workspace"
         - name: AGENTS_DIR
           value: "/app/agents"
         # Spec-kit configuration for RFE seeding
@@ -56,6 +70,13 @@ spec:
             port: http
           initialDelaySeconds: 5
           periodSeconds: 5
+        volumeMounts:
+        - name: backend-state
+          mountPath: /workspace
+      volumes:
+      - name: backend-state
+        persistentVolumeClaim:
+          claimName: backend-state-pvc
 ---
 apiVersion: v1
 kind: Service

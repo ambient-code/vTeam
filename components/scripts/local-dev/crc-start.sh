@@ -304,6 +304,9 @@ build_and_deploy() {
   oc start-build vteam-operator --from-dir="$OPERATOR_DIR" --wait -n "$PROJECT_NAME"
   
   # Deploy services
+  log "Creating backend PVC..."
+  oc apply -f "${MANIFESTS_DIR}/backend-pvc.yaml" -n "$PROJECT_NAME"
+
   log "Deploying backend..."
   oc apply -f "${MANIFESTS_DIR}/backend-deployment.yaml" -n "$PROJECT_NAME"
   
