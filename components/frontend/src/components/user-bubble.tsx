@@ -29,7 +29,7 @@ export function UserBubble() {
           <AvatarImage alt={me.displayName || initials} />
           <AvatarFallback>{initials || "?"}</AvatarFallback>
         </Avatar>
-        <span className="hidden sm:block text-sm text-muted-foreground">{me.displayName}</span>
+        <span className="hidden sm:block text-sm text-muted-foreground">{me.email || me.username || me.displayName}</span>
       </div>
     </Button>
   );

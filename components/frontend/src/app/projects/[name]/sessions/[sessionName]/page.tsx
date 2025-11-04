@@ -725,7 +725,7 @@ export default function ProjectSessionDetailPage({
     <div className="container mx-auto p-6">
       <Breadcrumbs
         items={[
-          { label: 'Projects', href: '/projects' },
+          { label: 'Workspaces', href: '/projects' },
           { label: projectName, href: `/projects/${projectName}` },
           { label: 'Sessions', href: `/projects/${projectName}/sessions` },
           { label: session.spec.displayName || session.metadata.name },

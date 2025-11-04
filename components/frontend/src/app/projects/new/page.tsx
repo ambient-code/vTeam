@@ -40,15 +40,15 @@ export default function NewProjectPage() {
     const namePattern = /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/;
 
     if (!name) {
-      return "Project name is required";
+      return "Workspace name is required";
     }
 
     if (name.length > 63) {
-      return "Project name must be 63 characters or less";
+      return "Workspace name must be 63 characters or less";
     }
 
     if (!namePattern.test(name)) {
-      return "Project name must be lowercase alphanumeric with hyphens (cannot start or end with hyphen)";
+      return "Workspace name must be lowercase alphanumeric with hyphens (cannot start or end with hyphen)";
     }
 
     return null;
@@ -81,11 +81,11 @@ export default function NewProjectPage() {
 
     createProjectMutation.mutate(payload, {
       onSuccess: (project) => {
-        successToast(`Project "${formData.displayName || formData.name}" created successfully`);
+        successToast(`Workspace "${formData.displayName || formData.name}" created successfully`);
         router.push(`/projects/${encodeURIComponent(project.name)}`);
       },
       onError: (err) => {
-        const message = err instanceof Error ? err.message : "Failed to create project";
+        const message = err instanceof Error ? err.message : "Failed to create workspace";
         setError(message);
         errorToast(message);
       },
@@ -96,8 +96,8 @@ export default function NewProjectPage() {
     <div className="container mx-auto p-6 max-w-2xl">
       <Breadcrumbs
         items={[
-          { label: 'Projects', href: '/projects' },
-          { label: 'New Project' },
+          { label: 'Workspaces', href: '/projects' },
+          { label: 'New Workspace' },
         ]}
         className="mb-4"
       />
@@ -105,16 +105,16 @@ export default function NewProjectPage() {
         <Link href="/projects">
           <Button variant="ghost" size="sm">
             <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Projects
+            Back to Workspaces
           </Button>
         </Link>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Create New Project</CardTitle>
+          <CardTitle>Create New Workspace</CardTitle>
           <CardDescription>
-            Create a new Ambient AI project with custom settings and resource configurations
+            Create a new Ambient AI workspace with custom settings and resource configurations
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -134,12 +134,12 @@ export default function NewProjectPage() {
               <h3 className="text-lg font-semibold">Basic Information</h3>
 
               <div className="space-y-2">
-                <Label htmlFor="name">Project Name *</Label>
+                <Label htmlFor="name">Workspace Name *</Label>
                 <Input
                   id="name"
                   value={formData.name}
                   onChange={(e) => handleNameChange(e.target.value)}
-                  placeholder="my-research-project"
+                  placeholder="my-research-workspace"
                   className={nameError ? "border-red-500" : ""}
                 />
                 {nameError && (
@@ -159,11 +159,11 @@ export default function NewProjectPage() {
                       id="displayName"
                       value={formData.displayName}
                       onChange={(e) => setFormData(prev => ({ ...prev, displayName: e.target.value }))}
-                      placeholder="My Research Project"
+                      placeholder="My Research Workspace"
                       maxLength={100}
                     />
                     <p className="text-sm text-gray-600">
-                      Human-readable name for the project (max 100 characters). Defaults to project name if empty.
+                      Human-readable name for the workspace (max 100 characters). Defaults to workspace name if empty.
                     </p>
                   </div>
 
@@ -173,7 +173,7 @@ export default function NewProjectPage() {
                       id="description"
                       value={formData.description}
                       onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-                      placeholder="Description of the project purpose and goals..."
+                      placeholder="Description of the workspace purpose and goals..."
                       maxLength={500}
                       rows={3}
                     />
@@ -203,7 +203,7 @@ export default function NewProjectPage() {
                 ) : (
                   <>
                     <Save className="w-4 h-4 mr-2" />
-                    Create Project
+                    Create Workspace
                   </>
                 )}
               </Button>

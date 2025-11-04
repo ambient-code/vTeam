@@ -242,7 +242,7 @@ export default function ProjectRFEDetailPage() {
       <div className="max-w-6xl mx-auto space-y-8">
         <Breadcrumbs
           items={[
-            { label: 'Projects', href: '/projects' },
+            { label: 'Workspaces', href: '/projects' },
             { label: project, href: `/projects/${project}` },
             { label: 'RFE Workspaces', href: `/projects/${project}/rfe` },
             { label: workflow.title },

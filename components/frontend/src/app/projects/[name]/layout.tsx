@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Home, KeyRound, Settings, Users, Sparkles, ArrowLeft, GitBranch } from "lucide-react";
+import { Star, Settings, Users, ArrowLeft } from "lucide-react";
 
 export default function ProjectSectionLayout({ children }: { children: React.ReactNode; params: Promise<{ name: string }> }) {
   const pathname = usePathname();
@@ -13,12 +13,9 @@ export default function ProjectSectionLayout({ children }: { children: React.Rea
   // base is /projects/[name]
 
   const items = [
-    { href: base, label: "Overview", icon: Home },
-    { href: `${base}/rfe`, label: "RFE Workspaces", icon: GitBranch },
-    { href: `${base}/sessions`, label: "Sessions", icon: Sparkles },
-    { href: `${base}/keys`, label: "Keys", icon: KeyRound },
-    { href: `${base}/permissions`, label: "Permissions", icon: Users },
-    { href: `${base}/settings`, label: "Settings", icon: Settings },
+    { href: `${base}/sessions`, label: "Sessions", icon: Star },
+    { href: `${base}/permissions`, label: "Sharing", icon: Users },
+    { href: `${base}/settings`, label: "Workspace Settings", icon: Settings },
   ];
 
   return (
@@ -29,7 +26,7 @@ export default function ProjectSectionLayout({ children }: { children: React.Rea
             <Link href="/projects">
               <Button variant="ghost" size="sm" className="w-full justify-start">
                 <ArrowLeft className="w-4 h-4 mr-2" />
-                Back to Projects
+                Back to Workspaces
               </Button>
             </Link>
           </div>

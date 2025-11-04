@@ -198,7 +198,7 @@ export default function NewProjectSessionPage({ params }: { params: Promise<{ na
     <div className="container mx-auto p-6">
       <Breadcrumbs
         items={[
-          { label: 'Projects', href: '/projects' },
+          { label: 'Workspaces', href: '/projects' },
           { label: projectName, href: `/projects/${projectName}` },
           { label: 'Sessions', href: `/projects/${projectName}/sessions` },
           { label: 'New Session' },

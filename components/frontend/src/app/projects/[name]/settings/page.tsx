@@ -177,14 +177,14 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ name
     <div className="container mx-auto p-6 max-w-4xl">
       <Breadcrumbs
         items={[
-          { label: 'Projects', href: '/projects' },
+          { label: 'Workspaces', href: '/projects' },
           { label: projectName, href: `/projects/${projectName}` },
-          { label: 'Settings' },
+          { label: 'Workspace Settings' },
         ]}
         className="mb-4"
       />
       <ProjectSubpageHeader
-        title={<>Project Settings</>}
+        title={<>Workspace Settings</>}
         description={<>{projectName}</>}
         actions={
           <Button variant="outline" onClick={handleRefresh} disabled={projectLoading}>
@@ -198,8 +198,8 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ name
       {project?.isOpenShift ? (
         <Card>
           <CardHeader>
-            <CardTitle>Edit Project</CardTitle>
-            <CardDescription>Rename display name or update description</CardDescription>
+            <CardTitle>General Settings</CardTitle>
+            <CardDescription>Manage workspace display name and description</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
@@ -208,7 +208,7 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ name
                 id="displayName"
                 value={formData.displayName}
                 onChange={(e) => setFormData((prev) => ({ ...prev, displayName: e.target.value }))}
-                placeholder="My Awesome Project"
+                placeholder="My Awesome Workspace"
                 maxLength={100}
               />
             </div>
@@ -218,7 +218,7 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ name
                 id="description"
                 value={formData.description}
                 onChange={(e) => setFormData((prev) => ({ ...prev, description: e.target.value }))}
-                placeholder="Describe the purpose and goals of this project..."
+                placeholder="Describe the purpose and goals of this workspace..."
                 maxLength={500}
                 rows={3}
               />

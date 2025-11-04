@@ -157,7 +157,7 @@ export default function ProjectNewRFEWorkflowPage() {
       <div className="max-w-4xl mx-auto">
         <Breadcrumbs
           items={[
-            { label: 'Projects', href: '/projects' },
+            { label: 'Workspaces', href: '/projects' },
             { label: projectName, href: `/projects/${projectName}` },
             { label: 'RFE Workspaces', href: `/projects/${projectName}/rfe` },
             { label: 'New Workspace' },

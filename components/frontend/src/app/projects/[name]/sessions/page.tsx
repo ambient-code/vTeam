@@ -103,7 +103,7 @@ export default function ProjectSessionsListPage() {
       />
       <ProjectSubpageHeader
         title={<>Agentic Sessions</>}
-        description={<>Sessions scoped to this project</>}
+        description={<>Sessions scoped to this workspace</>}
         actions={
           <>
             <Link href={`/projects/${encodeURIComponent(projectName)}/sessions/new`}>
@@ -126,7 +126,7 @@ export default function ProjectSessionsListPage() {
       <Card>
         <CardHeader>
           <CardTitle>Agentic Sessions ({sessions?.length || 0})</CardTitle>
-          <CardDescription>Sessions scoped to this project</CardDescription>
+          <CardDescription>Sessions scoped to this workspace</CardDescription>
         </CardHeader>
         <CardContent>
           {sessions.length === 0 ? (
