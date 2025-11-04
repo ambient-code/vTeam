@@ -94,6 +94,11 @@ func registerRoutes(r *gin.Engine, jiraHandler *jira.Handler) {
 		api.POST("/auth/github/disconnect", handlers.DisconnectGitHubGlobal)
 		api.GET("/auth/github/user/callback", handlers.HandleGitHubUserOAuthCallback)
 
+		// GitLab authentication endpoints
+		api.POST("/auth/gitlab/connect", handlers.ConnectGitLabGlobal)
+		api.GET("/auth/gitlab/status", handlers.GetGitLabStatusGlobal)
+		api.POST("/auth/gitlab/disconnect", handlers.DisconnectGitLabGlobal)
+
 		// Cluster info endpoint (public, no auth required)
 		api.GET("/cluster-info", handlers.GetClusterInfo)
 
