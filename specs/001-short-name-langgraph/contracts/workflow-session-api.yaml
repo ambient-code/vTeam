@@ -1,0 +1,475 @@
+openapi: 3.0.3
+info:
+  title: Workflow Session API
+  description: |
+    Project-scoped workflow session management API for creating and monitoring LangGraph workflow executions.
+    Sessions are isolated by project namespace.
+  version: 1.0.0
+
+servers:
+  - url: https://api.ambient-code.example.com/api
+    description: Production API
+  - url: http://localhost:8080/api
+    description: Local development
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Workflow Sessions
+    description: Create and manage workflow execution sessions
+
+paths:
+  /projects/{projectName}/workflow-sessions:
+    get:
+      summary: List workflow sessions in a project
+      description: Retrieve all workflow sessions within a project, supports filtering and pagination
+      operationId: listWorkflowSessions
+      tags:
+        - Workflow Sessions
+      parameters:
+        - $ref: '#/components/parameters/ProjectName'
+        - name: status
+          in: query
+          description: Filter by session status
+          required: false
+          schema:
+            type: string
+            enum: [pending, running, waiting_for_input, completed, failed]
+        - name: workflowName
+          in: query
+          description: Filter by workflow definition name
+          required: false
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: Maximum results
+          schema:
+            type: integer
+            default: 50
+            minimum: 1
+            maximum: 200
+        - name: offset
+          in: query
+          description: Pagination offset
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/WorkflowSession'
+                  total:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      summary: Create a new workflow session
+      description: |
+        Create a new workflow execution session. Input data is validated against the workflow's input schema.
+      operationId: createWorkflowSession
+      tags:
+        - Workflow Sessions
+      parameters:
+        - $ref: '#/components/parameters/ProjectName'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateWorkflowSessionRequest'
+            examples:
+              example:
+                value:
+                  sessionName: "sales-forecast-2025-11"
+                  workflowName: "csv-forecast-analyzer"
+                  inputData:
+                    csv_url: "https://storage.example.com/sales_2024.csv"
+                    forecast_column: "revenue"
+                    forecast_periods: 30
+                    confidence_interval: 0.95
+      responses:
+        '201':
+          description: Session created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  id:
+                    type: string
+                    format: uuid
+                  sessionName:
+                    type: string
+              examples:
+                success:
+                  value:
+                    message: "Workflow session created successfully"
+                    id: "550e8400-e29b-41d4-a716-446655440000"
+                    sessionName: "sales-forecast-2025-11"
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                schemaViolation:
+                  value:
+                    error: "Input validation failed"
+                    details: "Property 'csv_url' is required"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Workflow definition not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Session name already exists in project
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /projects/{projectName}/workflow-sessions/{sessionName}:
+    get:
+      summary: Get workflow session details
+      description: Retrieve detailed information about a specific workflow session including messages
+      operationId: getWorkflowSession
+      tags:
+        - Workflow Sessions
+      parameters:
+        - $ref: '#/components/parameters/ProjectName'
+        - $ref: '#/components/parameters/SessionName'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowSessionDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      summary: Delete workflow session
+      description: |
+        Delete a workflow session. If session is running, the execution job will be cancelled.
+      operationId: deleteWorkflowSession
+      tags:
+        - Workflow Sessions
+      parameters:
+        - $ref: '#/components/parameters/ProjectName'
+        - $ref: '#/components/parameters/SessionName'
+      responses:
+        '204':
+          description: Session deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /projects/{projectName}/workflow-sessions/{sessionName}/messages:
+    get:
+      summary: Get session messages
+      description: Retrieve conversation history for a workflow session
+      operationId: getSessionMessages
+      tags:
+        - Workflow Sessions
+      parameters:
+        - $ref: '#/components/parameters/ProjectName'
+        - $ref: '#/components/parameters/SessionName'
+        - name: messageType
+          in: query
+          description: Filter by message type
+          schema:
+            type: string
+            enum: [system, agent, user, error, workflow_progress, workflow_waiting_for_input]
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SessionMessage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      summary: Send user input to waiting session
+      description: |
+        Respond to a workflow waiting for input. Only valid when session status is 'waiting_for_input'.
+      operationId: sendUserInput
+      tags:
+        - Workflow Sessions
+      parameters:
+        - $ref: '#/components/parameters/ProjectName'
+        - $ref: '#/components/parameters/SessionName'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [response]
+              properties:
+                response:
+                  type: object
+                  description: User response data
+                  example: {"approval": "approved"}
+      responses:
+        '200':
+          description: Input accepted, session resumed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "User input received, session resuming"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Session not waiting for input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    ProjectName:
+      name: projectName
+      in: path
+      required: true
+      description: Project namespace name
+      schema:
+        type: string
+        example: "data-team"
+
+    SessionName:
+      name: sessionName
+      in: path
+      required: true
+      description: Workflow session name
+      schema:
+        type: string
+        example: "sales-forecast-2025-11"
+
+  schemas:
+    WorkflowSession:
+      type: object
+      required: [id, projectName, sessionName, workflowName, status, createdAt, createdBy]
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        projectName:
+          type: string
+          example: "data-team"
+        sessionName:
+          type: string
+          example: "sales-forecast-2025-11"
+        workflowName:
+          type: string
+          example: "csv-forecast-analyzer"
+        status:
+          type: string
+          enum: [pending, running, waiting_for_input, completed, failed]
+          example: "completed"
+        createdAt:
+          type: string
+          format: date-time
+          example: "2025-11-04T10:00:00Z"
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2025-11-04T10:00:15Z"
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2025-11-04T10:05:30Z"
+        createdBy:
+          type: string
+          example: "alice@example.com"
+        errorMessage:
+          type: string
+          nullable: true
+          example: null
+
+    WorkflowSessionDetail:
+      allOf:
+        - $ref: '#/components/schemas/WorkflowSession'
+        - type: object
+          properties:
+            inputData:
+              type: object
+              description: User-submitted input matching workflow schema
+              example:
+                csv_url: "https://storage.example.com/sales_2024.csv"
+                forecast_column: "revenue"
+                forecast_periods: 30
+            outputData:
+              type: object
+              nullable: true
+              description: Workflow execution results (max 100MB)
+              example:
+                forecast: [...]
+                model_metrics: {...}
+            messages:
+              type: array
+              items:
+                $ref: '#/components/schemas/SessionMessage'
+
+    CreateWorkflowSessionRequest:
+      type: object
+      required: [sessionName, workflowName, inputData]
+      properties:
+        sessionName:
+          type: string
+          pattern: '^[a-z0-9]([-a-z0-9]*[a-z0-9])?$'
+          maxLength: 63
+          example: "sales-forecast-2025-11"
+        workflowName:
+          type: string
+          example: "csv-forecast-analyzer"
+        inputData:
+          type: object
+          description: Must match workflow's inputSchema
+
+    SessionMessage:
+      type: object
+      required: [id, messageType, content, sequenceNumber, timestamp]
+      properties:
+        id:
+          type: string
+          format: uuid
+        messageType:
+          type: string
+          enum: [system, agent, user, error, workflow_progress, workflow_waiting_for_input]
+          example: "workflow_progress"
+        content:
+          type: object
+          description: Message payload (structure varies by type)
+          example:
+            step: "analyze"
+            progress: 0.75
+            message: "Analyzing data..."
+        sequenceNumber:
+          type: integer
+          example: 5
+        timestamp:
+          type: string
+          format: date-time
+          example: "2025-11-04T10:02:00Z"
+
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+        details:
+          type: string
+
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    Forbidden:
+      description: Insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    InternalServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'

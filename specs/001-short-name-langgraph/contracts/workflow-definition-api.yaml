@@ -1,0 +1,527 @@
+openapi: 3.0.3
+info:
+  title: Workflow Definition API
+  description: |
+    Cluster-scoped workflow registry API for registering and managing LangGraph workflow definitions.
+    Only accessible by cluster administrators.
+  version: 1.0.0
+  contact:
+    name: Ambient Code Platform
+    url: https://github.com/ambient-code/platform
+
+servers:
+  - url: https://api.ambient-code.example.com/api
+    description: Production API
+  - url: http://localhost:8080/api
+    description: Local development
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Workflow Registry
+    description: Cluster-wide workflow definition management
+
+paths:
+  /workflows:
+    get:
+      summary: List all workflow definitions
+      description: |
+        Retrieve a list of all registered workflow definitions available cluster-wide.
+        Supports filtering by status and tags.
+      operationId: listWorkflows
+      tags:
+        - Workflow Registry
+      parameters:
+        - name: status
+          in: query
+          description: Filter by workflow phase
+          required: false
+          schema:
+            type: string
+            enum: [Active, Deprecated, Error]
+        - name: tags
+          in: query
+          description: Filter by tags (comma-separated)
+          required: false
+          schema:
+            type: string
+            example: "data-analysis,forecasting"
+        - name: limit
+          in: query
+          description: Maximum number of results
+          required: false
+          schema:
+            type: integer
+            default: 100
+            minimum: 1
+            maximum: 500
+        - name: offset
+          in: query
+          description: Pagination offset
+          required: false
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/WorkflowDefinition'
+                  total:
+                    type: integer
+                    description: Total number of workflows (before pagination)
+                    example: 15
+              examples:
+                success:
+                  value:
+                    items:
+                      - metadata:
+                          name: csv-forecast-analyzer
+                          creationTimestamp: "2025-11-04T12:00:00Z"
+                        spec:
+                          name: csv-forecast-analyzer
+                          displayName: "CSV Forecast Analyzer"
+                          description: "Analyze CSV data and generate forecasts"
+                          containerImage: "quay.io/ambient_code/workflows/csv-forecast-analyzer:v1.0.0"
+                          version: "v1.0.0"
+                          tags: ["data-analysis", "forecasting"]
+                          inputSchema:
+                            type: object
+                            required: ["csv_url"]
+                            properties:
+                              csv_url:
+                                type: string
+                                format: uri
+                        status:
+                          phase: Active
+                          registeredAt: "2025-11-04T12:00:00Z"
+                          activeSessions: 3
+                    total: 1
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      summary: Register a new workflow definition
+      description: |
+        Register a new workflow definition. Only cluster administrators can perform this operation.
+        Validates container image registry against whitelist and input schema conformance.
+      operationId: createWorkflow
+      tags:
+        - Workflow Registry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkflowDefinitionInput'
+            examples:
+              example:
+                value:
+                  name: csv-forecast-analyzer
+                  displayName: "CSV Forecast Analyzer"
+                  description: "Analyze CSV data and generate forecasts with human-in-the-loop validation"
+                  containerImage: "quay.io/ambient_code/workflows/csv-forecast-analyzer:v1.0.0"
+                  version: "v1.0.0"
+                  tags: ["data-analysis", "forecasting", "interactive"]
+                  inputSchema:
+                    type: object
+                    required: ["csv_url", "forecast_column"]
+                    properties:
+                      csv_url:
+                        type: string
+                        format: uri
+                        title: "CSV File URL"
+                      forecast_column:
+                        type: string
+                        title: "Column to Forecast"
+                      forecast_periods:
+                        type: integer
+                        minimum: 1
+                        maximum: 365
+                        default: 30
+      responses:
+        '201':
+          description: Workflow definition created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Workflow definition registered successfully"
+                  name:
+                    type: string
+                    example: "csv-forecast-analyzer"
+              examples:
+                success:
+                  value:
+                    message: "Workflow definition registered successfully"
+                    name: "csv-forecast-analyzer"
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidSchema:
+                  value:
+                    error: "Invalid input schema: must conform to JSON Schema Draft 2020-12"
+                    details: "Property 'type' is required"
+                invalidRegistry:
+                  value:
+                    error: "Container image registry not whitelisted"
+                    details: "Allowed registries: quay.io, docker.io/ambient"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Workflow name already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                conflict:
+                  value:
+                    error: "Workflow definition with this name already exists"
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /workflows/{name}:
+    get:
+      summary: Get workflow definition by name
+      description: Retrieve details of a specific workflow definition
+      operationId: getWorkflow
+      tags:
+        - Workflow Registry
+      parameters:
+        - name: name
+          in: path
+          required: true
+          description: Workflow definition name
+          schema:
+            type: string
+            example: "csv-forecast-analyzer"
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowDefinition'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Workflow definition not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                notFound:
+                  value:
+                    error: "Workflow definition not found"
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    put:
+      summary: Update workflow definition
+      description: |
+        Update an existing workflow definition. Only metadata and container image can be updated.
+        Name cannot be changed after creation.
+      operationId: updateWorkflow
+      tags:
+        - Workflow Registry
+      parameters:
+        - name: name
+          in: path
+          required: true
+          description: Workflow definition name
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                displayName:
+                  type: string
+                  maxLength: 100
+                description:
+                  type: string
+                  maxLength: 500
+                containerImage:
+                  type: string
+                version:
+                  type: string
+                tags:
+                  type: array
+                  items:
+                    type: string
+                inputSchema:
+                  type: object
+      responses:
+        '200':
+          description: Workflow definition updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Workflow definition updated successfully"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      summary: Delete workflow definition
+      description: |
+        Delete a workflow definition. Only allowed if no active sessions exist.
+      operationId: deleteWorkflow
+      tags:
+        - Workflow Registry
+      parameters:
+        - name: name
+          in: path
+          required: true
+          description: Workflow definition name
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Workflow definition deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Cannot delete workflow with active sessions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                conflict:
+                  value:
+                    error: "Cannot delete workflow with active sessions"
+                    details: "Wait for all sessions to complete or fail"
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: OpenShift OAuth token or API token
+
+  schemas:
+    WorkflowDefinition:
+      type: object
+      required: [metadata, spec, status]
+      properties:
+        metadata:
+          type: object
+          properties:
+            name:
+              type: string
+              pattern: '^[a-z0-9]([-a-z0-9]*[a-z0-9])?$'
+              maxLength: 63
+              example: "csv-forecast-analyzer"
+            creationTimestamp:
+              type: string
+              format: date-time
+              example: "2025-11-04T12:00:00Z"
+        spec:
+          $ref: '#/components/schemas/WorkflowDefinitionSpec'
+        status:
+          $ref: '#/components/schemas/WorkflowDefinitionStatus'
+
+    WorkflowDefinitionSpec:
+      type: object
+      required: [name, displayName, containerImage, inputSchema]
+      properties:
+        name:
+          type: string
+          pattern: '^[a-z0-9]([-a-z0-9]*[a-z0-9])?$'
+          maxLength: 63
+          example: "csv-forecast-analyzer"
+        displayName:
+          type: string
+          maxLength: 100
+          example: "CSV Forecast Analyzer"
+        description:
+          type: string
+          maxLength: 500
+          example: "Analyze CSV data and generate forecasts with human-in-the-loop validation"
+        containerImage:
+          type: string
+          pattern: '^[a-zA-Z0-9._-]+(/[a-zA-Z0-9._-]+)*:[a-zA-Z0-9._-]+$'
+          example: "quay.io/ambient_code/workflows/csv-forecast-analyzer:v1.0.0"
+        version:
+          type: string
+          pattern: '^v[0-9]+\.[0-9]+\.[0-9]+$'
+          example: "v1.0.0"
+        tags:
+          type: array
+          items:
+            type: string
+          example: ["data-analysis", "forecasting", "interactive"]
+        inputSchema:
+          type: object
+          description: JSON Schema Draft 2020-12 defining workflow input structure
+          example:
+            type: object
+            required: ["csv_url"]
+            properties:
+              csv_url:
+                type: string
+                format: uri
+
+    WorkflowDefinitionInput:
+      type: object
+      required: [name, displayName, containerImage, inputSchema]
+      properties:
+        name:
+          type: string
+          pattern: '^[a-z0-9]([-a-z0-9]*[a-z0-9])?$'
+          maxLength: 63
+        displayName:
+          type: string
+          maxLength: 100
+        description:
+          type: string
+          maxLength: 500
+        containerImage:
+          type: string
+          pattern: '^[a-zA-Z0-9._-]+(/[a-zA-Z0-9._-]+)*:[a-zA-Z0-9._-]+$'
+        version:
+          type: string
+          pattern: '^v[0-9]+\.[0-9]+\.[0-9]+$'
+        tags:
+          type: array
+          items:
+            type: string
+        inputSchema:
+          type: object
+
+    WorkflowDefinitionStatus:
+      type: object
+      properties:
+        phase:
+          type: string
+          enum: [Active, Deprecated, Error]
+          example: "Active"
+        registeredAt:
+          type: string
+          format: date-time
+          example: "2025-11-04T12:00:00Z"
+        lastUpdated:
+          type: string
+          format: date-time
+          example: "2025-11-04T12:00:00Z"
+        activeSessions:
+          type: integer
+          minimum: 0
+          example: 3
+
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          example: "Validation error"
+        details:
+          type: string
+          example: "Additional error details"
+
+  responses:
+    BadRequest:
+      description: Invalid request parameters
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            validationError:
+              value:
+                error: "Validation error"
+                details: "Invalid input parameters"
+
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            unauthorized:
+              value:
+                error: "Unauthorized"
+                details: "Valid bearer token required"
+
+    Forbidden:
+      description: Insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            forbidden:
+              value:
+                error: "Forbidden"
+                details: "Cluster administrator role required"
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            notFound:
+              value:
+                error: "Resource not found"
+
+    InternalServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            serverError:
+              value:
+                error: "Internal server error"
+                details: "An unexpected error occurred"
