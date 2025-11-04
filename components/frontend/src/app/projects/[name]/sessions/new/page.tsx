@@ -43,6 +43,9 @@ const formSchema = z
     autoPushOnComplete: z.boolean().default(false),
     // storage paths are not user-configurable anymore
     agentPersona: z.string().optional(),
+    // BYOK fields
+    anthropicApiKey: z.string().optional().default(""),
+    saveApiKeyForFuture: z.boolean().default(false),
   })
   .superRefine((data, ctx) => {
     const isInteractive = Boolean(data.interactive);
@@ -96,6 +99,8 @@ export default function NewProjectSessionPage({ params }: { params: Promise<{ na
       agentPersona: "",
       repos: [],
       mainRepoIndex: 0,
+      anthropicApiKey: "",
+      saveApiKeyForFuture: false,
     },
   });
 
