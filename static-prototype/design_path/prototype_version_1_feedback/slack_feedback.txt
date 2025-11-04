@@ -1,0 +1,30 @@
+# Feedback in Slack on version 1
+
+
+## Early feedback from Slack
+
+Gage
+
+-- moving github integration out of your own access opens us up to situations where a user may now get to see repos they dont have actual access to
+-- confused a bit on the role of a session and workflow it looks like sessions are workflows
+
+-- *ignore*  today workflows are a collection of sessions in part so other people can collaborate on a single workflow
+
+
+Jeremy Eder
+
+-- we have API keys on the left and then fields for other API keys in the settings tab. i know they have different uses, but isnt it confusing.?
+-- project information either drop it or put something useful there, maybe we create a metrics tab or something instead.
+-- *ignore*chat interface...im torn. i think we are surfacing too much detail overall. there are too many choices.
+-- what does associated repository mean? i need a clearer word used there.
+-- is it possible to render the markdown in the status pane live, as its being generated?
+-- i like how the chat had popups. i wonder if we can do  keep raising popups of the next most likely task. these popups give us the opportunity to gain advantages from prompt templating like what speckit is doing in the background.
+
+
+## Resources
+
+Video Walkthrough Session 1
+https://drive.google.com/file/d/18O98fAN1alz2XuZWBr9L9MrlXB5NxwIO/view?usp=sharing
+
+Video Walkthrough Session 2
+https://drive.google.com/file/d/17OpqYKnDChJ3jIts70L6oC967pztWES_/view?usp=sharing

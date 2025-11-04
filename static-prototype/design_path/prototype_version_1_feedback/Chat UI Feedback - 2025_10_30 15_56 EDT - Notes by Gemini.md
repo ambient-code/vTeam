@@ -1,0 +1,55 @@
+Oct 30, 2025
+
+## Chat UI Feedback
+
+Invited [Bob Gregor](mailto:bgregor@redhat.com) [Charles Thao](mailto:cthao@redhat.com) [Michael Clifford](mailto:mcliffor@redhat.com) [Ryan Cook](mailto:rcook@redhat.com) [Jeremy Eder](mailto:jeder@redhat.com) [Gage Krumbach](mailto:gkrumbac@redhat.com) [Sally O'Malley](mailto:somalley@redhat.com) [Dana Gutride](mailto:dgutride@redhat.com) [Andy Braren](mailto:abraren@redhat.com) [Daniel Warner](mailto:dawarner@redhat.com) [Yahav Manor](mailto:ymanor@redhat.com)
+
+Attachments [Chat UI Feedback](https://www.google.com/calendar/event?eid=MWdzaWtqZGxxNnJvajd1M3ZlN25lMG50cDcgZGF3YXJuZXJAcmVkaGF0LmNvbQ) 
+
+Meeting records [Recording](https://drive.google.com/file/d/1DOhw6uHG1dA_oEZ9lZ8pBNp2YutiScbN/view?usp=drive_web) 
+
+### Summary
+
+Participants Gage Krumbach, Dana Gutride, Daniel Warner, Michael Clifford, and Andy Braren discussed API keys, with Dana Gutride suggesting they be tabled until Jira phase two and hidden from the UI for the POC, while Gage Krumbach noted their benefit for user authentication with an MCP server. Daniel Warner detailed changes to project information, sharing features, and session creation, confirming that 'Project Info' will move to the overview page, and presented a core proposal for workflow driving using synced form-based and chat interfaces, which Gage Krumbach liked. The group debated the necessity of a spec repository, with Gage Krumbach suggesting use cases without persistence, and Daniel Warner agreed with Dana Gutride that users should be able to start at later workflow steps if a repository is partially completed. Daniel Warner and Gage Krumbach clarified the difference between the local PVC and remote repository representation, while Michael Clifford and Andy Braren discussed abstracting away the need for users to set up a spec repository by using a default 'umbrella repo' or organization-level agent definitions, which Daniel Warner agreed would provide a better onboarding experience.
+
+### Details
+
+* **API Keys and Jira Integration** Gage Krumbach mentioned that API keys were initially intended for external web hook usage, such as a Jira webhook, to communicate with the ambient back end and kick off jobs. Dana Gutride suggested tabling the discussion of API keys until Jira phase two, recommending hiding the feature from the UI for the Proof of Concept (POC) because the use case is currently confusing. Gage Krumbach added that the keys would be beneficial once they have an MCP server for user authentication.
+
+* **Project Information and Sharing Features** Daniel Warner noted that the "Sharing" feature, previously named "permissions," is mostly unchanged from the current version, though Peter was reportedly confused by the term "permissions". Daniel Warner plans to move "Project Info" back to the overview page to help orient users and confirmed that "Project Settings" remain unchanged. They also explained that the selection to create an interactive or a headless session has been moved out of the form and that they had collapsed some options to provide reasonable defaults and keep users moving.
+
+* **Session Creation and Workflow Driving** Daniel Warner presented a core proposal for driving the workflow using two methods: a form-based approach and a chat interface, both of which would remain synced. Gage Krumbach confirmed that they like the proposed workflow. Daniel Warner moved the 'add spec repository' feature to the top of the form workflow because it is a prerequisite for subsequent actions like creating an RF.
+
+* **Spec Repository and Persistence Requirement** Gage Krumbach questioned whether a spec repository is strictly required, suggesting use cases where a user might only want to run something without persistence, similar to running a workbench without PVC in Roy. Daniel Warner asked how an end user would determine if they need persistence, to which Gage Krumbach replied that the system could track unsaved changes and prompt the user to add a spec repository to save their work. Gage Krumbach also mentioned future possibilities, such as a UX workflow that interacts only with a Figma MCP server and does not require a spec repository.
+
+* **GitHub Integration and Repository Setup** Daniel Warner described the scenario where a user does not have the GitHub app connected and is asked to provide a personal access token to connect and define their spec repository. They highlighted that the chat feature is useful for keeping a log of the workflow and tracking progress, though they noted that the team might choose not to use system messages for every single move. The process requires the user to seed the repository to get started, after which they are ready to select agents.
+
+* **Agent Selection and Workflow Sequencing** Gage Krumbach confirmed that all agents are inherently available because they are using the cloud, and selecting one specifically prompts the system to use it. Daniel Warner presented the command-based design for workflows, and Gage Krumbach emphasized that spec workflows are "very order based," and the system will reject running steps out of order (e.g., running 'plan' before 'specify'). Dana Gutride pointed out that if a repository already has some steps completed, users should be able to start at a later step, which Daniel Warner agreed to incorporate, allowing users to drop in or out of the workflow.
+
+* **File Editing and Developer Experience** Gage Krumbach asked if files within the workspace are editable or read-only. Daniel Warner stated their opinion that files should not be editable within the system for this demo, suggesting users rely on integrated platforms like GitHub for editing as it is more developer-native. Dana Gutride stressed that the ability to edit files against the PBC on the repo, a feature requested by Jeremy, should not be discarded and should be evaluated in context later.
+
+* **Chat Interface and Verbosity Concerns** Daniel Warner explained the chat interface, which initially only offers a 'help' command until a workflow is selected, suggesting a default help mode to encourage user interaction and comfort with the system. Dana Gutride raised concerns about Claude's verbosity, which can be distracting in the chat. Gage Krumbach confirmed that they had already worked on hiding system messages with a debug mode option, and they can make tool calls look more curated.
+
+* **Chat Constraints and Collaboration** Gage Krumbach suggested that the main, workflow-connected session should be more constrained and opinionated, focusing on human actions, while an independent, collaborative session could offer more flexibility with Claude for file iteration. Daniel Warner acknowledged that exposing "raw Claude" would require a system around it, such as a help code prompt, to manage the conversation flow. The chat workflow demonstrates completing an RF by using commands and adding context, resulting in a copy or view option.
+
+* **Git Remote Connection and Repository Representation** Gage Krumbach questioned where the connection to the Git remote is, noting the separation between the local Git environment in the pod and the remote repository. Daniel Warner initially assumed the repository displayed was a reflection of the remote, but Gage Krumbach clarified that the session view represents the local PVC in the pod, whereas the workflow page represents the remote. Gage Krumbach argued that the GitHub relationship is crucial because it allows external users to pull down the experience, but noted that not all PMs or UXers want to use GitHub.
+
+* **Spec Repository Definition and Workflow Requirements** Daniel Warner maintained that connecting to the repo satisfies two requirements: storage and providing the location of the agents. Gage Krumbach suggested that a spec repository is an input type to the workflow, and some workflows, such as one only touching Jira or updating Google Docs, may not need to output or store anything in GitHub. Michael Clifford proposed baking the spec repository into a default 'umbrella repo' to abstract away the need for users to set it up, which would help simplify the experience and accommodate users uncomfortable with GitHub.
+
+* **Decoupling Agent Definitions and User Onboarding** Andy Braren and Michael Clifford discussed the idea of a higher entity (like a workspace or organization) managing agent definitions and configurations, eliminating the need for users to connect a repository in every new session. Daniel Warner liked the idea of zooming out to have organizations, which could be controlled at an admin level, providing a "batteries included" experience. Gage Krumbach noted that users like Anna often want to edit their templates and agents, supporting the need for a customizable, layered approach where users can own a fork of their workflow.
+
+* **Collaboration and Synchronous Collaboration** Gage Krumbach asked how other personas, such as UXers and PMs, would collaborate within the same workflow, which Daniel Warner admitted they had not accommodated in the current design. Gage Krumbach suggested that users collaborate by connecting to the artifact repository, which would act as the controller, while collaborators use a more generic chat session. Andy Braren acknowledged the challenge of synchronous collaboration, especially for PMs and UXers who prefer tools like Google Docs, and raised concerns about potential conflicts and drift if multiple people work on the same artifact.
+
+* **Next Steps and Face-to-Face Meeting** Daniel Warner announced a follow-up session the next day with Sally to gather more feedback and potentially iterate on the design before the face-to-face meeting, which officially starts on Tuesday. Daniel Warner outlined the plan for the face-to-face meeting: having Gage Krumbach focus on a hard engineering problem (like VLM or semantic router) while Daniel Warner leads the workstream on lower-hanging fruit like onboarding.
+
+### Suggested next steps
+
+- [ ] Dana Gutride will table the discussion on API keys for Jira phase two and hide API keys from the UI for the PC until the Jira integration is ready.  
+- [ ] Daniel Warner will move the current overview page back to the overview page.  
+- [ ] Daniel Warner will update the workflow steps to allow users to pick up at any point in the workflow based on the repository's current state and change the steps to status messages.  
+- [ ] Gage Krumbach will be on the work stream for the VLM/Semantic router.  
+- [ ] Daniel Warner and Charles Thao will lead the workstream for lower hanging fruit kind of onboarding next week at the face to face meeting.
+
+*You should review Gemini's notes to make sure they're accurate. [Get tips and learn how Gemini takes notes](https://support.google.com/meet/answer/14754931)*
+
+*Please provide feedback about using Gemini to take notes in a [short survey.](https://google.qualtrics.com/jfe/form/SV_9vK3UZEaIQKKE7A?confid=zH_mXZ8KObclka1X46BlDxIQOAIIigIgABgBCA&detailid=unspecified)*

@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>setup-database - sample-workspace - Ambient Code Platform</title>
+    <link rel="stylesheet" href="../../../styles.css">
+    <style>
+        .session-container {
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 0.5rem;
+            overflow: hidden;
+        }
+        
+        .log-container {
+            height: 60vh;
+            overflow-y: auto;
+            background: #1a1a1a;
+            color: #e5e5e5;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 0.875rem;
+            line-height: 1.4;
+        }
+        
+        .log-line {
+            padding: 0.25rem 1rem;
+            border-bottom: 1px solid #333;
+            white-space: pre-wrap;
+        }
+        
+        .log-timestamp {
+            color: #64748b;
+            margin-right: 0.5rem;
+        }
+        
+        .log-level-info {
+            color: #3b82f6;
+        }
+        
+        .log-level-success {
+            color: #10b981;
+        }
+        
+        .log-level-error {
+            color: #ef4444;
+        }
+        
+        .progress-bar {
+            background: #e2e8f0;
+            height: 8px;
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 1rem;
+        }
+        
+        .progress-fill {
+            background: #10b981;
+            height: 100%;
+            width: 100%;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="container">
+            <div class="header-content">
+                <a href="../../../index.html" class="logo">Ambient Code Platform</a>
+                <div style="display: flex; align-items: center; gap: 2rem;">
+                    
+                    <div class="user-dropdown" style="position: relative;">
+                        <button onclick="toggleUserDropdown()" class="user-dropdown-trigger" style="display: flex; align-items: center; gap: 0.5rem; color: #64748b; font-size: 0.875rem; background: none; border: none; cursor: pointer; padding: 0.5rem; border-radius: 0.375rem; transition: background-color 0.2s;">
+                            <div style="width: 24px; height: 24px; background: #64748b; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: 500; font-size: 0.75rem;">
+                                DU
+                            </div>
+                            <span>demo-user@redhat.com</span>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="transition: transform 0.2s;" id="user-dropdown-arrow">
+                                <path d="M6 9l6 6 6-6"/>
+                            </svg>
+                        </button>
+                        <div id="userDropdownMenu" class="user-dropdown-menu" style="display: none; position: absolute; right: 0; top: 100%; background: white; border: 1px solid #e2e8f0; border-radius: 0.375rem; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); min-width: 200px; z-index: 1000; margin-top: 0.25rem;">
+                            <div style="padding: 0.75rem; border-bottom: 1px solid #e2e8f0;">
+                                <div style="font-weight: 500; color: #374151; font-size: 0.875rem;">demo-user@redhat.com</div>
+                                <div style="color: #64748b; font-size: 0.75rem;">Demo User</div>
+                            </div>
+                            <div style="padding: 0.25rem;">
+                                <a href="../../../integrations/page.html" style="width: 100%; text-align: left; padding: 0.5rem 0.75rem; background: none; border: none; cursor: pointer; border-radius: 0.25rem; color: #374151; font-size: 0.875rem; transition: background-color 0.2s; display: block; text-decoration: none;">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display: inline; margin-right: 0.5rem; vertical-align: middle;">
+                                        <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+                                        <path d="M2 17l10 5 10-5"/>
+                                        <path d="M2 12l10 5 10-5"/>
+                                    </svg>
+                                    Integrations
+                                </a>
+                                <hr style="margin: 0.25rem 0; border: none; border-top: 1px solid #e2e8f0;">
+                                <button onclick="logout()" style="width: 100%; text-align: left; padding: 0.5rem 0.75rem; background: none; border: none; cursor: pointer; border-radius: 0.25rem; color: #374151; font-size: 0.875rem; transition: background-color 0.2s;">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display: inline; margin-right: 0.5rem;">
+                                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                                        <polyline points="16,17 21,12 16,7"/>
+                                        <line x1="21" y1="12" x2="9" y2="12"/>
+                                    </svg>
+                                    Logout
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <div class="page-header">
+        <div class="container">
+            <div class="breadcrumbs">
+                <a href="../../../index.html">Workspaces</a>
+                <span>/</span>
+                <a href="../page.html">sample-workspace</a>
+                <span>/</span>
+                <span>setup-database</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div style="display: flex; align-items: center; gap: 1rem;">
+                    <h1 class="page-title">Headless Session: setup-database</h1>
+                    <span class="badge badge-success" style="white-space: nowrap;">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 0.25rem;">
+                            <path d="M20 6L9 17l-5-5"/>
+                        </svg>
+                        Completed
+                    </span>
+                </div>
+                <div style="display: flex; gap: 0.5rem;">
+                    <button class="btn btn-secondary" style="padding: 0.375rem 0.75rem; font-size: 0.875rem;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                        </svg>
+                        Clone
+                    </button>
+                    <button class="btn btn-secondary" style="padding: 0.375rem 0.75rem; font-size: 0.875rem;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="7,10 12,15 17,10"/>
+                            <line x1="12" y1="15" x2="12" y2="3"/>
+                        </svg>
+                        Export
+                    </button>
+                </div>
+            </div>
+            <p class="page-description">Initialize PostgreSQL database with user tables • claude-3.5-sonnet • Completed 1 day ago</p>
+        </div>
+    </div>
+
+    <main class="container" style="margin-top: 2rem;">
+
+        <div class="grid grid-2">
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Session Configuration</h3>
+                </div>
+                <div class="card-content">
+                    <div style="margin-bottom: 0.75rem;">
+                        <strong>Task:</strong> Initialize PostgreSQL database with user tables
+                    </div>
+                    <div style="margin-bottom: 0.75rem;">
+                        <strong>Model:</strong> claude-3.5-sonnet
+                    </div>
+                    <div style="margin-bottom: 0.75rem;">
+                        <strong>Mode:</strong> Headless
+                    </div>
+                    <div style="margin-bottom: 0.75rem;">
+                        <strong>Duration:</strong> 12 minutes
+                    </div>
+                    <div>
+                        <strong>Status:</strong> 
+                        <span class="badge badge-success" style="white-space: nowrap;">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 0.25rem;">
+                                <path d="M20 6L9 17l-5-5"/>
+                            </svg>
+                            Completed
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Results Summary</h3>
+                </div>
+                <div class="card-content">
+                    <div style="margin-bottom: 1rem;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                            <span>Overall Progress</span>
+                            <span style="font-weight: 500; color: #10b981;">100%</span>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress-fill"></div>
+                        </div>
+                    </div>
+                    <div style="font-size: 0.875rem; color: #64748b;">
+                        <div style="margin-bottom: 0.25rem;">✓ Database schema created</div>
+                        <div style="margin-bottom: 0.25rem;">✓ User table with constraints</div>
+                        <div style="margin-bottom: 0.25rem;">✓ Password hashing implemented</div>
+                        <div style="margin-bottom: 0.25rem;">✓ Migration scripts generated</div>
+                        <div>✓ Initial data seeded</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card" style="margin-top: 1.5rem;">
+            <div class="card-header">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <h3 class="card-title">Execution Log</h3>
+                    <button class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.875rem;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="7,10 12,15 17,10"/>
+                            <line x1="12" y1="15" x2="12" y2="3"/>
+                        </svg>
+                        Download
+                    </button>
+                </div>
+            </div>
+            <div class="card-content" style="padding: 0;">
+                <div class="log-container">
+                    <div class="log-line">
+                        <span class="log-timestamp">12:30:15</span>
+                        <span class="log-level-info">[INFO]</span> Session started: Initialize PostgreSQL database with user tables
+                    </div>
+                    <div class="log-line">
+                        <span class="log-timestamp">12:30:16</span>
+                        <span class="log-level-info">[INFO]</span> Analyzing existing database structure
+                    </div>
+                    <div class="log-line">
+                        <span class="log-timestamp">12:30:22</span>
+                        <span class="log-level-info">[INFO]</span> Creating users table schema
+                    </div>
+                    <div class="log-line">
+                        <span class="log-timestamp">12:31:05</span>
+                        <span class="log-level-success">[SUCCESS]</span> Users table created with proper constraints
+                    </div>
+                    <div class="log-line">
+                        <span class="log-timestamp">12:31:08</span>
+                        <span class="log-level-info">[INFO]</span> Adding password hashing utilities
+                    </div>
+                    <div class="log-line">
+                        <span class="log-timestamp">12:31:45</span>
+                        <span class="log-level-success">[SUCCESS]</span> Password hashing implemented with bcrypt
+                    </div>
+                    <div class="log-line">
+                        <span class="log-timestamp">12:32:12</span>
+                        <span class="log-level-info">[INFO]</span> Creating database migration scripts
+                    </div>
+                    <div class="log-line">
+                        <span class="log-timestamp">12:33:01</span>
+                        <span class="log-level-success">[SUCCESS]</span> Migration scripts generated
+                    </div>
+                    <div class="log-line">
+                        <span class="log-timestamp">12:33:15</span>
+                        <span class="log-level-info">[INFO]</span> Seeding initial user data
+                    </div>
+                    <div class="log-line">
+                        <span class="log-timestamp">12:33:28</span>
+                        <span class="log-level-success">[SUCCESS]</span> Database initialization completed successfully
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // User dropdown functionality
+        function toggleUserDropdown() {
+            const dropdown = document.getElementById('userDropdownMenu');
+            const arrow = document.getElementById('user-dropdown-arrow');
+            const isOpen = dropdown.style.display === 'block';
+            
+            if (isOpen) {
+                dropdown.style.display = 'none';
+                arrow.style.transform = 'rotate(0deg)';
+            } else {
+                dropdown.style.display = 'block';
+                arrow.style.transform = 'rotate(180deg)';
+            }
+        }
+
+        function logout() {
+            // Close dropdown first
+            document.getElementById('userDropdownMenu').style.display = 'none';
+            document.getElementById('user-dropdown-arrow').style.transform = 'rotate(0deg)';
+            
+            // Simulate logout (in real app, this would redirect to login page)
+            alert('Logged out successfully!');
+        }
+
+        // Close dropdown when clicking outside of it
+        document.addEventListener('click', function(event) {
+            const dropdown = document.querySelector('.user-dropdown');
+            if (!dropdown.contains(event.target)) {
+                document.getElementById('userDropdownMenu').style.display = 'none';
+                document.getElementById('user-dropdown-arrow').style.transform = 'rotate(0deg)';
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,2692 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>session-1 - sample-workspace - Ambient Code Platform</title>
+    <link rel="stylesheet" href="../../../styles.css">
+    <style>
+        .chat-container {
+            height: 70vh;
+            display: flex;
+            flex-direction: column;
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 0.5rem;
+        }
+        
+        .chat-messages {
+            flex: 1;
+            padding: 1rem;
+            overflow-y: auto;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        
+        .message {
+            margin-bottom: 1rem;
+            display: flex;
+            gap: 0.75rem;
+        }
+        
+        .message-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 500;
+            font-size: 0.875rem;
+            flex-shrink: 0;
+        }
+        
+        .user-avatar {
+            background: #64748b;
+            color: white;
+        }
+        
+        .ai-avatar {
+            background: #1e40af;
+            color: white;
+        }
+        
+        .message-content {
+            flex: 1;
+            background: #f8fafc;
+            padding: 0.75rem;
+            border-radius: 0.5rem;
+        }
+        
+        .message-header {
+            font-weight: 500;
+            margin-bottom: 0.25rem;
+            font-size: 0.875rem;
+        }
+        
+        .chat-input {
+            padding: 1rem;
+            display: flex;
+            gap: 0.5rem;
+        }
+        
+        .chat-input input {
+            flex: 1;
+            padding: 0.5rem;
+            border: 1px solid #d1d5db;
+            border-radius: 0.375rem;
+        }
+        
+        .session-status {
+            background: #f0f9ff;
+            border: 1px solid #0ea5e9;
+            border-radius: 0.375rem;
+            padding: 0.75rem;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="container">
+            <div class="header-content">
+                <a href="../../../index.html" class="logo">Ambient Code Platform</a>
+                <div style="display: flex; align-items: center; gap: 2rem;">
+                    
+                    <div class="user-dropdown" style="position: relative;">
+                        <button onclick="toggleUserDropdown()" class="user-dropdown-trigger" style="display: flex; align-items: center; gap: 0.5rem; color: #64748b; font-size: 0.875rem; background: none; border: none; cursor: pointer; padding: 0.5rem; border-radius: 0.375rem; transition: background-color 0.2s;">
+                            <div style="width: 24px; height: 24px; background: #64748b; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: 500; font-size: 0.75rem;">
+                                DU
+                            </div>
+                            <span>demo-user@redhat.com</span>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="transition: transform 0.2s;" id="user-dropdown-arrow">
+                                <path d="M6 9l6 6 6-6"/>
+                            </svg>
+                        </button>
+                        <div id="userDropdownMenu" class="user-dropdown-menu" style="display: none; position: absolute; right: 0; top: 100%; background: white; border: 1px solid #e2e8f0; border-radius: 0.375rem; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); min-width: 200px; z-index: 1000; margin-top: 0.25rem;">
+                            <div style="padding: 0.75rem; border-bottom: 1px solid #e2e8f0;">
+                                <div style="font-weight: 500; color: #374151; font-size: 0.875rem;">demo-user@redhat.com</div>
+                                <div style="color: #64748b; font-size: 0.75rem;">Demo User</div>
+                            </div>
+                            <div style="padding: 0.25rem;">
+                                <a href="../../../integrations/page.html" style="width: 100%; text-align: left; padding: 0.5rem 0.75rem; background: none; border: none; cursor: pointer; border-radius: 0.25rem; color: #374151; font-size: 0.875rem; transition: background-color 0.2s; display: block; text-decoration: none;">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display: inline; margin-right: 0.5rem; vertical-align: middle;">
+                                        <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+                                        <path d="M2 17l10 5 10-5"/>
+                                        <path d="M2 12l10 5 10-5"/>
+                                    </svg>
+                                    Integrations
+                                </a>
+                                <hr style="margin: 0.25rem 0; border: none; border-top: 1px solid #e2e8f0;">
+                                <button onclick="logout()" style="width: 100%; text-align: left; padding: 0.5rem 0.75rem; background: none; border: none; cursor: pointer; border-radius: 0.25rem; color: #374151; font-size: 0.875rem; transition: background-color 0.2s;">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display: inline; margin-right: 0.5rem;">
+                                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                                        <polyline points="16,17 21,12 16,7"/>
+                                        <line x1="21" y1="12" x2="9" y2="12"/>
+                                    </svg>
+                                    Logout
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <div class="page-header">
+        <div class="container">
+            <div class="breadcrumbs">
+                <a href="../../../index.html">Workspaces</a>
+                <span>/</span>
+                <a href="../page.html">sample-workspace</a>
+                <span>/</span>
+                <span>session-1</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div style="display: flex; align-items: center; gap: 1rem;">
+                    <h1 class="page-title">Interactive Session: session-1</h1>
+                    <span class="badge badge-info" style="white-space: nowrap;">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation: spin 1s linear infinite; margin-right: 0.25rem;">
+                            <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+                        </svg>
+                        Running
+                    </span>
+                </div>
+                <div style="display: flex; gap: 0.5rem;">
+                    <button class="btn btn-secondary" style="padding: 0.375rem 0.75rem; font-size: 0.875rem;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                        </svg>
+                        Clone
+                    </button>
+                    <button onclick="stopSession()" class="btn btn-secondary" style="padding: 0.375rem 0.75rem; font-size: 0.875rem; color: #dc2626; border-color: #dc2626;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                            <line x1="9" y1="9" x2="15" y2="15"/>
+                            <line x1="15" y1="9" x2="9" y2="15"/>
+                        </svg>
+                        Stop
+                    </button>
+                </div>
+            </div>
+            <p class="page-description">Real-time AI coding session • claude-3.5-sonnet • Started just now</p>
+        </div>
+    </div>
+
+    <main class="container" style="margin-top: 2rem;">
+        <div style="display: grid; grid-template-columns: 380px 1fr; gap: 1.5rem; height: 75vh;">
+            <!-- Left Column: Accordions -->
+            <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                <!-- Workflow Accordion -->
+                <div class="accordion-item">
+                    <button onclick="toggleAccordion('workflow')" class="accordion-header">
+                        <span>Workflows</span>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="workflow-arrow" style="transform: rotate(180deg);">
+                            <path d="M6 9l6 6 6-6"/>
+                        </svg>
+                    </button>
+                    <div id="workflow-content" class="accordion-content" style="display: block;">
+                        <div style="padding: 1rem;">
+                            <div class="form-group">
+                                <label class="form-label" style="font-size: 0.875rem;">Select a Workflow</label>
+                                <select id="workflow-type" class="form-input" style="font-size: 0.875rem;" onchange="updateWorkflowPhases()">
+                                    <option value="default" selected>None selected</option>
+                                    <option value="create-rfe">Plan a feature</option>
+                                    <option value="create-feature">Develop Feature</option>
+                                </select>
+                            </div>
+
+                            <!-- Help text when None is selected -->
+                            <div id="workflow-help-text" style="margin-top: 1rem; font-size: 0.875rem; color: #64748b;">
+                                <div>Workflows provide a structured processes for Ambient Code Platform agents to follow and achieve complex goals.</div>
+                            </div>
+
+                            <!-- RFE Phases (shown when Create RFE is selected) -->
+                            <div id="rfe-phases" style="display: none; margin-top: 1rem;">
+                                <!-- Repository requirement message -->
+                                <div id="rfe-repo-requirement" style="padding: 1rem; text-align: center;">
+                                    <div style="color: #64748b; font-size: 0.875rem;">
+                                        A spec repository is required to store artifacts for this workflow.
+                                    </div>
+                                </div>
+
+                                <div style="font-size: 0.875rem; border: 1px solid #e2e8f0; border-radius: 0.375rem; overflow: hidden;">
+                                    <div style="display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem; background: white;">
+                                        <span style="font-size: 1.25rem;">💡</span>
+                                        <div style="flex: 1;">
+                                            <div class="workflow-step-name" style="font-weight: 500; color: #9ca3af;">Ideate</div>
+                                            <div class="workflow-step-filename" style="font-size: 0.75rem; color: #cbd5e1;">Create or update rfe.md file</div>
+                                        </div>
+                                        <button class="btn btn-secondary workflow-step-button" style="padding: 0.25rem 0.5rem; font-size: 0.75rem; opacity: 0.5; cursor: not-allowed;" disabled title="Run the /ideate command" onclick="runIdeateCommand()">/ideate</button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Spec Kit Phases (shown when Create Feature is selected) -->
+                            <div id="spec-kit-phases" style="display: none; margin-top: 1rem;">
+                                <!-- Repository requirement message -->
+                                <div id="spec-kit-repo-requirement" style="padding: 1rem; text-align: center;">
+                                    <div style="color: #64748b; font-size: 0.875rem;">
+                                        A spec repository is required to store artifacts for this workflow.
+                                    </div>
+                                </div>
+
+                                <div style="font-size: 0.875rem; border: 1px solid #e2e8f0; border-radius: 0.375rem; overflow: hidden;">
+                                    <div style="display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem; border-bottom: 1px solid #e2e8f0; background: white;">
+                                        <span style="font-size: 1.25rem;">💡</span>
+                                        <div style="flex: 1;">
+                                            <div class="workflow-step-name" style="font-weight: 500; color: #9ca3af;">Ideate</div>
+                                            <div class="workflow-step-filename" style="font-size: 0.75rem; color: #cbd5e1;">Create or update rfe.md file</div>
+                                        </div>
+                                        <button class="btn btn-secondary workflow-step-button" style="padding: 0.25rem 0.5rem; font-size: 0.75rem; opacity: 0.5; cursor: not-allowed;" disabled title="Run the /ideate command" onclick="runIdeateCommand()">/ideate</button>
+                                    </div>
+
+                                    <div style="display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem; border-bottom: 1px solid #e2e8f0; background: white;">
+                                        <span style="font-size: 1.25rem;">📝</span>
+                                        <div style="flex: 1;">
+                                            <div class="workflow-step-name" style="font-weight: 500; color: #9ca3af;">Specify</div>
+                                            <div class="workflow-step-filename" style="font-size: 0.75rem; color: #cbd5e1;">Create or update spec.md file</div>
+                                        </div>
+                                        <button class="btn btn-secondary workflow-step-button" style="padding: 0.25rem 0.5rem; font-size: 0.75rem; opacity: 0.5; cursor: not-allowed;" disabled title="Run the /specify command" onclick="runSpecifyCommand()">/specify</button>
+                                    </div>
+
+                                    <div style="display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem; border-bottom: 1px solid #e2e8f0; background: white;">
+                                        <span style="font-size: 1.25rem;">📋</span>
+                                        <div style="flex: 1;">
+                                            <div class="workflow-step-name" style="font-weight: 500; color: #9ca3af;">Plan</div>
+                                            <div class="workflow-step-filename" style="font-size: 0.75rem; color: #cbd5e1;">plan.md</div>
+                                        </div>
+                                        <button class="btn btn-secondary workflow-step-button" style="padding: 0.25rem 0.5rem; font-size: 0.75rem; opacity: 0.5; cursor: not-allowed;" disabled title="Run the /plan command">/plan</button>
+                                    </div>
+
+                                    <div style="display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem; border-bottom: 1px solid #e2e8f0; background: white;">
+                                        <span style="font-size: 1.25rem;">✅</span>
+                                        <div style="flex: 1;">
+                                            <div class="workflow-step-name" style="font-weight: 500; color: #9ca3af;">Tasks</div>
+                                            <div class="workflow-step-filename" style="font-size: 0.75rem; color: #cbd5e1;">tasks.md</div>
+                                        </div>
+                                        <button class="btn btn-secondary workflow-step-button" style="padding: 0.25rem 0.5rem; font-size: 0.75rem; opacity: 0.5; cursor: not-allowed;" disabled title="Run the /tasks command">/tasks</button>
+                                    </div>
+
+                                    <div style="display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem; background: white;">
+                                        <span style="font-size: 1.25rem;">🏗️</span>
+                                        <div style="flex: 1;">
+                                            <div class="workflow-step-name" style="font-weight: 500; color: #9ca3af;">Implement</div>
+                                            <div class="workflow-step-filename" style="font-size: 0.75rem; color: #cbd5e1;">implement</div>
+                                        </div>
+                                        <button class="btn btn-secondary workflow-step-button" style="padding: 0.25rem 0.5rem; font-size: 0.75rem; opacity: 0.5; cursor: not-allowed;" disabled title="Run the /implement command">/implement</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Spec Repository Accordion -->
+                <div class="accordion-item">
+                    <button onclick="toggleAccordion('spec-repository')" class="accordion-header">
+                        <span>Spec Repository</span>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="spec-repository-arrow">
+                            <path d="M6 9l6 6 6-6"/>
+                        </svg>
+                    </button>
+                    <div id="spec-repository-content" class="accordion-content" style="display: none;">
+                        <div style="padding: 1rem; text-align: center;">
+                            <div style="color: #64748b; font-size: 0.875rem; margin-bottom: 1rem;">
+                                A spec repository is required to store agent config and workflow artifacts.
+                            </div>
+                            <button onclick="openGitCredentialsModal()" class="btn btn-secondary" style="padding: 0.375rem 0.75rem; font-size: 0.875rem;">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 0.25rem;">
+                                    <path d="M12 5v14"/>
+                                    <path d="M5 12h14"/>
+                                </svg>
+                                Add Spec Repository
+                            </button>
+                        </div>
+
+                        <!-- Hidden content (will show after Git configuration) -->
+                        <div id="repository-details" style="display: none; padding: 1rem;">
+                            <!-- Spec Repo URL and Base Branch -->
+                            <div style="margin-bottom: 1.5rem;">
+                                <div class="form-group" style="margin-bottom: 1rem;">
+                                    <label class="form-label" style="font-size: 0.875rem;">Spec Repo URL</label>
+                                    <div style="color: #64748b; font-size: 0.75rem; margin-bottom: 0.5rem;">The spec repository is where workflow artifacts are stored.</div>
+                                    <input type="text" class="form-input" placeholder="https://github.com/org/repo.git" style="font-size: 0.875rem;">
+                                </div>
+
+                                <div style="display: grid; grid-template-columns: 1fr auto; gap: 1rem;">
+                                    <div style="flex: 1;">
+                                        <div class="form-group" style="margin-bottom: 0;">
+                                            <label class="form-label" style="font-size: 0.875rem;">Spec repo base branch</label>
+                                            <input type="text" class="form-input" value="main" style="font-size: 0.875rem;">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Action Buttons -->
+                            <div style="display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 1.5rem;">
+                                <button onclick="cancelRepositoryConfig()" class="btn btn-secondary" style="padding: 0.375rem 0.75rem; font-size: 0.875rem;">Cancel</button>
+                                <button onclick="saveRepositoryConfig()" class="btn btn-primary" style="padding: 0.375rem 0.75rem; font-size: 0.875rem;">Save</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Agents Accordion -->
+                <div class="accordion-item" id="agents-accordion">
+                    <button onclick="toggleAccordion('agents')" class="accordion-header" id="agents-accordion-button">
+                        <span style="display: flex; align-items: center; gap: 0.5rem;">
+                            <span>Agents</span>
+                            <span id="agents-count-badge" class="badge" style="background: #10b981; color: white; display: none;">0</span>
+                        </span>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="agents-arrow">
+                            <path d="M6 9l6 6 6-6"/>
+                        </svg>
+                    </button>
+                    <div id="agents-content" class="accordion-content" style="display: none;">
+                        <!-- Message shown when no repository is seeded -->
+                        <div id="agents-repo-requirement" style="padding: 1rem; text-align: center;">
+                            <div style="color: #64748b; font-size: 0.875rem;">
+                                A spec repository is required to store agent config.
+                            </div>
+                        </div>
+
+                        <!-- Agent list (hidden until repository is seeded) -->
+                        <div id="agents-list" style="display: none; padding: 1rem; font-size: 0.875rem;">
+                            <!-- Dynamic selection option -->
+                            <div style="margin-bottom: 0.75rem; padding: 0.5rem; background: #f0f9ff; border: 1px solid #0ea5e9; border-radius: 0.375rem;">
+                                <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.8125rem;">
+                                    <input type="checkbox" id="dynamic-agent-selection" style="cursor: pointer;">
+                                    <span style="color: #374151;"><strong>Let ACP dynamically select agents</strong></span>
+                                </label>
+                            </div>
+
+                            <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 0.75rem 0;">
+
+                            <div style="margin-bottom: 0.75rem; color: #64748b; font-size: 0.75rem;">
+                                Select specific agents to include in this session
+                            </div>
+
+                            <div style="display: flex; flex-direction: column; gap: 0.25rem; max-height: 300px; overflow-y: auto; padding-right: 0.5rem;">
+                                <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; padding: 0.25rem; border-radius: 0.25rem; transition: background-color 0.2s; font-size: 0.8125rem;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='transparent'">
+                                    <input type="checkbox" style="cursor: pointer;" onchange="updateAgentCountBadge()">
+                                    <span style="color: #374151;"><strong>Archie</strong> - Architect</span>
+                                </label>
+                                <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; padding: 0.25rem; border-radius: 0.25rem; transition: background-color 0.2s; font-size: 0.8125rem;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='transparent'">
+                                    <input type="checkbox" style="cursor: pointer;" onchange="updateAgentCountBadge()">
+                                    <span style="color: #374151;"><strong>Aria</strong> - UX Architect</span>
+                                </label>
+                                <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; padding: 0.25rem; border-radius: 0.25rem; transition: background-color 0.2s; font-size: 0.8125rem;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='transparent'">
+                                    <input type="checkbox" style="cursor: pointer;" onchange="updateAgentCountBadge()">
+                                    <span style="color: #374151;"><strong>Casey</strong> - Content Strategist</span>
+                                </label>
+                                <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; padding: 0.25rem; border-radius: 0.25rem; transition: background-color 0.2s; font-size: 0.8125rem;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='transparent'">
+                                    <input type="checkbox" style="cursor: pointer;" onchange="updateAgentCountBadge()">
+                                    <span style="color: #374151;"><strong>Dan</strong> - Senior Director</span>
+                                </label>
+                                <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; padding: 0.25rem; border-radius: 0.25rem; transition: background-color 0.2s; font-size: 0.8125rem;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='transparent'">
+                                    <input type="checkbox" style="cursor: pointer;" onchange="updateAgentCountBadge()">
+                                    <span style="color: #374151;"><strong>Diego</strong> - Program Manager</span>
+                                </label>
+                                <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; padding: 0.25rem; border-radius: 0.25rem; transition: background-color 0.2s; font-size: 0.8125rem;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='transparent'">
+                                    <input type="checkbox" style="cursor: pointer;" onchange="updateAgentCountBadge()">
+                                    <span style="color: #374151;"><strong>Emma</strong> - Engineering Manager</span>
+                                </label>
+                                <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; padding: 0.25rem; border-radius: 0.25rem; transition: background-color 0.2s; font-size: 0.8125rem;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='transparent'">
+                                    <input type="checkbox" style="cursor: pointer;" onchange="updateAgentCountBadge()">
+                                    <span style="color: #374151;"><strong>Felix</strong> - UX Feature Lead</span>
+                                </label>
+                                <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; padding: 0.25rem; border-radius: 0.25rem; transition: background-color 0.2s; font-size: 0.8125rem;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='transparent'">
+                                    <input type="checkbox" style="cursor: pointer;" onchange="updateAgentCountBadge()">
+                                    <span style="color: #374151;"><strong>Jack</strong> - Delivery Owner</span>
+                                </label>
+                                <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; padding: 0.25rem; border-radius: 0.25rem; transition: background-color 0.2s; font-size: 0.8125rem;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='transparent'">
+                                    <input type="checkbox" style="cursor: pointer;" onchange="updateAgentCountBadge()">
+                                    <span style="color: #374151;"><strong>Lee</strong> - Team Lead</span>
+                                </label>
+                                <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; padding: 0.25rem; border-radius: 0.25rem; transition: background-color 0.2s; font-size: 0.8125rem;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='transparent'">
+                                    <input type="checkbox" style="cursor: pointer;" onchange="updateAgentCountBadge()">
+                                    <span style="color: #374151;"><strong>Neil</strong> - Test Engineer</span>
+                                </label>
+                                <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; padding: 0.25rem; border-radius: 0.25rem; transition: background-color 0.2s; font-size: 0.8125rem;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='transparent'">
+                                    <input type="checkbox" style="cursor: pointer;" onchange="updateAgentCountBadge()">
+                                    <span style="color: #374151;"><strong>Olivia</strong> - Product Owner</span>
+                                </label>
+                                <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; padding: 0.25rem; border-radius: 0.25rem; transition: background-color 0.2s; font-size: 0.8125rem;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='transparent'">
+                                    <input type="checkbox" style="cursor: pointer;" onchange="updateAgentCountBadge()">
+                                    <span style="color: #374151;"><strong>Parker</strong> - Product Manager</span>
+                                </label>
+                                <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; padding: 0.25rem; border-radius: 0.25rem; transition: background-color 0.2s; font-size: 0.8125rem;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='transparent'">
+                                    <input type="checkbox" style="cursor: pointer;" onchange="updateAgentCountBadge()">
+                                    <span style="color: #374151;"><strong>Phoenix</strong> - PXE Specialist</span>
+                                </label>
+                                <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; padding: 0.25rem; border-radius: 0.25rem; transition: background-color 0.2s; font-size: 0.8125rem;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='transparent'">
+                                    <input type="checkbox" style="cursor: pointer;" onchange="updateAgentCountBadge()">
+                                    <span style="color: #374151;"><strong>Ryan</strong> - UX Researcher</span>
+                                </label>
+                                <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; padding: 0.25rem; border-radius: 0.25rem; transition: background-color 0.2s; font-size: 0.8125rem;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='transparent'">
+                                    <input type="checkbox" style="cursor: pointer;" onchange="updateAgentCountBadge()">
+                                    <span style="color: #374151;"><strong>Sam</strong> - Scrum Master</span>
+                                </label>
+                                <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; padding: 0.25rem; border-radius: 0.25rem; transition: background-color 0.2s; font-size: 0.8125rem;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='transparent'">
+                                    <input type="checkbox" style="cursor: pointer;" onchange="updateAgentCountBadge()">
+                                    <span style="color: #374151;"><strong>Stella</strong> - Staff Engineer</span>
+                                </label>
+                                <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; padding: 0.25rem; border-radius: 0.25rem; transition: background-color 0.2s; font-size: 0.8125rem;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='transparent'">
+                                    <input type="checkbox" style="cursor: pointer;" onchange="updateAgentCountBadge()">
+                                    <span style="color: #374151;"><strong>Steve</strong> - UX Designer</span>
+                                </label>
+                                <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; padding: 0.25rem; border-radius: 0.25rem; transition: background-color 0.2s; font-size: 0.8125rem;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='transparent'">
+                                    <input type="checkbox" style="cursor: pointer;" onchange="updateAgentCountBadge()">
+                                    <span style="color: #374151;"><strong>Taylor</strong> - Team Member</span>
+                                </label>
+                                <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; padding: 0.25rem; border-radius: 0.25rem; transition: background-color 0.2s; font-size: 0.8125rem;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='transparent'">
+                                    <input type="checkbox" style="cursor: pointer;" onchange="updateAgentCountBadge()">
+                                    <span style="color: #374151;"><strong>Terry</strong> - Technical Writer</span>
+                                </label>
+                                <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; padding: 0.25rem; border-radius: 0.25rem; transition: background-color 0.2s; font-size: 0.8125rem;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='transparent'">
+                                    <input type="checkbox" style="cursor: pointer;" onchange="updateAgentCountBadge()">
+                                    <span style="color: #374151;"><strong>Tessa</strong> - Writing Manager</span>
+                                </label>
+                                <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; padding: 0.25rem; border-radius: 0.25rem; transition: background-color 0.2s; font-size: 0.8125rem;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='transparent'">
+                                    <input type="checkbox" style="cursor: pointer;" onchange="updateAgentCountBadge()">
+                                    <span style="color: #374151;"><strong>Uma</strong> - UX Team Lead</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Associated Repositories Accordion -->
+                <div class="accordion-item">
+                    <button onclick="toggleAccordion('associated-repositories')" class="accordion-header">
+                        <span>Context</span>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="associated-repositories-arrow">
+                            <path d="M6 9l6 6 6-6"/>
+                        </svg>
+                    </button>
+                    <div id="associated-repositories-content" class="accordion-content" style="display: none;">
+                        <div style="padding: 1rem; text-align: center;">
+                            <div style="color: #64748b; font-size: 0.875rem; margin-bottom: 1rem;">
+                                No associated repositories configured
+                            </div>
+                            <button class="btn btn-secondary" style="padding: 0.375rem 0.75rem; font-size: 0.875rem;">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 0.25rem;">
+                                    <path d="M12 5v14"/>
+                                    <path d="M5 12h14"/>
+                                </svg>
+                                Add Repository
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Results Accordion -->
+                <div class="accordion-item">
+                    <button onclick="toggleAccordion('results')" class="accordion-header">
+                        <span>Results</span>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="results-arrow">
+                            <path d="M6 9l6 6 6-6"/>
+                        </svg>
+                    </button>
+                    <div id="results-content" class="accordion-content" style="display: none;">
+                        <div style="padding: 1rem; font-size: 0.875rem; color: #64748b; text-align: center;">
+                            No results yet
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Session Details Accordion -->
+                <div class="accordion-item">
+                    <button onclick="toggleAccordion('session-details')" class="accordion-header">
+                        <span>Session Details</span>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="session-details-arrow">
+                            <path d="M6 9l6 6 6-6"/>
+                        </svg>
+                    </button>
+                    <div id="session-details-content" class="accordion-content" style="display: none;">
+                        <div style="padding: 1rem; font-size: 0.875rem; color: #64748b;">
+                            <div style="margin-bottom: 0.5rem;"><strong>Model:</strong> claude-3.5-sonnet</div>
+                            <div style="margin-bottom: 0.5rem;"><strong>Mode:</strong> Interactive</div>
+                            <div style="margin-bottom: 0.5rem;"><strong>Started:</strong> Just now</div>
+                            <div style="margin-bottom: 0.5rem;"><strong>Duration:</strong> 342567ms</div>
+                            <div style="margin-bottom: 0.5rem;"><strong>K8s Job:</strong> agentic-session-1760582922-job</div>
+                            <div style="margin-bottom: 0.5rem;"><strong>Messages:</strong> <span id="message-count">1</span></div>
+                            <div><strong>Session prompt:</strong> <a href="#" onclick="viewSessionPrompt(); return false;" style="color: #1e40af; text-decoration: underline; cursor: pointer;">view</a></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Column: Chat -->
+            <div class="chat-container">
+                <div class="chat-messages" id="chat-messages">
+                    <div class="message">
+                        <div class="message-avatar ai-avatar">ACP</div>
+                        <div class="message-content">
+                            <div class="message-header">ACP</div>
+                            <div id="welcome-message"></div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="chat-input" style="position: relative;">
+                    <!-- Command Popover -->
+                    <div id="command-popover" style="display: none; position: absolute; bottom: 100%; left: 0; background: white; border: 1px solid #e2e8f0; border-radius: 0.5rem; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); min-width: 250px; margin-bottom: 0.5rem; overflow: hidden;">
+                        <div style="padding: 0.5rem; border-bottom: 1px solid #e2e8f0; background: #f8fafc;">
+                            <div style="font-size: 0.75rem; font-weight: 500; color: #64748b;">COMMANDS</div>
+                        </div>
+                        <div onclick="selectCommand('help')" style="padding: 0.75rem; cursor: pointer; transition: background-color 0.2s; display: flex; align-items: center; gap: 0.75rem; border-bottom: 1px solid #e2e8f0;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='white'">
+                            <div>
+                                <div style="font-weight: 500; font-size: 0.875rem; color: #374151;">/help</div>
+                                <div style="font-size: 0.75rem; color: #64748b;">Guidance for using ACP</div>
+                            </div>
+                        </div>
+                        <div id="workflow-commands-container">
+                            <div id="no-workflow-message" style="padding: 1rem; text-align: center; color: #64748b; font-size: 0.875rem;">
+                                No workflow-specific commands available
+                            </div>
+                            <div id="command-ideate" onclick="selectCommand('ideate')" style="display: none; padding: 0.75rem; cursor: pointer; transition: background-color 0.2s; align-items: center; gap: 0.75rem;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='white'">
+                                <div>
+                                    <div style="font-weight: 500; font-size: 0.875rem; color: #374151;">/ideate</div>
+                                    <div style="font-size: 0.75rem; color: #64748b;">Start ideation phase</div>
+                                </div>
+                            </div>
+                            <div id="command-specify" onclick="selectCommand('specify')" style="display: none; padding: 0.75rem; cursor: pointer; transition: background-color 0.2s; align-items: center; gap: 0.75rem;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='white'">
+                                <div>
+                                    <div style="font-weight: 500; font-size: 0.875rem; color: #374151;">/specify</div>
+                                    <div style="font-size: 0.75rem; color: #64748b;">Create specifications</div>
+                                </div>
+                            </div>
+                            <div id="command-plan" onclick="selectCommand('plan')" style="display: none; padding: 0.75rem; cursor: pointer; transition: background-color 0.2s; align-items: center; gap: 0.75rem;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='white'">
+                                <div>
+                                    <div style="font-weight: 500; font-size: 0.875rem; color: #374151;">/plan</div>
+                                    <div style="font-size: 0.75rem; color: #64748b;">Generate implementation plan</div>
+                                </div>
+                            </div>
+                            <div id="command-tasks" onclick="selectCommand('tasks')" style="display: none; padding: 0.75rem; cursor: pointer; transition: background-color 0.2s; align-items: center; gap: 0.75rem;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='white'">
+                                <div>
+                                    <div style="font-weight: 500; font-size: 0.875rem; color: #374151;">/tasks</div>
+                                    <div style="font-size: 0.75rem; color: #64748b;">Break down into tasks</div>
+                                </div>
+                            </div>
+                            <div id="command-implement" onclick="selectCommand('implement')" style="display: none; padding: 0.75rem; cursor: pointer; transition: background-color 0.2s; align-items: center; gap: 0.75rem;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='white'">
+                                <div>
+                                    <div style="font-weight: 500; font-size: 0.875rem; color: #374151;">/implement</div>
+                                    <div style="font-size: 0.75rem; color: #64748b;">Execute implementation</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Agent Popover -->
+                    <div id="agent-popover" style="display: none; position: absolute; bottom: 100%; left: 0; background: white; border: 1px solid #e2e8f0; border-radius: 0.5rem; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); min-width: 300px; max-height: 400px; margin-bottom: 0.5rem; overflow: hidden;">
+                        <div style="padding: 0.5rem; border-bottom: 1px solid #e2e8f0; background: #f8fafc;">
+                            <div style="font-size: 0.75rem; font-weight: 500; color: #64748b;">AGENTS</div>
+                        </div>
+                        <div id="agent-popover-content" style="overflow-y: auto; max-height: 350px;">
+                            <!-- Content will be dynamically populated -->
+                        </div>
+                    </div>
+
+                    <input type="text" id="chat-input-field" placeholder="/ for commands, # for agents" style="flex: 1;" oninput="handleChatInput(event)" onkeypress="handleKeyPress(event)">
+                    <button class="btn btn-primary" onclick="sendMessage()">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M22 2L11 13"/>
+                            <path d="M22 2l-7 20-4-9-9-4z"/>
+                        </svg>
+                        Send
+                    </button>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Git Credentials Modal -->
+    <div id="gitCredentialsModal" class="modal" style="display: none;">
+        <div class="modal-content" style="max-width: 600px;">
+            <div class="modal-header">
+                <div>
+                    <h2>Connect to GitHub</h2>
+                    <p style="font-size: 0.875rem; color: #64748b; margin-top: 0.25rem;">You can modify or remove these credentials anytime in project settings</p>
+                </div>
+                <button onclick="closeGitCredentialsModal()" class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+                    <div class="form-group">
+                        <label class="form-label" for="git-user-name">Git User Name</label>
+                        <input type="text" id="git-user-name" class="form-input" placeholder="your-github-username">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="git-user-email">Git User Email</label>
+                        <input type="email" id="git-user-email" class="form-input" placeholder="your-email@example.com">
+                    </div>
+                </div>
+                
+                <div class="form-group" style="margin-bottom: 1rem;">
+                    <label class="form-label" for="github-token">GitHub API Token</label>
+                    <div style="position: relative;">
+                        <input type="password" id="github-token" class="form-input" placeholder="ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxx" style="padding-right: 3rem;">
+                        <button type="button" onclick="togglePasswordVisibility()" style="position: absolute; right: 0.5rem; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer;">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2">
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                                <circle cx="12" cy="12" r="3"/>
+                            </svg>
+                        </button>
+                    </div>
+                    <small style="color: #64748b; font-size: 0.875rem;">GitHub personal access token or fine-grained token for git operations and API access</small>
+                </div>
+                
+                <div style="font-size: 0.875rem; color: #64748b; margin-bottom: 1.5rem;">
+                    Git credentials will be saved with keys: GIT_USER_NAME, GIT_USER_EMAIL, GIT_TOKEN
+                </div>
+                
+                <div style="display: flex; gap: 1rem; justify-content: flex-end;">
+                    <button type="button" onclick="closeGitCredentialsModal()" class="btn btn-secondary">Cancel</button>
+                    <button type="button" onclick="saveGitCredentials()" class="btn btn-primary">Save Configuration</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global variable to track selected workflow
+        var selectedWorkflow = null;
+
+        // Global variable to track if repository is seeded
+        var isRepositorySeeded = false;
+
+        // Function to show workflow commands based on selected workflow
+        function showWorkflowCommands(workflowType) {
+            selectedWorkflow = workflowType;
+
+            var noWorkflowMessage = document.getElementById('no-workflow-message');
+            var commandIdeate = document.getElementById('command-ideate');
+            var commandSpecify = document.getElementById('command-specify');
+            var commandPlan = document.getElementById('command-plan');
+            var commandTasks = document.getElementById('command-tasks');
+            var commandImplement = document.getElementById('command-implement');
+
+            if (!workflowType || workflowType === 'default') {
+                // No workflow selected - show message, hide commands
+                if (noWorkflowMessage) noWorkflowMessage.style.display = 'block';
+                if (commandIdeate) commandIdeate.style.display = 'none';
+                if (commandSpecify) commandSpecify.style.display = 'none';
+                if (commandPlan) commandPlan.style.display = 'none';
+                if (commandTasks) commandTasks.style.display = 'none';
+                if (commandImplement) commandImplement.style.display = 'none';
+            } else if (workflowType === 'create-rfe') {
+                // RFE workflow - show ideate only
+                if (noWorkflowMessage) noWorkflowMessage.style.display = 'none';
+                if (commandIdeate) commandIdeate.style.display = 'flex';
+                if (commandSpecify) commandSpecify.style.display = 'none';
+                if (commandPlan) commandPlan.style.display = 'none';
+                if (commandTasks) commandTasks.style.display = 'none';
+                if (commandImplement) commandImplement.style.display = 'none';
+            } else if (workflowType === 'create-feature') {
+                // Spec Kit workflow - show all commands
+                if (noWorkflowMessage) noWorkflowMessage.style.display = 'none';
+                if (commandIdeate) commandIdeate.style.display = 'flex';
+                if (commandSpecify) commandSpecify.style.display = 'flex';
+                if (commandPlan) commandPlan.style.display = 'flex';
+                if (commandTasks) commandTasks.style.display = 'flex';
+                if (commandImplement) commandImplement.style.display = 'flex';
+            }
+        }
+
+        // User dropdown functionality
+        function toggleUserDropdown() {
+            const dropdown = document.getElementById('userDropdownMenu');
+            const arrow = document.getElementById('user-dropdown-arrow');
+            const isOpen = dropdown.style.display === 'block';
+            
+            if (isOpen) {
+                dropdown.style.display = 'none';
+                arrow.style.transform = 'rotate(0deg)';
+            } else {
+                dropdown.style.display = 'block';
+                arrow.style.transform = 'rotate(180deg)';
+            }
+        }
+
+        function logout() {
+            // Close dropdown first
+            document.getElementById('userDropdownMenu').style.display = 'none';
+            document.getElementById('user-dropdown-arrow').style.transform = 'rotate(0deg)';
+            
+            // Simulate logout (in real app, this would redirect to login page)
+            alert('Logged out successfully!');
+        }
+
+        // Session control functions
+        function stopSession() {
+            // Update status badge
+            const statusBadge = document.querySelector('.badge-info');
+            if (statusBadge) {
+                statusBadge.className = 'badge';
+                statusBadge.style.background = '#f1f5f9';
+                statusBadge.style.color = '#64748b';
+                statusBadge.innerHTML = `
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 0.25rem;">
+                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                        <line x1="9" y1="9" x2="15" y2="15"/>
+                        <line x1="15" y1="9" x2="9" y2="15"/>
+                    </svg>
+                    Stopped
+                `;
+            }
+            
+            // Update page description
+            const description = document.querySelector('.page-description');
+            if (description) {
+                description.textContent = 'Real-time AI coding session • claude-3.5-sonnet • Stopped just now';
+            }
+            
+            // Disable chat input
+            const chatInput = document.querySelector('.chat-input input');
+            const sendButton = document.querySelector('.chat-input button');
+            if (chatInput && sendButton) {
+                chatInput.disabled = true;
+                chatInput.placeholder = 'Session stopped - no new messages';
+                chatInput.style.background = '#f8fafc';
+                chatInput.style.color = '#64748b';
+                sendButton.disabled = true;
+            }
+            
+            // Change Stop button to Export
+            const stopButton = document.querySelector('[onclick="stopSession()"]');
+            if (stopButton) {
+                stopButton.onclick = null;
+                stopButton.style.color = '';
+                stopButton.style.borderColor = '';
+                stopButton.innerHTML = `
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                        <polyline points="7,10 12,15 17,10"/>
+                        <line x1="12" y1="15" x2="12" y2="3"/>
+                    </svg>
+                    Export
+                `;
+            }
+        }
+
+        // Accordion toggle function
+        function toggleAccordion(accordionName) {
+            // Check if the accordion is disabled (for agents)
+            const button = document.getElementById(`${accordionName}-accordion-button`);
+            if (button && button.disabled) {
+                return; // Don't toggle if disabled
+            }
+
+            const content = document.getElementById(`${accordionName}-content`);
+            const arrow = document.getElementById(`${accordionName}-arrow`);
+
+            if (content && arrow) {
+                const isOpen = content.style.display === 'block';
+
+                if (isOpen) {
+                    content.style.display = 'none';
+                    arrow.style.transform = 'rotate(0deg)';
+                } else {
+                    content.style.display = 'block';
+                    arrow.style.transform = 'rotate(180deg)';
+                }
+            }
+        }
+
+        // Enable the Agents accordion after repository is seeded
+        function enableAgentsAccordion() {
+            // Hide the requirement message
+            const agentsRepoRequirement = document.getElementById('agents-repo-requirement');
+            if (agentsRepoRequirement) {
+                agentsRepoRequirement.style.display = 'none';
+            }
+
+            // Show the agent list
+            const agentsList = document.getElementById('agents-list');
+            if (agentsList) {
+                agentsList.style.display = 'block';
+            }
+        }
+
+        // Enable workflow step buttons after repository is seeded
+        function enableWorkflowSteps() {
+            const workflowButtons = document.querySelectorAll('.workflow-step-button');
+            workflowButtons.forEach(button => {
+                button.disabled = false;
+                button.style.opacity = '1';
+                button.style.cursor = 'pointer';
+            });
+
+            // Change step names from gray to black
+            const stepNames = document.querySelectorAll('.workflow-step-name');
+            stepNames.forEach(name => {
+                name.style.color = '#374151';
+            });
+
+            // Change filenames from light gray to darker gray
+            const fileNames = document.querySelectorAll('.workflow-step-filename');
+            fileNames.forEach(filename => {
+                filename.style.color = '#64748b';
+            });
+        }
+
+        // Update workflow phases based on selected workflow type
+        function updateWorkflowPhases() {
+            const workflowType = document.getElementById('workflow-type').value;
+            const rfePhases = document.getElementById('rfe-phases');
+            const specKitPhases = document.getElementById('spec-kit-phases');
+            const helpText = document.getElementById('workflow-help-text');
+
+            // Hide all phases and help text first
+            rfePhases.style.display = 'none';
+            specKitPhases.style.display = 'none';
+            if (helpText) helpText.style.display = 'none';
+
+            // Show appropriate content based on selection
+            if (workflowType === 'default') {
+                // Show help text for None/Default
+                if (helpText) helpText.style.display = 'block';
+            } else if (workflowType === 'create-rfe') {
+                rfePhases.style.display = 'block';
+            } else if (workflowType === 'create-feature') {
+                specKitPhases.style.display = 'block';
+            }
+
+            // Update command popover to show appropriate commands
+            showWorkflowCommands(workflowType);
+        }
+
+        // Show Add Repository form in chat
+        function showAddRepositoryForm() {
+            const chatMessages = document.querySelector('.chat-messages');
+            
+            const gitIntegrationCard = document.createElement('div');
+            gitIntegrationCard.style.cssText = 'margin-bottom: 1rem; background: white; border: 1px solid #e2e8f0; border-radius: 0.5rem; padding: 1.5rem; max-width: 600px; opacity: 0; transition: opacity 0.3s ease-in;';
+            
+            gitIntegrationCard.innerHTML = `
+                <h3 style="font-size: 1.25rem; font-weight: 600; margin-bottom: 1.5rem;">Connect to spec repository</h3>
+                
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+                    <div class="form-group">
+                        <label class="form-label" style="font-size: 0.875rem;">Git User Name</label>
+                        <input type="text" class="form-input" value="Daniel-Warner-X" style="font-size: 0.875rem;">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" style="font-size: 0.875rem;">Git User Email</label>
+                        <input type="email" class="form-input" value="dan@danielwarner.net" style="font-size: 0.875rem;">
+                    </div>
+                </div>
+                
+                <div class="form-group" style="margin-bottom: 1rem;">
+                    <label class="form-label" style="font-size: 0.875rem;">GitHub API Token</label>
+                    <div style="position: relative;">
+                        <input type="password" class="form-input" value="ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxx" style="font-size: 0.875rem; padding-right: 3rem;">
+                        <button style="position: absolute; right: 0.5rem; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer;">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2">
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                                <circle cx="12" cy="12" r="3"/>
+                            </svg>
+                        </button>
+                    </div>
+                    <small style="color: #64748b; font-size: 0.75rem;">GitHub personal access token or fine-grained token for git operations and API access</small>
+                </div>
+                
+                <div style="font-size: 0.75rem; color: #64748b; margin-bottom: 1rem;">
+                    Git credentials will be saved with keys: GIT_USER_NAME, GIT_USER_EMAIL, GIT_TOKEN
+                </div>
+                
+                <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
+                    <button onclick="closeGitIntegration(this)" class="btn btn-secondary" style="padding: 0.375rem 0.75rem; font-size: 0.875rem;">Cancel</button>
+                    <button onclick="saveGitIntegration(this)" class="btn btn-primary" style="padding: 0.375rem 0.75rem; font-size: 0.875rem;">Save Configuration</button>
+                </div>
+            `;
+            
+            chatMessages.appendChild(gitIntegrationCard);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+            
+            // Fade in the card
+            setTimeout(() => {
+                gitIntegrationCard.style.opacity = '1';
+            }, 50);
+        }
+
+        function closeGitIntegration(button) {
+            const card = button.closest('div[style*="max-width: 600px"]');
+            if (card) {
+                card.remove();
+            }
+        }
+
+        function saveGitIntegration(button) {
+            const card = button.closest('div[style*="max-width: 600px"]');
+            if (card) {
+                // Show success message
+                card.innerHTML = `
+                    <div style="display: flex; align-items: center; gap: 0.75rem; padding: 1rem; background: #f0fdf4; border: 1px solid #10b981; border-radius: 0.375rem;">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2">
+                            <path d="M20 6L9 17l-5-5"/>
+                        </svg>
+                        <div>
+                            <div style="font-weight: 500; color: #166534;">Git Integration Configured</div>
+                            <div style="font-size: 0.875rem; color: #64748b;">Repository credentials saved successfully</div>
+                        </div>
+                    </div>
+                `;
+                
+                setTimeout(() => {
+                    card.remove();
+                }, 3000);
+            }
+        }
+
+        // Typing animation for welcome message
+        function typeMessage(element, text, speed = 15, callback) {
+            let index = 0;
+            element.textContent = '';
+
+            function type() {
+                if (index < text.length) {
+                    element.textContent += text.charAt(index);
+                    index++;
+                    setTimeout(type, speed);
+                } else if (callback) {
+                    callback();
+                }
+            }
+
+            type();
+        }
+
+        // Show workflow suggestion cards
+        function showWorkflowCards() {
+            const chatMessages = document.getElementById('chat-messages');
+
+            const cardsContainer = document.createElement('div');
+            cardsContainer.style.cssText = 'display: flex; gap: 1rem; margin-top: 1rem; margin-bottom: 1.5rem; padding: 0 1rem; opacity: 0; transition: opacity 0.3s ease-in;';
+            cardsContainer.id = 'workflow-cards';
+            
+            cardsContainer.innerHTML = `
+                <div style="flex: 1; background: white; border: 1px solid #e2e8f0; border-radius: 0.5rem; padding: 1rem; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.borderColor='#1e40af'; this.style.boxShadow='0 4px 6px -1px rgba(0, 0, 0, 0.1)'" onmouseout="this.style.borderColor='#e2e8f0'; this.style.boxShadow='none'" onclick="selectWorkflow('rfe')">
+                    <div style="font-weight: 500; color: #374151; margin-bottom: 0.25rem;"><span style="font-size: 1.25rem; margin-right: 0.5rem;">📝</span>Plan a feature</div>
+                    <div style="font-size: 0.75rem; color: #64748b;">Ideate and specify your request for enhancement</div>
+                </div>
+
+                <div style="flex: 1; background: white; border: 1px solid #e2e8f0; border-radius: 0.5rem; padding: 1rem; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.borderColor='#1e40af'; this.style.boxShadow='0 4px 6px -1px rgba(0, 0, 0, 0.1)'" onmouseout="this.style.borderColor='#e2e8f0'; this.style.boxShadow='none'" onclick="selectWorkflow('feature')">
+                    <div style="font-weight: 500; color: #374151; margin-bottom: 0.25rem;"><span style="font-size: 1.25rem; margin-right: 0.5rem;">🏗️</span>Develop Feature</div>
+                    <div style="font-size: 0.75rem; color: #64748b;">Complete feature development from spec to implementation</div>
+                </div>
+            `;
+            
+            chatMessages.appendChild(cardsContainer);
+            
+            // Fade in the cards
+            setTimeout(() => {
+                cardsContainer.style.opacity = '1';
+            }, 50);
+        }
+
+        // Handle workflow selection from cards
+        function selectWorkflow(workflowType) {
+            // Set the workflow dropdown
+            const workflowDropdown = document.getElementById('workflow-type');
+            if (workflowDropdown) {
+                if (workflowType === 'rfe') {
+                    workflowDropdown.value = 'create-rfe';
+                } else if (workflowType === 'feature') {
+                    workflowDropdown.value = 'create-feature';
+                }
+                updateWorkflowPhases();
+                
+                // Open the workflow accordion
+                const workflowContent = document.getElementById('workflow-content');
+                const workflowArrow = document.getElementById('workflow-arrow');
+                if (workflowContent && workflowArrow) {
+                    workflowContent.style.display = 'block';
+                    workflowArrow.style.transform = 'rotate(180deg)';
+                }
+            }
+            
+            // Remove the workflow cards
+            const cards = document.getElementById('workflow-cards');
+            if (cards) {
+                cards.style.opacity = '0';
+                setTimeout(() => {
+                    cards.remove();
+                    
+                    // Show system message about workflow selection
+                    const chatMessages = document.getElementById('chat-messages');
+                    const systemMessage = document.createElement('div');
+                    systemMessage.style.cssText = 'text-align: center; padding: 0.5rem; margin: 1rem 0;';
+                    
+                    const workflowName = workflowType === 'rfe' ? 'Create RFE workflow' : 'Create feature with spec-kit workflow';
+                    systemMessage.innerHTML = `
+                        <div style="display: inline-block; background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 1rem; padding: 0.375rem 0.75rem; font-size: 0.75rem; color: #64748b;">
+                            ${workflowName} selected
+                        </div>
+                    `;
+                    
+                    chatMessages.appendChild(systemMessage);
+                    chatMessages.scrollTop = chatMessages.scrollHeight;
+                    
+                    // Show repository requirement message after system message
+                    setTimeout(() => {
+                        showRepositoryRequirement();
+                    }, 500);
+                }, 300);
+            }
+        }
+
+        // Show repository requirement message in chat
+        function showRepositoryRequirement() {
+            const chatMessages = document.getElementById('chat-messages');
+            
+            // Add ACP message about repository requirement
+            const repoMessage = document.createElement('div');
+            repoMessage.className = 'message';
+            repoMessage.innerHTML = `
+                <div class="message-avatar ai-avatar">ACP</div>
+                <div class="message-content">
+                    <div class="message-header">ACP</div>
+                    <div id="repo-requirement-message"></div>
+                    <div id="repo-action-button" style="opacity: 0; transition: opacity 0.3s ease-in; margin-top: 1rem;"></div>
+                </div>
+            `;
+            
+            chatMessages.appendChild(repoMessage);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+            
+            // Type the message
+            const messageElement = document.getElementById('repo-requirement-message');
+            const messageText = "This workflow requires a spec repository to store generated artifacts.";
+
+            typeMessage(messageElement, messageText, 10, function() {
+                // Show Add Repository button after typing completes
+                setTimeout(() => {
+                    const buttonContainer = document.getElementById('repo-action-button');
+                    if (buttonContainer) {
+                        buttonContainer.innerHTML = `
+                            <button onclick="openGitCredentialsModal()" class="btn btn-secondary" style="padding: 0.375rem 0.75rem; font-size: 0.875rem;">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 0.25rem;">
+                                    <path d="M12 5v14"/>
+                                    <path d="M5 12h14"/>
+                                </svg>
+                                Add Repository
+                            </button>
+                        `;
+                        
+                        // Fade in the button
+                        setTimeout(() => {
+                            buttonContainer.style.opacity = '1';
+                        }, 50);
+                    }
+                }, 1000);
+            });
+        }
+
+        // Show Git Integration form inside ACP message
+        function showGitIntegrationInMessage() {
+            const container = document.getElementById('git-integration-container');
+            if (!container) return;
+            
+            container.innerHTML = `
+                <div style="background: white; border: 1px solid #e2e8f0; border-radius: 0.5rem; padding: 1.5rem;">
+                    <h3 style="font-size: 1.25rem; font-weight: 600; margin-bottom: 1.5rem;">Connect to spec repository</h3>
+                    
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+                        <div class="form-group">
+                            <label class="form-label" style="font-size: 0.875rem;">Git User Name</label>
+                            <input type="text" class="form-input" value="Daniel-Warner-X" style="font-size: 0.875rem;">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" style="font-size: 0.875rem;">Git User Email</label>
+                            <input type="email" class="form-input" value="dan@danielwarner.net" style="font-size: 0.875rem;">
+                        </div>
+                    </div>
+                    
+                    <div class="form-group" style="margin-bottom: 1rem;">
+                        <label class="form-label" style="font-size: 0.875rem;">GitHub API Token</label>
+                        <div style="position: relative;">
+                            <input type="password" class="form-input" value="ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxx" style="font-size: 0.875rem; padding-right: 3rem;">
+                            <button style="position: absolute; right: 0.5rem; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer;">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2">
+                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                                    <circle cx="12" cy="12" r="3"/>
+                                </svg>
+                            </button>
+                        </div>
+                        <small style="color: #64748b; font-size: 0.75rem;">GitHub personal access token or fine-grained token for git operations and API access</small>
+                    </div>
+                    
+                    <div style="font-size: 0.75rem; color: #64748b; margin-bottom: 1rem;">
+                        Git credentials will be saved with keys: GIT_USER_NAME, GIT_USER_EMAIL, GIT_TOKEN
+                    </div>
+                    
+                    <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
+                        <button onclick="cancelGitIntegrationInMessage()" class="btn btn-secondary" style="padding: 0.375rem 0.75rem; font-size: 0.875rem;">Cancel</button>
+                        <button onclick="saveGitIntegrationInMessage()" class="btn btn-primary" style="padding: 0.375rem 0.75rem; font-size: 0.875rem;">Save Configuration</button>
+                    </div>
+                </div>
+            `;
+            
+            // Fade in the card
+            setTimeout(() => {
+                container.style.opacity = '1';
+            }, 50);
+            
+            // Scroll to show the card
+            const chatMessages = document.querySelector('.chat-messages');
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function cancelGitIntegrationInMessage() {
+            const container = document.getElementById('git-integration-container');
+            if (container) {
+                container.style.opacity = '0';
+                setTimeout(() => {
+                    container.innerHTML = '';
+                }, 500);
+            }
+        }
+
+        function saveGitIntegrationInMessage() {
+            const container = document.getElementById('git-integration-container');
+            if (container) {
+                container.innerHTML = `
+                    <div style="display: flex; align-items: center; gap: 0.75rem; padding: 1rem; background: #f0fdf4; border: 1px solid #10b981; border-radius: 0.375rem;">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2">
+                            <path d="M20 6L9 17l-5-5"/>
+                        </svg>
+                        <div>
+                            <div style="font-weight: 500; color: #166534;">Git Integration Configured</div>
+                            <div style="font-size: 0.875rem; color: #64748b;">Repository credentials saved successfully</div>
+                        </div>
+                    </div>
+                `;
+                
+                // Show repository details in the accordion
+                const repoDetails = document.getElementById('repository-details');
+                if (repoDetails) {
+                    repoDetails.style.display = 'block';
+                }
+            }
+        }
+
+        // Git Credentials Modal functions
+        function openGitCredentialsModal() {
+            // Hide the Add Repository button in chat if it exists
+            const repoActionButton = document.getElementById('repo-action-button');
+            if (repoActionButton) {
+                repoActionButton.style.opacity = '0';
+                setTimeout(() => {
+                    repoActionButton.style.display = 'none';
+                }, 500);
+            }
+            
+            document.getElementById('gitCredentialsModal').style.display = 'flex';
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeGitCredentialsModal() {
+            document.getElementById('gitCredentialsModal').style.display = 'none';
+            document.body.style.overflow = 'auto';
+        }
+
+        function togglePasswordVisibility() {
+            const tokenInput = document.getElementById('github-token');
+            if (tokenInput.type === 'password') {
+                tokenInput.type = 'text';
+            } else {
+                tokenInput.type = 'password';
+            }
+        }
+
+        function saveGitCredentials() {
+            const modalBody = document.querySelector('#gitCredentialsModal .modal-body');
+            
+            // Show loading state
+            modalBody.innerHTML = `
+                <div style="text-align: center; padding: 3rem 2rem;">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#1e40af" stroke-width="2" style="animation: spin 1s linear infinite; margin: 0 auto 1rem;">
+                        <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+                    </svg>
+                    <div style="font-weight: 500; font-size: 1rem; color: #374151; margin-bottom: 0.5rem;">Connecting to GitHub</div>
+                    <div style="font-size: 0.875rem; color: #64748b;">Verifying credentials...</div>
+                </div>
+            `;
+            
+            // After 5 seconds, show spec repository configuration
+            setTimeout(() => {
+                showSpecRepoConfig();
+            }, 5000);
+        }
+
+        function showSpecRepoConfig() {
+            const modalBody = document.querySelector('#gitCredentialsModal .modal-body');
+            const modalTitle = document.querySelector('#gitCredentialsModal h2');
+            
+            // Update modal title
+            if (modalTitle) {
+                modalTitle.textContent = 'Configure Spec Repository';
+            }
+            
+            // Show spec repository form
+            modalBody.innerHTML = `
+                <div class="form-group" style="margin-bottom: 1rem;">
+                    <label class="form-label" for="spec-repo-url">Spec Repo URL</label>
+                    <input type="text" id="spec-repo-url" class="form-input" placeholder="https://github.com/org/repo.git">
+                    <small style="color: #64748b; font-size: 0.875rem;">The spec repository is where workflow artifacts are stored.</small>
+                </div>
+                
+                <div class="form-group" style="margin-bottom: 1.5rem;">
+                    <label class="form-label" for="spec-base-branch">Base Branch</label>
+                    <input type="text" id="spec-base-branch" class="form-input" value="main">
+                </div>
+                
+                <div style="display: flex; gap: 1rem; justify-content: flex-end;">
+                    <button type="button" onclick="closeGitCredentialsModal()" class="btn btn-secondary">Cancel</button>
+                    <button type="button" onclick="saveSpecRepoConfig()" class="btn btn-primary">Save Configuration</button>
+                </div>
+            `;
+        }
+
+        function saveSpecRepoConfig() {
+            // Get the spec repo URL
+            const specRepoUrl = document.getElementById('spec-repo-url').value;
+            
+            // Extract repo name from URL (e.g., "org/repo" from "https://github.com/org/repo.git")
+            let repoName = specRepoUrl;
+            if (specRepoUrl) {
+                const match = specRepoUrl.match(/github\.com\/([^\/]+\/[^\/\.]+)/);
+                if (match) {
+                    repoName = match[1];
+                } else {
+                    // Try to extract from URL without .git extension
+                    const parts = specRepoUrl.replace('.git', '').split('/');
+                    if (parts.length >= 2) {
+                        repoName = parts[parts.length - 2] + '/' + parts[parts.length - 1];
+                    }
+                }
+            }
+            
+            // Show system message for repository configuration
+            const chatMessages = document.getElementById('chat-messages');
+            const repoConfigMessage = document.createElement('div');
+            repoConfigMessage.style.cssText = 'text-align: center; padding: 0.5rem; margin: 1rem 0;';
+            repoConfigMessage.innerHTML = `
+                <div style="display: inline-block; background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 1rem; padding: 0.375rem 0.75rem; font-size: 0.75rem; color: #64748b;">
+                    Spec repository selected
+                </div>
+            `;
+            chatMessages.appendChild(repoConfigMessage);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+            
+            // After a brief delay, show ACP message about seeding
+            setTimeout(() => {
+                const seedPromptMessage = document.createElement('div');
+                seedPromptMessage.className = 'message';
+                seedPromptMessage.innerHTML = `
+                    <div class="message-avatar ai-avatar">ACP</div>
+                    <div class="message-content">
+                        <div class="message-header">ACP</div>
+                        <div id="seed-prompt-message"></div>
+                        <div id="seed-button-container" style="opacity: 0; transition: opacity 0.3s ease-in; margin-top: 1rem;"></div>
+                    </div>
+                `;
+                
+                chatMessages.appendChild(seedPromptMessage);
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+                
+                // Type the seed prompt message
+                const seedMessageElement = document.getElementById('seed-prompt-message');
+                const seedMessageText = "Seed this repository to get started.";
+
+                typeMessage(seedMessageElement, seedMessageText, 10, function() {
+                    // Show Seed Repository button after typing completes
+                    setTimeout(() => {
+                        const seedButtonContainer = document.getElementById('seed-button-container');
+                        if (seedButtonContainer) {
+                            seedButtonContainer.innerHTML = `
+                                <button onclick="seedRepositoryFromChat()" class="btn btn-secondary" style="padding: 0.375rem 0.75rem; font-size: 0.875rem;">Seed Repository</button>
+                            `;
+                            
+                            // Fade in the button
+                            setTimeout(() => {
+                                seedButtonContainer.style.opacity = '1';
+                            }, 50);
+                        }
+                    }, 500);
+                });
+            }, 1000);
+
+            // Update Spec Repository accordion only
+            const specRepoAccordionContainer = document.getElementById('repository-details');
+
+            if (specRepoAccordionContainer) {
+                const accordionContent = `
+                    <div style="margin-bottom: 0.5rem;">
+                        <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem;">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2">
+                                <path d="M20 6L9 17l-5-5"/>
+                            </svg>
+                            <strong style="color: #374151;">${repoName || 'Repository selected'}</strong>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; color: #64748b; margin-bottom: 0.5rem;">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2">
+                                <path d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/>
+                            </svg>
+                            Seed this repository to get started.
+                        </div>
+                    </div>
+                    <button onclick="seedRepositoryFromAccordion()" class="btn btn-secondary" style="padding: 0.375rem 0.75rem; font-size: 0.875rem;">Seed Repository</button>
+                `;
+                specRepoAccordionContainer.innerHTML = `
+                    <div style="padding: 1rem;">
+                        ${accordionContent}
+                    </div>
+                `;
+            }
+            
+            // Close modal
+            closeGitCredentialsModal();
+            
+            // Show repository details in the Spec Repository accordion
+            const notConnectedMessage = document.querySelector('#spec-repository-content > div:first-child');
+            
+            if (specRepoAccordionContainer && notConnectedMessage) {
+                notConnectedMessage.style.display = 'none';
+                specRepoAccordionContainer.style.display = 'block';
+            }
+        }
+
+        // Seed repository from chat button
+        function seedRepositoryFromChat() {
+            // Remove the seed button completely (keeping the message)
+            const seedButtonContainer = document.getElementById('seed-button-container');
+            if (seedButtonContainer) {
+                seedButtonContainer.style.opacity = '0';
+                setTimeout(() => {
+                    seedButtonContainer.remove();
+                }, 300);
+            }
+
+            // Call the regular seed function which will handle all the updates
+            seedRepository();
+        }
+
+        // Seed repository from Spec Repository accordion
+        function seedRepositoryFromAccordion() {
+            const chatMessages = document.getElementById('chat-messages');
+            const specRepoAccordionContainer = document.getElementById('repository-details');
+
+            // Remove the seed button from chat if it exists
+            const seedButtonContainer = document.getElementById('seed-button-container');
+            if (seedButtonContainer) {
+                seedButtonContainer.style.opacity = '0';
+                setTimeout(() => {
+                    seedButtonContainer.remove();
+                }, 300);
+            }
+
+            // Get current repo name from accordion
+            const repoNameElement = specRepoAccordionContainer ? specRepoAccordionContainer.querySelector('strong') : null;
+            const repoName = repoNameElement ? repoNameElement.textContent : 'Repository selected';
+
+            // Update to show seeding in progress in accordion
+            const seedingContent = `
+                <div style="padding: 1rem;">
+                    <div style="margin-bottom: 0.5rem;">
+                        <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem;">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2">
+                                <path d="M20 6L9 17l-5-5"/>
+                            </svg>
+                            <strong style="color: #374151;">${repoName}</strong>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; color: #64748b;">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" style="animation: spin 1s linear infinite;">
+                                <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+                            </svg>
+                            Seeding repository...
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            if (specRepoAccordionContainer) {
+                specRepoAccordionContainer.innerHTML = seedingContent;
+            }
+            
+            // After 3 seconds, show seeded state
+            setTimeout(() => {
+                // Show system message
+                const seedCompleteMessage = document.createElement('div');
+                seedCompleteMessage.style.cssText = 'text-align: center; padding: 0.5rem; margin: 1rem 0;';
+                seedCompleteMessage.innerHTML = `
+                    <div style="display: inline-block; background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 1rem; padding: 0.375rem 0.75rem; font-size: 0.75rem; color: #64748b;">
+                        Spec repository seeded
+                    </div>
+                `;
+                chatMessages.appendChild(seedCompleteMessage);
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+
+                // Mark repository as seeded
+                isRepositorySeeded = true;
+
+                // Enable the Agents accordion
+                enableAgentsAccordion();
+
+                // Enable workflow step buttons
+                enableWorkflowSteps();
+
+                // Hide repository requirement messages in workflows
+                const rfeRepoRequirement = document.getElementById('rfe-repo-requirement');
+                const specKitRepoRequirement = document.getElementById('spec-kit-repo-requirement');
+                if (rfeRepoRequirement) {
+                    rfeRepoRequirement.style.display = 'none';
+                }
+                if (specKitRepoRequirement) {
+                    specKitRepoRequirement.style.display = 'none';
+                }
+
+                const seededContent = `
+                    <div style="padding: 1rem;">
+                        <div style="margin-bottom: 1rem;">
+                            <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem;">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2">
+                                    <path d="M20 6L9 17l-5-5"/>
+                                </svg>
+                                <strong style="color: #374151;">${repoName}</strong>
+                            </div>
+                        </div>
+
+                        <!-- File list -->
+                        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 0.375rem; padding: 0.75rem; font-family: monospace; font-size: 0.75rem;">
+                            <div style="display: flex; justify-content: space-between; padding: 0.25rem 0; color: #64748b;">
+                                <span>.DS_Store</span>
+                                <span>8.0K</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; padding: 0.25rem 0; color: #64748b;">
+                                <span>.claude/</span>
+                                <span>0.0K</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; padding: 0.25rem 0; color: #64748b;">
+                                <span>.cursor/</span>
+                                <span>0.0K</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; padding: 0.25rem 0; color: #64748b;">
+                                <span>.specify/</span>
+                                <span>0.0K</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; padding: 0.25rem 0; color: #64748b;">
+                                <span>LICENSE</span>
+                                <span>1.0K</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; padding: 0.25rem 0; color: #64748b;">
+                                <span>README.md</span>
+                                <span>0.0K</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; padding: 0.25rem 0; color: #64748b;">
+                                <span>ascii-dan.txt</span>
+                                <span>4.5K</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; padding: 0.25rem 0; color: #64748b;">
+                                <span>dist/</span>
+                                <span>0.0K</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; padding: 0.25rem 0; color: #64748b;">
+                                <span>img/</span>
+                                <span>0.0K</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; padding: 0.25rem 0; color: #64748b;">
+                                <span>index-minimal-site.html</span>
+                                <span>3.7K</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; padding: 0.25rem 0; color: #64748b;">
+                                <span>index-scrolling-site.html</span>
+                                <span>16.4K</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; padding: 0.25rem 0; color: #64748b;">
+                                <span>video/</span>
+                                <span>0.0K</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                if (specRepoAccordionContainer) {
+                    specRepoAccordionContainer.innerHTML = seededContent;
+                }
+            }, 3000);
+        }
+
+        // Seed repository (called from Spec Repository accordion)
+        function seedRepository() {
+            // This function is no longer used from workflow accordion
+            // Redirect to seedRepositoryFromAccordion
+            seedRepositoryFromAccordion();
+        }
+
+        // Repository configuration functions
+        function cancelRepositoryConfig() {
+            // Close the accordion
+            const repositoriesContent = document.getElementById('spec-repository-content');
+            const repositoriesArrow = document.getElementById('spec-repository-arrow');
+            
+            if (repositoriesContent && repositoriesArrow) {
+                repositoriesContent.style.display = 'none';
+                repositoriesArrow.style.transform = 'rotate(0deg)';
+            }
+        }
+
+        function saveRepositoryConfig() {
+            // Here you would save the repository configuration
+            // For now, just show a success message and close the accordion
+            
+            // Close the accordion
+            const repositoriesContent = document.getElementById('spec-repository-content');
+            const repositoriesArrow = document.getElementById('spec-repository-arrow');
+            
+            if (repositoriesContent && repositoriesArrow) {
+                repositoriesContent.style.display = 'none';
+                repositoriesArrow.style.transform = 'rotate(0deg)';
+            }
+            
+            // Optional: Show success message in chat
+            // You could add an ACP message here confirming the repository was configured
+        }
+
+        // Available commands
+        const commands = ['help', 'ideate', 'specify', 'plan', 'tasks', 'implement'];
+
+        // Handle chat input for commands/context/agents
+        function handleChatInput(event) {
+            const input = event.target;
+            const value = input.value;
+            const commandPopover = document.getElementById('command-popover');
+            const agentPopover = document.getElementById('agent-popover');
+
+            // Show agent popover when # is typed
+            if (value === '#' || value.startsWith('#')) {
+                commandPopover.style.display = 'none';
+
+                var agentPopoverContent = document.getElementById('agent-popover-content');
+
+                if (!isRepositorySeeded) {
+                    // Show message that repository needs to be seeded
+                    agentPopoverContent.innerHTML =
+                        '<div style="padding: 1rem; text-align: center; color: #64748b; font-size: 0.875rem;">' +
+                            'Add a seeded spec repository to this session to use agents.' +
+                        '</div>';
+                } else {
+                    // Show agent list
+                    var agents = [
+                        { name: 'Archie', role: 'Architect' },
+                        { name: 'Aria', role: 'UX Architect' },
+                        { name: 'Casey', role: 'Content Strategist' },
+                        { name: 'Dan', role: 'Senior Director' },
+                        { name: 'Diego', role: 'Program Manager' },
+                        { name: 'Emma', role: 'Engineering Manager' },
+                        { name: 'Felix', role: 'UX Feature Lead' },
+                        { name: 'Jack', role: 'Delivery Owner' },
+                        { name: 'Lee', role: 'Team Lead' },
+                        { name: 'Neil', role: 'Test Engineer' },
+                        { name: 'Olivia', role: 'Product Owner' },
+                        { name: 'Parker', role: 'Product Manager' },
+                        { name: 'Phoenix', role: 'PXE Specialist' },
+                        { name: 'Ryan', role: 'UX Researcher' },
+                        { name: 'Sam', role: 'Scrum Master' },
+                        { name: 'Stella', role: 'Staff Engineer' },
+                        { name: 'Steve', role: 'UX Designer' },
+                        { name: 'Taylor', role: 'Team Member' },
+                        { name: 'Terry', role: 'Technical Writer' },
+                        { name: 'Tessa', role: 'Writing Manager' },
+                        { name: 'Uma', role: 'UX Team Lead' }
+                    ];
+
+                    var searchText = value.substring(1).toLowerCase();
+                    var agentHtml = '';
+
+                    for (var i = 0; i < agents.length; i++) {
+                        var agent = agents[i];
+                        var agentNameLower = agent.name.toLowerCase();
+
+                        // Filter agents based on search text
+                        if (searchText === '' || agentNameLower.indexOf(searchText) === 0) {
+                            agentHtml +=
+                                '<div onclick="selectAgent(\'' + agent.name + '\')" style="padding: 0.75rem; cursor: pointer; transition: background-color 0.2s; display: flex; align-items: center; gap: 0.75rem; border-bottom: 1px solid #e2e8f0;" onmouseover="this.style.background=\'#f8fafc\'" onmouseout="this.style.background=\'white\'">' +
+                                    '<div>' +
+                                        '<div style="font-weight: 500; font-size: 0.875rem; color: #374151;">' + agent.name + '</div>' +
+                                        '<div style="font-size: 0.75rem; color: #64748b;">' + agent.role + '</div>' +
+                                    '</div>' +
+                                '</div>';
+                        }
+                    }
+
+                    if (agentHtml === '') {
+                        agentHtml = '<div style="padding: 1rem; text-align: center; color: #64748b; font-size: 0.875rem;">No agents found</div>';
+                    }
+
+                    agentPopoverContent.innerHTML = agentHtml;
+                }
+
+                agentPopover.style.display = 'block';
+                return;
+            } else {
+                agentPopover.style.display = 'none';
+            }
+
+            // Show command popover when / is typed
+            if (value === '/' || value.startsWith('/')) {
+                // Get the text after the slash
+                const searchText = value.substring(1).toLowerCase();
+
+                // Determine which commands should be available based on workflow
+                var availableCommands = ['help']; // help is always available
+
+                if (selectedWorkflow === 'create-rfe') {
+                    availableCommands.push('ideate', 'specify');
+                } else if (selectedWorkflow === 'create-feature') {
+                    availableCommands.push('ideate', 'specify', 'plan', 'tasks', 'implement');
+                }
+
+                // Filter and show matching commands
+                const commandItems = commandPopover.querySelectorAll('div[onclick^="selectCommand"]');
+                let visibleCount = 0;
+
+                commandItems.forEach(function(item) {
+                    const onclickAttr = item.getAttribute('onclick');
+                    if (!onclickAttr) return;
+
+                    const match = onclickAttr.match(/'([^']+)'/);
+                    if (!match) return;
+
+                    const commandName = match[1];
+
+                    // Check if command is available for current workflow and matches search
+                    if (availableCommands.indexOf(commandName) !== -1 && commandName.startsWith(searchText)) {
+                        item.style.display = 'flex';
+                        visibleCount++;
+                    } else {
+                        item.style.display = 'none';
+                    }
+                });
+
+                // Handle the no-workflow message visibility
+                var noWorkflowMessage = document.getElementById('no-workflow-message');
+                if (noWorkflowMessage) {
+                    if (!selectedWorkflow || selectedWorkflow === 'default') {
+                        noWorkflowMessage.style.display = 'block';
+                    } else {
+                        noWorkflowMessage.style.display = 'none';
+                    }
+                }
+
+                // Show popover if there are matching commands or the no-workflow message
+                if (visibleCount > 0 || (!selectedWorkflow || selectedWorkflow === 'default')) {
+                    commandPopover.style.display = 'block';
+                } else {
+                    commandPopover.style.display = 'none';
+                }
+            } else {
+                commandPopover.style.display = 'none';
+            }
+        }
+
+        // Select a command from the popover
+        function selectCommand(command) {
+            const input = document.getElementById('chat-input-field');
+            const commandPopover = document.getElementById('command-popover');
+
+            // Set the input value to the command
+            input.value = '/' + command + ' ';
+            commandPopover.style.display = 'none';
+
+            // Focus back on input
+            input.focus();
+        }
+
+        // Select an agent from the popover
+        function selectAgent(agentName) {
+            const input = document.getElementById('chat-input-field');
+            const agentPopover = document.getElementById('agent-popover');
+
+            // Set the input value to the agent name
+            input.value = '#' + agentName + ' ';
+            agentPopover.style.display = 'none';
+
+            // Focus back on input
+            input.focus();
+        }
+
+        // Close popovers when clicking outside
+        document.addEventListener('click', function(event) {
+            const commandPopover = document.getElementById('command-popover');
+            const agentPopover = document.getElementById('agent-popover');
+            const chatInput = document.getElementById('chat-input-field');
+
+            // Don't close if clicking on the input field itself
+            if (event.target === chatInput) {
+                return;
+            }
+
+            if (commandPopover && chatInput &&
+                !commandPopover.contains(event.target)) {
+                commandPopover.style.display = 'none';
+            }
+
+            if (agentPopover && chatInput &&
+                !agentPopover.contains(event.target)) {
+                agentPopover.style.display = 'none';
+            }
+        });
+
+        // Initialize welcome message on page load
+        window.addEventListener('DOMContentLoaded', function() {
+            const welcomeElement = document.getElementById('welcome-message');
+            const welcomeText = "Welcome to the Ambient Code Platform. I'm here to help you with coding tasks, answer questions, and collaborate on your project. Use the /help command at any time for guidance. Type your message below or select a workflow to get started.";
+            
+            if (welcomeElement) {
+                setTimeout(() => {
+                    typeMessage(welcomeElement, welcomeText, 10, function() {
+                        // Show workflow cards after typing completes
+                        setTimeout(() => {
+                            showWorkflowCards();
+                        }, 300);
+                    });
+                }, 300);
+            }
+        });
+
+        // Close dropdown when clicking outside of it
+        document.addEventListener('click', function(event) {
+            const dropdown = document.querySelector('.user-dropdown');
+            if (!dropdown.contains(event.target)) {
+                document.getElementById('userDropdownMenu').style.display = 'none';
+                document.getElementById('user-dropdown-arrow').style.transform = 'rotate(0deg)';
+            }
+        });
+
+        // Run /ideate command
+        function runIdeateCommand() {
+            const chatMessages = document.getElementById('chat-messages');
+
+            // Update the workflow step to show spinner and status
+            const workflowStepFilename = document.querySelector('#rfe-phases .workflow-step-filename');
+            if (workflowStepFilename) {
+                workflowStepFilename.innerHTML = `
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation: spin 1s linear infinite; display: inline; vertical-align: middle; margin-right: 0.25rem;">
+                        <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+                    </svg>
+                    creating RFE...
+                `;
+            }
+
+            // Get selected agents
+            const selectedAgents = [];
+            const agentCheckboxes = document.querySelectorAll('#agents-list input[type="checkbox"]:not(#dynamic-agent-selection)');
+            agentCheckboxes.forEach(checkbox => {
+                if (checkbox.checked) {
+                    const label = checkbox.parentElement.querySelector('span');
+                    const agentText = label.textContent;
+                    const agentName = agentText.split(' - ')[0];
+                    const agentRole = agentText.split(' - ')[1];
+                    selectedAgents.push({ name: agentName, role: agentRole });
+                }
+            });
+
+            // Show system message about collaboration
+            const systemMessage = document.createElement('div');
+            systemMessage.style.cssText = 'text-align: center; padding: 0.5rem; margin: 1rem 0;';
+            systemMessage.innerHTML = `
+                <div style="display: inline-block; background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 1rem; padding: 0.375rem 0.75rem; font-size: 0.75rem; color: #64748b;">
+                    Selected agents are collaborating on an rfe.md file based on the associated repositories and provided context.
+                </div>
+            `;
+
+            chatMessages.appendChild(systemMessage);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+
+            // Show agent contributions if there are selected agents
+            if (selectedAgents.length > 0) {
+                showAgentContributions(selectedAgents, 0, () => {
+                    // After all agents have contributed, show RFE content
+                    showRFEContent();
+                });
+            } else {
+                // No agents selected, just show RFE content
+                setTimeout(() => {
+                    showRFEContent();
+                }, 500);
+            }
+        }
+
+        // Show agent contributions one by one
+        function showAgentContributions(agents, index, callback) {
+            if (index >= agents.length) {
+                callback();
+                return;
+            }
+
+            const agent = agents[index];
+            const chatMessages = document.getElementById('chat-messages');
+
+            setTimeout(function() {
+                const agentMessage = document.createElement('div');
+                agentMessage.className = 'message';
+                agentMessage.innerHTML =
+                    '<div class="message-avatar" style="background: #10b981; color: white; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 500; font-size: 0.875rem; flex-shrink: 0;">' + agent.name.substring(0, 2).toUpperCase() + '</div>' +
+                    '<div class="message-content" style="flex: 1; background: #f0fdf4; padding: 0.75rem; border-radius: 0.5rem;">' +
+                        '<div class="message-header">' + agent.name + ' (' + agent.role + ')</div>' +
+                        '<div id="agent-' + index + '-message"></div>' +
+                    '</div>';
+
+                chatMessages.appendChild(agentMessage);
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+
+                // Update message count
+                updateMessageCount();
+
+                // Type out agent's contribution
+                const messageElement = document.getElementById('agent-' + index + '-message');
+                const contributions = {
+                    'Archie': 'I will focus on the system architecture and technical patterns for the dashboard redesign.',
+                    'Aria': 'I will design the user experience strategy and journey mapping for AI platform engineers.',
+                    'Parker': 'I will ensure the redesign aligns with market strategy and delivers business value.',
+                    'Uma': 'I will oversee the design quality and maintain consistency with our design system.',
+                    'Felix': 'I will work on component design and accessibility implementation for the new interface.',
+                    'Steve': 'I will create visual designs and prototypes for the proposed directions.',
+                    'Ryan': 'I will analyze user insights and validate design decisions with research data.',
+                    'Olivia': 'I will define acceptance criteria and prioritize features for the sprint.',
+                    'Emma': 'I will coordinate the team and ensure we balance technical excellence with delivery timelines.',
+                    'Lee': 'I will facilitate sprint planning and coordinate cross-team dependencies.',
+                    'Taylor': 'I will focus on pragmatic implementation and code quality for the frontend.',
+                    'Stella': 'I will provide technical leadership and bridge the architecture to implementation.',
+                    'Diego': 'I will manage the documentation roadmap and content strategy.',
+                    'Terry': 'I will create user-centered documentation for the new dashboard features.',
+                    'Tessa': 'I will coordinate documentation standards and content quality.',
+                    'Casey': 'I will develop the information architecture and content taxonomy.',
+                    'Dan': 'I will validate strategic alignment with company growth pillars.',
+                    'Sam': 'I will facilitate the agile process and remove impediments.',
+                    'Jack': 'I will track cross-team dependencies and manage delivery milestones.',
+                    'Phoenix': 'I will assess customer impact and plan for smooth upgrade paths.',
+                    'Neil': 'I will ensure testability and verify implementation matches requirements.'
+                };
+
+                const contribution = contributions[agent.name] || 'I will contribute my expertise as ' + agent.role + ' to this RFE.';
+
+                typeMessage(messageElement, contribution, 10, function() {
+                    // Move to next agent
+                    showAgentContributions(agents, index + 1, callback);
+                });
+            }, 300);
+        }
+
+        // Show RFE content
+        function showRFEContent() {
+            const chatMessages = document.getElementById('chat-messages');
+
+            const rfeMessage = document.createElement('div');
+            rfeMessage.className = 'message';
+            rfeMessage.innerHTML =
+                '<div class="message-avatar ai-avatar">ACP</div>' +
+                '<div class="message-content">' +
+                    '<div class="message-header">ACP</div>' +
+                    '<div id="rfe-content" style="white-space: pre-wrap; font-family: monospace; font-size: 0.875rem;"></div>' +
+                    '<div id="rfe-actions" style="display: none; margin-top: 1rem; display: flex; gap: 0.5rem;"></div>' +
+                '</div>';
+
+            chatMessages.appendChild(rfeMessage);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+
+            // Update message count
+            updateMessageCount();
+
+            // Type out the RFE content
+            const rfeContentElement = document.getElementById('rfe-content');
+            var rfeContent = '# RFE: Visual Redesign of Red Hat OpenShift AI (RHOAI) 3.0 Dashboard\n\n' +
+'## Executive Summary\n\n' +
+'This Request for Enhancement (RFE) proposes three distinct visual redesign directions for the Red Hat OpenShift AI (RHOAI) 3.0 dashboard to address the core challenge faced by AI Platform Engineers like Paula: efficiently finding and evaluating production-ready AI models among thousands of options.\n\n' +
+'The current dashboard, while functional, presents a traditional enterprise interface that does not leverage modern AI-centric design patterns or optimize for the unique workflows of AI practitioners. This redesign focuses on transforming the user experience from a data-heavy administrative interface to an intelligent, task-oriented platform that accelerates model discovery and deployment decisions.\n\n' +
+'## Current State Analysis\n\n' +
+'### Existing Architecture\n' +
+'- Framework: React with TypeScript, PatternFly React components\n' +
+'- Navigation: Traditional sidebar navigation with hierarchical structure\n' +
+'- Layout: Standard enterprise dashboard with card-based model catalog\n' +
+'- Feature Management: Comprehensive feature flag system supporting MVP mode vs full feature set\n' +
+'- Components: Heavy use of PatternFly components (Cards, Tables, Forms, Modals, Dropdowns)\n\n' +
+'### Current User Journey Pain Points\n' +
+'1. Cognitive Overload: Thousands of models presented in basic card/table format\n' +
+'2. Inefficient Filtering: Multiple separate filter interfaces without visual feedback\n' +
+'3. Limited Comparison: No side-by-side model comparison capabilities\n' +
+'4. Static Information: Performance metrics buried in text rather than visual indicators\n' +
+'5. Context Switching: Frequent navigation between catalog, registry, and deployment sections\n\n' +
+'### Technical Foundation\n' +
+'- PatternFly Integration: Extensive use of existing components provides solid accessibility foundation\n' +
+'- Feature Flags: Robust system for MVP/full feature mode switching\n' +
+'- State Management: Context API for global state, component-level state for UI interactions\n' +
+'- Routing: React Router with dynamic route generation based on feature flags\n\n' +
+'## User Persona: Paula - AI Platform Engineer\n\n' +
+'Primary Goal: Find production-ready AI models that balance performance, cost, and specific use case requirements\n\n' +
+'Key Workflows:\n' +
+'1. Model Discovery: Search through thousands of models using multiple criteria\n' +
+'2. Performance Evaluation: Compare latency, throughput, accuracy, and resource requirements\n' +
+'3. Compatibility Assessment: Verify model compatibility with existing infrastructure\n' +
+'4. Deployment Planning: Understand deployment requirements and costs\n' +
+'5. Monitoring Setup: Configure monitoring and alerting for deployed models\n\n' +
+'Success Metrics:\n' +
+'- Time to find relevant models reduced by 60%\n' +
+'- Improved task completion rates for model selection workflows\n' +
+'- Reduced cognitive load when comparing multiple models\n' +
+'- Increased user satisfaction with filtering and search capabilities\n\n' +
+'---\n\n' +
+'# Design Direction 1: AI-First Visual Intelligence\n\n' +
+'## Philosophy\n' +
+'Treat AI models as visual, interactive objects rather than data rows. Transform the dashboard into an intelligent visual workspace where data visualization, interactive filtering, and AI-powered recommendations create an intuitive model discovery experience.\n\n' +
+'## User Journey: Paula Model Discovery Workflow\n\n' +
+'### 1. Landing Experience\n' +
+'Paula arrives at a Visual Model Universe - a dynamic, interactive visualization showing all available models as nodes in a network graph, clustered by use case, provider, and performance characteristics.\n\n' +
+'### 2. Intelligent Filtering\n' +
+'She uses Visual Filter Sliders to narrow down options:\n' +
+'- Latency requirement: Drag slider to <100ms\n' +
+'- Cost threshold: Visual budget indicator shows real-time cost implications\n' +
+'- Hardware compatibility: Interactive hardware requirement visualization\n\n' +
+'### 3. AI-Powered Recommendations\n' +
+'The Recommendation Engine surfaces relevant models based on her query with confidence scores and reasoning.\n\n' +
+'### 4. Visual Comparison\n' +
+'Paula selects 3-4 models for Side-by-Side Visual Comparison with interactive performance charts, compatibility matrices, and deployment requirement visualizations.\n\n' +
+'### 5. Workflow Integration\n' +
+'She connects her selected model to MCP servers and agents using the Visual Workflow Builder - a drag-and-drop interface showing data flow and dependencies.';
+
+            typeMessage(rfeContentElement, rfeContent, 5, function() {
+                // Scroll to bottom after typing completes
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+
+                // Restore the workflow step description
+                const workflowStepFilename = document.querySelector('#rfe-phases .workflow-step-filename');
+                if (workflowStepFilename) {
+                    workflowStepFilename.innerHTML = 'Create or update rfe.md file';
+                }
+
+                // Show action buttons
+                const actionsDiv = document.getElementById('rfe-actions');
+                if (actionsDiv) {
+                    actionsDiv.style.display = 'flex';
+                    actionsDiv.innerHTML =
+                        '<button onclick="copyRFEContent()" class="btn btn-secondary" style="padding: 0.375rem 0.75rem; font-size: 0.875rem;">' +
+                            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 0.25rem;">' +
+                                '<rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>' +
+                                '<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>' +
+                            '</svg>' +
+                            'Copy' +
+                        '</button>' +
+                        '<button onclick="viewRFEContent()" class="btn btn-secondary" style="padding: 0.375rem 0.75rem; font-size: 0.875rem;">' +
+                            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 0.25rem;">' +
+                                '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>' +
+                                '<circle cx="12" cy="12" r="3"/>' +
+                            '</svg>' +
+                            'View' +
+                        '</button>';
+                }
+
+                // Add result to Results accordion
+                addResultToAccordion('rfe.md was created');
+
+                // Add file to repository file list
+                addFileToRepository('rfe.md', '12.3K');
+            });
+        }
+
+        // Update message count in Session Details
+        function updateMessageCount() {
+            const chatMessages = document.getElementById('chat-messages');
+            if (chatMessages) {
+                const messageCount = chatMessages.querySelectorAll('.message').length;
+                const messageCountSpan = document.getElementById('message-count');
+                if (messageCountSpan) {
+                    messageCountSpan.textContent = messageCount;
+                }
+            }
+        }
+
+        // Add file to Spec Repository file list
+        function addFileToRepository(filename, filesize) {
+            const repoDetails = document.getElementById('repository-details');
+            if (!repoDetails) {
+                console.log('repository-details not found');
+                return;
+            }
+
+            // Find the file list container (the div with gray background)
+            const fileListContainer = repoDetails.querySelector('div[style*="background: #f8fafc"]');
+            if (!fileListContainer) {
+                console.log('file list container not found');
+                return;
+            }
+
+            // Check if file already exists in the list
+            const existingFiles = fileListContainer.querySelectorAll('div[style*="display: flex"]');
+            for (var i = 0; i < existingFiles.length; i++) {
+                if (existingFiles[i].textContent.includes(filename)) {
+                    console.log('File already exists: ' + filename);
+                    return; // File already exists, don't add duplicate
+                }
+            }
+
+            // Create new file entry
+            const fileEntry = document.createElement('div');
+            fileEntry.style.cssText = 'display: flex; justify-content: space-between; padding: 0.25rem 0; color: #64748b;';
+
+            // Make rfe.md and spec.md clickable
+            var filenameHtml = filename;
+            if (filename === 'rfe.md') {
+                filenameHtml = '<a href="#" onclick="viewRFEContent(); return false;" style="color: #64748b; text-decoration: none; cursor: pointer;">' + filename + '</a>';
+            } else if (filename === 'spec.md') {
+                filenameHtml = '<a href="#" onclick="viewSpecContent(); return false;" style="color: #64748b; text-decoration: none; cursor: pointer;">' + filename + '</a>';
+            }
+
+            fileEntry.innerHTML = '<span>' + filenameHtml + '</span><span>' + filesize + '</span>';
+
+            // Find the LICENSE file (first non-directory file) and insert before it
+            var insertBeforeElement = null;
+            var allDivs = fileListContainer.querySelectorAll('div[style*="display: flex"]');
+            for (var j = 0; j < allDivs.length; j++) {
+                var spanText = allDivs[j].querySelector('span').textContent;
+                if (spanText === 'LICENSE' || (spanText.indexOf('/') === -1 && spanText.indexOf('.') !== -1)) {
+                    insertBeforeElement = allDivs[j];
+                    break;
+                }
+            }
+
+            if (insertBeforeElement) {
+                fileListContainer.insertBefore(fileEntry, insertBeforeElement);
+            } else {
+                fileListContainer.appendChild(fileEntry);
+            }
+
+            console.log('Added file to repository: ' + filename);
+        }
+
+        // Add result to Results accordion
+        function addResultToAccordion(message) {
+            const resultsContent = document.getElementById('results-content');
+            if (resultsContent) {
+                // Check if "No results yet" message exists and remove it
+                const noResultsMsg = resultsContent.querySelector('div[style*="text-align: center"]');
+                if (noResultsMsg && noResultsMsg.textContent.trim() === 'No results yet') {
+                    resultsContent.innerHTML = '';
+                }
+
+                // Get or create the results list
+                let resultsList = resultsContent.querySelector('div[style*="padding: 1rem"]');
+                if (!resultsList) {
+                    resultsContent.innerHTML = '<div style="padding: 1rem; font-size: 0.875rem; color: #64748b;"></div>';
+                    resultsList = resultsContent.querySelector('div');
+                }
+
+                // Add new result item with clickable filename
+                const resultItem = document.createElement('div');
+                resultItem.style.cssText = 'margin-bottom: 0.5rem;';
+
+                // Make rfe.md or spec.md clickable
+                var messageWithLink = message;
+                if (message.includes('rfe.md')) {
+                    messageWithLink = message.replace('rfe.md', '<a href="#" onclick="viewRFEContent(); return false;" style="color: #1e40af; text-decoration: underline; cursor: pointer;">rfe.md</a>');
+                } else if (message.includes('spec.md')) {
+                    messageWithLink = message.replace('spec.md', '<a href="#" onclick="viewSpecContent(); return false;" style="color: #1e40af; text-decoration: underline; cursor: pointer;">spec.md</a>');
+                }
+
+                resultItem.innerHTML = '✅ ' + messageWithLink;
+                resultsList.appendChild(resultItem);
+            }
+        }
+
+        // Copy RFE content to clipboard
+        function copyRFEContent() {
+            const rfeContent = document.getElementById('rfe-content').textContent;
+            navigator.clipboard.writeText(rfeContent).then(function() {
+                alert('RFE content copied to clipboard!');
+            }).catch(function(err) {
+                console.error('Failed to copy: ', err);
+            });
+        }
+
+        // View RFE content in new window or modal
+        function viewRFEContent() {
+            const rfeContent = document.getElementById('rfe-content').textContent;
+            const newWindow = window.open('', 'RFE Content', 'width=800,height=600');
+            newWindow.document.write('<html><head><title>RFE Content</title>');
+            newWindow.document.write('<style>body { font-family: monospace; white-space: pre-wrap; padding: 2rem; }</style>');
+            newWindow.document.write('</head><body>');
+            newWindow.document.write(rfeContent);
+            newWindow.document.write('</body></html>');
+            newWindow.document.close();
+        }
+
+        // Run /specify command
+        function runSpecifyCommand() {
+            const chatMessages = document.getElementById('chat-messages');
+
+            // Get selected agents
+            const selectedAgents = [];
+            const agentCheckboxes = document.querySelectorAll('#agents-list input[type="checkbox"]:not(#dynamic-agent-selection)');
+            agentCheckboxes.forEach(function(checkbox) {
+                if (checkbox.checked) {
+                    const label = checkbox.parentElement.querySelector('span');
+                    const agentText = label.textContent;
+                    const agentName = agentText.split(' - ')[0];
+                    const agentRole = agentText.split(' - ')[1];
+                    selectedAgents.push({ name: agentName, role: agentRole });
+                }
+            });
+
+            // Show system message about collaboration
+            const systemMessage = document.createElement('div');
+            systemMessage.style.cssText = 'text-align: center; padding: 0.5rem; margin: 1rem 0;';
+            systemMessage.innerHTML =
+                '<div style="display: inline-block; background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 1rem; padding: 0.375rem 0.75rem; font-size: 0.75rem; color: #64748b;">' +
+                    'Selected agents are collaborating on a spec.md file based on the associated repositories and provided context.' +
+                '</div>';
+
+            chatMessages.appendChild(systemMessage);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+
+            // Show agent contributions if there are selected agents
+            if (selectedAgents.length > 0) {
+                showSpecifyAgentContributions(selectedAgents, 0, function() {
+                    // After all agents have contributed, show spec content
+                    showSpecContent();
+                });
+            } else {
+                // No agents selected, just show spec content
+                setTimeout(function() {
+                    showSpecContent();
+                }, 500);
+            }
+        }
+
+        // Show agent contributions for /specify command
+        function showSpecifyAgentContributions(agents, index, callback) {
+            if (index >= agents.length) {
+                callback();
+                return;
+            }
+
+            const agent = agents[index];
+            const chatMessages = document.getElementById('chat-messages');
+
+            setTimeout(function() {
+                const agentMessage = document.createElement('div');
+                agentMessage.className = 'message';
+                agentMessage.innerHTML =
+                    '<div class="message-avatar" style="background: #10b981; color: white; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 500; font-size: 0.875rem; flex-shrink: 0;">' + agent.name.substring(0, 2).toUpperCase() + '</div>' +
+                    '<div class="message-content" style="flex: 1; background: #f0fdf4; padding: 0.75rem; border-radius: 0.5rem;">' +
+                        '<div class="message-header">' + agent.name + ' (' + agent.role + ')</div>' +
+                        '<div id="spec-agent-' + index + '-message"></div>' +
+                    '</div>';
+
+                chatMessages.appendChild(agentMessage);
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+
+                // Update message count
+                updateMessageCount();
+
+                // Type out agent's contribution for spec
+                const messageElement = document.getElementById('spec-agent-' + index + '-message');
+                const contributions = {
+                    'Archie': 'I will define the technical architecture and system components for the specification.',
+                    'Aria': 'I will map out the complete user journey and interaction patterns.',
+                    'Parker': 'I will ensure the spec aligns with product strategy and market needs.',
+                    'Uma': 'I will establish design standards and component specifications.',
+                    'Felix': 'I will detail the accessibility requirements and component behavior.',
+                    'Steve': 'I will specify the visual design requirements and interface patterns.',
+                    'Ryan': 'I will incorporate user research findings into the requirements.',
+                    'Olivia': 'I will define clear acceptance criteria for each requirement.',
+                    'Emma': 'I will ensure the spec is technically feasible and resource-appropriate.',
+                    'Lee': 'I will break down the requirements into implementable components.',
+                    'Taylor': 'I will review the spec for implementation clarity and practicality.',
+                    'Stella': 'I will validate the technical approach and identify potential issues.',
+                    'Diego': 'I will outline the documentation requirements for this feature.',
+                    'Terry': 'I will ensure user documentation needs are captured in the spec.',
+                    'Tessa': 'I will define content structure and information architecture needs.',
+                    'Casey': 'I will specify the content strategy and taxonomy requirements.',
+                    'Dan': 'I will validate alignment with strategic business objectives.',
+                    'Sam': 'I will ensure the spec supports our agile development process.',
+                    'Jack': 'I will identify dependencies and delivery milestones.',
+                    'Phoenix': 'I will assess upgrade impact and customer migration paths.',
+                    'Neil': 'I will define testing requirements and quality criteria.'
+                };
+
+                const contribution = contributions[agent.name] || 'I will contribute my expertise as ' + agent.role + ' to this specification.';
+
+                typeMessage(messageElement, contribution, 10, function() {
+                    // Move to next agent
+                    showSpecifyAgentContributions(agents, index + 1, callback);
+                });
+            }, 300);
+        }
+
+        // Show spec content
+        function showSpecContent() {
+            const chatMessages = document.getElementById('chat-messages');
+
+            const specMessage = document.createElement('div');
+            specMessage.className = 'message';
+            specMessage.innerHTML =
+                '<div class="message-avatar ai-avatar">ACP</div>' +
+                '<div class="message-content">' +
+                    '<div class="message-header">ACP</div>' +
+                    '<div id="spec-content" style="white-space: pre-wrap; font-family: monospace; font-size: 0.875rem;"></div>' +
+                    '<div id="spec-actions" style="display: none; margin-top: 1rem; display: flex; gap: 0.5rem;"></div>' +
+                '</div>';
+
+            chatMessages.appendChild(specMessage);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+
+            // Update message count
+            updateMessageCount();
+
+            // Type out the spec content
+            const specContentElement = document.getElementById('spec-content');
+            var specContent = '# Feature Specification: RHOAI 3.0 Dashboard Redesign\n\n' +
+'## Overview\n\n' +
+'This specification defines the requirements for redesigning the Red Hat OpenShift AI (RHOAI) 3.0 dashboard to improve model discovery and deployment workflows for AI Platform Engineers.\n\n' +
+'## User Stories\n\n' +
+'### Primary User Story\n' +
+'As an AI Platform Engineer, I want to quickly find and evaluate production-ready AI models so that I can make informed deployment decisions without cognitive overload.\n\n' +
+'### Supporting User Stories\n' +
+'- As a user, I want to filter models by performance metrics so that I can find models that meet my latency requirements.\n' +
+'- As a user, I want to compare multiple models side-by-side so that I can make data-driven selection decisions.\n' +
+'- As a user, I want visual representations of model performance so that I can quickly assess model capabilities.\n' +
+'- As a user, I want AI-powered recommendations so that I can discover relevant models I might have missed.\n\n' +
+'## Functional Requirements\n\n' +
+'### FR-1: Advanced Model Filtering\n' +
+'The system shall provide interactive filtering capabilities including:\n' +
+'- Latency range slider with real-time results\n' +
+'- Cost threshold controls with budget indicators\n' +
+'- Hardware compatibility selection\n' +
+'- Use case category filtering\n' +
+'- Multi-criteria combination support\n\n' +
+'### FR-2: Model Comparison Interface\n' +
+'The system shall enable users to:\n' +
+'- Select up to 4 models for comparison\n' +
+'- View side-by-side performance metrics\n' +
+'- Compare deployment requirements\n' +
+'- Export comparison data\n\n' +
+'### FR-3: Visual Data Representation\n' +
+'The system shall display:\n' +
+'- Performance radar charts for model capabilities\n' +
+'- Compatibility matrices with visual indicators\n' +
+'- Cost visualization with budget tracking\n' +
+'- Deployment status with real-time updates\n\n' +
+'### FR-4: AI Recommendations\n' +
+'The system shall provide:\n' +
+'- Context-aware model suggestions\n' +
+'- Confidence scores for recommendations\n' +
+'- Reasoning explanations for suggestions\n' +
+'- Learning from user selections\n\n' +
+'## Non-Functional Requirements\n\n' +
+'### NFR-1: Performance\n' +
+'- Initial page load: < 2 seconds\n' +
+'- Filter response time: < 300ms\n' +
+'- Support 5000+ models without degradation\n\n' +
+'### NFR-2: Accessibility\n' +
+'- WCAG 2.1 AA compliance required\n' +
+'- Keyboard navigation for all features\n' +
+'- Screen reader support with ARIA labels\n' +
+'- High contrast mode support\n\n' +
+'### NFR-3: Usability\n' +
+'- 60% reduction in model discovery time\n' +
+'- 4.5/5 minimum user satisfaction score\n' +
+'- 80% feature adoption rate\n\n' +
+'## Technical Specifications\n\n' +
+'### Technology Stack\n' +
+'- Frontend: React 18+ with TypeScript\n' +
+'- UI Framework: PatternFly React components\n' +
+'- Charts: Recharts library\n' +
+'- State Management: React Context API\n' +
+'- Build Tool: Webpack 5\n\n' +
+'### Browser Support\n' +
+'- Chrome/Edge: Latest 2 versions\n' +
+'- Firefox: Latest 2 versions\n' +
+'- Safari: Latest 2 versions\n\n' +
+'## Acceptance Criteria\n\n' +
+'### AC-1: Filter Functionality\n' +
+'Given a user on the dashboard\n' +
+'When they adjust filter controls\n' +
+'Then results update within 300ms\n' +
+'And filter state persists across sessions\n\n' +
+'### AC-2: Model Comparison\n' +
+'Given a user has selected multiple models\n' +
+'When they click compare\n' +
+'Then a side-by-side view displays all metrics\n' +
+'And they can export the comparison as PDF or CSV\n\n' +
+'### AC-3: Accessibility Compliance\n' +
+'Given any dashboard feature\n' +
+'When tested with accessibility tools\n' +
+'Then it passes WCAG 2.1 AA compliance\n' +
+'And all interactions work via keyboard\n\n' +
+'## Dependencies\n' +
+'- Backend API for model metadata\n' +
+'- Real-time metrics streaming service\n' +
+'- Authentication and authorization system\n' +
+'- Analytics and telemetry infrastructure';
+
+            typeMessage(specContentElement, specContent, 5, function() {
+                // Scroll to bottom after typing completes
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+
+                // Show action buttons
+                const actionsDiv = document.getElementById('spec-actions');
+                if (actionsDiv) {
+                    actionsDiv.style.display = 'flex';
+                    actionsDiv.innerHTML =
+                        '<button onclick="copySpecContent()" class="btn btn-secondary" style="padding: 0.375rem 0.75rem; font-size: 0.875rem;">' +
+                            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 0.25rem;">' +
+                                '<rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>' +
+                                '<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>' +
+                            '</svg>' +
+                            'Copy' +
+                        '</button>' +
+                        '<button onclick="viewSpecContent()" class="btn btn-secondary" style="padding: 0.375rem 0.75rem; font-size: 0.875rem;">' +
+                            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 0.25rem;">' +
+                                '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>' +
+                                '<circle cx="12" cy="12" r="3"/>' +
+                            '</svg>' +
+                            'View' +
+                        '</button>';
+                }
+
+                // Add result to Results accordion
+                addResultToAccordion('spec.md was created');
+
+                // Add file to repository file list
+                addFileToRepository('spec.md', '8.7K');
+            });
+        }
+
+        // Copy spec content to clipboard
+        function copySpecContent() {
+            const specContent = document.getElementById('spec-content').textContent;
+            navigator.clipboard.writeText(specContent).then(function() {
+                alert('Spec content copied to clipboard!');
+            }).catch(function(err) {
+                console.error('Failed to copy: ', err);
+            });
+        }
+
+        // View spec content in new window
+        function viewSpecContent() {
+            const specContent = document.getElementById('spec-content').textContent;
+            const newWindow = window.open('', 'Spec Content', 'width=800,height=600');
+            newWindow.document.write('<html><head><title>Spec Content</title>');
+            newWindow.document.write('<style>body { font-family: monospace; white-space: pre-wrap; padding: 2rem; }</style>');
+            newWindow.document.write('</head><body>');
+            newWindow.document.write(specContent);
+            newWindow.document.write('</body></html>');
+            newWindow.document.close();
+        }
+
+        // View session prompt in new window
+        function viewSessionPrompt() {
+            var promptContent = 'IMPORTANT: The result of this interactive chat session MUST produce rfe.md at the workspace root. The rfe.md should be formatted as markdown in the following way:\n\n' +
+'# Feature Title\n\n' +
+'**Feature Overview:**  \n' +
+'*An elevator pitch (value statement) that describes the Feature in a clear, concise way. ie: Executive Summary of the user goal or problem that is being solved, why does this matter to the user? The "What & Why"...* \n\n' +
+'* Text\n\n' +
+'**Goals:**\n\n' +
+'*Provide high-level goal statement, providing user context and expected user outcome(s) for this Feature. Who benefits from this Feature, and how? What is the difference between today\'s current state and a world with this Feature?*\n\n' +
+'* Text\n\n' +
+'**Out of Scope:**\n\n' +
+'*High-level list of items or personas that are out of scope.*\n\n' +
+'* Text\n\n' +
+'**Requirements:**\n\n' +
+'*A list of specific needs, capabilities, or objectives that a Feature must deliver to satisfy the Feature. Some requirements will be flagged as MVP. If an MVP gets shifted, the Feature shifts. If a non MVP requirement slips, it does not shift the feature.*\n\n' +
+'* Text\n\n' +
+'**Done - Acceptance Criteria:**\n\n' +
+'*Acceptance Criteria articulates and defines the value proposition - what is required to meet the goal and intent of this Feature. The Acceptance Criteria provides a detailed definition of scope and the expected outcomes - from a users point of view*\n\n' +
+'* Text\n\n' +
+'**Use Cases - i.e. User Experience & Workflow:**\n\n' +
+'*Include use case diagrams, main success scenarios, alternative flow scenarios.*\n\n' +
+'* Text\n\n' +
+'**Documentation Considerations:**\n\n' +
+'*Provide information that needs to be considered and planned so that documentation will meet customer needs. If the feature extends existing functionality, provide a link to its current documentation..*\n\n' +
+'* Text\n\n' +
+'**Questions to answer:**\n\n' +
+'*Include a list of refinement / architectural questions that may need to be answered before coding can begin.*\n\n' +
+'* Text\n\n' +
+'**Background & Strategic Fit:**\n\n' +
+'*Provide any additional context is needed to frame the feature.*\n\n' +
+'* Text\n\n' +
+'**Customer Considerations**\n\n' +
+'*Provide any additional customer-specific considerations that must be made when designing and delivering the Feature.*\n\n' +
+'* Text';
+
+            const newWindow = window.open('', 'Session Prompt', 'width=800,height=600');
+            newWindow.document.write('<html><head><title>Session Prompt</title>');
+            newWindow.document.write('<style>body { font-family: monospace; white-space: pre-wrap; padding: 2rem; }</style>');
+            newWindow.document.write('</head><body>');
+            newWindow.document.write(promptContent);
+            newWindow.document.write('</body></html>');
+            newWindow.document.close();
+        }
+
+        // Handle Enter key press in chat input
+        function handleKeyPress(event) {
+            if (event.key === 'Enter' || event.keyCode === 13) {
+                event.preventDefault();
+                sendMessage();
+            }
+        }
+
+        // Send user message to chat
+        function sendMessage() {
+            var inputField = document.getElementById('chat-input-field');
+            var messageText = inputField.value.trim();
+
+            // Don't send empty messages
+            if (!messageText) {
+                return;
+            }
+
+            var chatMessages = document.getElementById('chat-messages');
+
+            // Create user message element
+            var userMessage = document.createElement('div');
+            userMessage.className = 'message';
+            userMessage.innerHTML =
+                '<div class="message-avatar user-avatar">DU</div>' +
+                '<div class="message-content">' +
+                    '<div class="message-header">demo-user@redhat.com</div>' +
+                    '<div>' + escapeHtml(messageText) + '</div>' +
+                '</div>';
+
+            chatMessages.appendChild(userMessage);
+
+            // Update message count
+            updateMessageCount();
+
+            // Clear input field
+            inputField.value = '';
+
+            // Scroll to bottom of chat
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+
+            // ACP responds after a short delay
+            setTimeout(function() {
+                showACPResponse(messageText);
+            }, 800);
+        }
+
+        // Update agent count badge
+        function updateAgentCountBadge() {
+            var agentCheckboxes = document.querySelectorAll('#agents-list input[type="checkbox"]:not(#dynamic-agent-selection)');
+            var checkedCount = 0;
+
+            agentCheckboxes.forEach(function(checkbox) {
+                if (checkbox.checked) {
+                    checkedCount++;
+                }
+            });
+
+            var badge = document.getElementById('agents-count-badge');
+            if (badge) {
+                badge.textContent = checkedCount;
+                if (checkedCount > 0) {
+                    badge.style.display = 'inline-block';
+                } else {
+                    badge.style.display = 'none';
+                }
+            }
+        }
+
+        // Add agent to session
+        function addAgentToSession(agentName) {
+            var chatMessages = document.getElementById('chat-messages');
+
+            // Find and check the agent's checkbox in the accordion
+            var agentCheckboxes = document.querySelectorAll('#agents-list input[type="checkbox"]:not(#dynamic-agent-selection)');
+            var agentInfo = null;
+
+            agentCheckboxes.forEach(function(checkbox) {
+                var label = checkbox.parentElement.querySelector('span');
+                var agentText = label.textContent;
+                var name = agentText.split(' - ')[0].trim();
+                var role = agentText.split(' - ')[1].trim();
+
+                if (name.toLowerCase() === agentName.toLowerCase()) {
+                    checkbox.checked = true;
+                    agentInfo = { name: name, role: role };
+                }
+            });
+
+            if (!agentInfo) {
+                // Agent not found
+                return;
+            }
+
+            // Update agent count badge
+            updateAgentCountBadge();
+
+            // Show system message about agent being added
+            var systemMessage = document.createElement('div');
+            systemMessage.style.cssText = 'text-align: center; padding: 0.5rem; margin: 1rem 0;';
+            systemMessage.innerHTML =
+                '<div style="display: inline-block; background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 1rem; padding: 0.375rem 0.75rem; font-size: 0.75rem; color: #64748b;">' +
+                    agentInfo.name + ' has been added to the session' +
+                '</div>';
+            chatMessages.appendChild(systemMessage);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+
+            // Show agent participation message after a delay
+            setTimeout(function() {
+                showAgentParticipation(agentInfo);
+            }, 800);
+        }
+
+        // Show agent participation message
+        function showAgentParticipation(agent) {
+            var chatMessages = document.getElementById('chat-messages');
+
+            var agentMessage = document.createElement('div');
+            agentMessage.className = 'message';
+            agentMessage.innerHTML =
+                '<div class="message-avatar" style="background: #10b981; color: white; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 500; font-size: 0.875rem; flex-shrink: 0;">' + agent.name.substring(0, 2).toUpperCase() + '</div>' +
+                '<div class="message-content" style="flex: 1; background: #f0fdf4; padding: 0.75rem; border-radius: 0.5rem;">' +
+                    '<div class="message-header">' + agent.name + ' (' + agent.role + ')</div>' +
+                    '<div id="agent-participation-' + agent.name + '"></div>' +
+                '</div>';
+
+            chatMessages.appendChild(agentMessage);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+
+            // Update message count
+            updateMessageCount();
+
+            // Agent participation messages
+            var participationMessages = {
+                'Archie': 'I\'m ready to provide architectural guidance and technical leadership.',
+                'Aria': 'I\'ll help with user experience strategy and journey mapping.',
+                'Casey': 'I can assist with content strategy and information architecture.',
+                'Dan': 'I\'m here to ensure alignment with strategic business objectives.',
+                'Diego': 'I\'ll manage the documentation roadmap and coordinate content strategy.',
+                'Emma': 'I\'m ready to coordinate the team and balance technical excellence with delivery.',
+                'Felix': 'I can help with component design and accessibility implementation.',
+                'Jack': 'I\'ll track dependencies and manage delivery milestones.',
+                'Lee': 'I\'m here to facilitate sprint planning and coordinate technical work.',
+                'Neil': 'I\'ll ensure testability and verify implementation matches requirements.',
+                'Olivia': 'I can define acceptance criteria and prioritize features.',
+                'Parker': 'I\'m ready to align this work with product strategy and market needs.',
+                'Phoenix': 'I\'ll assess customer impact and plan for smooth upgrade paths.',
+                'Ryan': 'I can provide user research insights and validate design decisions.',
+                'Sam': 'I\'m here to facilitate the agile process and remove impediments.',
+                'Stella': 'I\'ll provide technical leadership and bridge architecture to implementation.',
+                'Steve': 'I can create visual designs and prototypes.',
+                'Taylor': 'I\'m ready to focus on pragmatic implementation and code quality.',
+                'Terry': 'I\'ll create user-centered documentation for this work.',
+                'Tessa': 'I can coordinate documentation standards and content quality.',
+                'Uma': 'I\'m here to ensure design quality and maintain design system consistency.'
+            };
+
+            var message = participationMessages[agent.name] || 'I\'m ready to contribute my expertise to this session.';
+
+            // Type out the agent's participation message
+            var messageElement = document.getElementById('agent-participation-' + agent.name);
+            typeMessage(messageElement, message, 15, function() {
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            });
+        }
+
+        // Show ACP response message
+        function showACPResponse(userMessage) {
+            var chatMessages = document.getElementById('chat-messages');
+
+            // Check if user message contains agent mention (#AgentName)
+            var agentMatch = userMessage.match(/#(\w+)/);
+            if (agentMatch) {
+                var agentName = agentMatch[1];
+                addAgentToSession(agentName);
+                return;
+            }
+
+            // Check if user message starts with /ideate
+            if (userMessage.toLowerCase().indexOf('/ideate') === 0) {
+                // Run the ideate command workflow
+                runIdeateCommand();
+                return;
+            }
+
+            // Check if user message starts with /specify
+            if (userMessage.toLowerCase().indexOf('/specify') === 0) {
+                // Run the specify command workflow
+                runSpecifyCommand();
+                return;
+            }
+
+            var responseText;
+
+            // Check if user message starts with /help
+            if (userMessage.toLowerCase().indexOf('/help') === 0) {
+                responseText = 'Get started by selecting a workflow. This will provide a structured process for agent collaboration.';
+            } else {
+                // Array of helpful responses
+                var responses = [
+                    'I understand. Let me help you with that.',
+                    'That\'s a great question. Based on the current workflow, I recommend starting with the ideate phase.',
+                    'I can assist with that. Would you like me to guide you through the process?',
+                    'Good thinking. Let\'s break that down into manageable steps.',
+                    'I\'m here to help. Let me know if you need any clarification on the workflow.',
+                    'That makes sense.',
+                    'Excellent. I can help coordinate the agents to work on that together.',
+                    'I see what you\'re asking. Let me provide some guidance on that.',
+                    'Understood.',
+                    'That\'s within scope.'
+                ];
+
+                // Pick a random response
+                var randomIndex = Math.floor(Math.random() * responses.length);
+                responseText = responses[randomIndex];
+            }
+
+            // Create unique ID for this response
+            var uniqueId = 'acp-response-' + Date.now();
+
+            // Create ACP message element
+            var acpMessage = document.createElement('div');
+            acpMessage.className = 'message';
+            acpMessage.innerHTML =
+                '<div class="message-avatar ai-avatar">ACP</div>' +
+                '<div class="message-content">' +
+                    '<div class="message-header">ACP</div>' +
+                    '<div id="' + uniqueId + '"></div>' +
+                '</div>';
+
+            chatMessages.appendChild(acpMessage);
+
+            // Update message count
+            updateMessageCount();
+
+            // Scroll to bottom
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+
+            // Type out the response
+            var responseElement = document.getElementById(uniqueId);
+            typeMessage(responseElement, responseText, 15, function() {
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            });
+        }
+
+        // Escape HTML to prevent XSS
+        function escapeHtml(text) {
+            var div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+    </script>
+</body>
+</html>

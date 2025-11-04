@@ -1,0 +1,18 @@
+Feedback on Version 1 of the Ambient Code prototype
+
+Actionable
+
+- Hide workflows from the project view
+- Hide API keys from the project view for now until we have Jira integration
+- Move Project info to overview page
+- Each step in a workflow depends on the successful completion of the step before it. For example if the /spec command needs /ideate to have successfully run. A successful run of a step is determined by weather or not it generated an artifact. For example if there is no rfe.md generated then /spec is disabled.
+- The workflow descriptions in each step should change to status messages when the step is running. For example when a user runs /ideate then ‘Create or update rfe.md file’ should become ‘Generating rfe.md’
+
+Needs further discussion
+
+- Open question: File editing the ambient code UI, do we need it for MVP?
+- Open question: Can we abstract the idea of a spec repo for artifacts and config or can we have a default storage area on the container we are running in?
+- Open question: Collaboration
+
+
+

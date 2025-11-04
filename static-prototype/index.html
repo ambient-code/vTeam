@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ambient Code Platform - Workspaces</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <header class="header">
+        <div class="container">
+            <div class="header-content">
+                <a href="index.html" class="logo">Ambient Code Platform</a>
+                <div style="display: flex; align-items: center; gap: 2rem;">
+                    <div class="user-dropdown" style="position: relative;">
+                        <button onclick="toggleUserDropdown()" class="user-dropdown-trigger" style="display: flex; align-items: center; gap: 0.5rem; color: #64748b; font-size: 0.875rem; background: none; border: none; cursor: pointer; padding: 0.5rem; border-radius: 0.375rem; transition: background-color 0.2s;">
+                            <div style="width: 24px; height: 24px; background: #64748b; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: 500; font-size: 0.75rem;">
+                                DU
+                            </div>
+                            <span>demo-user@redhat.com</span>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="transition: transform 0.2s;" id="user-dropdown-arrow">
+                                <path d="M6 9l6 6 6-6"/>
+                            </svg>
+                        </button>
+                        <div id="userDropdownMenu" class="user-dropdown-menu" style="display: none; position: absolute; right: 0; top: 100%; background: white; border: 1px solid #e2e8f0; border-radius: 0.375rem; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); min-width: 200px; z-index: 1000; margin-top: 0.25rem;">
+                            <div style="padding: 0.75rem; border-bottom: 1px solid #e2e8f0;">
+                                <div style="font-weight: 500; color: #374151; font-size: 0.875rem;">demo-user@redhat.com</div>
+                                <div style="color: #64748b; font-size: 0.75rem;">Demo User</div>
+                            </div>
+                            <div style="padding: 0.25rem;">
+                                <a href="integrations/page.html" style="width: 100%; text-align: left; padding: 0.5rem 0.75rem; background: none; border: none; cursor: pointer; border-radius: 0.25rem; color: #374151; font-size: 0.875rem; transition: background-color 0.2s; display: block; text-decoration: none;">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display: inline; margin-right: 0.5rem; vertical-align: middle;">
+                                        <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+                                        <path d="M2 17l10 5 10-5"/>
+                                        <path d="M2 12l10 5 10-5"/>
+                                    </svg>
+                                    Integrations
+                                </a>
+                                <hr style="margin: 0.25rem 0; border: none; border-top: 1px solid #e2e8f0;">
+                                <button onclick="logout()" style="width: 100%; text-align: left; padding: 0.5rem 0.75rem; background: none; border: none; cursor: pointer; border-radius: 0.25rem; color: #374151; font-size: 0.875rem; transition: background-color 0.2s;">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display: inline; margin-right: 0.5rem;">
+                                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                                        <polyline points="16,17 21,12 16,7"/>
+                                        <line x1="21" y1="12" x2="9" y2="12"/>
+                                    </svg>
+                                    Logout
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <div class="page-header">
+        <div class="container">
+            <h1 class="page-title">Workspaces</h1>
+            <p class="page-description">Select a workspace or create a new one to get started</p>
+        </div>
+    </div>
+
+    <main class="container" style="margin-top: 2rem;">
+        <div class="card">
+            <div class="card-header">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <h2 class="card-title">Workspaces</h2>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <button class="btn btn-secondary" style="padding: 0.375rem 0.75rem; font-size: 0.875rem;">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
+                                <path d="M21 3v5h-5"/>
+                                <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
+                                <path d="M3 21v-5h5"/>
+                            </svg>
+                            Refresh
+                        </button>
+                        <button onclick="openNewProjectModal()" class="btn btn-primary" style="padding: 0.375rem 0.75rem; font-size: 0.875rem;">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M12 5v14"/>
+                                <path d="M5 12h14"/>
+                            </svg>
+                            New Workspace
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="card-content">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Description</th>
+                            <th>Sessions</th>
+                            <th>Created</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>
+                                <a href="projects/sample-workspace/page.html" style="color: #1e40af; text-decoration: none; font-weight: 500;">
+                                    sample-workspace
+                                </a>
+                            </td>
+                            <td>A sample workspace for demonstration purposes</td>
+                            <td>
+                                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                    <span style="font-weight: 500;">4</span>
+                                    <span class="badge badge-info" style="font-size: 0.75rem; white-space: nowrap;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation: spin 1s linear infinite; margin-right: 0.25rem;"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>1 Running</span>
+                                </div>
+                            </td>
+                            <td>2 days ago</td>
+                            <td>
+                                <button onclick="openDeleteModal(this)" class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.875rem; color: #000000;">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M3 6h18"/>
+                                        <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
+                                        <path d="M8 6V4c0-1 1-2 2-2h4c0-1 1-2 2-2v2"/>
+                                        <line x1="10" y1="11" x2="10" y2="17"/>
+                                        <line x1="14" y1="11" x2="14" y2="17"/>
+                                    </svg>
+                                </button>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>
+                                <a href="projects/ai-assistant/page.html" style="color: #1e40af; text-decoration: none; font-weight: 500;">
+                                    ai-assistant
+                                </a>
+                            </td>
+                            <td>AI-powered coding assistant workspace</td>
+                            <td>
+                                <span style="font-weight: 500;">7</span>
+                            </td>
+                            <td>1 week ago</td>
+                            <td>
+                                <button onclick="openDeleteModal(this)" class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.875rem; color: #000000;">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M3 6h18"/>
+                                        <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
+                                        <path d="M8 6V4c0-1 1-2 2-2h4c0-1 1-2 2-2v2"/>
+                                        <line x1="10" y1="11" x2="10" y2="17"/>
+                                        <line x1="14" y1="11" x2="14" y2="17"/>
+                                    </svg>
+                                </button>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>
+                                <a href="projects/web-platform/page.html" style="color: #1e40af; text-decoration: none; font-weight: 500;">
+                                    web-platform
+                                </a>
+                            </td>
+                            <td>Modern web platform workspace with microservices</td>
+                            <td>
+                                <span style="font-weight: 500;">12</span>
+                            </td>
+                            <td>2 weeks ago</td>
+                            <td>
+                                <button onclick="openDeleteModal(this)" class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.875rem; color: #000000;">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M3 6h18"/>
+                                        <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
+                                        <path d="M8 6V4c0-1 1-2 2-2h4c0-1 1-2 2-2v2"/>
+                                        <line x1="10" y1="11" x2="10" y2="17"/>
+                                        <line x1="14" y1="11" x2="14" y2="17"/>
+                                    </svg>
+                                </button>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <!-- New Workspace Modal -->
+    <div id="newProjectModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Create New Workspace</h2>
+                <button onclick="closeNewProjectModal()" class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="color: #64748b; margin-bottom: 1.5rem;">Set up a new workspace for your team</p>
+                <form onsubmit="createProject(event)">
+                    <div class="form-group">
+                        <label class="form-label" for="modal-name">Workspace Name *</label>
+                        <input type="text" id="modal-name" class="form-input" value="demo-user-workspace-1" required>
+                        <small style="color: #64748b; font-size: 0.875rem;">Must be lowercase, alphanumeric with hyphens</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="modal-displayName">Display Name *</label>
+                        <input type="text" id="modal-displayName" class="form-input" value="Demo User Workspace 1" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="modal-description">Description</label>
+                        <textarea id="modal-description" class="form-input form-textarea" placeholder="Brief description of your workspace..."></textarea>
+                    </div>
+
+                    <div style="display: flex; gap: 1rem; margin-top: 2rem; justify-content: flex-end;">
+                        <button type="button" onclick="closeNewProjectModal()" class="btn btn-secondary">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Create Workspace</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete Workspace Modal -->
+    <div id="deleteProjectModal" class="modal" style="display: none;">
+        <div class="modal-content" style="max-width: 400px;">
+            <div class="modal-header">
+                <div style="display: flex; align-items: center; gap: 0.75rem;">
+                    <div style="width: 40px; height: 40px; background: #fef2f2; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2">
+                            <path d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/>
+                        </svg>
+                    </div>
+                    <h2 style="margin: 0;">Delete workspace</h2>
+                </div>
+                <button onclick="closeDeleteModal()" class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="color: #64748b; margin-bottom: 1.5rem; line-height: 1.6;">
+                    Are you sure you want to delete workspace "<span id="deleteProjectName" style="font-weight: 500;"></span>"? This will permanently remove the workspace and all related resources. This action cannot be undone.
+                </p>
+                <div style="display: flex; gap: 1rem; justify-content: flex-end;">
+                    <button type="button" onclick="closeDeleteModal()" class="btn btn-secondary">Cancel</button>
+                    <button type="button" onclick="confirmDelete()" class="btn" style="background: #dc2626; color: white; border: 1px solid #dc2626;">Delete</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Counter for workspace numbering
+        let projectCounter = 1;
+
+        function openNewProjectModal() {
+            // Update form with current counter values
+            document.getElementById('modal-name').value = `demo-user-workspace-${projectCounter}`;
+            document.getElementById('modal-displayName').value = `Demo User Workspace ${projectCounter}`;
+
+            document.getElementById('newProjectModal').style.display = 'flex';
+            document.body.style.overflow = 'hidden'; // Prevent background scrolling
+
+            // Focus on first input for better UX
+            setTimeout(() => {
+                document.getElementById('modal-name').focus();
+                document.getElementById('modal-name').select();
+            }, 100);
+        }
+
+        function closeNewProjectModal() {
+            document.getElementById('newProjectModal').style.display = 'none';
+            document.body.style.overflow = 'auto'; // Restore scrolling
+
+            // Reset form to current counter values
+            document.getElementById('modal-name').value = `demo-user-workspace-${projectCounter}`;
+            document.getElementById('modal-displayName').value = `Demo User Workspace ${projectCounter}`;
+            document.getElementById('modal-description').value = '';
+        }
+
+        // Flag to prevent multiple submissions
+        let isCreatingProject = false;
+
+        function createProject(event) {
+            event.preventDefault(); // Prevent form submission
+
+            // Prevent multiple submissions
+            if (isCreatingProject) {
+                return;
+            }
+            isCreatingProject = true;
+            
+            // Get form values
+            const projectName = document.getElementById('modal-name').value;
+            const displayName = document.getElementById('modal-displayName').value;
+            const description = document.getElementById('modal-description').value || 'No description provided';
+            
+            // Validate required fields
+            if (!projectName || !displayName) {
+                alert('Please fill in all required fields');
+                isCreatingProject = false;
+                return;
+            }
+            
+            // Get the table body
+            const tbody = document.querySelector('.table tbody');
+            
+            // Create new row
+            const newRow = document.createElement('tr');
+            newRow.innerHTML = `
+                <td>
+                    <a href="projects/${projectName}/page.html" style="color: #1e40af; text-decoration: none; font-weight: 500;">
+                        ${projectName}
+                    </a>
+                </td>
+                <td>${description}</td>
+                <td>
+                    <span style="font-weight: 500;">0</span>
+                </td>
+                <td>Just now</td>
+                <td>
+                    <button onclick="openDeleteModal('${projectName}')" class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.875rem; color: #000000;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M3 6h18"/>
+                            <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
+                            <path d="M8 6V4c0-1 1-2 2-2h4c0-1 1-2 2-2v2"/>
+                            <line x1="10" y1="11" x2="10" y2="17"/>
+                            <line x1="14" y1="11" x2="14" y2="17"/>
+                        </svg>
+                    </button>
+                </td>
+            `;
+            
+            // Insert at the top of the table
+            tbody.insertBefore(newRow, tbody.firstChild);
+            
+            // Increment counter for next project
+            projectCounter++;
+            
+            // Close modal
+            closeNewProjectModal();
+            
+            // Reset the flag
+            isCreatingProject = false;
+            
+            // Optional: Show success message
+            // alert('Project "' + displayName + '" created successfully!');
+        }
+
+        // Variables for delete functionality
+        let projectToDelete = null;
+        let rowToDelete = null;
+
+        function openDeleteModal(buttonElement) {
+            // Find the project name from the row
+            const row = buttonElement.closest('tr');
+            const projectLink = row.querySelector('a');
+            const projectName = projectLink.textContent.trim();
+            
+            // Store references for deletion
+            projectToDelete = projectName;
+            rowToDelete = row;
+            
+            // Update modal content
+            document.getElementById('deleteProjectName').textContent = projectName;
+            
+            // Show modal
+            document.getElementById('deleteProjectModal').style.display = 'flex';
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeDeleteModal() {
+            document.getElementById('deleteProjectModal').style.display = 'none';
+            document.body.style.overflow = 'auto';
+            projectToDelete = null;
+            rowToDelete = null;
+        }
+
+        function confirmDelete() {
+            if (rowToDelete) {
+                // Remove the row from the table
+                rowToDelete.remove();
+            }
+            closeDeleteModal();
+        }
+
+        // User dropdown functionality
+        function toggleUserDropdown() {
+            const dropdown = document.getElementById('userDropdownMenu');
+            const arrow = document.getElementById('user-dropdown-arrow');
+            const isOpen = dropdown.style.display === 'block';
+            
+            if (isOpen) {
+                dropdown.style.display = 'none';
+                arrow.style.transform = 'rotate(0deg)';
+            } else {
+                dropdown.style.display = 'block';
+                arrow.style.transform = 'rotate(180deg)';
+            }
+        }
+
+        function logout() {
+            // Close dropdown first
+            document.getElementById('userDropdownMenu').style.display = 'none';
+            document.getElementById('user-dropdown-arrow').style.transform = 'rotate(0deg)';
+            
+            // Simulate logout (in real app, this would redirect to login page)
+            alert('Logged out successfully!');
+        }
+
+        // Close dropdown when clicking outside of it
+        document.addEventListener('click', function(event) {
+            const dropdown = document.querySelector('.user-dropdown');
+            if (!dropdown.contains(event.target)) {
+                document.getElementById('userDropdownMenu').style.display = 'none';
+                document.getElementById('user-dropdown-arrow').style.transform = 'rotate(0deg)';
+            }
+        });
+
+        // Close modal when clicking outside of it
+        window.onclick = function(event) {
+            const newProjectModal = document.getElementById('newProjectModal');
+            const deleteModal = document.getElementById('deleteProjectModal');
+            
+            if (event.target === newProjectModal) {
+                closeNewProjectModal();
+            } else if (event.target === deleteModal) {
+                closeDeleteModal();
+            }
+        }
+    </script>
+</body>
+</html>

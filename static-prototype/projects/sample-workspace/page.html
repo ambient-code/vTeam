@@ -1,0 +1,1059 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>sample-workspace - Ambient Code Platform</title>
+    <link rel="stylesheet" href="../../styles.css">
+</head>
+<body>
+    <header class="header">
+        <div class="container">
+            <div class="header-content">
+                <a href="../../index.html" class="logo">Ambient Code Platform</a>
+                <div style="display: flex; align-items: center; gap: 2rem;">
+                    <div class="user-dropdown" style="position: relative;">
+                        <button onclick="toggleUserDropdown()" class="user-dropdown-trigger" style="display: flex; align-items: center; gap: 0.5rem; color: #64748b; font-size: 0.875rem; background: none; border: none; cursor: pointer; padding: 0.5rem; border-radius: 0.375rem; transition: background-color 0.2s;">
+                            <div style="width: 24px; height: 24px; background: #64748b; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: 500; font-size: 0.75rem;">
+                                DU
+                            </div>
+                            <span>demo-user@redhat.com</span>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="transition: transform 0.2s;" id="user-dropdown-arrow">
+                                <path d="M6 9l6 6 6-6"/>
+                            </svg>
+                        </button>
+                        <div id="userDropdownMenu" class="user-dropdown-menu" style="display: none; position: absolute; right: 0; top: 100%; background: white; border: 1px solid #e2e8f0; border-radius: 0.375rem; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); min-width: 200px; z-index: 1000; margin-top: 0.25rem;">
+                            <div style="padding: 0.75rem; border-bottom: 1px solid #e2e8f0;">
+                                <div style="font-weight: 500; color: #374151; font-size: 0.875rem;">demo-user@redhat.com</div>
+                                <div style="color: #64748b; font-size: 0.75rem;">Demo User</div>
+                            </div>
+                            <div style="padding: 0.25rem;">
+                                <a href="../../integrations/page.html" style="width: 100%; text-align: left; padding: 0.5rem 0.75rem; background: none; border: none; cursor: pointer; border-radius: 0.25rem; color: #374151; font-size: 0.875rem; transition: background-color 0.2s; display: block; text-decoration: none;">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display: inline; margin-right: 0.5rem; vertical-align: middle;">
+                                        <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+                                        <path d="M2 17l10 5 10-5"/>
+                                        <path d="M2 12l10 5 10-5"/>
+                                    </svg>
+                                    Integrations
+                                </a>
+                                <hr style="margin: 0.25rem 0; border: none; border-top: 1px solid #e2e8f0;">
+                                <button onclick="logout()" style="width: 100%; text-align: left; padding: 0.5rem 0.75rem; background: none; border: none; cursor: pointer; border-radius: 0.25rem; color: #374151; font-size: 0.875rem; transition: background-color 0.2s;">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display: inline; margin-right: 0.5rem;">
+                                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                                        <polyline points="16,17 21,12 16,7"/>
+                                        <line x1="21" y1="12" x2="9" y2="12"/>
+                                    </svg>
+                                    Logout
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <div class="page-header">
+        <div class="container">
+            <div class="breadcrumbs">
+                <a href="../../index.html">Workspaces</a>
+                <span>/</span>
+                <span>sample-workspace</span>
+            </div>
+            <h1 class="page-title">sample-workspace</h1>
+            <p class="page-description">A sample workspace for demonstration purposes</p>
+        </div>
+    </div>
+
+    <main class="container">
+        <div class="project-layout">
+            <aside class="project-sidebar">
+                <h3 style="padding: 1rem 1.5rem; margin: 0; font-size: 0.875rem; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em;">Workspace</h3>
+                <ul>
+                    <li><a href="#" onclick="showSessions(); return false;" id="sessions-nav" class="active">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                        </svg>
+                        Sessions
+                    </a></li>
+                    <li><a href="#" onclick="showPermissions(); return false;" id="permissions-nav">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                            <circle cx="9" cy="7" r="4"/>
+                            <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                            <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                        </svg>
+                        Sharing
+                    </a></li>
+                    <li><a href="#" onclick="showSettings(); return false;" id="settings-nav">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="3"/>
+                            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1 1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                        </svg>
+                        Workspace Settings
+                    </a></li>
+                </ul>
+            </aside>
+
+            <div class="main-content">
+
+                <!-- Sessions Content -->
+                <div id="sessions-content">
+                    <div class="card">
+                        <div class="card-header">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <h3 class="card-title">Agentic Sessions</h3>
+                                <div style="display: flex; gap: 0.5rem;">
+                                    <button class="btn btn-secondary" style="padding: 0.375rem 0.75rem; font-size: 0.875rem;">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
+                                            <path d="M21 3v5h-5"/>
+                                            <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
+                                            <path d="M3 21v-5h5"/>
+                                        </svg>
+                                        Refresh
+                                    </button>
+                                    <button onclick="createSession('interactive')" class="btn btn-primary" style="padding: 0.375rem 0.75rem; font-size: 0.875rem; display: flex; align-items: center; gap: 0.25rem;">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <path d="M12 5v14"/>
+                                            <path d="M5 12h14"/>
+                                        </svg>
+                                        New Session
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="card-content">
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>Session Name</th>
+                                        <th>Status</th>
+                                        <th>Mode</th>
+                                        <th>Model</th>
+                                        <th>Created</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr onclick="window.location.href='implement-login-flow/page.html'" style="cursor: pointer;">
+                                        <td>
+                                            <div>
+                                                <div style="color: #1e40af; font-weight: 500;">implement-login-flow</div>
+                                                <div style="font-size: 0.875rem; color: #64748b;">Create user login and registration endpoints</div>
+                                            </div>
+                                        </td>
+                                        <td><span class="badge badge-info" style="white-space: nowrap;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation: spin 1s linear infinite; margin-right: 0.25rem;"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>Running</span></td>
+                                        <td>interactive</td>
+                                        <td>claude-3.5-sonnet</td>
+                                        <td>4 hours ago</td>
+                                    </tr>
+                                    <tr onclick="window.location.href='setup-database/headless.html'" style="cursor: pointer;">
+                                        <td>
+                                            <div>
+                                                <div style="color: #1e40af; font-weight: 500;">setup-database</div>
+                                                <div style="font-size: 0.875rem; color: #64748b;">Initialize PostgreSQL database with user tables</div>
+                                            </div>
+                                        </td>
+                                        <td><span class="badge badge-success" style="white-space: nowrap;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 0.25rem;"><path d="M20 6L9 17l-5-5"/></svg>Completed</span></td>
+                                        <td>headless</td>
+                                        <td>claude-3.5-sonnet</td>
+                                        <td>1 day ago</td>
+                                    </tr>
+                                    <tr onclick="window.location.href='create-api-tests/page.html'" style="cursor: pointer;">
+                                        <td>
+                                            <div>
+                                                <div style="color: #1e40af; font-weight: 500;">create-api-tests</div>
+                                                <div style="font-size: 0.875rem; color: #64748b;">Write comprehensive API tests for authentication endpoints</div>
+                                            </div>
+                                        </td>
+                                        <td><span class="badge badge-success" style="white-space: nowrap;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 0.25rem;"><path d="M20 6L9 17l-5-5"/></svg>Completed</span></td>
+                                        <td>interactive</td>
+                                        <td>claude-3.5-sonnet</td>
+                                        <td>30 minutes ago</td>
+                                    </tr>
+                                    <tr onclick="window.location.href='optimize-queries/headless.html'" style="cursor: pointer;">
+                                        <td>
+                                            <div>
+                                                <div style="color: #1e40af; font-weight: 500;">optimize-queries</div>
+                                                <div style="font-size: 0.875rem; color: #64748b;">Optimize database queries for better performance</div>
+                                            </div>
+                                        </td>
+                                        <td><span class="badge badge-success" style="white-space: nowrap;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 0.25rem;"><path d="M20 6L9 17l-5-5"/></svg>Completed</span></td>
+                                        <td>headless</td>
+                                        <td>claude-3.5-sonnet</td>
+                                        <td>2 hours ago</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Workflows Content -->
+                <div id="workflows-content" style="display: none;">
+                    <div class="grid grid-2">
+                        <div class="card">
+                            <div class="card-header">
+                                <h3 class="card-title">📝 Create RFE</h3>
+                            </div>
+                            <div class="card-content">
+                                <p style="color: #64748b; margin-bottom: 1rem;">Ideate and specify your request for enhancement with a structured workflow that guides you through the RFE creation process.</p>
+                                <div style="margin-bottom: 1rem;">
+                                    <strong>Workflow Steps:</strong>
+                                    <ul style="margin-top: 0.5rem; padding-left: 1.5rem; color: #64748b;">
+                                        <li>Ideate - Create or update rfe.md file</li>
+                                        <li>Specify - Create or update spec.md file</li>
+                                    </ul>
+                                </div>
+                                <div style="position: relative;">
+                                    <button onclick="toggleRFESessionDropdown()" class="btn btn-primary" style="padding: 0.375rem 0.75rem; font-size: 0.875rem; display: flex; align-items: center; gap: 0.25rem;">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <path d="M12 5v14"/>
+                                            <path d="M5 12h14"/>
+                                        </svg>
+                                        New Session
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="transition: transform 0.2s;" id="rfe-session-dropdown-arrow">
+                                            <path d="M6 9l6 6 6-6"/>
+                                        </svg>
+                                    </button>
+                                    <div id="rfeSessionDropdownMenu" style="display: none; position: absolute; left: 0; top: 100%; background: white; border: 1px solid #e2e8f0; border-radius: 0.375rem; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); min-width: 180px; z-index: 1000; margin-top: 0.25rem;">
+                                        <div style="padding: 0.25rem;">
+                                            <button onclick="createSession('interactive')" style="width: 100%; text-align: left; padding: 0.5rem 0.75rem; background: none; border: none; cursor: pointer; border-radius: 0.25rem; color: #374151; font-size: 0.875rem; transition: background-color 0.2s; display: flex; align-items: center; gap: 0.5rem;">
+                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                                                </svg>
+                                                <div style="font-weight: 500;">Interactive Session</div>
+                                            </button>
+                                            <hr style="margin: 0.25rem 0; border: none; border-top: 1px solid #e2e8f0;">
+                                            <button onclick="createSession('headless')" style="width: 100%; text-align: left; padding: 0.5rem 0.75rem; background: none; border: none; cursor: pointer; border-radius: 0.25rem; color: #374151; font-size: 0.875rem; transition: background-color 0.2s; display: flex; align-items: center; gap: 0.5rem;">
+                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                    <circle cx="12" cy="12" r="3"/>
+                                                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1 1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                                                </svg>
+                                                <div style="font-weight: 500;">Headless Session</div>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="card">
+                            <div class="card-header">
+                                <h3 class="card-title">🏗️ Create Feature (Spec Kit)</h3>
+                            </div>
+                            <div class="card-content">
+                                <p style="color: #64748b; margin-bottom: 1rem;">Complete feature development workflow from specification to implementation with comprehensive planning and task breakdown.</p>
+                                <div style="margin-bottom: 1rem;">
+                                    <strong>Workflow Steps:</strong>
+                                    <ul style="margin-top: 0.5rem; padding-left: 1.5rem; color: #64748b;">
+                                        <li>Ideate - Create or update rfe.md file</li>
+                                        <li>Specify - Create or update spec.md file</li>
+                                        <li>Plan - Generate implementation plan</li>
+                                        <li>Tasks - Break down into tasks</li>
+                                        <li>Implement - Execute implementation</li>
+                                    </ul>
+                                </div>
+                                <div style="position: relative;">
+                                    <button onclick="toggleSpecKitSessionDropdown()" class="btn btn-primary" style="padding: 0.375rem 0.75rem; font-size: 0.875rem; display: flex; align-items: center; gap: 0.25rem;">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <path d="M12 5v14"/>
+                                            <path d="M5 12h14"/>
+                                        </svg>
+                                        New Session
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="transition: transform 0.2s;" id="speckit-session-dropdown-arrow">
+                                            <path d="M6 9l6 6 6-6"/>
+                                        </svg>
+                                    </button>
+                                    <div id="speckitSessionDropdownMenu" style="display: none; position: absolute; left: 0; top: 100%; background: white; border: 1px solid #e2e8f0; border-radius: 0.375rem; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); min-width: 180px; z-index: 1000; margin-top: 0.25rem;">
+                                        <div style="padding: 0.25rem;">
+                                            <button onclick="createSession('interactive')" style="width: 100%; text-align: left; padding: 0.5rem 0.75rem; background: none; border: none; cursor: pointer; border-radius: 0.25rem; color: #374151; font-size: 0.875rem; transition: background-color 0.2s; display: flex; align-items: center; gap: 0.5rem;">
+                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                                                </svg>
+                                                <div style="font-weight: 500;">Interactive Session</div>
+                                            </button>
+                                            <hr style="margin: 0.25rem 0; border: none; border-top: 1px solid #e2e8f0;">
+                                            <button onclick="createSession('headless')" style="width: 100%; text-align: left; padding: 0.5rem 0.75rem; background: none; border: none; cursor: pointer; border-radius: 0.25rem; color: #374151; font-size: 0.875rem; transition: background-color 0.2s; display: flex; align-items: center; gap: 0.5rem;">
+                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                    <circle cx="12" cy="12" r="3"/>
+                                                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1 1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                                                </svg>
+                                                <div style="font-weight: 500;">Headless Session</div>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Workspace Information Content -->
+                <div id="project-info-content" style="display: none;">
+                    <div class="grid grid-2">
+                        <div class="card">
+                            <div class="card-header">
+                                <h3 class="card-title">Workspace Information</h3>
+                            </div>
+                            <div class="card-content">
+                                <div style="margin-bottom: 1rem;">
+                                    <strong>Created:</strong> 2 days ago
+                                </div>
+                                <div>
+                                    <strong>Status:</strong> 
+                                    <span class="badge badge-success">Active</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="card">
+                            <div class="card-header">
+                                <h3 class="card-title">Quick Stats</h3>
+                            </div>
+                            <div class="card-content">
+                                <div style="margin-bottom: 1rem;">
+                                    <strong>RFE Workspaces:</strong> 3
+                                </div>
+                                <div style="margin-bottom: 1rem;">
+                                    <strong>Active Sessions:</strong> 2
+                                </div>
+                                <div style="margin-bottom: 1rem;">
+                                    <strong>API Keys:</strong> 1
+                                </div>
+                                <div>
+                                    <strong>Team Members:</strong> 5
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Permissions Content -->
+                <div id="permissions-content" style="display: none;">
+                    <div class="card">
+                        <div class="card-header">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <div>
+                                    <h3 class="card-title">Sharing</h3>
+                                    <p class="card-description">Users and groups with access to this project and their roles</p>
+                                </div>
+                                <div style="display: flex; gap: 0.5rem;">
+                                    <button class="btn btn-secondary" style="padding: 0.375rem 0.75rem; font-size: 0.875rem;">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
+                                            <path d="M21 3v5h-5"/>
+                                            <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
+                                            <path d="M3 21v-5h5"/>
+                                        </svg>
+                                        Refresh
+                                    </button>
+                                    <button class="btn btn-primary" style="padding: 0.375rem 0.75rem; font-size: 0.875rem; display: flex; align-items: center; gap: 0.25rem;">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <path d="M12 5v14"/>
+                                            <path d="M5 12h14"/>
+                                        </svg>
+                                        Grant Permission
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="card-content">
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>Users/Groups</th>
+                                        <th>Type</th>
+                                        <th>Role</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>
+                                            <div>
+                                                <div style="font-weight: 500;">john.doe@company.com</div>
+                                                <div style="font-size: 0.875rem; color: #64748b;">Project Owner</div>
+                                            </div>
+                                        </td>
+                                        <td><span class="badge badge-info">User</span></td>
+                                        <td><span class="badge badge-success">Admin</span></td>
+                                        <td>
+                                            <button style="background: none; border: none; cursor: pointer; padding: 0.25rem; color: #000000;">
+                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                    <path d="M3 6h18"/>
+                                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/>
+                                                    <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                                                    <line x1="10" y1="11" x2="10" y2="17"/>
+                                                    <line x1="14" y1="11" x2="14" y2="17"/>
+                                                </svg>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>
+                                            <div>
+                                                <div style="font-weight: 500;">development-team</div>
+                                                <div style="font-size: 0.875rem; color: #64748b;">5 members</div>
+                                            </div>
+                                        </td>
+                                        <td><span class="badge badge-warning">Group</span></td>
+                                        <td><span class="badge badge-success">View</span></td>
+                                        <td>
+                                            <button style="background: none; border: none; cursor: pointer; padding: 0.25rem; color: #000000;">
+                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                    <path d="M3 6h18"/>
+                                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/>
+                                                    <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                                                    <line x1="10" y1="11" x2="10" y2="17"/>
+                                                    <line x1="14" y1="11" x2="14" y2="17"/>
+                                                </svg>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>
+                                            <div>
+                                                <div style="font-weight: 500;">sarah.admin@company.com</div>
+                                                <div style="font-size: 0.875rem; color: #64748b;">Senior Developer</div>
+                                            </div>
+                                        </td>
+                                        <td><span class="badge badge-info">User</span></td>
+                                        <td><span class="badge badge-success">Admin</span></td>
+                                        <td>
+                                            <button style="background: none; border: none; cursor: pointer; padding: 0.25rem; color: #000000;">
+                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                    <path d="M3 6h18"/>
+                                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/>
+                                                    <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                                                    <line x1="10" y1="11" x2="10" y2="17"/>
+                                                    <line x1="14" y1="11" x2="14" y2="17"/>
+                                                </svg>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>
+                                            <div>
+                                                <div style="font-weight: 500;">qa-team</div>
+                                                <div style="font-size: 0.875rem; color: #64748b;">3 members</div>
+                                            </div>
+                                        </td>
+                                        <td><span class="badge badge-warning">Group</span></td>
+                                        <td><span class="badge badge-success">View</span></td>
+                                        <td>
+                                            <button style="background: none; border: none; cursor: pointer; padding: 0.25rem; color: #000000;">
+                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                    <path d="M3 6h18"/>
+                                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/>
+                                                    <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                                                    <line x1="10" y1="11" x2="10" y2="17"/>
+                                                    <line x1="14" y1="11" x2="14" y2="17"/>
+                                                </svg>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Settings Content -->
+                <div id="settings-content" style="display: none;">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">General Settings</h3>
+                            <p class="card-description">Basic workspace configuration</p>
+                        </div>
+                        <div class="card-content">
+                            <form>
+                                <div class="form-group">
+                                    <label class="form-label">Display Name</label>
+                                    <input type="text" class="form-input" value="Sample Workspace">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Workspace Name</label>
+                                    <input type="text" class="form-input" value="sample-workspace" readonly>
+                                    <small style="color: #64748b; font-size: 0.875rem;">Workspace name cannot be changed after creation</small>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Description</label>
+                                    <textarea class="form-input form-textarea">A sample workspace for demonstration purposes</textarea>
+                                </div>
+                                <button type="submit" class="btn btn-primary">Save Changes</button>
+                            </form>
+                        </div>
+                    </div>
+
+                    <div class="card" style="margin-top: 1.5rem;">
+                        <div class="card-header">
+                            <h3 class="card-title">Runner Secrets</h3>
+                            <p class="card-description">Configure the Secret and manage key/value pairs used by workspace runners.</p>
+                        </div>
+                        <div class="card-content">
+                            <form>
+                                <div class="form-group">
+                                    <label class="form-label">Runner Secret</label>
+                                    <select class="form-input">
+                                        <option value="ambient-runner-secret">using ambient-runner-secret</option>
+                                        <option value="create-new">create new runner secret</option>
+                                    </select>
+                                </div>
+
+                                <div class="form-group">
+                                    <label class="form-label">Anthropic API Key <span style="color: #dc2626;">*</span></label>
+                                    <input type="password" class="form-input" placeholder="sk-ant-api03-..." required>
+                                    <small style="color: #64748b; font-size: 0.875rem;">Required for running agentic sessions</small>
+                                </div>
+
+                                <div style="margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid #e2e8f0;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                                        <h4 style="font-weight: 500; margin: 0;">Additional Secrets</h4>
+                                        <button type="button" class="btn btn-secondary" style="padding: 0.375rem 0.75rem; font-size: 0.875rem;">
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                <path d="M12 5v14"/>
+                                                <path d="M5 12h14"/>
+                                            </svg>
+                                            Add Secret
+                                        </button>
+                                    </div>
+
+                                    <div id="secrets-list">
+                                        <div class="form-group" style="display: grid; grid-template-columns: 1fr 1fr auto; gap: 0.5rem; align-items: start;">
+                                            <div>
+                                                <input type="text" class="form-input" placeholder="Key" value="GITHUB_TOKEN">
+                                            </div>
+                                            <div>
+                                                <input type="password" class="form-input" placeholder="Value" value="ghp_xxxxxxxxxxxx">
+                                            </div>
+                                            <button type="button" style="background: none; border: none; cursor: pointer; padding: 0.5rem; color: #000000; margin-top: 0.125rem;">
+                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                    <path d="M3 6h18"/>
+                                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/>
+                                                    <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                                                    <line x1="10" y1="11" x2="10" y2="17"/>
+                                                    <line x1="14" y1="11" x2="14" y2="17"/>
+                                                </svg>
+                                            </button>
+                                        </div>
+
+                                        <div class="form-group" style="display: grid; grid-template-columns: 1fr 1fr auto; gap: 0.5rem; align-items: start;">
+                                            <div>
+                                                <input type="text" class="form-input" placeholder="Key" value="DATABASE_URL">
+                                            </div>
+                                            <div>
+                                                <input type="password" class="form-input" placeholder="Value" value="postgresql://...">
+                                            </div>
+                                            <button type="button" style="background: none; border: none; cursor: pointer; padding: 0.5rem; color: #000000; margin-top: 0.125rem;">
+                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                    <path d="M3 6h18"/>
+                                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/>
+                                                    <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                                                    <line x1="10" y1="11" x2="10" y2="17"/>
+                                                    <line x1="14" y1="11" x2="14" y2="17"/>
+                                                </svg>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <button type="submit" class="btn btn-primary" style="margin-top: 1.5rem;">Save Secrets</button>
+                            </form>
+                        </div>
+                    </div>
+
+                    <div class="card" style="margin-top: 1.5rem;">
+                        <div class="card-header">
+                            <h3 class="card-title">Resource Limits</h3>
+                            <p class="card-description">Configure resource limits for sessions and workspaces</p>
+                        </div>
+                        <div class="card-content">
+                            <form>
+                                <div class="form-group">
+                                    <label class="form-label">Max Concurrent Sessions</label>
+                                    <input type="number" class="form-input" value="5" min="1" max="20">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Max RFE Workspaces</label>
+                                    <input type="number" class="form-input" value="10" min="1" max="50">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Storage Limit (GB)</label>
+                                    <input type="number" class="form-input" value="50" min="1" max="500">
+                                </div>
+                                <button type="submit" class="btn btn-primary">Update Limits</button>
+                            </form>
+                        </div>
+                    </div>
+
+                    <div class="card" style="margin-top: 1.5rem;">
+                        <div class="card-header">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <div>
+                                    <h3 class="card-title">API Keys</h3>
+                                    <p class="card-description">API keys provide secure access to external services and integrations</p>
+                                </div>
+                                <div style="display: flex; gap: 0.5rem;">
+                                    <button class="btn btn-secondary" style="padding: 0.375rem 0.75rem; font-size: 0.875rem;">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
+                                            <path d="M21 3v5h-5"/>
+                                            <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
+                                            <path d="M3 21v-5h5"/>
+                                        </svg>
+                                        Refresh
+                                    </button>
+                                    <button class="btn btn-primary" style="padding: 0.375rem 0.75rem; font-size: 0.875rem; display: flex; align-items: center; gap: 0.25rem;">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <path d="M12 5v14"/>
+                                            <path d="M5 12h14"/>
+                                        </svg>
+                                        Create Key
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="card-content">
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Created</th>
+                                        <th>Last Used</th>
+                                        <th>Role</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>
+                                            <div style="font-weight: 500;">Production API Key</div>
+                                            <div style="font-size: 0.875rem; color: #64748b;">For production deployments and CI/CD</div>
+                                        </td>
+                                        <td>1 week ago</td>
+                                        <td>2 hours ago</td>
+                                        <td><span class="badge badge-success">Admin</span></td>
+                                        <td>
+                                            <button style="background: none; border: none; cursor: pointer; padding: 0.25rem; color: #000000;">
+                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                    <path d="M3 6h18"/>
+                                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/>
+                                                    <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                                                    <line x1="10" y1="11" x2="10" y2="17"/>
+                                                    <line x1="14" y1="11" x2="14" y2="17"/>
+                                                </svg>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>
+                                            <div style="font-weight: 500;">Development Key</div>
+                                            <div style="font-size: 0.875rem; color: #64748b;">For local development and testing</div>
+                                        </td>
+                                        <td>2 weeks ago</td>
+                                        <td>1 day ago</td>
+                                        <td><span class="badge badge-success">Admin</span></td>
+                                        <td>
+                                            <button style="background: none; border: none; cursor: pointer; padding: 0.25rem; color: #000000;">
+                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                    <path d="M3 6h18"/>
+                                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/>
+                                                    <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                                                    <line x1="10" y1="11" x2="10" y2="17"/>
+                                                    <line x1="14" y1="11" x2="14" y2="17"/>
+                                                </svg>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>
+                                            <div style="font-weight: 500;">Monitoring Key</div>
+                                            <div style="font-size: 0.875rem; color: #64748b;">Read-only access for monitoring tools</div>
+                                        </td>
+                                        <td>3 days ago</td>
+                                        <td>Never</td>
+                                        <td><span class="badge badge-success">Admin</span></td>
+                                        <td>
+                                            <button style="background: none; border: none; cursor: pointer; padding: 0.25rem; color: #000000;">
+                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                    <path d="M3 6h18"/>
+                                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/>
+                                                    <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                                                    <line x1="10" y1="11" x2="10" y2="17"/>
+                                                    <line x1="14" y1="11" x2="14" y2="17"/>
+                                                </svg>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Session Configuration Modal -->
+    <div id="sessionConfigModal" class="modal" style="display: none;">
+        <div class="modal-content" style="max-width: 600px;">
+            <div class="modal-header">
+                <h2 id="sessionConfigTitle">Configure Session</h2>
+                <button onclick="closeSessionConfigModal()" class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form onsubmit="event.preventDefault(); confirmCreateSession(); return false;">
+                    <div class="form-group">
+                        <label class="form-label" for="session-model">Model</label>
+                        <select id="session-model" class="form-input">
+                            <option value="claude-sonnet-3.7" selected>Claude Sonnet 3.7</option>
+                            <option value="claude-opus-4.1">Claude Opus 4.1</option>
+                            <option value="claude-opus-4">Claude Opus 4</option>
+                            <option value="claude-sonnet-4">Claude Sonnet 4</option>
+                            <option value="claude-haiku-3.5">Claude Haiku 3.5</option>
+                        </select>
+                    </div>
+
+                    <!-- Agentic Prompt (Headless only) -->
+                    <div id="agentic-prompt-section" class="form-group" style="display: none;">
+                        <label class="form-label" for="agentic-prompt">Agentic Prompt</label>
+                        <textarea id="agentic-prompt" class="form-input form-textarea" placeholder="Describe the task you want the AI to perform autonomously..." style="min-height: 120px;"></textarea>
+                        <small style="color: #64748b; font-size: 0.875rem;">Provide detailed instructions for the AI to execute without user interaction</small>
+                    </div>
+
+                    <!-- Advanced Settings Accordion -->
+                    <div style="margin-top: 1.5rem;">
+                        <button type="button" onclick="toggleAdvancedSettings()" style="width: 100%; display: flex; justify-content: space-between; align-items: center; padding: 0.75rem; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 0.375rem; cursor: pointer; font-weight: 500;">
+                            <span>Change Default Model Settings</span>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="transition: transform 0.2s;" id="advanced-arrow">
+                                <path d="M6 9l6 6 6-6"/>
+                            </svg>
+                        </button>
+                        <div id="advanced-settings" style="display: none; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 0.375rem 0.375rem; padding: 1rem; background: white;">
+                            <div class="grid grid-2">
+                                <div class="form-group">
+                                    <label class="form-label" for="session-temperature">Temperature</label>
+                                    <input type="number" id="session-temperature" class="form-input" value="0.7" min="0" max="2" step="0.1">
+                                    <small style="color: #64748b; font-size: 0.875rem;">Controls randomness (0.0 - 2.0)</small>
+                                </div>
+
+                                <div class="form-group">
+                                    <label class="form-label" for="session-timeout">Timeout (seconds)</label>
+                                    <input type="number" id="session-timeout" class="form-input" value="300" min="60" max="1800">
+                                    <small style="color: #64748b; font-size: 0.875rem;">Session timeout (60-1800 seconds)</small>
+                                </div>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label class="form-label" for="session-max-tokens">Max Output Tokens</label>
+                                <input type="number" id="session-max-tokens" class="form-input" value="4000" min="100" max="8000">
+                                <small style="color: #64748b; font-size: 0.875rem;">Maximum response length (100-8000)</small>
+                            </div>
+
+                            <!-- Bring Your Own Key Section -->
+                            <div style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid #e2e8f0;">
+                                <div class="form-group">
+                                    <label class="form-label" for="anthropic-key">Bring Your Own Key</label>
+                                    <input type="password" id="anthropic-key" class="form-input" placeholder="sk-ant-api03-...">
+                                    <small style="color: #64748b; font-size: 0.875rem;">Optional: Use your own Anthropic API key for this session</small>
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 0.5rem; margin-top: 0.5rem;">
+                                    <input type="checkbox" id="save-key" style="margin: 0;">
+                                    <label for="save-key" style="font-size: 0.875rem; color: #64748b; margin: 0;">Save key for future sessions (encrypted)</label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="display: flex; gap: 1rem; margin-top: 2rem; justify-content: flex-end;">
+                        <button type="button" onclick="closeSessionConfigModal()" class="btn btn-secondary">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Create Session</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function showSessions() {
+            // Show sessions, hide others
+            document.getElementById('sessions-content').style.display = 'block';
+            document.getElementById('workflows-content').style.display = 'none';
+            document.getElementById('project-info-content').style.display = 'none';
+            document.getElementById('permissions-content').style.display = 'none';
+            document.getElementById('settings-content').style.display = 'none';
+            
+            // Update navigation active states
+            document.getElementById('sessions-nav').classList.add('active');
+            document.getElementById('workflows-nav').classList.remove('active');
+            document.getElementById('project-info-nav').classList.remove('active');
+            document.getElementById('permissions-nav').classList.remove('active');
+            document.getElementById('settings-nav').classList.remove('active');
+        }
+
+        function showWorkflows() {
+            // Show workflows, hide others
+            document.getElementById('sessions-content').style.display = 'none';
+            document.getElementById('workflows-content').style.display = 'block';
+            document.getElementById('project-info-content').style.display = 'none';
+            document.getElementById('permissions-content').style.display = 'none';
+            document.getElementById('settings-content').style.display = 'none';
+            
+            // Update navigation active states
+            document.getElementById('sessions-nav').classList.remove('active');
+            document.getElementById('workflows-nav').classList.add('active');
+            document.getElementById('project-info-nav').classList.remove('active');
+            document.getElementById('permissions-nav').classList.remove('active');
+            document.getElementById('settings-nav').classList.remove('active');
+        }
+
+        function showProjectInfo() {
+            // Show project info, hide others
+            document.getElementById('sessions-content').style.display = 'none';
+            document.getElementById('workflows-content').style.display = 'none';
+            document.getElementById('project-info-content').style.display = 'block';
+            document.getElementById('permissions-content').style.display = 'none';
+            document.getElementById('settings-content').style.display = 'none';
+            
+            // Update navigation active states
+            document.getElementById('sessions-nav').classList.remove('active');
+            document.getElementById('workflows-nav').classList.remove('active');
+            document.getElementById('project-info-nav').classList.add('active');
+            document.getElementById('permissions-nav').classList.remove('active');
+            document.getElementById('settings-nav').classList.remove('active');
+        }
+
+        function showPermissions() {
+            // Show permissions, hide others
+            document.getElementById('sessions-content').style.display = 'none';
+            document.getElementById('workflows-content').style.display = 'none';
+            document.getElementById('project-info-content').style.display = 'none';
+            document.getElementById('permissions-content').style.display = 'block';
+            document.getElementById('settings-content').style.display = 'none';
+
+            // Update navigation active states
+            document.getElementById('sessions-nav').classList.remove('active');
+            document.getElementById('workflows-nav').classList.remove('active');
+            document.getElementById('project-info-nav').classList.remove('active');
+            document.getElementById('permissions-nav').classList.add('active');
+            document.getElementById('settings-nav').classList.remove('active');
+        }
+
+        function showSettings() {
+            // Show settings, hide others
+            document.getElementById('sessions-content').style.display = 'none';
+            document.getElementById('workflows-content').style.display = 'none';
+            document.getElementById('project-info-content').style.display = 'none';
+            document.getElementById('permissions-content').style.display = 'none';
+            document.getElementById('settings-content').style.display = 'block';
+            
+            // Update navigation active states
+            document.getElementById('sessions-nav').classList.remove('active');
+            document.getElementById('workflows-nav').classList.remove('active');
+            document.getElementById('project-info-nav').classList.remove('active');
+            document.getElementById('permissions-nav').classList.remove('active');
+            document.getElementById('settings-nav').classList.add('active');
+        }
+
+        // RFE workflow session dropdown functionality
+        function toggleRFESessionDropdown() {
+            const dropdown = document.getElementById('rfeSessionDropdownMenu');
+            const arrow = document.getElementById('rfe-session-dropdown-arrow');
+            const isOpen = dropdown.style.display === 'block';
+
+            if (isOpen) {
+                dropdown.style.display = 'none';
+                arrow.style.transform = 'rotate(0deg)';
+            } else {
+                dropdown.style.display = 'block';
+                arrow.style.transform = 'rotate(180deg)';
+            }
+        }
+
+        // Spec Kit workflow session dropdown functionality
+        function toggleSpecKitSessionDropdown() {
+            const dropdown = document.getElementById('speckitSessionDropdownMenu');
+            const arrow = document.getElementById('speckit-session-dropdown-arrow');
+            const isOpen = dropdown.style.display === 'block';
+
+            if (isOpen) {
+                dropdown.style.display = 'none';
+                arrow.style.transform = 'rotate(0deg)';
+            } else {
+                dropdown.style.display = 'block';
+                arrow.style.transform = 'rotate(180deg)';
+            }
+        }
+
+        // Counter for session numbering
+        let sessionCounter = 1;
+
+        // Store session type for modal
+        let pendingSessionType = null;
+
+        function createSession(sessionType) {
+            // Store session type and show configuration modal
+            pendingSessionType = sessionType;
+            openSessionConfigModal();
+        }
+
+        function openSessionConfigModal() {
+            document.getElementById('sessionConfigModal').style.display = 'flex';
+            document.body.style.overflow = 'hidden';
+
+            // Update modal title
+            const modalTitle = document.getElementById('sessionConfigTitle');
+            if (modalTitle) {
+                modalTitle.textContent = 'Create Session';
+            }
+
+            // Show/hide agentic prompt section based on session type
+            const agenticPromptSection = document.getElementById('agentic-prompt-section');
+            if (agenticPromptSection) {
+                if (pendingSessionType === 'headless') {
+                    agenticPromptSection.style.display = 'block';
+                } else {
+                    agenticPromptSection.style.display = 'none';
+                }
+            }
+        }
+
+        function closeSessionConfigModal() {
+            document.getElementById('sessionConfigModal').style.display = 'none';
+            document.body.style.overflow = 'auto';
+            pendingSessionType = null;
+            
+            // Reset advanced settings to closed
+            document.getElementById('advanced-settings').style.display = 'none';
+            document.getElementById('advanced-arrow').style.transform = 'rotate(0deg)';
+        }
+
+        function toggleAdvancedSettings() {
+            const advancedSettings = document.getElementById('advanced-settings');
+            const arrow = document.getElementById('advanced-arrow');
+            const isOpen = advancedSettings.style.display === 'block';
+            
+            if (isOpen) {
+                advancedSettings.style.display = 'none';
+                arrow.style.transform = 'rotate(0deg)';
+            } else {
+                advancedSettings.style.display = 'block';
+                arrow.style.transform = 'rotate(180deg)';
+            }
+        }
+
+        function confirmCreateSession() {
+            try {
+                if (!pendingSessionType) {
+                    console.log('No pending session type');
+                    closeSessionConfigModal();
+                    return;
+                }
+
+                // Get configuration values
+                const model = document.getElementById('session-model').value;
+                const temperature = document.getElementById('session-temperature').value;
+                const maxTokens = document.getElementById('session-max-tokens').value;
+                const timeout = document.getElementById('session-timeout').value;
+
+                // Generate session name
+                const sessionName = `session-${sessionCounter}`;
+                sessionCounter++;
+
+                // Get the sessions table body
+                const tbody = document.querySelector('#sessions-content .table tbody');
+
+                if (!tbody) {
+                    console.error('Sessions table body not found');
+                    closeSessionConfigModal();
+                    return;
+                }
+
+                // Create new row
+                const newRow = document.createElement('tr');
+                const sessionUrl = pendingSessionType === 'interactive' ? `${sessionName}/page.html` : `${sessionName}/headless.html`;
+
+                newRow.onclick = function() {
+                    window.location.href = sessionUrl;
+                };
+                newRow.style.cursor = 'pointer';
+
+                newRow.innerHTML = `
+                    <td>
+                        <div>
+                            <div style="color: #1e40af; font-weight: 500;">${sessionName}</div>
+                            <div style="font-size: 0.875rem; color: #64748b;">${pendingSessionType.charAt(0).toUpperCase() + pendingSessionType.slice(1)} session</div>
+                        </div>
+                    </td>
+                    <td><span class="badge" style="background: #f1f5f9; color: #64748b; white-space: nowrap;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 0.25rem;"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>Created</span></td>
+                    <td>${pendingSessionType}</td>
+                    <td>${model}</td>
+                    <td>Just now</td>
+                `;
+
+                // Insert at the top of the table
+                tbody.insertBefore(newRow, tbody.firstChild);
+
+                // Make sure we're showing the sessions view
+                showSessions();
+            } catch (error) {
+                console.error('Error creating session:', error);
+            } finally {
+                // Always close modal
+                closeSessionConfigModal();
+            }
+        }
+
+        // User dropdown functionality
+        function toggleUserDropdown() {
+            const dropdown = document.getElementById('userDropdownMenu');
+            const arrow = document.getElementById('user-dropdown-arrow');
+            const isOpen = dropdown.style.display === 'block';
+            
+            if (isOpen) {
+                dropdown.style.display = 'none';
+                arrow.style.transform = 'rotate(0deg)';
+            } else {
+                dropdown.style.display = 'block';
+                arrow.style.transform = 'rotate(180deg)';
+            }
+        }
+
+        function logout() {
+            // Close dropdown first
+            document.getElementById('userDropdownMenu').style.display = 'none';
+            document.getElementById('user-dropdown-arrow').style.transform = 'rotate(0deg)';
+            
+            // Simulate logout (in real app, this would redirect to login page)
+            alert('Logged out successfully!');
+        }
+
+        // Close dropdowns when clicking outside
+        document.addEventListener('click', function(event) {
+            // Handle user dropdown
+            const userDropdown = document.querySelector('.user-dropdown');
+            if (userDropdown && !userDropdown.contains(event.target)) {
+                document.getElementById('userDropdownMenu').style.display = 'none';
+                document.getElementById('user-dropdown-arrow').style.transform = 'rotate(0deg)';
+            }
+
+            // Handle RFE workflow dropdown
+            const rfeDropdownButton = document.querySelector('[onclick="toggleRFESessionDropdown()"]');
+            const rfeDropdownMenu = document.getElementById('rfeSessionDropdownMenu');
+            if (rfeDropdownButton && rfeDropdownMenu && !rfeDropdownButton.parentElement.contains(event.target)) {
+                rfeDropdownMenu.style.display = 'none';
+                document.getElementById('rfe-session-dropdown-arrow').style.transform = 'rotate(0deg)';
+            }
+
+            // Handle Spec Kit workflow dropdown
+            const speckitDropdownButton = document.querySelector('[onclick="toggleSpecKitSessionDropdown()"]');
+            const speckitDropdownMenu = document.getElementById('speckitSessionDropdownMenu');
+            if (speckitDropdownButton && speckitDropdownMenu && !speckitDropdownButton.parentElement.contains(event.target)) {
+                speckitDropdownMenu.style.display = 'none';
+                document.getElementById('speckit-session-dropdown-arrow').style.transform = 'rotate(0deg)';
+            }
+        });
+    </script>
+</body>
+</html>
