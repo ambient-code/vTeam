@@ -82,7 +82,10 @@ func MintSessionGitHubToken(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read session"})
 		return
 	}
-	meta, _ := obj.Object["metadata"].(map[string]interface{})
+	meta, ok := GetMetadataMap(obj)
+	if !ok {
+		meta = make(map[string]interface{})
+	}
 	anns, _ := meta["annotations"].(map[string]interface{})
 	expectedSA := ""
 	if anns != nil {
@@ -96,7 +99,10 @@ func MintSessionGitHubToken(c *gin.Context) {
 	}
 
 	// Read authoritative userId from spec.userContext.userId
-	spec, _ := obj.Object["spec"].(map[string]interface{})
+	spec, ok := GetSpecMap(obj)
+	if !ok {
+		spec = make(map[string]interface{})
+	}
 	userId := ""
 	if spec != nil {
 		if uc, ok := spec["userContext"].(map[string]interface{}); ok {
@@ -130,7 +136,10 @@ func setRepoStatus(dyn dynamic.Interface, project, sessionName string, repoIndex
 	}
 
 	// Get repo name from spec.repos[repoIndex]
-	spec, _ := item.Object["spec"].(map[string]interface{})
+	spec, ok := GetSpecMap(item)
+	if !ok {
+		spec = make(map[string]interface{})
+	}
 	specRepos, _ := spec["repos"].([]interface{})
 	if repoIndex < 0 || repoIndex >= len(specRepos) {
 		return fmt.Errorf("repo index out of range")
@@ -152,7 +161,11 @@ func setRepoStatus(dyn dynamic.Interface, project, sessionName string, repoIndex
 	if item.Object["status"] == nil {
 		item.Object["status"] = make(map[string]interface{})
 	}
-	status := item.Object["status"].(map[string]interface{})
+	status, ok := GetStatusMap(item)
+	if !ok {
+		status = make(map[string]interface{})
+		item.Object["status"] = status
+	}
 	statusRepos, _ := status["repos"].([]interface{})
 	if statusRepos == nil {
 		statusRepos = []interface{}{}
@@ -212,16 +225,8 @@ func PushSessionRepo(c *gin.Context) {
 	}
 	log.Printf("pushSessionRepo: request project=%s session=%s repoIndex=%d commitLen=%d", project, session, body.RepoIndex, len(strings.TrimSpace(body.CommitMessage)))
 
-	// Try temp service first (for completed sessions), then regular service
-	serviceName := fmt.Sprintf("temp-content-%s", session)
-	reqK8s, _ := GetK8sClientsForRequest(c)
-	if reqK8s != nil {
-		if _, err := reqK8s.CoreV1().Services(project).Get(c.Request.Context(), serviceName, v1.GetOptions{}); err != nil {
-			serviceName = fmt.Sprintf("ambient-content-%s", session)
-		}
-	} else {
-		serviceName = fmt.Sprintf("ambient-content-%s", session)
-	}
+	// Resolve the correct content service (temp-content for completed, ambient-content for running)
+	serviceName := ResolveContentServiceName(c, project, session)
 	endpoint := fmt.Sprintf("http://%s.%s.svc:8080", serviceName, project)
 	log.Printf("pushSessionRepo: using service %s", serviceName)
 
@@ -237,7 +242,10 @@ func PushSessionRepo(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "failed to read session"})
 			return
 		}
-		spec, _ := obj.Object["spec"].(map[string]interface{})
+		spec, ok := GetSpecMap(obj)
+		if !ok {
+			spec = make(map[string]interface{})
+		}
 		repos, _ := spec["repos"].([]interface{})
 		if body.RepoIndex < 0 || body.RepoIndex >= len(repos) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid repo index"})
@@ -303,7 +311,10 @@ func PushSessionRepo(c *gin.Context) {
 		gvr := GetAgenticSessionV1Alpha1Resource()
 		obj, err := reqDyn.Resource(gvr).Namespace(project).Get(c.Request.Context(), session, v1.GetOptions{})
 		if err == nil {
-			spec, _ := obj.Object["spec"].(map[string]interface{})
+			spec, ok := GetSpecMap(obj)
+			if !ok {
+				spec = make(map[string]interface{})
+			}
 			userId := ""
 			if spec != nil {
 				if uc, ok := spec["userContext"].(map[string]interface{}); ok {
@@ -372,16 +383,8 @@ func AbandonSessionRepo(c *gin.Context) {
 		return
 	}
 
-	// Try temp service first (for completed sessions), then regular service
-	serviceName := fmt.Sprintf("temp-content-%s", session)
-	reqK8s, _ := GetK8sClientsForRequest(c)
-	if reqK8s != nil {
-		if _, err := reqK8s.CoreV1().Services(project).Get(c.Request.Context(), serviceName, v1.GetOptions{}); err != nil {
-			serviceName = fmt.Sprintf("ambient-content-%s", session)
-		}
-	} else {
-		serviceName = fmt.Sprintf("ambient-content-%s", session)
-	}
+	// Resolve the correct content service (temp-content for completed, ambient-content for running)
+	serviceName := ResolveContentServiceName(c, project, session)
 	endpoint := fmt.Sprintf("http://%s.%s.svc:8080", serviceName, project)
 	log.Printf("AbandonSessionRepo: using service %s", serviceName)
 	repoPath := strings.TrimSpace(body.RepoPath)
@@ -442,16 +445,8 @@ func DiffSessionRepo(c *gin.Context) {
 		return
 	}
 
-	// Try temp service first (for completed sessions), then regular service
-	serviceName := fmt.Sprintf("temp-content-%s", session)
-	reqK8s, _ := GetK8sClientsForRequest(c)
-	if reqK8s != nil {
-		if _, err := reqK8s.CoreV1().Services(project).Get(c.Request.Context(), serviceName, v1.GetOptions{}); err != nil {
-			serviceName = fmt.Sprintf("ambient-content-%s", session)
-		}
-	} else {
-		serviceName = fmt.Sprintf("ambient-content-%s", session)
-	}
+	// Resolve the correct content service (temp-content for completed, ambient-content for running)
+	serviceName := ResolveContentServiceName(c, project, session)
 	endpoint := fmt.Sprintf("http://%s.%s.svc:8080", serviceName, project)
 	log.Printf("DiffSessionRepo: using service %s", serviceName)
 	urlStr := fmt.Sprintf("%s/content/github/diff?repoPath=%s", endpoint, url.QueryEscape(repoPath))

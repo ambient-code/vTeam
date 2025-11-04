@@ -30,8 +30,7 @@ import (
 // V2 API Handler for multi-tenant session management.
 func ListSessions(c *gin.Context) {
 	project := c.GetString("project")
-	reqK8s, reqDyn := GetK8sClientsForRequest(c)
-	_ = reqK8s
+	_, reqDyn := GetK8sClientsForRequest(c)
 	gvr := GetAgenticSessionV1Alpha1Resource()
 
 	list, err := reqDyn.Resource(gvr).Namespace(project).List(context.TODO(), v1.ListOptions{})
@@ -43,17 +42,23 @@ func ListSessions(c *gin.Context) {
 
 	var sessions []types.AgenticSession
 	for _, item := range list.Items {
+		metadata, ok := GetMetadataMap(&item)
+		if !ok {
+			log.Printf("Warning: session missing metadata, skipping")
+			continue
+		}
+
 		session := types.AgenticSession{
 			APIVersion: item.GetAPIVersion(),
 			Kind:       item.GetKind(),
-			Metadata:   item.Object["metadata"].(map[string]interface{}),
+			Metadata:   metadata,
 		}
 
-		if spec, ok := item.Object["spec"].(map[string]interface{}); ok {
+		if spec, ok := GetSpecMap(&item); ok {
 			session.Spec = parseSpec(spec)
 		}
 
-		if status, ok := item.Object["status"].(map[string]interface{}); ok {
+		if status, ok := GetStatusMap(&item); ok {
 			session.Status = parseStatus(status)
 		}
 
@@ -167,7 +172,9 @@ func CreateSession(c *gin.Context) {
 		// Clean up temp-content pod from parent session to free the PVC
 		// This prevents Multi-Attach errors when the new session tries to mount the same workspace
 		reqK8s, _ := GetK8sClientsForRequest(c)
-		if reqK8s != nil {
+		if reqK8s == nil {
+			log.Printf("CreateSession: Cannot cleanup temp pod, no K8s client available (non-fatal)")
+		} else {
 			tempPodName := fmt.Sprintf("temp-content-%s", req.ParentSessionID)
 			if err := reqK8s.CoreV1().Pods(project).Delete(c.Request.Context(), tempPodName, v1.DeleteOptions{}); err != nil {
 				if !errors.IsNotFound(err) {
@@ -179,50 +186,54 @@ func CreateSession(c *gin.Context) {
 		}
 	}
 
+	// Get spec for modifications (we know it exists since we just created the session object)
+	sessionSpec, ok := session["spec"].(map[string]interface{})
+	if !ok {
+		log.Printf("Warning: session spec has unexpected type")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal error creating session"})
+		return
+	}
+
 	if len(envVars) > 0 {
-		spec := session["spec"].(map[string]interface{})
-		spec["environmentVariables"] = envVars
+		sessionSpec["environmentVariables"] = envVars
 	}
 
 	// Interactive flag
 	if req.Interactive != nil {
-		session["spec"].(map[string]interface{})["interactive"] = *req.Interactive
+		sessionSpec["interactive"] = *req.Interactive
 	}
 
 	// AutoPushOnComplete flag
 	if req.AutoPushOnComplete != nil {
-		session["spec"].(map[string]interface{})["autoPushOnComplete"] = *req.AutoPushOnComplete
+		sessionSpec["autoPushOnComplete"] = *req.AutoPushOnComplete
 	}
 
 	// Set multi-repo configuration on spec
-	{
-		spec := session["spec"].(map[string]interface{})
-		// Multi-repo pass-through (unified repos)
-		if len(req.Repos) > 0 {
-			arr := make([]map[string]interface{}, 0, len(req.Repos))
-			for _, r := range req.Repos {
-				m := map[string]interface{}{}
-				in := map[string]interface{}{"url": r.Input.URL}
-				if r.Input.Branch != nil {
-					in["branch"] = *r.Input.Branch
-				}
-				m["input"] = in
-				if r.Output != nil {
-					out := map[string]interface{}{"url": r.Output.URL}
-					if r.Output.Branch != nil {
-						out["branch"] = *r.Output.Branch
-					}
-					m["output"] = out
-				}
-				// Remove default repo status; status will be set explicitly when pushed/abandoned
-				// m["status"] intentionally unset at creation time
-				arr = append(arr, m)
+	// Multi-repo pass-through (unified repos)
+	if len(req.Repos) > 0 {
+		arr := make([]map[string]interface{}, 0, len(req.Repos))
+		for _, r := range req.Repos {
+			m := map[string]interface{}{}
+			in := map[string]interface{}{"url": r.Input.URL}
+			if r.Input.Branch != nil {
+				in["branch"] = *r.Input.Branch
 			}
-			spec["repos"] = arr
+			m["input"] = in
+			if r.Output != nil {
+				out := map[string]interface{}{"url": r.Output.URL}
+				if r.Output.Branch != nil {
+					out["branch"] = *r.Output.Branch
+				}
+				m["output"] = out
+			}
+			// Remove default repo status; status will be set explicitly when pushed/abandoned
+			// m["status"] intentionally unset at creation time
+			arr = append(arr, m)
 		}
-		if req.MainRepoIndex != nil {
-			spec["mainRepoIndex"] = *req.MainRepoIndex
-		}
+		sessionSpec["repos"] = arr
+	}
+	if req.MainRepoIndex != nil {
+		sessionSpec["mainRepoIndex"] = *req.MainRepoIndex
 	}
 
 	// Handle RFE workflow branch management
@@ -246,11 +257,8 @@ func CreateSession(c *gin.Context) {
 					if err == nil {
 						rfeWf := RfeFromUnstructured(rfeObj)
 						if rfeWf != nil && rfeWf.BranchName != "" {
-							// Access spec from session object
-							spec := session["spec"].(map[string]interface{})
-
 							// Override branch for all repos to use feature branch
-							if repos, ok := spec["repos"].([]map[string]interface{}); ok {
+							if repos, ok := sessionSpec["repos"].([]map[string]interface{}); ok {
 								for i := range repos {
 									// Always override input branch with feature branch
 									if input, ok := repos[i]["input"].(map[string]interface{}); ok {
@@ -298,7 +306,7 @@ func CreateSession(c *gin.Context) {
 			if len(groups) == 0 && req.UserContext != nil {
 				groups = req.UserContext.Groups
 			}
-			session["spec"].(map[string]interface{})["userContext"] = map[string]interface{}{
+			sessionSpec["userContext"] = map[string]interface{}{
 				"userId":      uid,
 				"displayName": displayName,
 				"groups":      groups,
@@ -308,7 +316,7 @@ func CreateSession(c *gin.Context) {
 
 	// Add botAccount if provided
 	if req.BotAccount != nil {
-		session["spec"].(map[string]interface{})["botAccount"] = map[string]interface{}{
+		sessionSpec["botAccount"] = map[string]interface{}{
 			"name": req.BotAccount.Name,
 		}
 	}
@@ -329,7 +337,7 @@ func CreateSession(c *gin.Context) {
 			resourceOverrides["priorityClass"] = req.ResourceOverrides.PriorityClass
 		}
 		if len(resourceOverrides) > 0 {
-			session["spec"].(map[string]interface{})["resourceOverrides"] = resourceOverrides
+			sessionSpec["resourceOverrides"] = resourceOverrides
 		}
 	}
 
@@ -546,8 +554,7 @@ func GetSession(c *gin.Context) {
 		return
 	}
 
-	reqK8s, reqDyn := GetK8sClientsForRequest(c)
-	_ = reqK8s
+	_, reqDyn := GetK8sClientsForRequest(c)
 	gvr := GetAgenticSessionV1Alpha1Resource()
 
 	obj, err := reqDyn.Resource(gvr).Namespace(project).Get(context.TODO(), name, v1.GetOptions{})
@@ -561,17 +568,24 @@ func GetSession(c *gin.Context) {
 		return
 	}
 
+	metadata, ok := GetMetadataMap(obj)
+	if !ok {
+		log.Printf("Session %s missing metadata", name)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid session data"})
+		return
+	}
+
 	session := types.AgenticSession{
 		APIVersion: obj.GetAPIVersion(),
 		Kind:       obj.GetKind(),
-		Metadata:   obj.Object["metadata"].(map[string]interface{}),
+		Metadata:   metadata,
 	}
 
-	if spec, ok := obj.Object["spec"].(map[string]interface{}); ok {
+	if spec, ok := GetSpecMap(obj); ok {
 		session.Spec = parseSpec(spec)
 	}
 
-	if status, ok := obj.Object["status"].(map[string]interface{}); ok {
+	if status, ok := GetStatusMap(obj); ok {
 		session.Status = parseStatus(status)
 	}
 
@@ -633,17 +647,24 @@ func PatchSession(c *gin.Context) {
 		return
 	}
 
+	metadata, ok := GetMetadataMap(patched)
+	if !ok {
+		log.Printf("Patched session %s missing metadata", name)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid session data"})
+		return
+	}
+
 	session := types.AgenticSession{
 		APIVersion: patched.GetAPIVersion(),
 		Kind:       patched.GetKind(),
-		Metadata:   patched.Object["metadata"].(map[string]interface{}),
+		Metadata:   metadata,
 	}
 
-	if spec, ok := patched.Object["spec"].(map[string]interface{}); ok {
+	if spec, ok := GetSpecMap(patched); ok {
 		session.Spec = parseSpec(spec)
 	}
 
-	if status, ok := patched.Object["status"].(map[string]interface{}); ok {
+	if status, ok := GetStatusMap(patched); ok {
 		session.Status = parseStatus(status)
 	}
 
@@ -687,7 +708,13 @@ func UpdateSession(c *gin.Context) {
 	}
 
 	// Update the spec fields
-	spec := existing.Object["spec"].(map[string]interface{})
+	spec, ok := GetSpecMap(existing)
+	if !ok {
+		log.Printf("Session %s missing spec", name)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid session data"})
+		return
+	}
+
 	if updateReq.Prompt != nil {
 		spec["prompt"] = *updateReq.Prompt
 	}
@@ -700,7 +727,10 @@ func UpdateSession(c *gin.Context) {
 
 	// Update LLM settings if provided
 	if updateReq.LLMSettings != nil {
-		llmSettings := spec["llmSettings"].(map[string]interface{})
+		llmSettings, ok := spec["llmSettings"].(map[string]interface{})
+		if !ok {
+			llmSettings = make(map[string]interface{})
+		}
 		if updateReq.LLMSettings.Model != "" {
 			llmSettings["model"] = updateReq.LLMSettings.Model
 		}
@@ -721,17 +751,24 @@ func UpdateSession(c *gin.Context) {
 		return
 	}
 
+	metadata, ok := GetMetadataMap(updated)
+	if !ok {
+		log.Printf("Updated session %s missing metadata", name)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid session data"})
+		return
+	}
+
 	session := types.AgenticSession{
 		APIVersion: updated.GetAPIVersion(),
 		Kind:       updated.GetKind(),
-		Metadata:   updated.Object["metadata"].(map[string]interface{}),
+		Metadata:   metadata,
 	}
 
-	if spec, ok := updated.Object["spec"].(map[string]interface{}); ok {
+	if spec, ok := GetSpecMap(updated); ok {
 		session.Spec = parseSpec(spec)
 	}
 
-	if status, ok := updated.Object["status"].(map[string]interface{}); ok {
+	if status, ok := GetStatusMap(updated); ok {
 		session.Status = parseStatus(status)
 	}
 
@@ -790,17 +827,24 @@ func UpdateSessionDisplayName(c *gin.Context) {
 		return
 	}
 
+	metadata, ok := GetMetadataMap(updated)
+	if !ok {
+		log.Printf("Updated session %s missing metadata", name)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid session data"})
+		return
+	}
+
 	session := types.AgenticSession{
 		APIVersion: updated.GetAPIVersion(),
 		Kind:       updated.GetKind(),
-		Metadata:   updated.Object["metadata"].(map[string]interface{}),
+		Metadata:   metadata,
 	}
 
-	if spec, ok := updated.Object["spec"].(map[string]interface{}); ok {
+	if spec, ok := GetSpecMap(updated); ok {
 		session.Spec = parseSpec(spec)
 	}
 
-	if status, ok := updated.Object["status"].(map[string]interface{}); ok {
+	if status, ok := GetStatusMap(updated); ok {
 		session.Status = parseStatus(status)
 	}
 
@@ -918,14 +962,16 @@ func CloneSession(c *gin.Context) {
 	}
 
 	// Create a deep copy of the source session
-	clonedSession := map[string]interface{}{
-		"apiVersion": sourceObj.GetAPIVersion(),
-		"kind":       sourceObj.GetKind(),
-		"metadata": map[string]interface{}{
-			"name":      targetName,
-			"namespace": targetProject,
-		},
-		"spec": sourceObj.Object["spec"], // Copy the entire spec
+	sourceSpec, ok := GetSpecMap(sourceObj)
+	if !ok {
+		log.Printf("Source session %s missing spec", sourceName)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid source session data"})
+		return
+	}
+
+	clonedMetadata := map[string]interface{}{
+		"name":      targetName,
+		"namespace": targetProject,
 	}
 
 	// Copy labels if present
@@ -934,7 +980,7 @@ func CloneSession(c *gin.Context) {
 		for k, v := range labels {
 			newLabels[k] = v
 		}
-		clonedSession["metadata"].(map[string]interface{})["labels"] = newLabels
+		clonedMetadata["labels"] = newLabels
 	}
 
 	// Copy annotations, excluding system annotations
@@ -950,11 +996,18 @@ func CloneSession(c *gin.Context) {
 		// Add clone metadata
 		newAnnotations["vteam.ambient-code/cloned-from"] = fmt.Sprintf("%s/%s", sourceProject, sourceName)
 		newAnnotations["vteam.ambient-code/cloned-at"] = time.Now().UTC().Format(time.RFC3339)
-		clonedSession["metadata"].(map[string]interface{})["annotations"] = newAnnotations
+		clonedMetadata["annotations"] = newAnnotations
+	}
+
+	clonedSession := map[string]interface{}{
+		"apiVersion": sourceObj.GetAPIVersion(),
+		"kind":       sourceObj.GetKind(),
+		"metadata":   clonedMetadata,
+		"spec":       sourceSpec,
 	}
 
 	// Update spec with clone request overrides
-	spec := clonedSession["spec"].(map[string]interface{})
+	spec := sourceSpec
 	if cloneReq.DisplayName != "" {
 		spec["displayName"] = cloneReq.DisplayName
 	}

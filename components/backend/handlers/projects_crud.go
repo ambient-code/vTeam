@@ -16,7 +16,6 @@ import (
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	k8stypes "k8s.io/apimachinery/pkg/types"
 )
 
@@ -234,8 +233,7 @@ func CreateProject(c *gin.Context) {
 			}
 
 			// Update Project annotations with display metadata
-			var unstruct *unstructured.Unstructured = projObj // Explicit type reference
-			meta, ok := unstruct.Object["metadata"].(map[string]interface{})
+			meta, ok := GetMetadataMap(projObj)
 			if !ok || meta == nil {
 				meta = map[string]interface{}{}
 				projObj.Object["metadata"] = meta

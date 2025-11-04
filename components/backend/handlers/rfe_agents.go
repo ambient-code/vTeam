@@ -354,7 +354,7 @@ func GetWorkflowJira(c *gin.Context) {
 	// Determine secret name
 	secretName := "ambient-runner-secrets"
 	if obj, err := reqDyn.Resource(GetProjectSettingsResource()).Namespace(project).Get(c.Request.Context(), "projectsettings", v1.GetOptions{}); err == nil {
-		if spec, ok := obj.Object["spec"].(map[string]interface{}); ok {
+		if spec, ok := GetSpecMap(obj); ok {
 			if v, ok := spec["runnerSecretsName"].(string); ok && strings.TrimSpace(v) != "" {
 				secretName = strings.TrimSpace(v)
 			}

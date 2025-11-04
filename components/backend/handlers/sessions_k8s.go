@@ -275,7 +275,10 @@ func GetSessionK8sResources(c *gin.Context) {
 		return
 	}
 
-	status, _ := session.Object["status"].(map[string]interface{})
+	status, ok := GetStatusMap(session)
+	if !ok {
+		status = make(map[string]interface{})
+	}
 	jobName, _ := status["jobName"].(string)
 	if jobName == "" {
 		jobName = fmt.Sprintf("%s-job", sessionName)

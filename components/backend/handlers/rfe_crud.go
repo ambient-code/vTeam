@@ -245,7 +245,7 @@ func UpdateProjectRFEWorkflow(c *gin.Context) {
 
 	// Update the CR
 	obj := item.DeepCopy()
-	spec, ok := obj.Object["spec"].(map[string]interface{})
+	spec, ok := GetSpecMap(obj)
 	if !ok {
 		spec = make(map[string]interface{})
 		obj.Object["spec"] = spec
@@ -355,7 +355,10 @@ func GetProjectRFEWorkflowSummary(c *gin.Context) {
 		selector := fmt.Sprintf("rfe-workflow=%s,project=%s", id, project)
 		if list, err := reqDyn.Resource(gvr).Namespace(project).List(c.Request.Context(), v1.ListOptions{LabelSelector: selector}); err == nil {
 			for _, item := range list.Items {
-				status, _ := item.Object["status"].(map[string]interface{})
+				status, ok := GetStatusMap(&item)
+				if !ok {
+					status = make(map[string]interface{})
+				}
 				phaseStr := strings.ToLower(fmt.Sprintf("%v", status["phase"]))
 				if phaseStr == "running" || phaseStr == "creating" || phaseStr == "pending" {
 					anyRunning = true
