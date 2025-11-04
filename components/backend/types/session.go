@@ -84,3 +84,17 @@ type CloneSessionRequest struct {
 	TargetProject  string `json:"targetProject" binding:"required"`
 	NewSessionName string `json:"newSessionName" binding:"required"`
 }
+
+type UpdateAgenticSessionRequest struct {
+	Prompt      *string      `json:"prompt,omitempty"`
+	DisplayName *string      `json:"displayName,omitempty"`
+	Timeout     *int         `json:"timeout,omitempty"`
+	LLMSettings *LLMSettings `json:"llmSettings,omitempty"`
+}
+
+type CloneAgenticSessionRequest struct {
+	TargetProject     string `json:"targetProject,omitempty"`
+	TargetSessionName string `json:"targetSessionName,omitempty"`
+	DisplayName       string `json:"displayName,omitempty"`
+	Prompt            string `json:"prompt,omitempty"`
+}
