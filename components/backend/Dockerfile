@@ -16,8 +16,8 @@ RUN GOPROXY=direct GOSUMDB=off go mod download || \
 # Copy the source code
 COPY . .
 
-# Build the application (with flags to avoid segfault)
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o main .
+# Build the application for linux/amd64 (required for OpenShift/K8s)
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o main .
 
 # Final stage
 FROM registry.access.redhat.com/ubi9/ubi-minimal:latest

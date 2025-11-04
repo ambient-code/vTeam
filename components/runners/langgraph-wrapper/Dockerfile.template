@@ -1,0 +1,29 @@
+# Example Dockerfile for building LangGraph workflows
+# 
+# Usage:
+#   1. Copy this file to your LangGraph workflow repo
+#   2. Customize as needed (install your dependencies)
+#   3. Build: docker build -t quay.io/myorg/my-workflow:v1.0.0 .
+#   4. Push: docker push quay.io/myorg/my-workflow:v1.0.0
+#   5. Get digest: docker inspect quay.io/myorg/my-workflow:v1.0.0 | jq '.[0].RepoDigests[0]'
+#   6. Register in UI with the digest
+
+FROM quay.io/gkrumbach07/langgraph-wrapper:base
+
+# Copy your workflow code
+WORKDIR /app/workflow
+COPY . .
+
+# Install your workflow dependencies (if any)
+# Example:
+# COPY requirements.txt .
+# RUN pip install --no-cache-dir -r requirements.txt
+
+# Your workflow code should expose graph entry points
+# Example structure:
+# app/
+#   __init__.py
+#   workflow.py  # Contains build_app() function
+#
+# Graph entry point: "app:build_app"
+

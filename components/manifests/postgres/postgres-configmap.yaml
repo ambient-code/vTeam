@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-config
+  labels:
+    app: postgres
+data:
+  init-db.sh: |
+    #!/bin/bash
+    set -e
+    # Database is created automatically by Postgres image
+    # LangGraph tables will be created by PostgresSaver.setup() on first use
+    echo "Postgres initialized. LangGraph tables will be created automatically."
+
