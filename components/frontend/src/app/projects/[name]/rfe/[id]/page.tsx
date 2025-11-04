@@ -200,7 +200,7 @@ export default function ProjectRFEDetailPage() {
         }
       );
     });
-  }, [project, id, updateWorkflowMutation, load, refetchSeeding]);
+  }, [project, id, updateWorkflowMutation, load, refetchSeeding, seedWorkflowMutation]);
 
 
   if (loading) return (

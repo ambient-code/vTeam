@@ -56,7 +56,6 @@ export default function PermissionsPage() {
   const projectName = params?.name as string;
 
   // React Query hooks replace all manual state management
-  const { data: project } = useProject(projectName);
   const { data: permissions = [], isLoading, error, refetch } = useProjectPermissions(projectName);
   const addPermissionMutation = useAddProjectPermission();
   const removePermissionMutation = useRemoveProjectPermission();
