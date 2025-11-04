@@ -17,7 +17,7 @@ import { ErrorMessage } from '@/components/error-message';
 import { DestructiveConfirmationDialog } from '@/components/confirmation-dialog';
 import { Breadcrumbs } from '@/components/breadcrumbs';
 
-import { useProject, useProjectPermissions, useAddProjectPermission, useRemoveProjectPermission } from '@/services/queries';
+import { useProjectPermissions, useAddProjectPermission, useRemoveProjectPermission } from '@/services/queries';
 import { successToast, errorToast } from '@/hooks/use-toast';
 import type { PermissionRole, SubjectType } from '@/types/project';
 
