@@ -52,6 +52,18 @@ Transform the Ambient Code Platform from a single-runner system (Claude Code onl
 
 ---
 
+## Clarifications
+
+### Session 2025-11-04
+
+- Q: What audit logging scope is required for compliance and debugging? → A: Audit logging deferred to future phase; not included in MVP
+- Q: What are the concurrent workflow session limits per project? → A: No hard limit; rely on cluster resource quotas only
+- Q: How should WorkflowDefinition name uniqueness be enforced? → A: Enforce unique names cluster-wide; reject registration if name already exists
+- Q: How is "recent sessions" defined for workflow deletion policy (FR-007)? → A: Workflow deletion restrictions deferred; all workflows remain regardless of session age in MVP
+- Q: What behavior should occur when WebSocket connection is unavailable? → A: Fail workflow execution if WebSocket unavailable (strict real-time requirement)
+
+---
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### Primary User Story
@@ -93,6 +105,8 @@ As a data analyst, I want to execute my team's custom LangGraph workflow for CSV
   - Image validation fails with an error message instructing the user to verify the image URL and access credentials
 - **Malformed Input Schema**: What happens when the input schema is not valid JSON Schema?
   - Form validation prevents submission and highlights the schema syntax errors
+- **Duplicate Workflow Name**: What happens when a user tries to register a workflow with a name that already exists cluster-wide?
+  - System rejects the registration with a clear error message indicating the name is already in use and must be unique
 
 #### Execution Edge Cases
 - **Invalid Input Data**: What happens when a user submits input that doesn't match the workflow's schema requirements?
@@ -103,6 +117,8 @@ As a data analyst, I want to execute my team's custom LangGraph workflow for CSV
   - System detects the failure, updates session status to failed, and displays the error details from pod logs
 - **Checkpoint Corruption**: What happens when stored checkpoint data becomes corrupted?
   - System displays an error indicating the session cannot be resumed, user must start a new session
+- **WebSocket Connection Failure**: What happens when WebSocket connection cannot be established or is lost during execution?
+  - Workflow execution fails immediately with error message indicating real-time connection is required; user must retry when network is stable
 
 #### Concurrency Edge Cases
 - **Concurrent Sessions**: What happens when a user starts multiple workflow sessions simultaneously?
@@ -114,7 +130,7 @@ As a data analyst, I want to execute my team's custom LangGraph workflow for CSV
 - **Session Deletion During Execution**: What happens when a user deletes a workflow session that's currently running?
   - System cancels the execution job, cleans up resources, and removes the database record
 - **Large Output Data**: What happens when a workflow produces output larger than expected?
-  - [NEEDS CLARIFICATION: What is the maximum output size limit and how should the system handle outputs that exceed this limit? Options: truncate, paginate, external storage, or reject?]
+  - System enforces a 100MB limit on output data stored in the database; workflows producing larger outputs must handle storage externally (e.g., object storage with URLs in output), and exceeding the limit results in a validation error
 
 ---
 
@@ -123,13 +139,13 @@ As a data analyst, I want to execute my team's custom LangGraph workflow for CSV
 ### Functional Requirements
 
 #### Workflow Registration (Cluster-Level)
-- **FR-001**: System MUST allow cluster administrators to register workflow definitions with a unique name, display name, description, container image reference, and input schema
+- **FR-001**: System MUST allow cluster administrators to register workflow definitions with a unique name, display name, description, container image reference, and input schema; workflow names MUST be unique cluster-wide and registration MUST be rejected if name already exists
 - **FR-002**: System MUST validate that container images come from whitelisted registries during workflow registration
 - **FR-003**: System MUST validate that input schemas conform to JSON Schema specification
 - **FR-004**: System MUST store workflow definitions at cluster scope (accessible to all projects)
 - **FR-005**: System MUST allow cluster administrators to update existing workflow definitions
 - **FR-006**: System MUST allow cluster administrators to delete workflow definitions that have no active sessions
-- **FR-007**: System MUST prevent deletion of workflows that have active or recent sessions
+- **FR-007**: System MUST prevent deletion of workflows that have active sessions; deletion restrictions for completed sessions deferred to future phase
 
 #### Workflow Session Management (Project-Scoped)
 - **FR-008**: System MUST allow project users with edit permissions to create new workflow sessions
@@ -143,7 +159,7 @@ As a data analyst, I want to execute my team's custom LangGraph workflow for CSV
 - **FR-016**: System MUST distinguish between workflow sessions and Claude Code sessions in the UI
 
 #### Session Execution and Monitoring
-- **FR-017**: System MUST stream real-time progress messages from running workflows to the UI
+- **FR-017**: System MUST stream real-time progress messages from running workflows to the UI; workflow execution MUST fail if WebSocket connection is unavailable
 - **FR-018**: System MUST display session status, start time, and completion time
 - **FR-019**: System MUST display session input parameters and final output results
 - **FR-020**: System MUST capture and display error messages when sessions fail
@@ -188,8 +204,8 @@ As a data analyst, I want to execute my team's custom LangGraph workflow for CSV
 
 #### WorkflowDefinition
 - Represents a registered workflow template available cluster-wide
-- Key attributes: unique name, display name, description, container image reference, input schema (JSON Schema format), registration timestamp
-- Lifecycle: Created by cluster admins, used by all projects, deleted only when no active sessions exist
+- Key attributes: unique name (cluster-wide uniqueness enforced), display name, description, container image reference, input schema (JSON Schema format), registration timestamp
+- Lifecycle: Created by cluster admins, used by all projects, deleted only when no active sessions exist (no restrictions on completed sessions in MVP)
 
 #### WorkflowSession
 - Represents an instance of a workflow execution within a project
@@ -220,9 +236,10 @@ As a data analyst, I want to execute my team's custom LangGraph workflow for CSV
 5. **Session Timeout Defaults**: A reasonable default timeout (e.g., 1 hour) will be applied to prevent runaway workflows unless otherwise specified
 6. **Message Streaming Protocol**: WebSocket connections will be used for real-time message streaming from workflows to UI
 7. **Project Namespace Mapping**: Each project corresponds to a Kubernetes namespace with appropriate RBAC policies
-8. **Resource Limits**: Standard resource limits (CPU, memory) will be applied to workflow execution pods based on cluster capacity
+8. **Resource Limits**: Standard resource limits (CPU, memory) will be applied to workflow execution pods based on cluster capacity; no hard limit on concurrent sessions per project (capacity managed by cluster resource quotas)
 9. **Checkpoint Retention**: Checkpoint data will be retained for a standard period (e.g., 30 days) to support session resumption
 10. **Authentication Method**: User authentication follows the existing platform authentication mechanism (OpenShift OAuth or equivalent)
+11. **Output Size Limits**: Workflow output data stored in the database is limited to 100MB based on PostgreSQL JSONB performance best practices; larger outputs require external storage solutions
 
 ---
 
@@ -269,6 +286,7 @@ The following items are explicitly excluded from this feature:
 - Static analysis of workflow logic
 - Runtime behavior monitoring and anomaly detection
 - Per-workflow resource limit customization (global limits only)
+- Audit logging of workflow registrations, session operations, and admin actions (deferred to future phase)
 
 ### Legacy Session Migration
 - Automated migration of existing AgenticSession CRs to database-backed model
@@ -342,7 +360,7 @@ The following items are explicitly excluded from this feature:
 - [x] All mandatory sections completed
 
 ### Requirement Completeness
-- [ ] No [NEEDS CLARIFICATION] markers remain
+- [x] No [NEEDS CLARIFICATION] markers remain
 - [x] Requirements are testable and unambiguous
 - [x] Success criteria are measurable
 - [x] Scope is clearly bounded
@@ -355,10 +373,10 @@ The following items are explicitly excluded from this feature:
 
 - [x] User description parsed
 - [x] Key concepts extracted
-- [x] Ambiguities marked (1 clarification needed)
+- [x] Ambiguities marked and resolved
 - [x] User scenarios defined
 - [x] Requirements generated
 - [x] Entities identified
-- [ ] Review checklist passed (pending clarification resolution)
+- [x] Review checklist passed
 
 ---
