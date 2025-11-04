@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
 	"strings"
 	"time"
 
@@ -152,6 +153,40 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 
 	// Extract spec information from the fresh object
 	spec, _, _ := unstructured.NestedMap(currentObj.Object, "spec")
+	
+	// Check if this is a LangGraph workflow session
+	workflowRef, hasWorkflowRef, _ := unstructured.NestedMap(spec, "workflowRef")
+	var workflowImageDigest string
+	var workflowGraphEntry string
+	var workflowInputs map[string]interface{}
+	
+	if hasWorkflowRef && workflowRef != nil {
+		// Read resolved workflow info from annotations
+		metadata, _, _ := unstructured.NestedMap(currentObj.Object, "metadata")
+		if annotations, ok := metadata["annotations"].(map[string]interface{}); ok {
+			if imgDigest, ok := annotations["ambient-code.io/workflow-image-digest"].(string); ok {
+				workflowImageDigest = imgDigest
+			}
+			if graphEntry, ok := annotations["ambient-code.io/workflow-graph-entry"].(string); ok {
+				workflowGraphEntry = graphEntry
+			}
+		}
+		
+		// Read inputs from spec
+		if inputs, _, _ := unstructured.NestedMap(spec, "inputs"); inputs != nil {
+			workflowInputs = inputs
+		}
+		
+		if workflowImageDigest == "" || workflowGraphEntry == "" {
+			log.Printf("WorkflowRef found but missing resolved image/graph info in annotations for session %s", name)
+			updateAgenticSessionStatus(sessionNamespace, name, map[string]interface{}{
+				"phase":   "Error",
+				"message": "Workflow image or graph entry not resolved",
+			})
+			return fmt.Errorf("workflow image or graph entry not resolved")
+		}
+	}
+
 	prompt, _, _ := unstructured.NestedString(spec, "prompt")
 	timeout, _, _ := unstructured.NestedInt64(spec, "timeout")
 	interactive, _, _ := unstructured.NestedBool(spec, "interactive")
@@ -378,20 +413,97 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 									}
 								}
 
-								return base
-							}(),
-
-							// If configured, import all keys from the runner Secret as environment variables
-							EnvFrom: func() []corev1.EnvFromSource {
-								if runnerSecretsName != "" {
-									return []corev1.EnvFromSource{{SecretRef: &corev1.SecretEnvSource{LocalObjectReference: corev1.LocalObjectReference{Name: runnerSecretsName}}}}
-								}
-								return []corev1.EnvFromSource{}
-							}(),
-
-							Resources: corev1.ResourceRequirements{},
-						},
-					},
+					// Flip roles so the content writer is the main container that keeps the pod alive
+					Containers: func() []corev1.Container {
+						containers := []corev1.Container{
+							{
+								Name:            "ambient-content",
+								Image:           appConfig.ContentServiceImage,
+								ImagePullPolicy: appConfig.ImagePullPolicy,
+								Env: []corev1.EnvVar{
+									{Name: "CONTENT_SERVICE_MODE", Value: "true"},
+									{Name: "STATE_BASE_DIR", Value: "/workspace"},
+								},
+								Ports: []corev1.ContainerPort{{ContainerPort: 8080, Name: "http"}},
+								ReadinessProbe: &corev1.Probe{
+									ProbeHandler: corev1.ProbeHandler{
+										HTTPGet: &corev1.HTTPGetAction{
+											Path: "/health",
+											Port: intstr.FromString("http"),
+										},
+									},
+									InitialDelaySeconds: 5,
+									PeriodSeconds:       5,
+								},
+								VolumeMounts: []corev1.VolumeMount{{Name: "workspace", MountPath: "/workspace"}},
+							},
+						}
+						
+						// Determine runner image and container config
+						var runnerImage string
+						var runnerContainer corev1.Container
+						
+						if hasWorkflowRef && workflowImageDigest != "" {
+							// LangGraph workflow runner
+							runnerImage = workflowImageDigest
+							runnerContainer = corev1.Container{
+								Name:            "langgraph-runner",
+								Image:           runnerImage,
+								ImagePullPolicy: appConfig.ImagePullPolicy,
+								SecurityContext: &corev1.SecurityContext{
+									AllowPrivilegeEscalation: boolPtr(false),
+									ReadOnlyRootFilesystem:   boolPtr(false),
+									Capabilities: &corev1.Capabilities{
+										Drop: []corev1.Capability{"ALL"},
+									},
+								},
+								Ports: []corev1.ContainerPort{{ContainerPort: 8000, Name: "http"}},
+								ReadinessProbe: &corev1.Probe{
+									ProbeHandler: corev1.ProbeHandler{
+										HTTPGet: &corev1.HTTPGetAction{
+											Path: "/ready",
+											Port: intstr.FromString("http"),
+										},
+									},
+									InitialDelaySeconds: 10,
+									PeriodSeconds:       5,
+								},
+								VolumeMounts: []corev1.VolumeMount{
+									{Name: "workspace", MountPath: "/workspace", ReadOnly: false},
+								},
+								Env: buildLangGraphRunnerEnv(name, sessionNamespace, workflowGraphEntry, workflowInputs, appConfig),
+							}
+						} else {
+							// Legacy Claude Code runner
+							runnerImage = appConfig.AmbientCodeRunnerImage
+							runnerContainer = corev1.Container{
+								Name:            "ambient-code-runner",
+								Image:           runnerImage,
+								ImagePullPolicy: appConfig.ImagePullPolicy,
+								SecurityContext: &corev1.SecurityContext{
+									AllowPrivilegeEscalation: boolPtr(false),
+									ReadOnlyRootFilesystem:   boolPtr(false),
+									Capabilities: &corev1.Capabilities{
+										Drop: []corev1.Capability{"ALL"},
+									},
+								},
+								VolumeMounts: []corev1.VolumeMount{
+									{Name: "workspace", MountPath: "/workspace", ReadOnly: false},
+								},
+								Env: buildLegacyRunnerEnv(name, sessionNamespace, prompt, model, temperature, maxTokens, timeout, autoPushOnComplete, interactive, inputRepo, inputBranch, outputRepo, outputBranch, appConfig, currentObj, runnerSecretsName),
+								EnvFrom: func() []corev1.EnvFromSource {
+									if runnerSecretsName != "" {
+										return []corev1.EnvFromSource{{SecretRef: &corev1.SecretEnvSource{LocalObjectReference: corev1.LocalObjectReference{Name: runnerSecretsName}}}}
+									}
+									return []corev1.EnvFromSource{}
+								}(),
+								Resources: corev1.ResourceRequirements{},
+							}
+						}
+						
+						containers = append(containers, runnerContainer)
+						return containers
+					}(),
 				},
 			},
 		},
@@ -476,6 +588,35 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 	}
 	if _, serr := config.K8sClient.CoreV1().Services(sessionNamespace).Create(context.TODO(), svc, v1.CreateOptions{}); serr != nil && !errors.IsAlreadyExists(serr) {
 		log.Printf("Failed to create per-job content service for %s: %v", name, serr)
+	}
+
+	// If LangGraph workflow, create service for runner and start workflow
+	if hasWorkflowRef && workflowImageDigest != "" {
+		runnerSvc := &corev1.Service{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      fmt.Sprintf("langgraph-runner-%s", name),
+				Namespace: sessionNamespace,
+				Labels:    map[string]string{"app": "langgraph-runner", "agentic-session": name},
+				OwnerReferences: []v1.OwnerReference{{
+					APIVersion: "batch/v1",
+					Kind:       "Job",
+					Name:       jobName,
+					UID:        createdJob.UID,
+					Controller: boolPtr(true),
+				}},
+			},
+			Spec: corev1.ServiceSpec{
+				Selector: map[string]string{"job-name": jobName},
+				Ports:    []corev1.ServicePort{{Port: 8000, TargetPort: intstr.FromString("http"), Protocol: corev1.ProtocolTCP, Name: "http"}},
+				Type:     corev1.ServiceTypeClusterIP,
+			},
+		}
+		if _, serr := config.K8sClient.CoreV1().Services(sessionNamespace).Create(context.TODO(), runnerSvc, v1.CreateOptions{}); serr != nil && !errors.IsAlreadyExists(serr) {
+			log.Printf("Failed to create langgraph runner service for %s: %v", name, serr)
+		}
+
+		// Start workflow runner in background after pod is ready
+		go startLangGraphWorkflow(name, sessionNamespace, jobName, workflowInputs)
 	}
 
 	// Start monitoring the job
@@ -782,3 +923,235 @@ var (
 	int32Ptr = func(i int32) *int32 { return &i }
 	int64Ptr = func(i int64) *int64 { return &i }
 )
+
+// buildLangGraphRunnerEnv builds environment variables for LangGraph runner
+func buildLangGraphRunnerEnv(sessionName, sessionNamespace, graphEntry string, inputs map[string]interface{}, appConfig *config.Config) []corev1.EnvVar {
+	env := []corev1.EnvVar{
+		{Name: "RUN_ID", Value: sessionName},
+		{Name: "GRAPH_ENTRY", Value: graphEntry},
+		{Name: "ARTIFACTS_DIR", Value: "/workspace/artifacts"},
+		{Name: "PROJECT", Value: sessionNamespace},
+		{Name: "BACKEND_API_URL", Value: fmt.Sprintf("http://backend-service.%s.svc.cluster.local:8080/api", appConfig.BackendNamespace)},
+	}
+
+	// Postgres connection - use explicit namespace for secret (ambient-code namespace)
+	postgresNamespace := appConfig.BackendNamespace // Assume Postgres is in backend namespace
+	env = append(env,
+		corev1.EnvVar{Name: "POSTGRES_HOST", Value: fmt.Sprintf("postgres-service.%s.svc.cluster.local", postgresNamespace)},
+		corev1.EnvVar{Name: "POSTGRES_PORT", Value: "5432"},
+		corev1.EnvVar{
+			Name: "POSTGRES_USER",
+			ValueFrom: &corev1.EnvVarSource{
+				SecretKeyRef: &corev1.SecretKeySelector{
+					LocalObjectReference: corev1.LocalObjectReference{Name: "postgres-secret"},
+					Key:                  "POSTGRES_USER",
+				},
+			},
+		},
+		corev1.EnvVar{
+			Name: "POSTGRES_PASSWORD",
+			ValueFrom: &corev1.EnvVarSource{
+				SecretKeyRef: &corev1.SecretKeySelector{
+					LocalObjectReference: corev1.LocalObjectReference{Name: "postgres-secret"},
+					Key:                  "POSTGRES_PASSWORD",
+				},
+			},
+		},
+		corev1.EnvVar{
+			Name: "POSTGRES_DB",
+			ValueFrom: &corev1.EnvVarSource{
+				SecretKeyRef: &corev1.SecretKeySelector{
+					LocalObjectReference: corev1.LocalObjectReference{Name: "postgres-secret"},
+					Key:                  "POSTGRES_DB",
+				},
+			},
+		},
+	)
+
+	// Note: Inputs are passed via POST body to /start endpoint, not env vars
+	return env
+}
+
+// buildLegacyRunnerEnv builds environment variables for legacy Claude Code runner
+func buildLegacyRunnerEnv(sessionName, sessionNamespace, prompt, model string, temperature float64, maxTokens, timeout int64, autoPushOnComplete, interactive bool, inputRepo, inputBranch, outputRepo, outputBranch string, appConfig *config.Config, currentObj *unstructured.Unstructured, runnerSecretsName string) []corev1.EnvVar {
+	base := []corev1.EnvVar{
+		{Name: "DEBUG", Value: "true"},
+		{Name: "INTERACTIVE", Value: fmt.Sprintf("%t", interactive)},
+		{Name: "AGENTIC_SESSION_NAME", Value: sessionName},
+		{Name: "AGENTIC_SESSION_NAMESPACE", Value: sessionNamespace},
+		{Name: "SESSION_ID", Value: sessionName},
+		{Name: "WORKSPACE_PATH", Value: fmt.Sprintf("/workspace/sessions/%s/workspace", sessionName)},
+		{Name: "INPUT_REPO_URL", Value: inputRepo},
+		{Name: "INPUT_BRANCH", Value: inputBranch},
+		{Name: "OUTPUT_REPO_URL", Value: outputRepo},
+		{Name: "OUTPUT_BRANCH", Value: outputBranch},
+		{Name: "PROMPT", Value: prompt},
+		{Name: "LLM_MODEL", Value: model},
+		{Name: "LLM_TEMPERATURE", Value: fmt.Sprintf("%.2f", temperature)},
+		{Name: "LLM_MAX_TOKENS", Value: fmt.Sprintf("%d", maxTokens)},
+		{Name: "TIMEOUT", Value: fmt.Sprintf("%d", timeout)},
+		{Name: "AUTO_PUSH_ON_COMPLETE", Value: fmt.Sprintf("%t", autoPushOnComplete)},
+		{Name: "BACKEND_API_URL", Value: fmt.Sprintf("http://backend-service.%s.svc.cluster.local:8080/api", appConfig.BackendNamespace)},
+		{Name: "WEBSOCKET_URL", Value: fmt.Sprintf("ws://backend-service.%s.svc.cluster.local:8080/api/projects/%s/sessions/%s/ws", appConfig.BackendNamespace, sessionNamespace, sessionName)},
+	}
+
+	// Add BOT_TOKEN from secret
+	secretName := ""
+	if meta, ok := currentObj.Object["metadata"].(map[string]interface{}); ok {
+		if anns, ok := meta["annotations"].(map[string]interface{}); ok {
+			if v, ok := anns["ambient-code.io/runner-token-secret"].(string); ok && strings.TrimSpace(v) != "" {
+				secretName = strings.TrimSpace(v)
+			}
+		}
+	}
+	if secretName == "" {
+		secretName = fmt.Sprintf("ambient-runner-token-%s", sessionName)
+	}
+	base = append(base, corev1.EnvVar{
+		Name: "BOT_TOKEN",
+		ValueFrom: &corev1.EnvVarSource{SecretKeyRef: &corev1.SecretKeySelector{
+			LocalObjectReference: corev1.LocalObjectReference{Name: secretName},
+			Key:                  "k8s-token",
+		}},
+	})
+
+	// Add CR-provided envs
+	if spec, ok := currentObj.Object["spec"].(map[string]interface{}); ok {
+		if repos, ok := spec["repos"].([]interface{}); ok && len(repos) > 0 {
+			b, _ := json.Marshal(repos)
+			base = append(base, corev1.EnvVar{Name: "REPOS_JSON", Value: string(b)})
+		}
+		if mrn, ok := spec["mainRepoName"].(string); ok && strings.TrimSpace(mrn) != "" {
+			base = append(base, corev1.EnvVar{Name: "MAIN_REPO_NAME", Value: mrn})
+		}
+		if mriRaw, ok := spec["mainRepoIndex"]; ok {
+			switch v := mriRaw.(type) {
+			case int64:
+				base = append(base, corev1.EnvVar{Name: "MAIN_REPO_INDEX", Value: fmt.Sprintf("%d", v)})
+			case int32:
+				base = append(base, corev1.EnvVar{Name: "MAIN_REPO_INDEX", Value: fmt.Sprintf("%d", v)})
+			case int:
+				base = append(base, corev1.EnvVar{Name: "MAIN_REPO_INDEX", Value: fmt.Sprintf("%d", v)})
+			case float64:
+				base = append(base, corev1.EnvVar{Name: "MAIN_REPO_INDEX", Value: fmt.Sprintf("%d", int64(v))})
+			case string:
+				if strings.TrimSpace(v) != "" {
+					base = append(base, corev1.EnvVar{Name: "MAIN_REPO_INDEX", Value: v})
+				}
+			}
+		}
+		if envMap, ok := spec["environmentVariables"].(map[string]interface{}); ok {
+			for k, v := range envMap {
+				if vs, ok := v.(string); ok {
+					replaced := false
+					for i := range base {
+						if base[i].Name == k {
+							base[i].Value = vs
+							replaced = true
+							break
+						}
+					}
+					if !replaced {
+						base = append(base, corev1.EnvVar{Name: k, Value: vs})
+					}
+				}
+			}
+		}
+	}
+
+	return base
+}
+
+// startLangGraphWorkflow waits for pod to be ready and calls /start endpoint
+func startLangGraphWorkflow(sessionName, sessionNamespace, jobName string, inputs map[string]interface{}) {
+	runnerSvcName := fmt.Sprintf("langgraph-runner-%s", sessionName)
+	runnerURL := fmt.Sprintf("http://%s.%s.svc.cluster.local:8000", runnerSvcName, sessionNamespace)
+
+	// Wait for pod to be ready (with timeout)
+	maxWait := 300 // 5 minutes
+	waitInterval := 5 * time.Second
+	elapsed := 0
+
+	for elapsed < maxWait {
+		time.Sleep(waitInterval)
+		elapsed += int(waitInterval.Seconds())
+
+		// Check if pod is ready
+		pods, err := config.K8sClient.CoreV1().Pods(sessionNamespace).List(context.TODO(), v1.ListOptions{
+			LabelSelector: fmt.Sprintf("job-name=%s", jobName),
+		})
+		if err != nil {
+			log.Printf("Failed to list pods for job %s: %v", jobName, err)
+			continue
+		}
+
+		if len(pods.Items) == 0 {
+			continue
+		}
+
+		pod := pods.Items[0]
+		ready := false
+		for _, condition := range pod.Status.Conditions {
+			if condition.Type == corev1.PodReady && condition.Status == corev1.ConditionTrue {
+				ready = true
+				break
+			}
+		}
+
+		if !ready {
+			continue
+		}
+
+		// Check if runner container is ready
+		for _, status := range pod.Status.ContainerStatuses {
+			if status.Name == "langgraph-runner" && status.Ready {
+				// Pod is ready, call /start endpoint
+				startReq := map[string]interface{}{
+					"run_id": sessionName,
+					"inputs": func() map[string]interface{} {
+						if inputs != nil {
+							return inputs
+						}
+						return make(map[string]interface{})
+					}(),
+				}
+				reqJSON, _ := json.Marshal(startReq)
+
+				// Use HTTP client to call /start
+				client := &http.Client{Timeout: 30 * time.Second}
+				resp, err := client.Post(fmt.Sprintf("%s/start", runnerURL), "application/json", strings.NewReader(string(reqJSON)))
+				if err != nil {
+					log.Printf("Failed to call /start on langgraph runner for %s: %v", sessionName, err)
+					updateAgenticSessionStatus(sessionNamespace, sessionName, map[string]interface{}{
+						"phase":   "Error",
+						"message": fmt.Sprintf("Failed to start workflow: %v", err),
+					})
+					return
+				}
+				defer resp.Body.Close()
+
+				if resp.StatusCode != http.StatusOK {
+					log.Printf("LangGraph runner /start returned status %d for %s", resp.StatusCode, sessionName)
+					updateAgenticSessionStatus(sessionNamespace, sessionName, map[string]interface{}{
+						"phase":   "Error",
+						"message": fmt.Sprintf("Workflow start failed with status %d", resp.StatusCode),
+					})
+					return
+				}
+
+				log.Printf("Successfully started LangGraph workflow for session %s", sessionName)
+				updateAgenticSessionStatus(sessionNamespace, sessionName, map[string]interface{}{
+					"phase":   "Running",
+					"message": "Workflow started",
+				})
+				return
+			}
+		}
+	}
+
+	log.Printf("Timeout waiting for LangGraph runner pod to be ready for session %s", sessionName)
+	updateAgenticSessionStatus(sessionNamespace, sessionName, map[string]interface{}{
+		"phase":   "Error",
+		"message": "Timeout waiting for runner pod to be ready",
+	})
+}

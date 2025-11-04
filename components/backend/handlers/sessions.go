@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"ambient-code-backend/server"
 	"ambient-code-backend/types"
 
 	"github.com/gin-gonic/gin"
@@ -48,6 +50,27 @@ type contentListItem struct {
 func parseSpec(spec map[string]interface{}) types.AgenticSessionSpec {
 	result := types.AgenticSessionSpec{}
 
+	// LangGraph workflow reference (optional)
+	if workflowRef, ok := spec["workflowRef"].(map[string]interface{}); ok {
+		wfRef := &types.WorkflowRef{}
+		if name, ok := workflowRef["name"].(string); ok {
+			wfRef.Name = name
+		}
+		if version, ok := workflowRef["version"].(string); ok {
+			wfRef.Version = version
+		}
+		if graph, ok := workflowRef["graph"].(string); ok {
+			wfRef.Graph = graph
+		}
+		result.WorkflowRef = wfRef
+	}
+
+	// LangGraph workflow inputs (optional)
+	if inputs, ok := spec["inputs"].(map[string]interface{}); ok {
+		result.Inputs = inputs
+	}
+
+	// Legacy prompt-based session
 	if prompt, ok := spec["prompt"].(string); ok {
 		result.Prompt = prompt
 	}
@@ -235,6 +258,36 @@ func parseStatus(status map[string]interface{}) *types.AgenticSessionStatus {
 		result.StateDir = stateDir
 	}
 
+	// LangGraph workflow status fields
+	if currentNode, ok := status["currentNode"].(string); ok {
+		result.CurrentNode = currentNode
+	}
+	if checkpointId, ok := status["checkpointId"].(string); ok {
+		result.CheckpointId = checkpointId
+	}
+	if conditions, ok := status["conditions"].([]interface{}); ok {
+		conds := make([]types.StatusCondition, 0, len(conditions))
+		for _, cond := range conditions {
+			if condMap, ok := cond.(map[string]interface{}); ok {
+				c := types.StatusCondition{}
+				if t, ok := condMap["type"].(string); ok {
+					c.Type = t
+				}
+				if s, ok := condMap["status"].(string); ok {
+					c.Status = s
+				}
+				if m, ok := condMap["message"].(string); ok {
+					c.Message = m
+				}
+				if ltt, ok := condMap["lastTransitionTime"].(string); ok {
+					c.LastTransitionTime = ltt
+				}
+				conds = append(conds, c)
+			}
+		}
+		result.Conditions = conds
+	}
+
 	return result
 }
 
@@ -288,7 +341,99 @@ func CreateSession(c *gin.Context) {
 		return
 	}
 
-	// Validation for multi-repo can be added here if needed
+	// Validate that either prompt or workflowRef is provided
+	if req.WorkflowRef == nil && req.Prompt == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "either prompt or workflowRef must be provided"})
+		return
+	}
+
+	// Resolve workflow if workflowRef is provided
+	var workflowImageDigest string
+	var workflowGraphEntry string
+	if req.WorkflowRef != nil {
+		// Resolve workflow version from registry
+		var version string = req.WorkflowRef.Version
+		if version == "" {
+			// Get latest version
+			var workflowID string
+			err := server.DB.QueryRow(
+				"SELECT id FROM workflows WHERE project = $1 AND name = $2",
+				project, req.WorkflowRef.Name,
+			).Scan(&workflowID)
+			if err == sql.ErrNoRows {
+				c.JSON(http.StatusNotFound, gin.H{"error": fmt.Sprintf("workflow '%s' not found", req.WorkflowRef.Name)})
+				return
+			}
+			if err != nil {
+				log.Printf("Failed to query workflow: %v", err)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to resolve workflow"})
+				return
+			}
+
+			// Get latest version
+			err = server.DB.QueryRow(
+				"SELECT version FROM workflow_versions WHERE workflow_id = $1 ORDER BY created_at DESC LIMIT 1",
+				workflowID,
+			).Scan(&version)
+			if err == sql.ErrNoRows {
+				c.JSON(http.StatusNotFound, gin.H{"error": fmt.Sprintf("no versions found for workflow '%s'", req.WorkflowRef.Name)})
+				return
+			}
+			if err != nil {
+				log.Printf("Failed to query workflow version: %v", err)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to resolve workflow version"})
+				return
+			}
+		}
+
+		// Get workflow version with graphs
+		var workflowID string
+		err := server.DB.QueryRow(
+			"SELECT id FROM workflows WHERE project = $1 AND name = $2",
+			project, req.WorkflowRef.Name,
+		).Scan(&workflowID)
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": fmt.Sprintf("workflow '%s' not found", req.WorkflowRef.Name)})
+			return
+		}
+
+		var graphsJSON []byte
+		err = server.DB.QueryRow(
+			"SELECT image_digest, graphs FROM workflow_versions WHERE workflow_id = $1 AND version = $2",
+			workflowID, version,
+		).Scan(&workflowImageDigest, &graphsJSON)
+		if err == sql.ErrNoRows {
+			c.JSON(http.StatusNotFound, gin.H{"error": fmt.Sprintf("workflow version '%s' not found", version)})
+			return
+		}
+		if err != nil {
+			log.Printf("Failed to query workflow version: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to resolve workflow version"})
+			return
+		}
+
+		// Parse graphs and find the requested graph
+		var graphs []types.WorkflowGraph
+		if err := json.Unmarshal(graphsJSON, &graphs); err != nil {
+			log.Printf("Failed to unmarshal graphs: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to parse workflow graphs"})
+			return
+		}
+
+		// Find the requested graph
+		found := false
+		for _, graph := range graphs {
+			if graph.Name == req.WorkflowRef.Graph {
+				workflowGraphEntry = graph.Entry
+				found = true
+				break
+			}
+		}
+		if !found {
+			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("graph '%s' not found in workflow version", req.WorkflowRef.Graph)})
+			return
+		}
+	}
 
 	// Set defaults for LLM settings if not provided
 	llmSettings := types.LLMSettings{
@@ -330,29 +475,73 @@ func CreateSession(c *gin.Context) {
 		}
 		metadata["labels"] = labels
 	}
+	annotations := map[string]interface{}{}
 	if len(req.Annotations) > 0 {
-		annotations := map[string]interface{}{}
 		for k, v := range req.Annotations {
 			annotations[k] = v
 		}
+	}
+
+	// Store resolved workflow info in annotations for operator
+	if req.WorkflowRef != nil {
+		annotations["ambient-code.io/workflow-image-digest"] = workflowImageDigest
+		annotations["ambient-code.io/workflow-graph-entry"] = workflowGraphEntry
+		annotations["ambient-code.io/workflow-name"] = req.WorkflowRef.Name
+		annotations["ambient-code.io/workflow-version"] = func() string {
+			if req.WorkflowRef.Version != "" {
+				return req.WorkflowRef.Version
+			}
+			// Get latest version
+			var workflowID string
+			var version string
+			err := server.DB.QueryRow(
+				"SELECT id FROM workflows WHERE project = $1 AND name = $2",
+				project, req.WorkflowRef.Name,
+			).Scan(&workflowID)
+			if err == nil {
+				_ = server.DB.QueryRow(
+					"SELECT version FROM workflow_versions WHERE workflow_id = $1 ORDER BY created_at DESC LIMIT 1",
+					workflowID,
+				).Scan(&version)
+			}
+			return version
+		}()
+		annotations["ambient-code.io/workflow-graph"] = req.WorkflowRef.Graph
+	}
+	if len(annotations) > 0 {
 		metadata["annotations"] = annotations
+	}
+
+	spec := map[string]interface{}{
+		"displayName": req.DisplayName,
+		"project":     project,
+		"llmSettings": map[string]interface{}{
+			"model":       llmSettings.Model,
+			"temperature": llmSettings.Temperature,
+			"maxTokens":   llmSettings.MaxTokens,
+		},
+		"timeout": timeout,
+	}
+
+	// Add prompt or workflowRef based on request
+	if req.WorkflowRef != nil {
+		spec["workflowRef"] = map[string]interface{}{
+			"name":    req.WorkflowRef.Name,
+			"version": annotations["ambient-code.io/workflow-version"],
+			"graph":   req.WorkflowRef.Graph,
+		}
+		if req.Inputs != nil && len(req.Inputs) > 0 {
+			spec["inputs"] = req.Inputs
+		}
+	} else {
+		spec["prompt"] = req.Prompt
 	}
 
 	session := map[string]interface{}{
 		"apiVersion": "vteam.ambient-code/v1alpha1",
 		"kind":       "AgenticSession",
 		"metadata":   metadata,
-		"spec": map[string]interface{}{
-			"prompt":      req.Prompt,
-			"displayName": req.DisplayName,
-			"project":     project,
-			"llmSettings": map[string]interface{}{
-				"model":       llmSettings.Model,
-				"temperature": llmSettings.Temperature,
-				"maxTokens":   llmSettings.MaxTokens,
-			},
-			"timeout": timeout,
-		},
+		"spec":       spec,
 		"status": map[string]interface{}{
 			"phase": "Pending",
 		},

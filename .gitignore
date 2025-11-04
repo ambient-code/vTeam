@@ -118,3 +118,4 @@ Thumbs.db
 .stories/
 .testplans/
 .spikes/
+.cursor/worktrees.json

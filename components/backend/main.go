@@ -33,6 +33,11 @@ func main() {
 
 	server.InitConfig()
 
+	// Initialize database connection
+	if err := server.InitDB(); err != nil {
+		log.Fatalf("Failed to initialize database: %v", err)
+	}
+
 	// Initialize git package
 	git.GetProjectSettingsResource = k8s.GetProjectSettingsResource
 	git.GetGitHubInstallation = func(ctx context.Context, userID string) (interface{}, error) {

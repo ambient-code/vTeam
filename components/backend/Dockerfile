@@ -8,8 +8,10 @@ USER 0
 # Copy go mod and sum files
 COPY go.mod go.sum ./
 
-# Download dependencies
-RUN go mod download
+# Download dependencies (with retry and DNS workaround for cross-platform builds)
+RUN GOPROXY=direct GOSUMDB=off go mod download || \
+    (sleep 2 && GOPROXY=direct GOSUMDB=off go mod download) || \
+    (sleep 5 && GOPROXY=direct GOSUMDB=off go mod download)
 
 # Copy the source code
 COPY . .

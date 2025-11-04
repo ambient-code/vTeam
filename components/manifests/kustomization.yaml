@@ -19,6 +19,7 @@ resources:
 - frontend-deployment.yaml
 - operator-deployment.yaml
 - workspace-pvc.yaml
+- postgres
 images:
 - name: quay.io/ambient_code/vteam_backend:latest
   newName: quay.io/ambient_code/vteam_backend

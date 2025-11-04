@@ -71,6 +71,28 @@ spec:
               name: github-app-secret
               key: GITHUB_STATE_SECRET
               optional: true
+        # Postgres configuration for LangGraph workflows
+        - name: POSTGRES_HOST
+          value: "postgres-service"
+        - name: POSTGRES_PORT
+          value: "5432"
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secret
+              key: POSTGRES_USER
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secret
+              key: POSTGRES_PASSWORD
+        - name: POSTGRES_DB
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secret
+              key: POSTGRES_DB
+        - name: TRUSTED_REGISTRIES
+          value: "quay.io/ambient_code/*"
         resources:
           requests:
             cpu: 100m

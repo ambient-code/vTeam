@@ -16,9 +16,29 @@ spec:
         properties:
           spec:
             type: object
-            required:
-            - prompt
             properties:
+              # LangGraph workflow reference (optional, for new workflow system)
+              workflowRef:
+                type: object
+                description: "Reference to a registered LangGraph workflow"
+                properties:
+                  name:
+                    type: string
+                    description: "Workflow name"
+                  version:
+                    type: string
+                    description: "Workflow version (optional, defaults to latest)"
+                  graph:
+                    type: string
+                    description: "Graph name from workflow version's graphs array"
+              inputs:
+                type: object
+                description: "Inputs to pass to the LangGraph workflow (free-form JSON)"
+                x-kubernetes-preserve-unknown-fields: true
+              # Legacy prompt-based session (required if workflowRef not provided)
+              prompt:
+                type: string
+                description: "The initial prompt for the agentic session (required if workflowRef not provided)"
               # Multiple-repo configuration (new unified mapping)
               repos:
                 type: array
@@ -64,9 +84,6 @@ spec:
               interactive:
                 type: boolean
                 description: "When true, run session in interactive chat mode using inbox/outbox files"
-              prompt:
-                type: string
-                description: "The initial prompt for the agentic session"
               displayName:
                 type: string
                 description: "A descriptive display name for the agentic session generated from prompt and website"
@@ -158,6 +175,34 @@ spec:
               result:
                 type: string
                 description: "Final result text as reported by the runner"
+              currentNode:
+                type: string
+                description: "Current node being executed (for LangGraph workflows)"
+              checkpointId:
+                type: string
+                description: "Current checkpoint ID (for LangGraph workflows)"
+              conditions:
+                type: array
+                description: "Status conditions"
+                items:
+                  type: object
+                  properties:
+                    type:
+                      type: string
+                      enum:
+                      - "AwaitingApproval"
+                      - "LeaseHealthy"
+                    status:
+                      type: string
+                      enum:
+                      - "True"
+                      - "False"
+                      - "Unknown"
+                    message:
+                      type: string
+                    lastTransitionTime:
+                      type: string
+                      format: date-time
     additionalPrinterColumns:
     - name: Phase
       type: string

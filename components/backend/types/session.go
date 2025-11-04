@@ -10,7 +10,12 @@ type AgenticSession struct {
 }
 
 type AgenticSessionSpec struct {
-	Prompt               string             `json:"prompt" binding:"required"`
+	// LangGraph workflow reference (optional, for new workflow system)
+	WorkflowRef *WorkflowRef `json:"workflowRef,omitempty"`
+	Inputs      map[string]interface{} `json:"inputs,omitempty"` // Free-form JSON for LangGraph workflows
+	
+	// Legacy prompt-based session (required if workflowRef not provided)
+	Prompt               string             `json:"prompt,omitempty"`
 	Interactive          bool               `json:"interactive,omitempty"`
 	DisplayName          string             `json:"displayName"`
 	LLMSettings          LLMSettings        `json:"llmSettings"`
@@ -58,10 +63,27 @@ type AgenticSessionStatus struct {
 	TotalCostUSD *float64               `json:"total_cost_usd,omitempty"`
 	Usage        map[string]interface{} `json:"usage,omitempty"`
 	Result       *string                `json:"result,omitempty"`
+	// LangGraph workflow status
+	CurrentNode  string                 `json:"currentNode,omitempty"`
+	CheckpointId string                 `json:"checkpointId,omitempty"`
+	Conditions   []StatusCondition      `json:"conditions,omitempty"`
+}
+
+// StatusCondition represents a status condition
+type StatusCondition struct {
+	Type               string `json:"type"`
+	Status             string `json:"status"`
+	Message            string `json:"message,omitempty"`
+	LastTransitionTime string `json:"lastTransitionTime,omitempty"`
 }
 
 type CreateAgenticSessionRequest struct {
-	Prompt        string       `json:"prompt" binding:"required"`
+	// LangGraph workflow (optional)
+	WorkflowRef *WorkflowRef           `json:"workflowRef,omitempty"`
+	Inputs      map[string]interface{} `json:"inputs,omitempty"`
+	
+	// Legacy prompt-based session (required if workflowRef not provided)
+	Prompt        string       `json:"prompt,omitempty"`
 	DisplayName   string       `json:"displayName,omitempty"`
 	LLMSettings   *LLMSettings `json:"llmSettings,omitempty"`
 	Timeout       *int         `json:"timeout,omitempty"`
@@ -73,7 +95,7 @@ type CreateAgenticSessionRequest struct {
 	AutoPushOnComplete   *bool                `json:"autoPushOnComplete,omitempty"`
 	UserContext          *UserContext         `json:"userContext,omitempty"`
 	BotAccount           *BotAccountRef       `json:"botAccount,omitempty"`
-	ResourceOverrides    *ResourceOverrides   `json:"resourceOverrides,omitempty"`
+	ResourceOverrides    *ResourceOverrides    `json:"resourceOverrides,omitempty"`
 	EnvironmentVariables map[string]string    `json:"environmentVariables,omitempty"`
 	Labels               map[string]string    `json:"labels,omitempty"`
 	Annotations          map[string]string    `json:"annotations,omitempty"`

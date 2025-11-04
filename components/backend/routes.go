@@ -80,6 +80,19 @@ func registerRoutes(r *gin.Engine, jiraHandler *jira.Handler) {
 			projectGroup.PUT("/runner-secrets/config", handlers.UpdateRunnerSecretsConfig)
 			projectGroup.GET("/runner-secrets", handlers.ListRunnerSecrets)
 			projectGroup.PUT("/runner-secrets", handlers.UpdateRunnerSecrets)
+
+			// LangGraph workflow routes
+			projectGroup.GET("/workflows", handlers.ListWorkflows)
+			projectGroup.POST("/workflows", handlers.CreateWorkflow)
+			projectGroup.GET("/workflows/:name", handlers.GetWorkflow)
+			projectGroup.DELETE("/workflows/:name", handlers.DeleteWorkflow)
+			projectGroup.POST("/workflows/:name/versions", handlers.CreateWorkflowVersion)
+			projectGroup.GET("/workflows/:name/versions/:version", handlers.GetWorkflowVersion)
+
+			// LangGraph run management routes
+			projectGroup.POST("/runs/:runId/events", handlers.IngestRunEvent)
+			projectGroup.GET("/runs/:runId/events", handlers.GetRunEvents)
+			projectGroup.POST("/runs/:runId/approve", handlers.ApproveRun)
 		}
 
 		api.POST("/auth/github/install", handlers.LinkGitHubInstallationGlobal)
