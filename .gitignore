@@ -118,9 +118,3 @@ Thumbs.db
 .stories/
 .testplans/
 .spikes/
-<<<<<<< HEAD
-.cursor/worktrees.json
-=======
-components/backend/Dockerfile.local-build
-components/backend/BUILD*.md
->>>>>>> current-agent-workflow-syBFS
