@@ -4,11 +4,7 @@ import { useProjects } from '@/services/queries';
 import { OnboardingWizard } from './components/OnboardingWizard';
 import { Skeleton } from '@/components/ui/skeleton';
 
-type OnboardingClientProps = {
-  appSlug?: string;
-};
-
-export default function OnboardingClient({ appSlug }: OnboardingClientProps) {
+export default function OnboardingClient() {
   const { data: projects, isLoading } = useProjects();
 
   // If user already has projects, allow them to skip onboarding
@@ -39,6 +35,6 @@ export default function OnboardingClient({ appSlug }: OnboardingClientProps) {
     );
   }
 
-  return <OnboardingWizard appSlug={appSlug} canSkip={canSkip} />;
+  return <OnboardingWizard canSkip={canSkip} />;
 }
 

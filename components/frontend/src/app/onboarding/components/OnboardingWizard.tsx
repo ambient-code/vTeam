@@ -36,11 +36,10 @@ const WIZARD_STEPS: WizardStep[] = [
 ];
 
 type OnboardingWizardProps = {
-  appSlug?: string;
   canSkip?: boolean;
 };
 
-export function OnboardingWizard({ appSlug, canSkip = false }: OnboardingWizardProps) {
+export function OnboardingWizard({ canSkip = false }: OnboardingWizardProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const connectGitHubMutation = useConnectGitHub();
@@ -225,7 +224,6 @@ export function OnboardingWizard({ appSlug, canSkip = false }: OnboardingWizardP
           )}
           {currentStep.id === 'github' && (
             <GitHubStep 
-              appSlug={appSlug} 
               onConnectionVerified={handleGitHubVerified} 
               isProcessing={processingInstallation}
             />

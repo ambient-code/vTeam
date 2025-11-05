@@ -4,16 +4,15 @@ import { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { CheckCircle2, Github, Loader2, AlertCircle } from 'lucide-react';
+import { CheckCircle2, Github, Loader2 } from 'lucide-react';
 import { useGitHubStatus } from '@/services/queries';
 
 type GitHubStepProps = {
-  appSlug?: string;
   onConnectionVerified: () => void;
   isProcessing?: boolean;
 };
 
-export function GitHubStep({ appSlug, onConnectionVerified, isProcessing = false }: GitHubStepProps) {
+export function GitHubStep({ onConnectionVerified, isProcessing = false }: GitHubStepProps) {
   const { data: status, isLoading, refetch } = useGitHubStatus();
   const [isConnecting, setIsConnecting] = useState(false);
 
@@ -35,12 +34,10 @@ export function GitHubStep({ appSlug, onConnectionVerified, isProcessing = false
   }, [isConnecting, refetch]);
 
   const handleConnect = () => {
-    if (!appSlug) return;
     setIsConnecting(true);
-    const setupUrl = new URL('/onboarding', window.location.origin);
-    const redirectUri = encodeURIComponent(setupUrl.toString());
-    const url = `https://github.com/apps/${appSlug}/installations/new?redirect_uri=${redirectUri}`;
-    window.location.href = url;
+    // Redirect to the GitHub setup page which will handle the OAuth flow
+    // Pass 'from=onboarding' so it redirects back here after connection
+    window.location.href = '/integrations/github/setup?from=onboarding';
   };
 
   if (isLoading || isProcessing) {
@@ -119,18 +116,9 @@ export function GitHubStep({ appSlug, onConnectionVerified, isProcessing = false
               </ul>
             </div>
 
-            {!appSlug && (
-              <Alert variant="destructive">
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription>
-                  GitHub App is not configured. Please contact your administrator.
-                </AlertDescription>
-              </Alert>
-            )}
-
             <Button
               onClick={handleConnect}
-              disabled={!appSlug || isConnecting}
+              disabled={isConnecting}
               className="w-full"
               size="lg"
             >
