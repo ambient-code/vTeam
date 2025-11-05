@@ -6,8 +6,11 @@ import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { WorkflowPhase } from "@/types/agentic-session";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { ArrowLeft, Loader2, Bot } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import RepoBrowser from "@/components/RepoBrowser";
 import type { GitHubFork } from "@/types";
 import { Breadcrumbs } from "@/components/breadcrumbs";
@@ -16,7 +19,8 @@ import { RfePhaseCards } from "./rfe-phase-cards";
 import { RfeWorkspaceCard } from "./rfe-workspace-card";
 import { RfeHeader } from "./rfe-header";
 import { RfeAgentsCard } from "./rfe-agents-card";
-import { useRfeWorkflow, useRfeWorkflowSessions, useDeleteRfeWorkflow, useRfeWorkflowSeeding, useSeedRfeWorkflow, useUpdateRfeWorkflow, useRepoBlob, useRepoTree, useOpenJiraIssue } from "@/services/queries";
+import { AVAILABLE_AGENTS } from "@/lib/agents";
+import { useRfeWorkflow, useRfeWorkflowSessions, useDeleteRfeWorkflow, useRfeWorkflowSeeding, useSeedRfeWorkflow, useUpdateRfeWorkflow, useRepoBlob, useRepoTree, useOpenJiraIssue, useRfeWorkflowAgents } from "@/services/queries";
 
 export default function ProjectRFEDetailPage() {
   const params = useParams();
@@ -32,6 +36,7 @@ export default function ProjectRFEDetailPage() {
   const seedWorkflowMutation = useSeedRfeWorkflow();
   const updateWorkflowMutation = useUpdateRfeWorkflow();
   const { openJiraForPath } = useOpenJiraIssue(project, id);
+  const { data: repoAgents = AVAILABLE_AGENTS, isLoading: loadingAgents } = useRfeWorkflowAgents(project, id);
 
   // Extract repo info from workflow
   const repo = workflow?.umbrellaRepo?.url.replace(/^https?:\/\/(?:www\.)?github.com\//i, '').replace(/\.git$/i, '') || '';
@@ -255,8 +260,6 @@ export default function ProjectRFEDetailPage() {
           onDelete={deleteWorkflow}
         />
 
-     
-
         <RfeWorkspaceCard
           workflow={workflow}
           workflowWorkspace={workflowWorkspace}
@@ -269,62 +272,140 @@ export default function ProjectRFEDetailPage() {
           updating={updateWorkflowMutation.isPending}
         />
 
-        <RfeAgentsCard
-          projectName={project}
-          workflowId={id}
-          selectedAgents={selectedAgents}
-          onAgentsChange={setSelectedAgents}
-        />
+        {/* Two Column Layout */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Left Column - Tabs */}
+          <div className="lg:col-span-1">
+            <Tabs value={activeTab} onValueChange={setActiveTab}>
+              <TabsList>
+                <TabsTrigger value="overview">Overview</TabsTrigger>
+                <TabsTrigger value="sessions">Sessions</TabsTrigger>
+                {upstreamRepo ? <TabsTrigger value="browser">Repository</TabsTrigger> : null}
+              </TabsList>
 
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList>
-            <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="sessions">Sessions</TabsTrigger>
-          {upstreamRepo ? <TabsTrigger value="browser">Repository</TabsTrigger> : null}
-          </TabsList>
+              <TabsContent value="overview">
+                <RfePhaseCards
+                  workflow={workflow}
+                  rfeSessions={rfeSessions}
+                  rfeDoc={rfeDoc}
+                  specKitDir={specKitDir}
+                  firstFeaturePath={firstFeaturePath}
+                  projectName={project}
+                  rfeId={id}
+                  workflowWorkspace={workflowWorkspace}
+                  isSeeded={isSeeded}
+                  startingPhase={startingPhase}
+                  publishingPhase={publishingPhase}
+                  selectedAgents={selectedAgents}
+                  onStartPhase={setStartingPhase}
+                  onPublishPhase={setPublishingPhase}
+                  onLoad={async () => { await load(); }}
+                  onLoadSessions={async () => { await loadSessions(); }}
+                  onError={setError}
+                  onOpenJira={openJiraForPath}
+                />
+              </TabsContent>
 
-          <TabsContent value="overview">
-            <RfePhaseCards
-              workflow={workflow}
-              rfeSessions={rfeSessions}
-              rfeDoc={rfeDoc}
-              specKitDir={specKitDir}
-              firstFeaturePath={firstFeaturePath}
-              projectName={project}
-              rfeId={id}
-              workflowWorkspace={workflowWorkspace}
-              isSeeded={isSeeded}
-              startingPhase={startingPhase}
-              publishingPhase={publishingPhase}
-              selectedAgents={selectedAgents}
-              onStartPhase={setStartingPhase}
-              onPublishPhase={setPublishingPhase}
-              onLoad={async () => { await load(); }}
-              onLoadSessions={async () => { await loadSessions(); }}
-              onError={setError}
-              onOpenJira={openJiraForPath}
-            />
-          </TabsContent>
+              <TabsContent value="sessions">
+                <RfeSessionsTable
+                  sessions={rfeSessions}
+                  projectName={project}
+                  rfeId={id}
+                  workspacePath={workflowWorkspace}
+                  workflowId={workflow.id}
+                />
+              </TabsContent>
 
-          <TabsContent value="sessions">
-            <RfeSessionsTable
-              sessions={rfeSessions}
-              projectName={project}
-              rfeId={id}
-              workspacePath={workflowWorkspace}
-              workflowId={workflow.id}
-            />
-          </TabsContent>
+              <TabsContent value="browser">
+                <RepoBrowser
+                  projectName={project}
+                  repoUrl={selectedFork?.url || upstreamRepo}
+                  defaultRef={selectedFork?.default_branch || workflow.branchName || workflow.umbrellaRepo?.branch || "main"}
+                />
+              </TabsContent>
+            </Tabs>
+          </div>
 
-      
-          <TabsContent value="browser">
-            <RepoBrowser
-              projectName={project}
-              repoUrl={selectedFork?.url || upstreamRepo}
-              defaultRef={selectedFork?.default_branch || workflow.branchName || workflow.umbrellaRepo?.branch || "main"}
-            />
-          </TabsContent>
-        </Tabs>
+          {/* Right Column - Agents Accordion */}
+          <div className="lg:col-span-1">
+            <Card>
+              <CardContent className="p-4">
+                <Accordion type="multiple" className="w-full">
+                  <AccordionItem value="agents" className="border-none">
+                    <AccordionTrigger className="text-lg font-semibold hover:no-underline px-0">
+                      <div className="flex items-center gap-2">
+                        <Bot className="h-5 w-5" />
+                        Agents
+                      </div>
+                    </AccordionTrigger>
+                    <AccordionContent className="pt-4">
+                      {loadingAgents ? (
+                        <div className="flex items-center justify-center py-8">
+                          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                        </div>
+                      ) : repoAgents.length === 0 ? (
+                        <div className="text-center py-8 text-muted-foreground">
+                          <Bot className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                          <p>No agents found in repository .claude/agents directory</p>
+                          <p className="text-xs mt-1">Seed the repository to add agent definitions</p>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="grid grid-cols-1 gap-3">
+                            {repoAgents.map((agent) => {
+                              const isSelected = selectedAgents.includes(agent.persona);
+                              return (
+                                <div
+                                  key={agent.persona}
+                                  className={`p-3 rounded-lg border transition-colors ${
+                                    isSelected ? 'bg-primary/5 border-primary' : 'bg-background border-border hover:border-primary/50'
+                                  }`}
+                                >
+                                  <label className="flex items-start gap-3 cursor-pointer">
+                                    <Checkbox
+                                      checked={isSelected}
+                                      onCheckedChange={(checked) => {
+                                        setSelectedAgents(
+                                          checked
+                                            ? [...selectedAgents, agent.persona]
+                                            : selectedAgents.filter(p => p !== agent.persona)
+                                        );
+                                      }}
+                                      className="mt-0.5"
+                                    />
+                                    <div className="flex-1 min-w-0">
+                                      <div className="font-medium text-sm">{agent.name}</div>
+                                      <div className="text-xs text-muted-foreground mt-0.5">{agent.role}</div>
+                                    </div>
+                                  </label>
+                                </div>
+                              );
+                            })}
+                          </div>
+                          {selectedAgents.length > 0 && (
+                            <div className="mt-4 pt-4 border-t">
+                              <div className="text-sm font-medium mb-2">Selected Agents ({selectedAgents.length})</div>
+                              <div className="flex flex-wrap gap-2">
+                                {selectedAgents.map(persona => {
+                                  const agent = repoAgents.find(a => a.persona === persona);
+                                  return agent ? (
+                                    <Badge key={persona} variant="secondary">
+                                      {agent.name}
+                                    </Badge>
+                                  ) : null;
+                                })}
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </AccordionContent>
+                  </AccordionItem>
+                </Accordion>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
 
       </div>
     </div>
