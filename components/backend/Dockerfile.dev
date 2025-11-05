@@ -3,8 +3,8 @@ FROM golang:1.24-alpine
 
 WORKDIR /app
 
-# Install git and build dependencies
-RUN apk add --no-cache git build-base
+# Install git, build dependencies, and tools for oc rsync
+RUN apk add --no-cache git build-base tar rsync
 
 # Set environment variables  
 ENV AGENTS_DIR=/app/agents
