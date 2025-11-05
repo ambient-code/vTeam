@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"ambient-code-backend/types"
+	"github.com/google/uuid"
 )
 
 // Client represents a GitLab API client
@@ -30,21 +31,43 @@ func NewClient(baseURL, token string) *Client {
 }
 
 // doRequest performs an HTTP request with GitLab authentication
+// Includes standardized logging and request ID tracking for debugging
 func (c *Client) doRequest(ctx context.Context, method, path string, body io.Reader) (*http.Response, error) {
 	url := c.baseURL + path
 
+	// Generate unique request ID for tracking
+	requestID := uuid.New().String()
+
+	// Log request start (with redacted URL)
+	startTime := time.Now()
+	LogInfo("[ReqID: %s] GitLab API request: %s %s", requestID, method, RedactURL(url))
+
 	req, err := http.NewRequestWithContext(ctx, method, url, body)
 	if err != nil {
+		LogError("[ReqID: %s] Failed to create request: %v", requestID, err)
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	// Add GitLab authentication header
 	req.Header.Set("Authorization", "Bearer "+c.token)
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Request-ID", requestID) // Include request ID in headers for GitLab correlation
 
 	resp, err := c.httpClient.Do(req)
+	duration := time.Since(startTime)
+
 	if err != nil {
+		LogError("[ReqID: %s] GitLab API request failed after %v: %v", requestID, duration, err)
 		return nil, fmt.Errorf("request failed: %w", err)
+	}
+
+	// Log response with status and timing
+	LogInfo("[ReqID: %s] GitLab API response: %d %s (took %v)",
+		requestID, resp.StatusCode, http.StatusText(resp.StatusCode), duration)
+
+	// Log warning for non-2xx responses
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		LogWarning("[ReqID: %s] GitLab API returned non-success status: %d", requestID, resp.StatusCode)
 	}
 
 	return resp, nil
@@ -54,13 +77,21 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body io.Rea
 func ParseErrorResponse(resp *http.Response) *types.GitLabAPIError {
 	defer resp.Body.Close()
 
+	// Extract request ID from response headers if present
+	requestID := resp.Header.Get("X-Request-ID")
+	if requestID == "" {
+		requestID = resp.Request.Header.Get("X-Request-ID") // Fallback to request header
+	}
+
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
+		LogError("[ReqID: %s] Failed to read GitLab error response: %v", requestID, err)
 		return &types.GitLabAPIError{
 			StatusCode:  resp.StatusCode,
 			Message:     "Failed to read error response from GitLab API",
 			Remediation: "Please try again or contact support if the issue persists",
 			RawError:    err.Error(),
+			RequestID:   requestID,
 		}
 	}
 
@@ -71,11 +102,17 @@ func ParseErrorResponse(resp *http.Response) *types.GitLabAPIError {
 	}
 
 	if err := json.Unmarshal(body, &gitlabError); err == nil {
-		return MapGitLabAPIError(resp.StatusCode, gitlabError.Message, gitlabError.Error, string(body))
+		apiErr := MapGitLabAPIError(resp.StatusCode, gitlabError.Message, gitlabError.Error, string(body))
+		apiErr.RequestID = requestID
+		LogError("[ReqID: %s] GitLab API error: %s (status: %d)", requestID, apiErr.Message, resp.StatusCode)
+		return apiErr
 	}
 
 	// Fallback to generic error with raw body
-	return MapGitLabAPIError(resp.StatusCode, "", "", string(body))
+	apiErr := MapGitLabAPIError(resp.StatusCode, "", "", string(body))
+	apiErr.RequestID = requestID
+	LogError("[ReqID: %s] GitLab API error (status: %d): %s", requestID, resp.StatusCode, string(body))
+	return apiErr
 }
 
 // MapGitLabAPIError maps HTTP status codes to user-friendly error messages
