@@ -341,10 +341,40 @@ func SeedProjectRFEWorkflow(c *gin.Context) {
 		return
 	}
 
-	githubToken, err := GetGitHubToken(c.Request.Context(), reqK8s, reqDyn, project, userIDStr)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
+	// Detect provider from umbrella repository URL and get appropriate token
+	var token string
+	if wf.UmbrellaRepo != nil && wf.UmbrellaRepo.URL != "" {
+		provider := types.DetectProvider(wf.UmbrellaRepo.URL)
+		switch provider {
+		case types.ProviderGitHub:
+			token, err = GetGitHubToken(c.Request.Context(), reqK8s, reqDyn, project, userIDStr)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{
+					"error":       err.Error(),
+					"remediation": "Ensure GitHub App is installed or configure GIT_TOKEN in project runner secret",
+				})
+				return
+			}
+		case types.ProviderGitLab:
+			token, err = git.GetGitLabToken(c.Request.Context(), reqK8s, project, userIDStr)
+			if err != nil {
+				c.JSON(http.StatusUnauthorized, gin.H{
+					"error":       err.Error(),
+					"remediation": "Connect your GitLab account via /auth/gitlab/connect",
+				})
+				return
+			}
+		default:
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Unsupported repository provider"})
+			return
+		}
+	} else {
+		// Fallback to GitHub for backward compatibility
+		token, err = GetGitHubToken(c.Request.Context(), reqK8s, reqDyn, project, userIDStr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
 	}
 
 	// Read request body for optional agent source and spec-kit settings
@@ -399,7 +429,7 @@ func SeedProjectRFEWorkflow(c *gin.Context) {
 	}
 
 	// Perform seeding operations with platform-managed branch
-	branchExisted, seedErr := PerformRepoSeeding(c.Request.Context(), wf, wf.BranchName, githubToken, agentURL, agentBranch, agentPath, specKitRepo, specKitVersion, specKitTemplate)
+	branchExisted, seedErr := PerformRepoSeeding(c.Request.Context(), wf, wf.BranchName, token, agentURL, agentBranch, agentPath, specKitRepo, specKitVersion, specKitTemplate)
 
 	if seedErr != nil {
 		log.Printf("Failed to seed RFE workflow %s in project %s: %v", id, project, seedErr)

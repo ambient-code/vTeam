@@ -406,7 +406,7 @@ type Workflow interface {
 // PerformRepoSeeding performs the actual seeding operations
 // wf parameter should implement the Workflow interface
 // Returns: branchExisted (bool), error
-func PerformRepoSeeding(ctx context.Context, wf Workflow, branchName, githubToken, agentURL, agentBranch, agentPath, specKitRepo, specKitVersion, specKitTemplate string) (bool, error) {
+func PerformRepoSeeding(ctx context.Context, wf Workflow, branchName, token, agentURL, agentBranch, agentPath, specKitRepo, specKitVersion, specKitTemplate string) (bool, error) {
 	umbrellaRepo := wf.GetUmbrellaRepo()
 	if umbrellaRepo == nil {
 		return false, fmt.Errorf("workflow has no spec repo")
@@ -418,7 +418,7 @@ func PerformRepoSeeding(ctx context.Context, wf Workflow, branchName, githubToke
 
 	// Validate push access to spec repo before starting
 	log.Printf("Validating push access to spec repo: %s", umbrellaRepo.GetURL())
-	if err := validatePushAccess(ctx, umbrellaRepo.GetURL(), githubToken); err != nil {
+	if err := validatePushAccess(ctx, umbrellaRepo.GetURL(), token); err != nil {
 		return false, fmt.Errorf("spec repo access validation failed: %w", err)
 	}
 
@@ -427,7 +427,7 @@ func PerformRepoSeeding(ctx context.Context, wf Workflow, branchName, githubToke
 	if len(supportingRepos) > 0 {
 		log.Printf("Validating push access to %d supporting repos", len(supportingRepos))
 		for i, repo := range supportingRepos {
-			if err := validatePushAccess(ctx, repo.GetURL(), githubToken); err != nil {
+			if err := validatePushAccess(ctx, repo.GetURL(), token); err != nil {
 				return false, fmt.Errorf("supporting repo #%d (%s) access validation failed: %w", i+1, repo.GetURL(), err)
 			}
 		}
@@ -447,7 +447,7 @@ func PerformRepoSeeding(ctx context.Context, wf Workflow, branchName, githubToke
 
 	// Clone umbrella repo with authentication
 	log.Printf("Cloning umbrella repo: %s", umbrellaRepo.GetURL())
-	authenticatedURL, err := InjectGitHubToken(umbrellaRepo.GetURL(), githubToken)
+	authenticatedURL, err := InjectGitToken(umbrellaRepo.GetURL(), token)
 	if err != nil {
 		return false, fmt.Errorf("failed to prepare spec repo URL: %w", err)
 	}
@@ -749,7 +749,7 @@ func PerformRepoSeeding(ctx context.Context, wf Workflow, branchName, githubToke
 	if len(supportingRepos) > 0 {
 		log.Printf("Creating feature branch %s in %d supporting repos", branchName, len(supportingRepos))
 		for i, repo := range supportingRepos {
-			if err := createBranchInRepo(ctx, repo, branchName, githubToken); err != nil {
+			if err := createBranchInRepo(ctx, repo, branchName, token); err != nil {
 				return false, fmt.Errorf("failed to create branch in supporting repo #%d (%s): %w", i+1, repo.GetURL(), err)
 			}
 		}
@@ -1278,15 +1278,29 @@ func CheckBranchExists(ctx context.Context, repoURL, branchName, githubToken str
 	return false, fmt.Errorf("GitHub API error: %s (body: %s)", resp.Status, string(body))
 }
 
-// validatePushAccess checks if the user has push access to a repository via GitHub API
-func validatePushAccess(ctx context.Context, repoURL, githubToken string) error {
+// validatePushAccess checks if the user has push access to a repository (supports both GitHub and GitLab)
+func validatePushAccess(ctx context.Context, repoURL, token string) error {
+	provider := types.DetectProvider(repoURL)
+
+	switch provider {
+	case types.ProviderGitHub:
+		return validateGitHubPushAccess(ctx, repoURL, token)
+	case types.ProviderGitLab:
+		return validateGitLabPushAccess(ctx, repoURL, token)
+	default:
+		return fmt.Errorf("unsupported repository provider for URL: %s", repoURL)
+	}
+}
+
+// validateGitHubPushAccess checks if the user has push access to a GitHub repository
+func validateGitHubPushAccess(ctx context.Context, repoURL, githubToken string) error {
 	owner, repo, err := ParseGitHubURL(repoURL)
 	if err != nil {
-		return fmt.Errorf("invalid repository URL: %w", err)
+		return fmt.Errorf("invalid GitHub repository URL: %w", err)
 	}
 
 	// Use GitHub API to check repository permissions
-	log.Printf("Validating push access to %s with token (len=%d)", repoURL, len(githubToken))
+	log.Printf("Validating push access to GitHub repo %s with token (len=%d)", repoURL, len(githubToken))
 	apiURL := fmt.Sprintf("https://api.github.com/repos/%s/%s", owner, repo)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
@@ -1326,7 +1340,6 @@ func validatePushAccess(ctx context.Context, repoURL, githubToken string) error 
 	}
 
 	// Parse response to check permissions
-
 	var repoInfo struct {
 		Permissions struct {
 			Push bool `json:"push"`
@@ -1341,14 +1354,97 @@ func validatePushAccess(ctx context.Context, repoURL, githubToken string) error 
 		return fmt.Errorf("you don't have push access to %s. Please fork the repository or use a repository you have write access to", repoURL)
 	}
 
-	log.Printf("Validated push access to %s", repoURL)
+	log.Printf("Validated push access to GitHub repo %s", repoURL)
+	return nil
+}
+
+// validateGitLabPushAccess checks if the user has push access to a GitLab repository
+func validateGitLabPushAccess(ctx context.Context, repoURL, gitlabToken string) error {
+	parsed, err := gitlab.ParseGitLabURL(repoURL)
+	if err != nil {
+		return fmt.Errorf("invalid GitLab repository URL: %w", err)
+	}
+
+	// Use GitLab API to check repository permissions
+	log.Printf("Validating push access to GitLab repo %s with token (len=%d)", repoURL, len(gitlabToken))
+
+	// Get project details to check permissions
+	apiURL := fmt.Sprintf("%s/projects/%s", parsed.APIURL, url.PathEscape(parsed.ProjectID))
+
+	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+gitlabToken)
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to check repository access: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Read response body once
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	if resp.StatusCode == http.StatusNotFound {
+		return fmt.Errorf("repository %s not found or you don't have access to it. Verify the repository URL and your GitLab token permissions", parsed.ProjectID)
+	}
+
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+		return fmt.Errorf("authentication failed for GitLab repository. Ensure your GitLab token has 'api' and 'write_repository' scopes")
+	}
+
+	if resp.StatusCode == http.StatusTooManyRequests {
+		return fmt.Errorf("GitLab API rate limit exceeded. Please wait a few minutes before retrying")
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("GitLab API error: %s (body: %s)", resp.Status, string(body))
+	}
+
+	// Parse response to check permissions
+	var projectInfo struct {
+		Permissions struct {
+			ProjectAccess *struct {
+				AccessLevel int `json:"access_level"`
+			} `json:"project_access"`
+			GroupAccess *struct {
+				AccessLevel int `json:"access_level"`
+			} `json:"group_access"`
+		} `json:"permissions"`
+	}
+
+	if err := json.Unmarshal(body, &projectInfo); err != nil {
+		return fmt.Errorf("failed to parse project info: %w (body: %s)", err, string(body))
+	}
+
+	// GitLab access levels: 10=Guest, 20=Reporter, 30=Developer, 40=Maintainer, 50=Owner
+	// Need at least Developer (30) to push
+	hasAccess := false
+	if projectInfo.Permissions.ProjectAccess != nil && projectInfo.Permissions.ProjectAccess.AccessLevel >= 30 {
+		hasAccess = true
+	}
+	if projectInfo.Permissions.GroupAccess != nil && projectInfo.Permissions.GroupAccess.AccessLevel >= 30 {
+		hasAccess = true
+	}
+
+	if !hasAccess {
+		return fmt.Errorf("you don't have push access to %s. You need at least Developer (30) access level. Please check your permissions in GitLab", repoURL)
+	}
+
+	log.Printf("Validated push access to GitLab repo %s", repoURL)
 	return nil
 }
 
 // createBranchInRepo creates a feature branch in a supporting repository
 // Follows the same pattern as umbrella repo seeding but without adding files
 // Note: This function assumes push access has already been validated by the caller
-func createBranchInRepo(ctx context.Context, repo GitRepo, branchName, githubToken string) error {
+func createBranchInRepo(ctx context.Context, repo GitRepo, branchName, token string) error {
 	repoURL := repo.GetURL()
 	if repoURL == "" {
 		return fmt.Errorf("repository URL is empty")
@@ -1360,7 +1456,7 @@ func createBranchInRepo(ctx context.Context, repo GitRepo, branchName, githubTok
 	}
 	defer os.RemoveAll(repoDir)
 
-	authenticatedURL, err := InjectGitHubToken(repoURL, githubToken)
+	authenticatedURL, err := InjectGitToken(repoURL, token)
 	if err != nil {
 		return fmt.Errorf("failed to prepare repo URL: %w", err)
 	}
