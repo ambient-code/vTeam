@@ -166,3 +166,258 @@ func CheckResponse(resp *http.Response) error {
 
 	return ParseErrorResponse(resp)
 }
+
+// PaginationInfo contains pagination metadata from GitLab API responses
+type PaginationInfo struct {
+	TotalPages  int
+	NextPage    int
+	PrevPage    int
+	PerPage     int
+	Total       int
+	CurrentPage int
+}
+
+// extractPaginationInfo extracts pagination info from response headers
+func extractPaginationInfo(resp *http.Response) *PaginationInfo {
+	info := &PaginationInfo{}
+
+	// GitLab uses X-Total-Pages, X-Next-Page, X-Per-Page headers
+	if totalPages := resp.Header.Get("X-Total-Pages"); totalPages != "" {
+		fmt.Sscanf(totalPages, "%d", &info.TotalPages)
+	}
+	if nextPage := resp.Header.Get("X-Next-Page"); nextPage != "" {
+		fmt.Sscanf(nextPage, "%d", &info.NextPage)
+	}
+	if prevPage := resp.Header.Get("X-Prev-Page"); prevPage != "" {
+		fmt.Sscanf(prevPage, "%d", &info.PrevPage)
+	}
+	if perPage := resp.Header.Get("X-Per-Page"); perPage != "" {
+		fmt.Sscanf(perPage, "%d", &info.PerPage)
+	}
+	if total := resp.Header.Get("X-Total"); total != "" {
+		fmt.Sscanf(total, "%d", &info.Total)
+	}
+	if page := resp.Header.Get("X-Page"); page != "" {
+		fmt.Sscanf(page, "%d", &info.CurrentPage)
+	}
+
+	return info
+}
+
+// GetBranches retrieves all branches for a GitLab repository with pagination support
+func (c *Client) GetBranches(ctx context.Context, projectID string, page, perPage int) ([]types.GitLabBranch, *PaginationInfo, error) {
+	if perPage == 0 {
+		perPage = 100 // Max page size for GitLab API
+	}
+
+	path := fmt.Sprintf("/projects/%s/repository/branches?page=%d&per_page=%d", projectID, page, perPage)
+
+	resp, err := c.doRequest(ctx, "GET", path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer resp.Body.Close()
+
+	if err := CheckResponse(resp); err != nil {
+		return nil, nil, err
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to read branches response: %w", err)
+	}
+
+	var branches []types.GitLabBranch
+	if err := json.Unmarshal(body, &branches); err != nil {
+		return nil, nil, fmt.Errorf("failed to parse branches response: %w", err)
+	}
+
+	pagination := extractPaginationInfo(resp)
+
+	return branches, pagination, nil
+}
+
+// GetAllBranches retrieves all branches across all pages
+func (c *Client) GetAllBranches(ctx context.Context, projectID string) ([]types.GitLabBranch, error) {
+	var allBranches []types.GitLabBranch
+	page := 1
+	perPage := 100
+
+	for {
+		branches, pagination, err := c.GetBranches(ctx, projectID, page, perPage)
+		if err != nil {
+			return nil, err
+		}
+
+		allBranches = append(allBranches, branches...)
+
+		// Check if there are more pages
+		if pagination.NextPage == 0 || len(branches) == 0 {
+			break
+		}
+
+		page = pagination.NextPage
+
+		// Safety limit to prevent infinite loops
+		if page > 100 {
+			return nil, fmt.Errorf("exceeded pagination limit (100 pages)")
+		}
+	}
+
+	return allBranches, nil
+}
+
+// GetTree retrieves the directory tree for a GitLab repository
+func (c *Client) GetTree(ctx context.Context, projectID, ref, path string, page, perPage int) ([]types.GitLabTreeEntry, *PaginationInfo, error) {
+	if perPage == 0 {
+		perPage = 100
+	}
+
+	// Build the API path
+	apiPath := fmt.Sprintf("/projects/%s/repository/tree?ref=%s&page=%d&per_page=%d",
+		projectID, ref, page, perPage)
+
+	if path != "" && path != "/" {
+		apiPath += "&path=" + path
+	}
+
+	resp, err := c.doRequest(ctx, "GET", apiPath, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer resp.Body.Close()
+
+	if err := CheckResponse(resp); err != nil {
+		return nil, nil, err
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to read tree response: %w", err)
+	}
+
+	var entries []types.GitLabTreeEntry
+	if err := json.Unmarshal(body, &entries); err != nil {
+		return nil, nil, fmt.Errorf("failed to parse tree response: %w", err)
+	}
+
+	pagination := extractPaginationInfo(resp)
+
+	return entries, pagination, nil
+}
+
+// GetAllTreeEntries retrieves all tree entries across all pages
+func (c *Client) GetAllTreeEntries(ctx context.Context, projectID, ref, path string) ([]types.GitLabTreeEntry, error) {
+	var allEntries []types.GitLabTreeEntry
+	page := 1
+	perPage := 100
+
+	for {
+		entries, pagination, err := c.GetTree(ctx, projectID, ref, path, page, perPage)
+		if err != nil {
+			return nil, err
+		}
+
+		allEntries = append(allEntries, entries...)
+
+		if pagination.NextPage == 0 || len(entries) == 0 {
+			break
+		}
+
+		page = pagination.NextPage
+
+		// Safety limit
+		if page > 100 {
+			return nil, fmt.Errorf("exceeded pagination limit (100 pages)")
+		}
+	}
+
+	return allEntries, nil
+}
+
+// GitLabFileContent represents the response from GitLab file content API
+type GitLabFileContent struct {
+	FileName     string `json:"file_name"`
+	FilePath     string `json:"file_path"`
+	Size         int    `json:"size"`
+	Encoding     string `json:"encoding"`
+	Content      string `json:"content"`
+	ContentSHA   string `json:"content_sha256"`
+	Ref          string `json:"ref"`
+	BlobID       string `json:"blob_id"`
+	CommitID     string `json:"commit_id"`
+	LastCommitID string `json:"last_commit_id"`
+}
+
+// GetFileContents retrieves the contents of a file from a GitLab repository
+func (c *Client) GetFileContents(ctx context.Context, projectID, filePath, ref string) (*GitLabFileContent, error) {
+	// URL encode the file path
+	encodedPath := ""
+	for _, ch := range filePath {
+		if ch == '/' {
+			encodedPath += "%2F"
+		} else if ch == '.' {
+			encodedPath += "%2E"
+		} else {
+			encodedPath += string(ch)
+		}
+	}
+
+	path := fmt.Sprintf("/projects/%s/repository/files/%s?ref=%s", projectID, encodedPath, ref)
+
+	resp, err := c.doRequest(ctx, "GET", path, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if err := CheckResponse(resp); err != nil {
+		return nil, err
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read file content response: %w", err)
+	}
+
+	var fileContent GitLabFileContent
+	if err := json.Unmarshal(body, &fileContent); err != nil {
+		return nil, fmt.Errorf("failed to parse file content response: %w", err)
+	}
+
+	return &fileContent, nil
+}
+
+// GetRawFileContents retrieves the raw contents of a file (without base64 encoding)
+func (c *Client) GetRawFileContents(ctx context.Context, projectID, filePath, ref string) ([]byte, error) {
+	// URL encode the file path
+	encodedPath := ""
+	for _, ch := range filePath {
+		if ch == '/' {
+			encodedPath += "%2F"
+		} else if ch == '.' {
+			encodedPath += "%2E"
+		} else {
+			encodedPath += string(ch)
+		}
+	}
+
+	path := fmt.Sprintf("/projects/%s/repository/files/%s/raw?ref=%s", projectID, encodedPath, ref)
+
+	resp, err := c.doRequest(ctx, "GET", path, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if err := CheckResponse(resp); err != nil {
+		return nil, err
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read raw file content: %w", err)
+	}
+
+	return body, nil
+}
