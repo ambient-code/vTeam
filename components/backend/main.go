@@ -4,8 +4,11 @@ import (
 	"context"
 	"log"
 	"os"
+	"path/filepath"
 
+	"ambient-code-backend/config"
 	"ambient-code-backend/crd"
+	"ambient-code-backend/db"
 	"ambient-code-backend/git"
 	"ambient-code-backend/github"
 	"ambient-code-backend/handlers"
@@ -39,6 +42,21 @@ func main() {
 
 		log.Printf("Content service using StateBaseDir: %s", server.StateBaseDir)
 
+		// Initialize database if needed in content service mode
+		if os.Getenv("SKIP_DATABASE") != "true" {
+			dbConfig := config.LoadDatabaseConfig()
+			log.Printf("Content service connecting to database at %s:%d/%s", dbConfig.Host, dbConfig.Port, dbConfig.Database)
+
+			// Initialize database connection
+			_, err := db.Initialize(dbConfig.GetConnectionString())
+			if err != nil {
+				log.Fatalf("Content service failed to initialize database: %v", err)
+			}
+
+			// Defer closing the database connection
+			defer db.Close()
+		}
+
 		if err := server.RunContentService(registerContentRoutes); err != nil {
 			log.Fatalf("Content service error: %v", err)
 		}
@@ -56,6 +74,35 @@ func main() {
 	}
 
 	server.InitConfig()
+
+	// Initialize database if not in content service mode
+	if os.Getenv("SKIP_DATABASE") != "true" {
+		// Load database configuration
+		dbConfig := config.LoadDatabaseConfig()
+		log.Printf("Connecting to PostgreSQL database at %s:%d/%s", dbConfig.Host, dbConfig.Port, dbConfig.Database)
+
+		// Initialize database connection
+		_, err := db.Initialize(dbConfig.GetConnectionString())
+		if err != nil {
+			log.Fatalf("Failed to initialize database connection: %v", err)
+		}
+
+		// Run database migrations
+		migrationsPath := dbConfig.MigrationsPath
+		if !filepath.IsAbs(migrationsPath) {
+			// If relative path is provided, make it absolute
+			workDir, _ := os.Getwd()
+			migrationsPath = filepath.Join(workDir, migrationsPath)
+		}
+		log.Printf("Running database migrations from: %s", migrationsPath)
+
+		if err := db.RunMigrations(migrationsPath, dbConfig.GetConnectionString()); err != nil {
+			log.Fatalf("Failed to run database migrations: %v", err)
+		}
+
+		// Ensure database connection is closed on exit
+		defer db.Close()
+	}
 
 	// Initialize git package
 	git.GetProjectSettingsResource = k8s.GetProjectSettingsResource
