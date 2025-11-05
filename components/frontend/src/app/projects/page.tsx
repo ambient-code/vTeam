@@ -26,12 +26,14 @@ import { PageHeader } from '@/components/page-header';
 import { EmptyState } from '@/components/empty-state';
 import { ErrorMessage } from '@/components/error-message';
 import { DestructiveConfirmationDialog } from '@/components/confirmation-dialog';
+import { CreateWorkspaceDialog } from '@/components/create-workspace-dialog';
 import { successToast, errorToast } from '@/hooks/use-toast';
 import type { Project } from '@/types/api';
 
 export default function ProjectsPage() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
 
   // React Query hooks
   const { data: projects = [], isLoading, error, refetch } = useProjects();
@@ -81,7 +83,7 @@ export default function ProjectsPage() {
     <div className="min-h-screen bg-[#f8fafc]">
       {/* Sticky header */}
       <div className="sticky top-0 z-20 bg-white border-b">
-        <div className="container mx-auto px-6 py-4">
+        <div className="container mx-auto px-6 py-6">
           <PageHeader
             title="Workspaces"
             description="Select a workspace or create a new one to get started YOLO"
@@ -120,12 +122,10 @@ export default function ProjectsPage() {
                   />
                   Refresh
                 </Button>
-                <Link href="/projects/new">
-                  <Button>
-                    <Plus className="w-4 h-4 mr-2" />
-                    New Workspace
-                  </Button>
-                </Link>
+                <Button onClick={() => setShowCreateDialog(true)}>
+                  <Plus className="w-4 h-4 mr-2" />
+                  New Workspace
+                </Button>
               </div>
             </div>
           </CardHeader>
@@ -137,7 +137,7 @@ export default function ProjectsPage() {
                 description="Get started by creating your first workspace"
                 action={{
                   label: 'Create Workspace',
-                  onClick: () => (window.location.href = '/projects/new'),
+                  onClick: () => setShowCreateDialog(true),
                 }}
               />
             ) : (
@@ -225,6 +225,12 @@ export default function ProjectsPage() {
           description={`Are you sure you want to delete workspace "${projectToDelete?.name}"? This will permanently remove the workspace and all related resources. This action cannot be undone.`}
           confirmText="Delete"
           loading={deleteProjectMutation.isPending}
+        />
+
+        {/* Create workspace dialog */}
+        <CreateWorkspaceDialog
+          open={showCreateDialog}
+          onOpenChange={setShowCreateDialog}
         />
       </div>
     </div>
