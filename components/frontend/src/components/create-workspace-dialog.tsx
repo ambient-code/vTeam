@@ -133,8 +133,7 @@ export function CreateWorkspaceDialog({
         <DialogHeader>
           <DialogTitle>Create New Workspace</DialogTitle>
           <DialogDescription>
-            Create a new Ambient AI workspace with custom settings and resource
-            configurations
+            Set up a new workspace for you or your team.
           </DialogDescription>
         </DialogHeader>
 
@@ -152,7 +151,6 @@ export function CreateWorkspaceDialog({
 
           {/* Basic Information */}
           <div className="space-y-4">
-            <h3 className="text-lg font-semibold">Basic Information</h3>
 
             <div className="space-y-2">
               <Label htmlFor="name">Workspace Name *</Label>
