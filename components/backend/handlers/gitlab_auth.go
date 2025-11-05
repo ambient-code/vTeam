@@ -8,7 +8,6 @@ import (
 	"k8s.io/client-go/kubernetes"
 
 	"ambient-code-backend/gitlab"
-	"ambient-code-backend/server"
 )
 
 // GitLabAuthHandler handles GitLab authentication endpoints
@@ -194,18 +193,18 @@ func (h *GitLabAuthHandler) DisconnectGitLab(c *gin.Context) {
 
 // ConnectGitLabGlobal is the global handler for POST /auth/gitlab/connect
 func ConnectGitLabGlobal(c *gin.Context) {
-	handler := NewGitLabAuthHandler(server.Clientset, server.DefaultNamespace)
+	handler := NewGitLabAuthHandler(K8sClient, Namespace)
 	handler.ConnectGitLab(c)
 }
 
 // GetGitLabStatusGlobal is the global handler for GET /auth/gitlab/status
 func GetGitLabStatusGlobal(c *gin.Context) {
-	handler := NewGitLabAuthHandler(server.Clientset, server.DefaultNamespace)
+	handler := NewGitLabAuthHandler(K8sClient, Namespace)
 	handler.GetGitLabStatus(c)
 }
 
 // DisconnectGitLabGlobal is the global handler for POST /auth/gitlab/disconnect
 func DisconnectGitLabGlobal(c *gin.Context) {
-	handler := NewGitLabAuthHandler(server.Clientset, server.DefaultNamespace)
+	handler := NewGitLabAuthHandler(K8sClient, Namespace)
 	handler.DisconnectGitLab(c)
 }

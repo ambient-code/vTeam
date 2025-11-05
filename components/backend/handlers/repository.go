@@ -104,9 +104,8 @@ func ValidateProjectRepository(ctx context.Context, repoURL string, userID strin
 	// For GitLab repositories, validate access if we have a token
 	if info.Provider == types.ProviderGitLab {
 		// Try to get GitLab token for this user
-		// Note: This assumes we have access to server.Clientset and server.DefaultNamespace
-		// In a real implementation, these would be passed as parameters
-		connMgr := gitlab.NewConnectionManager(K8sClientProjects, DefaultNamespace)
+		// Use the handlers package K8sClient and Namespace globals
+		connMgr := gitlab.NewConnectionManager(K8sClient, Namespace)
 		_, token, err := connMgr.GetGitLabConnectionWithToken(ctx, userID)
 		if err != nil {
 			// If no token found, just return info without validation
