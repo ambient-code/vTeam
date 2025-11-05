@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
-import { ArrowLeft, Square, Trash2, Copy, Play, MoreVertical } from "lucide-react";
+import { ArrowLeft, Square, Trash2, Copy, Play, MoreVertical, Bot, Loader2, FolderTree, AlertCircle, Sprout, CheckCircle2, GitBranch, Edit, Info } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 // Custom components
@@ -11,13 +11,18 @@ import OverviewTab from "@/components/session/OverviewTab";
 import MessagesTab from "@/components/session/MessagesTab";
 import WorkspaceTab from "@/components/session/WorkspaceTab";
 import ResultsTab from "@/components/session/ResultsTab";
+import { EditRepositoriesDialog } from "../../rfe/[id]/edit-repositories-dialog";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CloneSessionDialog } from "@/components/clone-session-dialog";
 import { Breadcrumbs } from "@/components/breadcrumbs";
+import { PageHeader } from "@/components/page-header";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import type { FileTreeNode } from "@/components/file-tree";
 
@@ -40,6 +45,11 @@ import {
   useAllSessionGitHubDiffs,
   useSessionK8sResources,
   useContinueSession,
+  useRfeWorkflow,
+  useRfeWorkflowAgents,
+  useRfeWorkflowSeeding,
+  useSeedRfeWorkflow,
+  useUpdateRfeWorkflow,
   workspaceKeys,
 } from "@/services/queries";
 import { successToast, errorToast } from "@/hooks/use-toast";
@@ -55,7 +65,6 @@ export default function ProjectSessionDetailPage({
   const queryClient = useQueryClient();
   const [projectName, setProjectName] = useState<string>("");
   const [sessionName, setSessionName] = useState<string>("");
-  const [activeTab, setActiveTab] = useState<string>("overview");
   const [promptExpanded, setPromptExpanded] = useState(false);
   const [chatInput, setChatInput] = useState("");
   const [backHref, setBackHref] = useState<string | null>(null);
@@ -63,6 +72,9 @@ export default function ProjectSessionDetailPage({
   const [contentPodSpawning, setContentPodSpawning] = useState(false);
   const [contentPodReady, setContentPodReady] = useState(false);
   const [contentPodError, setContentPodError] = useState<string | null>(null);
+  const [selectedAgents, setSelectedAgents] = useState<string[]>([]);
+  const [editRepoDialogOpen, setEditRepoDialogOpen] = useState(false);
+  const [selectedWorkflow, setSelectedWorkflow] = useState<string>("none");
 
   // Extract params
   useEffect(() => {
@@ -89,6 +101,22 @@ export default function ProjectSessionDetailPage({
   const pushToGitHubMutation = usePushSessionToGitHub();
   const abandonChangesMutation = useAbandonSessionChanges();
   const writeWorkspaceFileMutation = useWriteWorkspaceFile();
+  
+  // Get RFE workflow ID from session if this is an RFE session
+  const rfeWorkflowId = session?.metadata?.labels?.['rfe-workflow-id'];
+  const { data: rfeWorkflow, refetch: refetchWorkflow } = useRfeWorkflow(projectName, rfeWorkflowId || '', { enabled: !!rfeWorkflowId });
+  const { data: repoAgents = [], isLoading: loadingAgents } = useRfeWorkflowAgents(
+    projectName,
+    rfeWorkflowId || '',
+    { enabled: !!rfeWorkflowId }
+  );
+  const { data: seedingData, isLoading: checkingSeeding, error: seedingQueryError, refetch: refetchSeeding } = useRfeWorkflowSeeding(
+    projectName,
+    rfeWorkflowId || '',
+    { enabled: !!rfeWorkflowId }
+  );
+  const seedWorkflowMutation = useSeedRfeWorkflow();
+  const updateWorkflowMutation = useUpdateRfeWorkflow();
 
   // Workspace state
   const [wsSelectedPath, setWsSelectedPath] = useState<string | undefined>();
@@ -111,7 +139,7 @@ export default function ProjectSessionDetailPage({
     projectName,
     sessionName,
     undefined,
-    { enabled: activeTab === 'workspace' }
+    { enabled: true }
   );
 
   // Update tree when workspace items change
@@ -450,7 +478,6 @@ export default function ProjectSessionDetailPage({
       {
         onSuccess: () => {
           setChatInput("");
-          setActiveTab('messages');
         },
         onError: (err) => errorToast(err instanceof Error ? err.message : "Failed to send message"),
       }
@@ -477,6 +504,67 @@ export default function ProjectSessionDetailPage({
     );
   };
 
+  const handleSeedWorkflow = useCallback(async () => {
+    if (!rfeWorkflowId) return;
+    return new Promise<void>((resolve, reject) => {
+      seedWorkflowMutation.mutate(
+        { projectName, workflowId: rfeWorkflowId },
+        {
+          onSuccess: () => {
+            successToast("Repository seeded successfully");
+            refetchSeeding();
+            resolve();
+          },
+          onError: (err) => {
+            errorToast(err instanceof Error ? err.message : "Failed to seed repository");
+            reject(err);
+          },
+        }
+      );
+    });
+  }, [projectName, rfeWorkflowId, seedWorkflowMutation, refetchSeeding]);
+
+  const handleUpdateRepositories = useCallback(async (data: { umbrellaRepo: { url: string; branch?: string }; supportingRepos: { url: string; branch?: string }[] }) => {
+    if (!rfeWorkflowId) return;
+    return new Promise<void>((resolve, reject) => {
+      updateWorkflowMutation.mutate(
+        {
+          projectName,
+          workflowId: rfeWorkflowId,
+          data: {
+            umbrellaRepo: data.umbrellaRepo,
+            supportingRepos: data.supportingRepos,
+          },
+        },
+        {
+          onSuccess: () => {
+            successToast("Repositories updated successfully");
+            refetchWorkflow();
+            refetchSeeding();
+            seedWorkflowMutation.reset();
+            resolve();
+          },
+          onError: (err) => {
+            errorToast(err instanceof Error ? err.message : "Failed to update repositories");
+            reject(err);
+          },
+        }
+      );
+    });
+  }, [projectName, rfeWorkflowId, updateWorkflowMutation, refetchWorkflow, refetchSeeding, seedWorkflowMutation]);
+
+  // Seeding status from React Query
+  const isSeeded = seedingData?.isSeeded || false;
+  const seedingError = seedWorkflowMutation.error?.message || seedingQueryError?.message;
+  const hasCheckedSeeding = seedingData !== undefined || !!seedingQueryError;
+  const seedingStatus = {
+    checking: checkingSeeding,
+    isSeeded,
+    error: seedingError,
+    hasChecked: hasCheckedSeeding,
+  };
+  const workflowWorkspace = rfeWorkflow?.workspacePath || (rfeWorkflowId ? `/rfe-workflows/${rfeWorkflowId}/workspace` : '');
+
   // Check if session is completed
   const sessionCompleted = (
     session?.status?.phase === 'Completed' ||
@@ -484,14 +572,14 @@ export default function ProjectSessionDetailPage({
     session?.status?.phase === 'Stopped'
   );
 
-  // Auto-spawn content pod when workspace tab clicked on completed session
+  // Auto-spawn content pod on completed session
   // Don't auto-retry if we already encountered an error - user must explicitly retry
   useEffect(() => {
-    if (activeTab === 'workspace' && sessionCompleted && !contentPodReady && !contentPodSpawning && !contentPodError) {
+    if (sessionCompleted && !contentPodReady && !contentPodSpawning && !contentPodError) {
       spawnContentPodAsync();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, sessionCompleted, contentPodReady, contentPodSpawning, contentPodError]);
+  }, [sessionCompleted, contentPodReady, contentPodSpawning, contentPodError]);
 
   const spawnContentPodAsync = async () => {
     if (!projectName || !sessionName) return;
@@ -691,10 +779,12 @@ export default function ProjectSessionDetailPage({
   // Loading state - also check if params are loaded
   if (isLoading || !projectName || !sessionName) {
     return (
-      <div className="container mx-auto p-6">
-        <div className="flex items-center justify-center h-64">
-          <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
-          <span className="ml-2">Loading session...</span>
+      <div className="min-h-screen bg-[#f8fafc]">
+        <div className="container mx-auto p-6">
+          <div className="flex items-center justify-center h-64">
+            <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
+            <span className="ml-2">Loading session...</span>
+          </div>
         </div>
       </div>
     );
@@ -703,258 +793,557 @@ export default function ProjectSessionDetailPage({
   // Error state
   if (error || !session) {
     return (
-      <div className="container mx-auto p-6">
-        <div className="flex items-center mb-6">
-          <Link href={backHref || `/projects/${encodeURIComponent(projectName)}/sessions`}>
-            <Button variant="ghost" size="sm">
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              {backLabel || "Back to Sessions"}
-            </Button>
-          </Link>
+      <div className="min-h-screen bg-[#f8fafc]">
+        <div className="sticky top-0 z-20 bg-white border-b">
+          <div className="container mx-auto px-6 py-4">
+            <Breadcrumbs
+              items={[
+                { label: 'Workspaces', href: '/projects' },
+                { label: projectName, href: `/projects/${projectName}` },
+                { label: 'Sessions', href: `/projects/${projectName}/sessions` },
+                { label: 'Error' },
+              ]}
+              className="mb-4"
+            />
+            <PageHeader
+              title="Session Error"
+              description="Unable to load session"
+            />
+          </div>
         </div>
-        <Card className="border-red-200 bg-red-50">
-          <CardContent className="pt-6">
-            <p className="text-red-700">Error: {error instanceof Error ? error.message : "Session not found"}</p>
-          </CardContent>
-        </Card>
+        <div className="container mx-auto p-0">
+          <div className="px-6 pt-6">
+            <Card className="border-red-200 bg-red-50">
+              <CardContent className="pt-6">
+                <p className="text-red-700">Error: {error instanceof Error ? error.message : "Session not found"}</p>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="container mx-auto p-6">
-      <Breadcrumbs
-        items={[
-          { label: 'Workspaces', href: '/projects' },
-          { label: projectName, href: `/projects/${projectName}` },
-          { label: 'Sessions', href: `/projects/${projectName}/sessions` },
-          { label: session.spec.displayName || session.metadata.name },
-        ]}
-        className="mb-4"
-      />
+    <>
+      {rfeWorkflow && (
+        <EditRepositoriesDialog
+          open={editRepoDialogOpen}
+          onOpenChange={setEditRepoDialogOpen}
+          workflow={rfeWorkflow}
+          onSave={async (data) => {
+            await handleUpdateRepositories(data);
+            setEditRepoDialogOpen(false);
+          }}
+          isSaving={updateWorkflowMutation.isPending}
+        />
+      )}
+      <div className="min-h-screen bg-[#f8fafc]">
+        {/* Sticky header */}
+      <div className="sticky top-0 z-20 bg-white border-b">
+        <div className="container mx-auto px-6 py-4">
+          <Breadcrumbs
+            items={[
+              { label: 'Workspaces', href: '/projects' },
+              { label: projectName, href: `/projects/${projectName}` },
+              { label: 'Sessions', href: `/projects/${projectName}/sessions` },
+              { label: session.spec.displayName || session.metadata.name },
+            ]}
+            className="mb-4"
+          />
+          <PageHeader
+            title={
+              <div className="flex items-center gap-2">
+                <span>{session.spec.displayName || session.metadata.name}</span>
+                <Badge className={getPhaseColor(session.status?.phase || "Pending")}>
+                  {session.status?.phase || "Pending"}
+                </Badge>
+              </div>
+            }
+            description={
+              <div>
+                {session.spec.displayName && (
+                  <div className="text-sm text-gray-500">{session.metadata.name}</div>
+                )}
+                <div className="text-xs text-gray-500">
+                  Created {formatDistanceToNow(new Date(session.metadata.creationTimestamp), { addSuffix: true })}
+                </div>
+              </div>
+            }
+            actions={
+              <>
+                {/* Continue button for completed sessions */}
+                {(session.status?.phase === "Completed" || session.status?.phase === "Failed" || session.status?.phase === "Stopped") && (
+                  <Button
+                    onClick={handleContinue}
+                    disabled={continueMutation.isPending}
+                  >
+                    <Play className="w-4 h-4 mr-2" />
+                    {continueMutation.isPending ? "Starting..." : "Continue"}
+                  </Button>
+                )}
 
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="flex items-start justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold flex items-center gap-2">
-              <span>{session.spec.displayName || session.metadata.name}</span>
-              <Badge className={getPhaseColor(session.status?.phase || "Pending")}>
-                {session.status?.phase || "Pending"}
-              </Badge>
-            </h1>
-            {session.spec.displayName && (
-              <div className="text-sm text-gray-500">{session.metadata.name}</div>
-            )}
-            <div className="text-xs text-gray-500 mt-1">
-              Created {formatDistanceToNow(new Date(session.metadata.creationTimestamp), { addSuffix: true })}
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            {/* Continue button for completed sessions (converts headless to interactive) */}
-            {(session.status?.phase === "Completed" || session.status?.phase === "Failed" || session.status?.phase === "Stopped") && (
-              <Button
-                onClick={handleContinue}
-                disabled={continueMutation.isPending}
-              >
-                <Play className="w-4 h-4 mr-2" />
-                {continueMutation.isPending ? "Starting..." : "Continue"}
-              </Button>
-            )}
+                {/* Stop button for active sessions */}
+                {(session.status?.phase === "Pending" || session.status?.phase === "Creating" || session.status?.phase === "Running") && (
+                  <Button
+                    variant="secondary"
+                    onClick={handleStop}
+                    disabled={stopMutation.isPending}
+                  >
+                    <Square className="w-4 h-4 mr-2" />
+                    {stopMutation.isPending ? "Stopping..." : "Stop"}
+                  </Button>
+                )}
 
-            {/* Stop button for active sessions */}
-            {(session.status?.phase === "Pending" || session.status?.phase === "Creating" || session.status?.phase === "Running") && (
-              <Button
-                variant="secondary"
-                onClick={handleStop}
-                disabled={stopMutation.isPending}
-              >
-                <Square className="w-4 h-4 mr-2" />
-                {stopMutation.isPending ? "Stopping..." : "Stop"}
-              </Button>
-            )}
-
-            {/* Actions dropdown menu */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="icon">
-                  <MoreVertical className="w-4 h-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <CloneSessionDialog
-                  session={session}
-                  onSuccess={() => refetchSession()}
-                  trigger={
-                    <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
-                      <Copy className="w-4 h-4 mr-2" />
-                      Clone
+                {/* Actions dropdown menu */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="icon">
+                      <MoreVertical className="w-4 h-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <CloneSessionDialog
+                      session={session}
+                      onSuccess={() => refetchSession()}
+                      trigger={
+                        <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
+                          <Copy className="w-4 h-4 mr-2" />
+                          Clone
+                        </DropdownMenuItem>
+                      }
+                    />
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={handleDelete}
+                      disabled={deleteMutation.isPending}
+                      className="text-red-600"
+                    >
+                      <Trash2 className="w-4 h-4 mr-2" />
+                      {deleteMutation.isPending ? "Deleting..." : "Delete"}
                     </DropdownMenuItem>
-                  }
-                />
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onClick={handleDelete}
-                  disabled={deleteMutation.isPending}
-                  className="text-red-600"
-                >
-                  <Trash2 className="w-4 h-4 mr-2" />
-                  {deleteMutation.isPending ? "Deleting..." : "Delete"}
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </>
+            }
+          />
         </div>
+      </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-          <Card className="py-4">
-            <CardContent>
-              <div className="text-xs text-muted-foreground">Duration</div>
-              <div className="text-lg font-semibold">{typeof durationMs === "number" ? `${durationMs} ms` : "-"}</div>
-            </CardContent>
-          </Card>
-          <Card className="py-4">
-            <CardContent>
-              <div className="text-xs text-muted-foreground">Messages</div>
-              <div className="text-lg font-semibold">{messages.length}</div>
-            </CardContent>
-          </Card>
-          <Card className="py-4">
-            <CardContent>
-              <div className="text-xs text-muted-foreground">Agents</div>
-              <div className="text-lg font-semibold">{subagentStats.uniqueCount > 0 ? subagentStats.uniqueCount : "-"}</div>
-            </CardContent>
-          </Card>
-        </div>
+      <div className="container mx-auto p-0">
+        <div className="px-6 pt-6">
+        {/* Two Column Layout */}
+        <div className="grid grid-cols-1 lg:grid-cols-[40%_1fr] gap-6">
+          {/* Left Column - Accordions */}
+          <div>
+            <Accordion type="multiple" className="w-full space-y-3">
+              <AccordionItem value="workflows" className="border rounded-lg px-3 bg-white">
+                <AccordionTrigger className="text-base font-semibold hover:no-underline py-3">
+                  Workflows
+                </AccordionTrigger>
+                <AccordionContent className="pt-2 pb-3">
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-sm font-medium mb-1.5 block">Select a Workflow</label>
+                      <Select value={selectedWorkflow} onValueChange={setSelectedWorkflow}>
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="None selected" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">None selected</SelectItem>
+                          <SelectItem value="plan-feature">Plan a feature</SelectItem>
+                          <SelectItem value="develop-feature">Develop a feature</SelectItem>
+                          <SelectItem value="bug-fix">Bug fix</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      Workflows provide a structured processes for Ambient Code Platform agents to follow and achieve complex goals.
+                    </p>
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
 
-        {/* Tabs */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList>
-            <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="messages">Messages</TabsTrigger>
-            <TabsTrigger value="workspace">Workspace</TabsTrigger>
-            <TabsTrigger value="results">Results</TabsTrigger>
-          </TabsList>
+              <AccordionItem value="overview" className="border rounded-lg px-3 bg-white">
+                <AccordionTrigger className="text-base font-semibold hover:no-underline py-3">
+                  Overview
+                </AccordionTrigger>
+                <AccordionContent className="space-y-4 pt-2 pb-3">
+                  <OverviewTab
+                    session={session}
+                    promptExpanded={promptExpanded}
+                    setPromptExpanded={setPromptExpanded}
+                    latestLiveMessage={latestLiveMessage as SessionMessage | null}
+                    diffTotals={diffTotals}
+                    k8sResources={k8sResources}
+                    onPush={async (idx) => {
+                        const repo = session.spec.repos?.[idx];
+                        if (!repo) return;
+                      
+                      setBusyRepo((b) => ({ ...b, [idx]: 'push' }));
+                        const folder = deriveRepoFolderFromUrl(repo.input.url);
+                      const repoPath = `/sessions/${sessionName}/workspace/${folder}`;
+                      
+                      pushToGitHubMutation.mutate(
+                        { projectName, sessionName, repoIndex: idx, repoPath },
+                        {
+                          onSuccess: () => {
+                            refetchDiffs();
+                            successToast('Changes pushed to GitHub');
+                          },
+                          onError: (err) => errorToast(err instanceof Error ? err.message : 'Failed to push changes'),
+                          onSettled: () => setBusyRepo((b) => ({ ...b, [idx]: null })),
+                        }
+                      );
+                    }}
+                    onAbandon={async (idx) => {
+                        const repo = session.spec.repos?.[idx];
+                        if (!repo) return;
+                      
+                      setBusyRepo((b) => ({ ...b, [idx]: 'abandon' }));
+                        const folder = deriveRepoFolderFromUrl(repo.input.url);
+                      const repoPath = `/sessions/${sessionName}/workspace/${folder}`;
+                      
+                      abandonChangesMutation.mutate(
+                        { projectName, sessionName, repoIndex: idx, repoPath },
+                        {
+                          onSuccess: () => {
+                            refetchDiffs();
+                            successToast('Changes abandoned');
+                          },
+                          onError: (err) => errorToast(err instanceof Error ? err.message : 'Failed to abandon changes'),
+                          onSettled: () => setBusyRepo((b) => ({ ...b, [idx]: null })),
+                        }
+                      );
+                    }}
+                    busyRepo={busyRepo}
+                    buildGithubCompareUrl={buildGithubCompareUrl}
+                    onRefreshDiff={handleRefreshDiff}
+                  />
+                </AccordionContent>
+              </AccordionItem>
 
-          <TabsContent value="overview" className="space-y-6">
-            <OverviewTab
-              session={session}
-              promptExpanded={promptExpanded}
-              setPromptExpanded={setPromptExpanded}
-              latestLiveMessage={latestLiveMessage as SessionMessage | null}
-              diffTotals={diffTotals}
-              k8sResources={k8sResources}
-              onPush={async (idx) => {
-                  const repo = session.spec.repos?.[idx];
-                  if (!repo) return;
-                
-                setBusyRepo((b) => ({ ...b, [idx]: 'push' }));
-                  const folder = deriveRepoFolderFromUrl(repo.input.url);
-                const repoPath = `/sessions/${sessionName}/workspace/${folder}`;
-                
-                pushToGitHubMutation.mutate(
-                  { projectName, sessionName, repoIndex: idx, repoPath },
-                  {
-                    onSuccess: () => {
-                      refetchDiffs();
-                      successToast('Changes pushed to GitHub');
-                    },
-                    onError: (err) => errorToast(err instanceof Error ? err.message : 'Failed to push changes'),
-                    onSettled: () => setBusyRepo((b) => ({ ...b, [idx]: null })),
-                  }
-                );
-              }}
-              onAbandon={async (idx) => {
-                  const repo = session.spec.repos?.[idx];
-                  if (!repo) return;
-                
-                setBusyRepo((b) => ({ ...b, [idx]: 'abandon' }));
-                  const folder = deriveRepoFolderFromUrl(repo.input.url);
-                const repoPath = `/sessions/${sessionName}/workspace/${folder}`;
-                
-                abandonChangesMutation.mutate(
-                  { projectName, sessionName, repoIndex: idx, repoPath },
-                  {
-                    onSuccess: () => {
-                      refetchDiffs();
-                      successToast('Changes abandoned');
-                    },
-                    onError: (err) => errorToast(err instanceof Error ? err.message : 'Failed to abandon changes'),
-                    onSettled: () => setBusyRepo((b) => ({ ...b, [idx]: null })),
-                  }
-                );
-              }}
-              busyRepo={busyRepo}
-              buildGithubCompareUrl={buildGithubCompareUrl}
-              onRefreshDiff={handleRefreshDiff}
-            />
-          </TabsContent>
-
-          <TabsContent value="messages">
-            <MessagesTab
-              session={session}
-              streamMessages={streamMessages}
-              chatInput={chatInput}
-              setChatInput={setChatInput}
-              onSendChat={() => Promise.resolve(sendChat())}
-              onInterrupt={() => Promise.resolve(handleInterrupt())}
-              onEndSession={() => Promise.resolve(handleEndSession())}
-              onGoToResults={() => setActiveTab('results')}
-              onContinue={handleContinue}
-            />
-          </TabsContent>
-
-          <TabsContent value="workspace">
-            {sessionCompleted && !contentPodReady ? (
-              <Card className="p-8">
-                <div className="text-center space-y-4">
-                  {contentPodSpawning ? (
-                    <>
-                      <div className="flex items-center justify-center">
-                        <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
+              <AccordionItem value="workspace" className="border rounded-lg px-3 bg-white">
+                <AccordionTrigger className="text-base font-semibold hover:no-underline py-3">
+                  Workspace
+                </AccordionTrigger>
+                <AccordionContent className="pt-2 pb-3">
+                  {sessionCompleted && !contentPodReady ? (
+                    <Card className="p-8">
+                      <div className="text-center space-y-4">
+                        {contentPodSpawning ? (
+                          <>
+                            <div className="flex items-center justify-center">
+                              <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
+                            </div>
+                            <p className="text-sm font-medium">Starting workspace viewer...</p>
+                            <p className="text-xs text-gray-500">This may take up to 30 seconds</p>
+                          </>
+                        ) : (
+                          <>
+                            <p className="text-sm text-gray-600">
+                              Session has completed. To view and edit your workspace files, please start a workspace viewer.
+                            </p>
+                            <Button onClick={spawnContentPodAsync}>
+                              Start Workspace Viewer
+                            </Button>
+                          </>
+                        )}
                       </div>
-                      <p className="text-sm font-medium">Starting workspace viewer...</p>
-                      <p className="text-xs text-gray-500">This may take up to 30 seconds</p>
-                    </>
+                    </Card>
+                  ) : (
+                    <WorkspaceTab
+                      session={session}
+                      wsLoading={wsLoading}
+                      wsUnavailable={wsUnavailable}
+                      wsTree={wsTree}
+                      wsSelectedPath={wsSelectedPath}
+                      wsFileContent={wsFileContent}
+                      onRefresh={handleRefreshWorkspace}
+                      onSelect={onWsSelect}
+                      onToggle={onWsToggle}
+                      onSave={writeWsFile}
+                      setWsFileContent={setWsFileContent}
+                      k8sResources={k8sResources}
+                      contentPodError={contentPodError}
+                      onRetrySpawn={spawnContentPodAsync}
+                    />
+                  )}
+                </AccordionContent>
+              </AccordionItem>
+
+              <AccordionItem value="spec-repository" className="border rounded-lg px-3 bg-white">
+                <AccordionTrigger className="text-base font-semibold hover:no-underline py-3">
+                  Spec Repository
+                </AccordionTrigger>
+                <AccordionContent className="pt-2 pb-3">
+                  {!rfeWorkflowId ? (
+                    <div className="text-center py-6 text-muted-foreground">
+                      <FolderTree className="h-10 w-10 mx-auto mb-2 opacity-50" />
+                      <p className="text-sm">This session is not associated with an RFE workflow</p>
+                      <p className="text-xs mt-1">Spec repository is only available for RFE sessions</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="text-sm text-muted-foreground">Workspace: {workflowWorkspace}</div>
+
+                      {rfeWorkflow?.branchName && (
+                        <Alert className="border-blue-200 bg-blue-50">
+                          <GitBranch className="h-4 w-4 text-blue-600" />
+                          <AlertTitle className="text-blue-900">Feature Branch</AlertTitle>
+                          <AlertDescription className="text-blue-800">
+                            All modifications will occur on feature branch{' '}
+                            <code className="px-2 py-1 bg-blue-100 text-blue-900 rounded font-semibold">
+                              {rfeWorkflow.branchName}
+                            </code>
+                            {' '}for all supplied repositories.
+                          </AlertDescription>
+                        </Alert>
+                      )}
+
+                      {(rfeWorkflow?.umbrellaRepo || (rfeWorkflow?.supportingRepos || []).length > 0) && (
+                        <div className="space-y-1">
+                          {rfeWorkflow.umbrellaRepo && (
+                            <div className="text-sm space-y-1">
+                              <div>
+                                <span className="font-medium">Spec Repo:</span> {rfeWorkflow.umbrellaRepo.url}
+                              </div>
+                              {rfeWorkflow.umbrellaRepo.branch && (
+                                <div className="ml-4 text-muted-foreground">
+                                  Base branch: <code className="text-xs bg-muted px-1 py-0.5 rounded">{rfeWorkflow.umbrellaRepo.branch}</code>
+                                  {rfeWorkflow.branchName && (
+                                    <span> → Feature branch <code className="text-xs bg-blue-50 text-blue-700 px-1 py-0.5 rounded">{rfeWorkflow.branchName}</code> {isSeeded ? 'set up' : 'will be set up'}</span>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          {(rfeWorkflow.supportingRepos || []).map(
+                            (r: { url: string; branch?: string }, i: number) => (
+                              <div key={i} className="text-sm space-y-1">
+                                <div>
+                                  <span className="font-medium">Supporting:</span> {r.url}
+                                </div>
+                                {r.branch && (
+                                  <div className="ml-4 text-muted-foreground">
+                                    Base branch: <code className="text-xs bg-muted px-1 py-0.5 rounded">{r.branch}</code>
+                                    {rfeWorkflow.branchName && (
+                                      <span> → Feature branch <code className="text-xs bg-blue-50 text-blue-700 px-1 py-0.5 rounded">{rfeWorkflow.branchName}</code> {isSeeded ? 'set up' : 'will be set up'}</span>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          )}
+                        </div>
+                      )}
+
+                      {!isSeeded && !seedingStatus.checking && seedingStatus.hasChecked && rfeWorkflow?.umbrellaRepo && (
+                        <Alert variant="destructive">
+                          <AlertCircle className="h-4 w-4" />
+                          <AlertTitle>Spec Repository Not Seeded</AlertTitle>
+                          <AlertDescription className="mt-2">
+                            <p className="mb-3">
+                              Before you can start working on phases, the spec repository needs to be seeded.
+                              This will:
+                            </p>
+                            <ul className="list-disc list-inside space-y-1 mb-3 text-sm">
+                              <li>Set up the feature branch{rfeWorkflow.branchName && ` (${rfeWorkflow.branchName})`} from the base branch</li>
+                              <li>Add Spec-Kit template files for spec-driven development</li>
+                              <li>Add agent definition files in the .claude directory</li>
+                            </ul>
+                            {seedingError && (
+                              <div className="mb-3 p-2 bg-red-100 border border-red-300 rounded text-sm text-red-800">
+                                <strong>Seeding Failed:</strong> {seedingError}
+                              </div>
+                            )}
+                            <div className="flex gap-2">
+                              <Button
+                                onClick={() => setEditRepoDialogOpen(true)}
+                                disabled={updateWorkflowMutation.isPending}
+                                size="sm"
+                                variant="outline"
+                              >
+                                <Edit className="mr-2 h-4 w-4" />
+                                Edit Repositories
+                              </Button>
+                              <Button onClick={handleSeedWorkflow} disabled={seedWorkflowMutation.isPending || updateWorkflowMutation.isPending} size="sm">
+                                {seedWorkflowMutation.isPending ? (
+                                  <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    Seeding Repository...
+                                  </>
+                                ) : (
+                                  <>
+                                    <Sprout className="mr-2 h-4 w-4" />
+                                    {seedingError ? "Retry Seeding" : "Seed Repository"}
+                                  </>
+                                )}
+                              </Button>
+                            </div>
+                          </AlertDescription>
+                        </Alert>
+                      )}
+
+                      {seedingStatus.checking && rfeWorkflow?.umbrellaRepo && (
+                        <div className="flex items-center gap-2 text-gray-600 bg-gray-50 p-3 rounded-lg">
+                          <Loader2 className="h-5 w-5 animate-spin" />
+                          <span className="text-sm">Checking repository seeding status...</span>
+                        </div>
+                      )}
+
+                      {isSeeded && (
+                        <div className="flex items-center justify-between text-green-700 bg-green-50 p-3 rounded-lg">
+                          <div className="flex items-center gap-2">
+                            <CheckCircle2 className="h-5 w-5 text-green-600" />
+                            <span className="text-sm font-medium">Repository seeded and ready</span>
+                          </div>
+                          <Button
+                            onClick={() => setEditRepoDialogOpen(true)}
+                            disabled={updateWorkflowMutation.isPending}
+                            size="sm"
+                            variant="outline"
+                          >
+                            <Edit className="mr-2 h-4 w-4" />
+                            Edit Repositories
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </AccordionContent>
+              </AccordionItem>
+
+              <AccordionItem value="agents" className="border rounded-lg px-3 bg-white">
+                <AccordionTrigger className="text-base font-semibold hover:no-underline py-3">
+                  Agents
+                </AccordionTrigger>
+                <AccordionContent className="pt-2 pb-3">
+                  {loadingAgents ? (
+                    <div className="flex items-center justify-center py-6">
+                      <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                    </div>
+                  ) : !rfeWorkflowId || repoAgents.length === 0 ? (
+                    <div className="text-center py-6 text-muted-foreground">
+                      <Bot className="h-10 w-10 mx-auto mb-2 opacity-50" />
+                      <p className="text-sm">No agents found in repository .claude/agents directory</p>
+                      <p className="text-xs mt-1">Seed the repository to add agent definitions</p>
+                    </div>
                   ) : (
                     <>
-                      <p className="text-sm text-gray-600">
-                        Session has completed. To view and edit your workspace files, please start a workspace viewer.
-                      </p>
-                      <Button onClick={spawnContentPodAsync}>
-                        Start Workspace Viewer
-                      </Button>
+                      <div className="grid grid-cols-1 gap-2">
+                        {repoAgents.map((agent) => {
+                          const isSelected = selectedAgents.includes(agent.persona);
+                          return (
+                            <div
+                              key={agent.persona}
+                              className={`p-2 rounded border transition-colors ${
+                                isSelected ? 'bg-primary/5 border-primary' : 'bg-background border-border hover:border-primary/50'
+                              }`}
+                            >
+                              <label className="flex items-start gap-2 cursor-pointer">
+                                <Checkbox
+                                  checked={isSelected}
+                                  onCheckedChange={(checked) => {
+                                    setSelectedAgents(
+                                      checked
+                                        ? [...selectedAgents, agent.persona]
+                                        : selectedAgents.filter(p => p !== agent.persona)
+                                    );
+                                  }}
+                                  className="mt-0.5"
+                                />
+                                <div className="flex-1 min-w-0">
+                                  <div className="font-medium text-sm">{agent.name}</div>
+                                  <div className="text-xs text-muted-foreground">{agent.role}</div>
+                                </div>
+                              </label>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      {selectedAgents.length > 0 && (
+                        <div className="mt-3 pt-3 border-t">
+                          <div className="text-sm font-medium mb-1.5">Selected Agents ({selectedAgents.length})</div>
+                          <div className="flex flex-wrap gap-1.5">
+                            {selectedAgents.map(persona => {
+                              const agent = repoAgents.find(a => a.persona === persona);
+                              return agent ? (
+                                <Badge key={persona} variant="secondary" className="text-xs">
+                                  {agent.name}
+                                </Badge>
+                              ) : null;
+                            })}
+                          </div>
+                        </div>
+                      )}
                     </>
                   )}
-                </div>
-              </Card>
-            ) : (
-              <WorkspaceTab
-                session={session}
-                wsLoading={wsLoading}
-                wsUnavailable={wsUnavailable}
-                wsTree={wsTree}
-                wsSelectedPath={wsSelectedPath}
-                wsFileContent={wsFileContent}
-                onRefresh={handleRefreshWorkspace}
-                onSelect={onWsSelect}
-                onToggle={onWsToggle}
-                onSave={writeWsFile}
-                setWsFileContent={setWsFileContent}
-                k8sResources={k8sResources}
-                contentPodError={contentPodError}
-                onRetrySpawn={spawnContentPodAsync}
-              />
-            )}
-          </TabsContent>
+                </AccordionContent>
+              </AccordionItem>
 
-          <TabsContent value="results">
-            <ResultsTab result={null} meta={null} />
-          </TabsContent>
-        </Tabs>
+              <AccordionItem value="results" className="border rounded-lg px-3 bg-white">
+                <AccordionTrigger className="text-base font-semibold hover:no-underline py-3">
+                  Results
+                </AccordionTrigger>
+                <AccordionContent className="pt-2 pb-3">
+                  <ResultsTab result={null} meta={null} />
+                </AccordionContent>
+              </AccordionItem>
+
+              <AccordionItem value="session-details" className="border rounded-lg px-3 bg-white">
+                <AccordionTrigger className="text-base font-semibold hover:no-underline py-3">
+                  Session Details
+                </AccordionTrigger>
+                <AccordionContent className="pt-2 pb-3">
+                  <div className="grid grid-cols-3 gap-3">
+                    <Card className="py-2">
+                      <CardContent className="p-2">
+                        <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Duration</div>
+                        <div className="text-sm font-semibold">{typeof durationMs === "number" ? `${durationMs} ms` : "-"}</div>
+                      </CardContent>
+                    </Card>
+                    <Card className="py-2">
+                      <CardContent className="p-2">
+                        <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Messages</div>
+                        <div className="text-sm font-semibold">{messages.length}</div>
+                      </CardContent>
+                    </Card>
+                    <Card className="py-2">
+                      <CardContent className="p-2">
+                        <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Agents</div>
+                        <div className="text-sm font-semibold">{subagentStats.uniqueCount > 0 ? subagentStats.uniqueCount : "-"}</div>
+                      </CardContent>
+                    </Card>
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
+          </div>
+
+          {/* Right Column - Messages (Always Visible) */}
+          <div>
+            <Card>
+              <CardContent className="p-3">
+                <MessagesTab
+                  session={session}
+                  streamMessages={streamMessages}
+                  chatInput={chatInput}
+                  setChatInput={setChatInput}
+                  onSendChat={() => Promise.resolve(sendChat())}
+                  onInterrupt={() => Promise.resolve(handleInterrupt())}
+                  onEndSession={() => Promise.resolve(handleEndSession())}
+                  onGoToResults={() => {}}
+                  onContinue={handleContinue}
+                />
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+        </div>
       </div>
     </div>
+    </>
   );
 }
 
