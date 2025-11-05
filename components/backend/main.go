@@ -8,7 +8,6 @@ import (
 	"ambient-code-backend/crd"
 	"ambient-code-backend/git"
 	"ambient-code-backend/github"
-	"ambient-code-backend/gitlab"
 	"ambient-code-backend/handlers"
 	"ambient-code-backend/jira"
 	"ambient-code-backend/k8s"

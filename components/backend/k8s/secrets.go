@@ -46,7 +46,7 @@ func StoreGitLabToken(ctx context.Context, clientset *kubernetes.Clientset, name
 
 	// Update existing secret
 	if secret.Data == nil {
-		secret.Data = make(map[byte][]byte)
+		secret.Data = make(map[string][]byte)
 	}
 	if secret.StringData == nil {
 		secret.StringData = make(map[string]string)
