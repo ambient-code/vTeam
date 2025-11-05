@@ -23,6 +23,7 @@ export default function IntegrationsClient({ appSlug }: Props) {
   const handleDisconnect = async () => {
     disconnectMutation.mutate(undefined, {
       onSuccess: () => {
+        // TODO actually invalidate the github application remotely 
         successToast('GitHub disconnected successfully')
         refetch()
       },

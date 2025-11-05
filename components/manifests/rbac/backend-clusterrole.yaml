@@ -12,9 +12,10 @@ rules:
   verbs: ["get", "update", "patch"]
 
 # ServiceAccounts (create per-session SA; also patch access-key SAs for last-used)
+# Includes delete to allow granting ambient-project-admin role
 - apiGroups: [""]
   resources: ["serviceaccounts"]
-  verbs: ["get", "list", "create", "update", "patch"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 
 # TokenRequests for SA JWT mint (per-session runner; access keys)
 - apiGroups: [""]
@@ -81,14 +82,22 @@ rules:
   verbs: ["get"]
 
 # PVCs (for checking workspace status and spawning temp content pods)
+# Includes delete to allow granting ambient-project-admin role
 - apiGroups: [""]
   resources: ["persistentvolumeclaims"]
-  verbs: ["get", "list", "watch"]
+  verbs: ["get", "list", "watch", "delete"]
 
 # Services (for temp content pod services)
+# Includes watch to allow granting ambient-project-admin role
 - apiGroups: [""]
   resources: ["services"]
-  verbs: ["get", "list", "create", "delete"]
+  verbs: ["get", "list", "watch", "create", "delete"]
+
+# Deployments (content services management)
+# Required to allow granting ambient-project-admin role
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["get", "list", "watch", "delete"]
 
 # SubjectAccessReviews (for permission validation)
 - apiGroups: ["authorization.k8s.io"]

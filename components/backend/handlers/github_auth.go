@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -209,6 +210,20 @@ func HandleGitHubUserOAuthCallback(c *gin.Context) {
 	if retURL == "" {
 		retURL = "/integrations"
 	}
+
+	// Check if we need to preserve onboarding parameter
+	onboarding := c.Query("onboarding")
+	if onboarding != "" {
+		// Parse the URL to add query parameter properly
+		parsedURL, err := url.Parse(retURL)
+		if err == nil {
+			q := parsedURL.Query()
+			q.Set("onboarding", onboarding)
+			parsedURL.RawQuery = q.Encode()
+			retURL = parsedURL.String()
+		}
+	}
+
 	c.Redirect(http.StatusFound, retURL)
 }
 

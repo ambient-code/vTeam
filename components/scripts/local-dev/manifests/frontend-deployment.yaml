@@ -26,9 +26,9 @@ spec:
         - name: BACKEND_URL
           value: "http://vteam-backend:8080/api"
         - name: NODE_ENV
-          value: "production"
+          value: "development"
         - name: OC_USER
-          value: "developer"
+          value: "kubeadmin"
         - name: OC_EMAIL
           value: "developer@vteam-dev.local"
         - name: OC_TOKEN
@@ -40,6 +40,8 @@ spec:
           value: "0"
         - name: VTEAM_VERSION
           value: "v0.0.3"
+        - name: GITHUB_APP_SLUG
+          value: "ambient-code-local"
         resources:
           requests:
             memory: "256Mi"
