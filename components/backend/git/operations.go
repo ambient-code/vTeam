@@ -187,7 +187,8 @@ func CheckRepoSeeding(ctx context.Context, repoURL string, branch *string, token
 
 	switch provider {
 	case types.ProviderGitHub:
-		owner, repo, err := ParseGitHubURL(repoURL)
+		var owner, repo string
+		owner, repo, err = ParseGitHubURL(repoURL)
 		if err != nil {
 			return false, nil, err
 		}
@@ -213,7 +214,8 @@ func CheckRepoSeeding(ctx context.Context, repoURL string, branch *string, token
 		}
 
 	case types.ProviderGitLab:
-		parsed, err := gitlab.ParseGitLabURL(repoURL)
+		var parsed *types.ParsedGitLabRepo
+		parsed, err = gitlab.ParseGitLabURL(repoURL)
 		if err != nil {
 			return false, nil, fmt.Errorf("invalid GitLab URL: %w", err)
 		}
