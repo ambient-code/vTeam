@@ -42,6 +42,26 @@ spec:
               runnerSecretsName:
                 type: string
                 description: "Name of the Kubernetes Secret in this namespace that stores runner configuration key/value pairs"
+              repositories:
+                type: array
+                description: "Git repositories configured for this project"
+                items:
+                  type: object
+                  required:
+                  - url
+                  properties:
+                    url:
+                      type: string
+                      description: "Repository URL (HTTPS or SSH format)"
+                    branch:
+                      type: string
+                      description: "Optional branch override (defaults to repository's default branch)"
+                    provider:
+                      type: string
+                      enum:
+                      - "github"
+                      - "gitlab"
+                      description: "Git hosting provider (auto-detected from URL if not specified)"
           status:
             type: object
             properties:

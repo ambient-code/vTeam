@@ -84,3 +84,20 @@ type CloneSessionRequest struct {
 	TargetProject  string `json:"targetProject" binding:"required"`
 	NewSessionName string `json:"newSessionName" binding:"required"`
 }
+
+// Mixed Provider Support Types (Phase 6)
+
+// ProviderResult contains the result of operations for a specific provider
+type ProviderResult struct {
+	Provider ProviderType `json:"provider"`
+	Success  bool         `json:"success"`
+	Error    string       `json:"error,omitempty"`
+	RepoURL  string       `json:"repoUrl"`
+}
+
+// MixedProviderSessionResult contains results from multiple providers
+type MixedProviderSessionResult struct {
+	OverallSuccess bool             `json:"overallSuccess"`
+	Results        []ProviderResult `json:"results"`
+	Message        string           `json:"message"`
+}

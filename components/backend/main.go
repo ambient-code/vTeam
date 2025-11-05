@@ -63,6 +63,9 @@ func main() {
 		return github.GetInstallation(ctx, userID)
 	}
 	git.GitHubTokenManager = github.Manager
+	git.GetBackendNamespace = func() string {
+		return server.Namespace
+	}
 
 	// Initialize CRD package
 	crd.GetRFEWorkflowResource = k8s.GetRFEWorkflowResource
@@ -134,8 +137,8 @@ type gitRepositoryAdapter struct {
 }
 
 // Wrapper for git.PerformRepoSeeding that adapts *types.RFEWorkflow to git.Workflow interface
-func performRepoSeeding(ctx context.Context, wf *types.RFEWorkflow, branchName, githubToken, agentURL, agentBranch, agentPath, specKitRepo, specKitVersion, specKitTemplate string) (bool, error) {
-	return git.PerformRepoSeeding(ctx, &rfeWorkflowAdapter{wf: wf}, branchName, githubToken, agentURL, agentBranch, agentPath, specKitRepo, specKitVersion, specKitTemplate)
+func performRepoSeeding(ctx context.Context, wf *types.RFEWorkflow, branchName, token, agentURL, agentBranch, agentPath, specKitRepo, specKitVersion, specKitTemplate string) (bool, error) {
+	return git.PerformRepoSeeding(ctx, &rfeWorkflowAdapter{wf: wf}, branchName, token, agentURL, agentBranch, agentPath, specKitRepo, specKitVersion, specKitTemplate)
 }
 
 // GetUmbrellaRepo implements git.Workflow interface

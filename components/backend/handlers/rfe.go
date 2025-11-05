@@ -341,10 +341,40 @@ func SeedProjectRFEWorkflow(c *gin.Context) {
 		return
 	}
 
-	githubToken, err := GetGitHubToken(c.Request.Context(), reqK8s, reqDyn, project, userIDStr)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
+	// Detect provider from umbrella repository URL and get appropriate token
+	var token string
+	if wf.UmbrellaRepo != nil && wf.UmbrellaRepo.URL != "" {
+		provider := types.DetectProvider(wf.UmbrellaRepo.URL)
+		switch provider {
+		case types.ProviderGitHub:
+			token, err = GetGitHubToken(c.Request.Context(), reqK8s, reqDyn, project, userIDStr)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{
+					"error":       err.Error(),
+					"remediation": "Ensure GitHub App is installed or configure GIT_TOKEN in project runner secret",
+				})
+				return
+			}
+		case types.ProviderGitLab:
+			token, err = git.GetGitLabToken(c.Request.Context(), reqK8s, project, userIDStr)
+			if err != nil {
+				c.JSON(http.StatusUnauthorized, gin.H{
+					"error":       err.Error(),
+					"remediation": "Connect your GitLab account via /auth/gitlab/connect",
+				})
+				return
+			}
+		default:
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Unsupported repository provider"})
+			return
+		}
+	} else {
+		// Fallback to GitHub for backward compatibility
+		token, err = GetGitHubToken(c.Request.Context(), reqK8s, reqDyn, project, userIDStr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
 	}
 
 	// Read request body for optional agent source and spec-kit settings
@@ -399,7 +429,7 @@ func SeedProjectRFEWorkflow(c *gin.Context) {
 	}
 
 	// Perform seeding operations with platform-managed branch
-	branchExisted, seedErr := PerformRepoSeeding(c.Request.Context(), wf, wf.BranchName, githubToken, agentURL, agentBranch, agentPath, specKitRepo, specKitVersion, specKitTemplate)
+	branchExisted, seedErr := PerformRepoSeeding(c.Request.Context(), wf, wf.BranchName, token, agentURL, agentBranch, agentPath, specKitRepo, specKitVersion, specKitTemplate)
 
 	if seedErr != nil {
 		log.Printf("Failed to seed RFE workflow %s in project %s: %v", id, project, seedErr)
@@ -459,10 +489,40 @@ func CheckProjectRFEWorkflowSeeding(c *gin.Context) {
 		return
 	}
 
-	githubToken, err := GetGitHubToken(c.Request.Context(), reqK8s, reqDyn, project, userIDStr)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
+	// Detect provider from umbrella repository URL and get appropriate token
+	var token string
+	if wf.UmbrellaRepo != nil && wf.UmbrellaRepo.URL != "" {
+		provider := types.DetectProvider(wf.UmbrellaRepo.URL)
+		switch provider {
+		case types.ProviderGitHub:
+			token, err = GetGitHubToken(c.Request.Context(), reqK8s, reqDyn, project, userIDStr)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{
+					"error":       err.Error(),
+					"remediation": "Ensure GitHub App is installed or configure GIT_TOKEN in project runner secret",
+				})
+				return
+			}
+		case types.ProviderGitLab:
+			token, err = git.GetGitLabToken(c.Request.Context(), reqK8s, project, userIDStr)
+			if err != nil {
+				c.JSON(http.StatusUnauthorized, gin.H{
+					"error":       err.Error(),
+					"remediation": "Connect your GitLab account via /auth/gitlab/connect",
+				})
+				return
+			}
+		default:
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Unsupported repository provider"})
+			return
+		}
+	} else {
+		// Fallback to GitHub for backward compatibility
+		token, err = GetGitHubToken(c.Request.Context(), reqK8s, reqDyn, project, userIDStr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
 	}
 
 	// Check if umbrella repo is seeded - use the generated feature branch, not the base branch
@@ -470,7 +530,7 @@ func CheckProjectRFEWorkflowSeeding(c *gin.Context) {
 	if wf.BranchName != "" {
 		branchToCheck = &wf.BranchName
 	}
-	umbrellaSeeded, umbrellaDetails, err := CheckRepoSeeding(c.Request.Context(), wf.UmbrellaRepo.URL, branchToCheck, githubToken)
+	umbrellaSeeded, umbrellaDetails, err := CheckRepoSeeding(c.Request.Context(), wf.UmbrellaRepo.URL, branchToCheck, token)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -481,7 +541,7 @@ func CheckProjectRFEWorkflowSeeding(c *gin.Context) {
 	allSupportingReposSeeded := true
 
 	for _, supportingRepo := range wf.SupportingRepos {
-		branchExists, err := CheckBranchExists(c.Request.Context(), supportingRepo.URL, wf.BranchName, githubToken)
+		branchExists, err := CheckBranchExists(c.Request.Context(), supportingRepo.URL, wf.BranchName, token)
 		if err != nil {
 			log.Printf("Warning: failed to check branch in supporting repo %s: %v", supportingRepo.URL, err)
 			allSupportingReposSeeded = false
