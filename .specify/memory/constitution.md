@@ -1,23 +1,28 @@
 <!--
 Sync Impact Report - Constitution Update
-Version Change: Initial → 0.0.1
-Type: DRAFT
+Version: 0.0.1 (DRAFT)
+Last Updated: 2025-11-05
 
-Modified Principles: N/A (initial creation)
-Added Sections:
-  - 7 Core Principles (Kubernetes-Native, Security, Type Safety, TDD, Modularity, Observability, Resource Lifecycle)
-  - Development Standards
-  - Deployment & Operations
-  - Governance
-
-Removed Sections: N/A
+Changelog:
+  - Added Principle VIII: Context Engineering & Prompt Optimization
+  - Added Principle IX: Data Access & Knowledge Augmentation
+  - Enhanced Principle IV: E2E testing, coverage standards, CI/CD automation
+  - Enhanced Principle VI: /metrics endpoint REQUIRED, simplified key metrics guidance
+  - Simplified Principle IX: Consolidated RAG/MCP/RLHF into concise bullets
+  - Removed redundant test categories section in Principle IV
+  - Consolidated Development Standards: Reference principles instead of duplicating
+  - Consolidated Production Requirements: Reference principles, add only unique items
+  - Reduced total length by ~30 lines while maintaining clarity
 
 Templates Status:
-  ✅ plan-template.md - Reviewed, references constitution check (line 48)
-  ✅ spec-template.md - Reviewed, no constitution references needed (user-focused)
-  ✅ tasks-template.md - Reviewed, TDD principles align with Principle III
+  ✅ plan-template.md - References constitution check dynamically
+  ✅ tasks-template.md - Added Phase 3.6-3.8 for new principles
+  ✅ spec-template.md - No updates needed
 
-Follow-up TODOs: None
+Follow-up TODOs:
+  - Implement /metrics endpoints in all components
+  - Create prompt template library
+  - Design RAG pipeline architecture
 -->
 
 # ACP Constitution (DRAFT)
@@ -71,12 +76,15 @@ TDD is MANDATORY for all new functionality:
 - **Contract Tests**: Every API endpoint/library interface MUST have contract tests
 - **Integration Tests**: Multi-component interactions MUST have integration tests
 - **Unit Tests**: Business logic MUST have unit tests
+- **Permission Tests**: RBAC boundary validation
+- **E2E Tests**: Critical user journeys MUST have end-to-end tests
 - **Red-Green-Refactor**: Tests written → Tests fail → Implementation → Tests pass → Refactor
-- **Test Categories**:
-  - Contract: API contracts, interface compliance
-  - Integration: Cross-service communication, end-to-end flows
-  - Unit: Isolated component logic
-  - Permission: RBAC boundary validation
+
+**Coverage Standards**:
+- Maintain high test coverage across all categories
+- Critical paths MUST have comprehensive test coverage
+- CI/CD pipeline MUST enforce test passing before merge
+- Coverage reports generated automatically in CI
 
 **Rationale**: Tests written after implementation miss edge cases and don't drive design. TDD ensures testability, catches regressions, and documents expected behavior.
 
@@ -98,13 +106,19 @@ Code MUST be organized into clear, single-responsibility modules:
 All components MUST support operational visibility:
 
 - **Structured Logging**: Use structured logs with context (namespace, resource, operation)
-- **Health Endpoints**: `/health` endpoints for all services
+- **Health Endpoints**: `/health` endpoints for all services (liveness, readiness)
+- **Metrics Endpoints**: `/metrics` endpoints REQUIRED for all services (Prometheus format)
 - **Status Updates**: Use `UpdateStatus` subresource for CR status changes
 - **Event Emission**: Kubernetes events for operator actions
-- **Metrics**: Prometheus-compatible metrics (when configured)
 - **Error Context**: Errors must include actionable context for debugging
+- **Key Metrics**: Expose latency percentiles (p50/p95/p99), error rates, throughput, and component-specific operational metrics aligned with project goals
 
-**Rationale**: Production systems fail. Without observability, debugging is impossible and MTTR explodes.
+**Metrics Standards**:
+- Prometheus format on dedicated management port
+- Standard labels: service, namespace, version
+- Focus on metrics critical to project success (e.g., session execution time for vTeam)
+
+**Rationale**: Production systems fail. Without observability, debugging is impossible and MTTR explodes. Metrics enable proactive monitoring and capacity planning.
 
 ### VII. Resource Lifecycle Management
 
@@ -119,6 +133,30 @@ Kubernetes resources MUST have proper lifecycle management:
 
 **Rationale**: Resource leaks waste cluster capacity and cause outages. Proper lifecycle management ensures automatic cleanup and prevents orphaned resources.
 
+### VIII. Context Engineering & Prompt Optimization
+
+vTeam is a context engineering hub - AI output quality depends on input quality:
+
+- **Context Budgets**: Respect token limits (200K for Claude Sonnet 4.5)
+- **Context Prioritization**: System context > conversation history > examples
+- **Prompt Templates**: Use standardized templates for common operations (RFE analysis, code review)
+- **Context Compression**: Summarize long-running sessions to preserve history within budget
+- **Agent Personas**: Maintain consistency through well-defined agent roles
+- **Pre-Deployment Optimization**: ALL prompts MUST be optimized for clarity and token efficiency before deployment
+- **Incremental Loading**: Build context incrementally, avoid reloading static content
+
+**Rationale**: Poor context management causes hallucinations, inconsistent outputs, and wasted API costs. Context engineering is a first-class engineering discipline for AI platforms.
+
+### IX. Data Access & Knowledge Augmentation
+
+Enable agents to access external knowledge and learn from interactions:
+
+- **RAG**: Embed and index repository contents, chunk semantically (512-1024 tokens), use consistent models, apply reranking
+- **MCP**: Support MCP servers for structured data access, enforce namespace isolation, handle failures gracefully
+- **RLHF**: Capture user ratings (thumbs up/down), store with session metadata, refine prompts from patterns, support A/B testing
+
+**Rationale**: Static prompts have limited effectiveness. Platforms must continuously improve through knowledge retrieval and learning from user feedback.
+
 ## Development Standards
 
 ### Go Code (Backend & Operator)
@@ -128,11 +166,7 @@ Kubernetes resources MUST have proper lifecycle management:
 - Use `golangci-lint run` for comprehensive linting
 - Run `go vet ./...` to detect suspicious constructs
 
-**Error Handling**:
-- Return wrapped errors: `fmt.Errorf("operation failed: %w", err)`
-- Log errors with context before returning
-- Use `IsNotFound` checks for graceful cleanup
-- Never ignore errors (use `// nolint:errcheck` with justification if truly needed)
+**Error Handling**: See Principle III: Type Safety & Error Handling
 
 **Kubernetes Client Patterns**:
 - User operations: `GetK8sClientsForRequest(c)`
@@ -194,23 +228,16 @@ npm run build  # Must pass with 0 errors, 0 warnings
 
 ### Production Requirements
 
-**Security**:
-- Store API keys in Kubernetes Secrets
-- Implement RBAC for namespace-scoped isolation
-- Enable network policies for component isolation
-- Scan container images for vulnerabilities
+**Security**: Apply Principle II security requirements. Additionally: Scan container images for vulnerabilities before deployment.
 
-**Monitoring**:
-- Configure Prometheus metrics collection
-- Set up centralized logging (ELK, Loki)
-- Implement alerting for pod failures and resource exhaustion
-- Deploy comprehensive health endpoints
+**Monitoring**: Implement Principle VI observability requirements in production environment. Additionally: Set up centralized logging and alerting infrastructure.
 
 **Scaling**:
 - Configure Horizontal Pod Autoscaling based on CPU/memory
 - Set appropriate resource requests and limits
 - Plan for job concurrency and queue management
 - Design for multi-tenancy with shared infrastructure
+- Do not use etcd as a database for things like CRs. There are limits. Use an external database like Postgres.
 
 ## Governance
 

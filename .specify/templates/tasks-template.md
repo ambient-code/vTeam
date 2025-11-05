@@ -76,6 +76,24 @@
 - [ ] T022 Remove duplication
 - [ ] T023 Run manual-testing.md
 
+## Phase 3.6: Observability (if applicable)
+- [ ] T024 [P] Implement /metrics endpoint with Prometheus format
+- [ ] T025 [P] Add key metrics (latency p50/p95/p99, error rates)
+- [ ] T026 [P] Add structured logging with context
+- [ ] T027 [P] Configure health endpoints (liveness, readiness)
+
+## Phase 3.7: Context Engineering (if AI/LLM features)
+- [ ] T028 [P] Create prompt templates for common operations
+- [ ] T029 [P] Implement context budget management (token limits)
+- [ ] T030 [P] Add context compression for long sessions
+- [ ] T031 Optimize all prompts for clarity and token efficiency
+
+## Phase 3.8: Data Access & Knowledge Augmentation (if AI/LLM features)
+- [ ] T032 [P] Set up RAG pipeline (embedding, indexing, chunking)
+- [ ] T033 [P] Implement MCP server integration
+- [ ] T034 [P] Add RLHF feedback collection (thumbs up/down)
+- [ ] T035 [P] Create feedback storage and analysis pipeline
+
 ## Dependencies
 - Tests (T004-T007) before implementation (T008-T014)
 - T008 blocks T009, T015
