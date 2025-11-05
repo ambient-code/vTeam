@@ -2,9 +2,7 @@ package handlers
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -13,11 +11,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"k8s.io/client-go/dynamic"
-	"k8s.io/client-go/kubernetes"
 
 	"ambient-code-backend/git"
-	"ambient-code-backend/gitlab"
 	"ambient-code-backend/types"
 )
 
@@ -61,41 +56,29 @@ var RequiredClaudeStructure = map[string][]string{
 
 // ClaudeTemplates contains default template content for .claude/ files
 var ClaudeTemplates = map[string]string{
-	".claude/README.md": `# Claude Code Configuration
+	".claude/README.md": "# Claude Code Configuration\n\n" +
+		"This directory contains configuration for Claude Code integration.\n\n" +
+		"## Structure\n\n" +
+		"- `commands/` - Custom slash commands for this project\n" +
+		"- `settings.local.json` - Local Claude Code settings (not committed)\n\n" +
+		"## Documentation\n\n" +
+		"For more information, see the [Claude Code documentation](https://docs.claude.com/claude-code).\n",
 
-This directory contains configuration for Claude Code integration.
-
-## Structure
-
-- \`commands/\` - Custom slash commands for this project
-- \`settings.local.json\` - Local Claude Code settings (not committed)
-
-## Documentation
-
-For more information, see the [Claude Code documentation](https://docs.claude.com/claude-code).
-`,
-	".claude/commands/README.md": `# Custom Commands
-
-Add custom slash commands for your project here.
-
-Each command is a markdown file that defines:
-- Command name (from filename)
-- Command description
-- Prompt template
-
-## Example
-
-Create \`analyze.md\`:
-
-\`\`\`markdown
-Analyze the codebase and provide insights about:
-- Architecture patterns
-- Code quality issues
-- Potential improvements
-\`\`\`
-
-Then use with \`/analyze\` in Claude Code.
-`,
+	".claude/commands/README.md": "# Custom Commands\n\n" +
+		"Add custom slash commands for your project here.\n\n" +
+		"Each command is a markdown file that defines:\n" +
+		"- Command name (from filename)\n" +
+		"- Command description\n" +
+		"- Prompt template\n\n" +
+		"## Example\n\n" +
+		"Create `analyze.md`:\n\n" +
+		"```markdown\n" +
+		"Analyze the codebase and provide insights about:\n" +
+		"- Architecture patterns\n" +
+		"- Code quality issues\n" +
+		"- Potential improvements\n" +
+		"```\n\n" +
+		"Then use with `/analyze` in Claude Code.\n",
 	".claude/settings.local.json": `{
   "permissions": {
     "allow": [],
