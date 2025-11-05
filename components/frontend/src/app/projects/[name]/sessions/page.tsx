@@ -1,7 +1,7 @@
 'use client';
 
-import Link from 'next/link';
 import { useParams, usePathname } from 'next/navigation';
+import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
 import { Plus, RefreshCw, MoreVertical, Square, Trash2, ArrowRight, Brain, Star, Settings, Users } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -18,6 +18,7 @@ import { Breadcrumbs } from '@/components/breadcrumbs';
 
 import { useSessions, useStopSession, useDeleteSession, useContinueSession } from '@/services/queries';
 import { successToast, errorToast } from '@/hooks/use-toast';
+import { CreateSessionDialog } from '@/components/create-session-dialog';
 
 export default function ProjectSessionsListPage() {
   const params = useParams();
@@ -173,12 +174,16 @@ export default function ProjectSessionsListPage() {
                     <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
                     Refresh
                   </Button>
-                  <Link href={`/projects/${encodeURIComponent(projectName)}/sessions/new`}>
-                    <Button>
-                      <Plus className="w-4 h-4 mr-2" />
-                      New Session
-                    </Button>
-                  </Link>
+                  <CreateSessionDialog
+                    projectName={projectName}
+                    onSuccess={() => refetch()}
+                    trigger={
+                      <Button>
+                        <Plus className="w-4 h-4 mr-2" />
+                        New Session
+                      </Button>
+                    }
+                  />
                 </div>
               </div>
             </CardHeader>
