@@ -41,6 +41,17 @@ export function CreateWorkspaceDialog({
   });
 
   const [nameError, setNameError] = useState<string | null>(null);
+  const [manuallyEditedName, setManuallyEditedName] = useState(false);
+
+  const generateWorkspaceName = (displayName: string): string => {
+    return displayName
+      .toLowerCase()
+      .replace(/\s+/g, "-") // Replace spaces with hyphens
+      .replace(/[^a-z0-9-]/g, "") // Remove invalid characters
+      .replace(/-+/g, "-") // Collapse multiple hyphens
+      .replace(/^-+|-+$/g, "") // Remove leading/trailing hyphens
+      .slice(0, 63); // Truncate to max length
+  };
 
   const validateProjectName = (name: string) => {
     // Validate name pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
@@ -61,7 +72,23 @@ export function CreateWorkspaceDialog({
     return null;
   };
 
+  const handleDisplayNameChange = (displayName: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      displayName,
+      // Auto-generate name only if it hasn't been manually edited
+      name: manuallyEditedName ? prev.name : generateWorkspaceName(displayName),
+    }));
+    
+    // Validate the auto-generated name
+    if (!manuallyEditedName) {
+      const generatedName = generateWorkspaceName(displayName);
+      setNameError(validateProjectName(generatedName));
+    }
+  };
+
   const handleNameChange = (name: string) => {
+    setManuallyEditedName(true);
     setFormData((prev) => ({ ...prev, name }));
     setNameError(validateProjectName(name));
   };
@@ -74,6 +101,7 @@ export function CreateWorkspaceDialog({
     });
     setNameError(null);
     setError(null);
+    setManuallyEditedName(false);
   };
 
   const handleClose = () => {
@@ -87,6 +115,11 @@ export function CreateWorkspaceDialog({
     e.preventDefault();
 
     // Validate required fields
+    if (isOpenShift && !formData.displayName?.trim()) {
+      setError("Display Name is required");
+      return;
+    }
+
     const nameValidationError = validateProjectName(formData.name);
     if (nameValidationError) {
       setNameError(nameValidationError);
@@ -130,14 +163,14 @@ export function CreateWorkspaceDialog({
   return (
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
+        <DialogHeader className="space-y-3">
           <DialogTitle>Create New Workspace</DialogTitle>
           <DialogDescription>
-            Set up a new workspace for you or your team.
+            Set up a new workspace for your team
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-8 pt-2">
           {/* Cluster info banner */}
           {!clusterLoading && !isOpenShift && (
             <Alert>
@@ -152,6 +185,20 @@ export function CreateWorkspaceDialog({
           {/* Basic Information */}
           <div className="space-y-4">
 
+            {/* OpenShift-only fields */}
+            {isOpenShift && (
+              <div className="space-y-2">
+                <Label htmlFor="displayName">Display Name *</Label>
+                <Input
+                  id="displayName"
+                  value={formData.displayName}
+                  onChange={(e) => handleDisplayNameChange(e.target.value)}
+                  placeholder="My Research Workspace"
+                  maxLength={100}
+                />
+              </div>
+            )}
+
             <div className="space-y-2">
               <Label htmlFor="name">Workspace Name *</Label>
               <Input
@@ -163,54 +210,34 @@ export function CreateWorkspaceDialog({
               />
               {nameError && <p className="text-sm text-red-600">{nameError}</p>}
               <p className="text-sm text-gray-600">
-                Lowercase alphanumeric with hyphens. Will be used as the
-                Kubernetes namespace.
+                {isOpenShift 
+                  ? "Must be lowercase, alphanumeric with hyphens."
+                  : "Lowercase alphanumeric with hyphens."
+                }
               </p>
             </div>
 
-            {/* OpenShift-only fields */}
+            {/* OpenShift-only description field */}
             {isOpenShift && (
-              <>
-                <div className="space-y-2">
-                  <Label htmlFor="displayName">Display Name</Label>
-                  <Input
-                    id="displayName"
-                    value={formData.displayName}
-                    onChange={(e) =>
-                      setFormData((prev) => ({
-                        ...prev,
-                        displayName: e.target.value,
-                      }))
-                    }
-                    placeholder="My Research Workspace"
-                    maxLength={100}
-                  />
-                  <p className="text-sm text-gray-600">
-                    Human-readable name for the workspace (max 100 characters).
-                    Defaults to workspace name if empty.
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="description">Description</Label>
-                  <Textarea
-                    id="description"
-                    value={formData.description}
-                    onChange={(e) =>
-                      setFormData((prev) => ({
-                        ...prev,
-                        description: e.target.value,
-                      }))
-                    }
-                    placeholder="Description of the workspace purpose and goals..."
-                    maxLength={500}
-                    rows={3}
-                  />
-                  <p className="text-sm text-gray-600">
-                    Optional description (max 500 characters)
-                  </p>
-                </div>
-              </>
+              <div className="space-y-2">
+                <Label htmlFor="description">Description</Label>
+                <Textarea
+                  id="description"
+                  value={formData.description}
+                  onChange={(e) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      description: e.target.value,
+                    }))
+                  }
+                  placeholder="Description of the workspace purpose and goals..."
+                  maxLength={500}
+                  rows={3}
+                />
+                <p className="text-sm text-gray-600">
+                  Optional description (max 500 characters)
+                </p>
+              </div>
             )}
           </div>
 
