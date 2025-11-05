@@ -15,6 +15,10 @@ import (
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
+
+	"ambient-code-backend/git"
+	"ambient-code-backend/gitlab"
+	"ambient-code-backend/types"
 )
 
 // Dependencies injected from main package
@@ -233,7 +237,7 @@ func CreateUserFork(c *gin.Context) {
 }
 
 // GetRepoTree handles GET /projects/:projectName/repo/tree
-// Fetch repo tree entries via backend proxy
+// Fetch repo tree entries via backend proxy (supports both GitHub and GitLab)
 func GetRepoTree(c *gin.Context) {
 	project := c.Param("projectName")
 	repo := c.Query("repo")
@@ -248,77 +252,129 @@ func GetRepoTree(c *gin.Context) {
 	userID, _ := c.Get("userID")
 	reqK8s, reqDyn := GetK8sClientsForRequestRepo(c)
 
-	// Try to get GitHub token (GitHub App or PAT from runner secret)
-	token, err := GetGitHubTokenRepo(c.Request.Context(), reqK8s, reqDyn, project, userID.(string))
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
-		return
-	}
+	// Detect provider from repo URL
+	provider := types.DetectProvider(repo)
 
-	owner, repoName, err := parseOwnerRepo(repo)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	api := githubAPIBaseURL("github.com")
-	p := path
-	if p == "" || p == "/" {
-		p = ""
-	}
-	url := fmt.Sprintf("%s/repos/%s/%s/contents/%s?ref=%s", api, owner, repoName, strings.TrimPrefix(p, "/"), ref)
-	resp, err := doGitHubRequest(c.Request.Context(), http.MethodGet, url, "Bearer "+token, "", nil)
-	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("GitHub request failed: %v", err)})
-		return
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		b, _ := io.ReadAll(resp.Body)
-		c.JSON(resp.StatusCode, gin.H{"error": string(b)})
-		return
-	}
-	var decoded interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&decoded); err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("failed to parse GitHub response: %v", err)})
-		return
-	}
-	entries := []map[string]interface{}{}
-	if arr, ok := decoded.([]interface{}); ok {
-		for _, item := range arr {
-			if m, ok := item.(map[string]interface{}); ok {
-				name, _ := m["name"].(string)
-				typ, _ := m["type"].(string)
-				size, _ := m["size"].(float64)
-				mapped := "blob"
-				switch strings.ToLower(typ) {
-				case "dir":
-					mapped = "tree"
-				case "file", "symlink", "submodule":
-					mapped = "blob"
-				default:
-					if strings.TrimSpace(typ) == "" {
-						mapped = "blob"
-					}
-				}
-				entries = append(entries, map[string]interface{}{"name": name, "type": mapped, "size": int(size)})
+	switch provider {
+	case types.ProviderGitLab:
+		// Handle GitLab repository
+		token, err := git.GetGitLabToken(c.Request.Context(), reqK8s, project, userID.(string))
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Parse GitLab repository URL
+		parsed, err := gitlab.ParseGitLabURL(repo)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid GitLab URL: %v", err)})
+			return
+		}
+
+		// Create GitLab client and fetch tree
+		client := gitlab.NewClient(parsed.APIURL, token)
+		gitlabEntries, err := client.GetAllTreeEntries(c.Request.Context(), parsed.ProjectID, ref, path)
+		if err != nil {
+			if gitlabErr, ok := err.(*types.GitLabAPIError); ok {
+				c.JSON(gitlabErr.StatusCode, gin.H{"error": gitlabErr.Error()})
+				return
 			}
+			c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("GitLab request failed: %v", err)})
+			return
 		}
-	} else if m, ok := decoded.(map[string]interface{}); ok {
-		// single file; present as one entry
-		name, _ := m["name"].(string)
-		typ, _ := m["type"].(string)
-		size, _ := m["size"].(float64)
-		mapped := "blob"
-		if strings.ToLower(typ) == "dir" {
-			mapped = "tree"
+
+		// Map GitLab tree entries to common format
+		entries := gitlab.MapGitLabTreeEntriesToCommon(gitlabEntries)
+		c.JSON(http.StatusOK, gin.H{"path": path, "entries": entries})
+
+	case types.ProviderGitHub:
+		// Handle GitHub repository (existing logic)
+		token, err := GetGitHubTokenRepo(c.Request.Context(), reqK8s, reqDyn, project, userID.(string))
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+			return
 		}
-		entries = append(entries, map[string]interface{}{"name": name, "type": mapped, "size": int(size)})
+
+		owner, repoName, err := parseOwnerRepo(repo)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		api := githubAPIBaseURL("github.com")
+		p := path
+		if p == "" || p == "/" {
+			p = ""
+		}
+		url := fmt.Sprintf("%s/repos/%s/%s/contents/%s?ref=%s", api, owner, repoName, strings.TrimPrefix(p, "/"), ref)
+		resp, err := doGitHubRequest(c.Request.Context(), http.MethodGet, url, "Bearer "+token, "", nil)
+		if err != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("GitHub request failed: %v", err)})
+			return
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			b, _ := io.ReadAll(resp.Body)
+			c.JSON(resp.StatusCode, gin.H{"error": string(b)})
+			return
+		}
+		var decoded interface{}
+		if err := json.NewDecoder(resp.Body).Decode(&decoded); err != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("failed to parse GitHub response: %v", err)})
+			return
+		}
+		entries := []types.TreeEntry{}
+		if arr, ok := decoded.([]interface{}); ok {
+			for _, item := range arr {
+				if m, ok := item.(map[string]interface{}); ok {
+					name, _ := m["name"].(string)
+					pathStr, _ := m["path"].(string)
+					typ, _ := m["type"].(string)
+					size, _ := m["size"].(float64)
+					mapped := "blob"
+					switch strings.ToLower(typ) {
+					case "dir":
+						mapped = "tree"
+					case "file", "symlink", "submodule":
+						mapped = "blob"
+					default:
+						if strings.TrimSpace(typ) == "" {
+							mapped = "blob"
+						}
+					}
+					entries = append(entries, types.TreeEntry{
+						Name: name,
+						Path: pathStr,
+						Type: mapped,
+						Size: int(size),
+					})
+				}
+			}
+		} else if m, ok := decoded.(map[string]interface{}); ok {
+			// single file; present as one entry
+			name, _ := m["name"].(string)
+			pathStr, _ := m["path"].(string)
+			typ, _ := m["type"].(string)
+			size, _ := m["size"].(float64)
+			mapped := "blob"
+			if strings.ToLower(typ) == "dir" {
+				mapped = "tree"
+			}
+			entries = append(entries, types.TreeEntry{
+				Name: name,
+				Path: pathStr,
+				Type: mapped,
+				Size: int(size),
+			})
+		}
+		c.JSON(http.StatusOK, gin.H{"path": path, "entries": entries})
+
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported repository provider (only GitHub and GitLab are supported)"})
 	}
-	c.JSON(http.StatusOK, map[string]interface{}{"path": path, "entries": entries})
 }
 
 // ListRepoBranches handles GET /projects/:projectName/repo/branches
-// List all branches in a repository
+// List all branches in a repository (supports both GitHub and GitLab)
 func ListRepoBranches(c *gin.Context) {
 	project := c.Param("projectName")
 	repo := c.Query("repo")
@@ -331,58 +387,94 @@ func ListRepoBranches(c *gin.Context) {
 	userID, _ := c.Get("userID")
 	reqK8s, reqDyn := GetK8sClientsForRequestRepo(c)
 
-	// Try to get GitHub token (GitHub App or PAT from runner secret)
-	token, err := GetGitHubTokenRepo(c.Request.Context(), reqK8s, reqDyn, project, userID.(string))
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
-		return
-	}
+	// Detect provider from repo URL
+	provider := types.DetectProvider(repo)
 
-	owner, repoName, err := parseOwnerRepo(repo)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	api := githubAPIBaseURL("github.com")
-	url := fmt.Sprintf("%s/repos/%s/%s/branches", api, owner, repoName)
-	resp, err := doGitHubRequest(c.Request.Context(), http.MethodGet, url, "Bearer "+token, "", nil)
-	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("GitHub request failed: %v", err)})
-		return
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		b, _ := io.ReadAll(resp.Body)
-		c.JSON(resp.StatusCode, gin.H{"error": string(b)})
-		return
-	}
-
-	var branchesResp []map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&branchesResp); err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("failed to parse GitHub response: %v", err)})
-		return
-	}
-
-	// Map branches to a simpler format
-	branches := make([]map[string]interface{}, 0, len(branchesResp))
-	for _, b := range branchesResp {
-		name, _ := b["name"].(string)
-		if name != "" {
-			branches = append(branches, map[string]interface{}{
-				"name": name,
-			})
+	switch provider {
+	case types.ProviderGitLab:
+		// Handle GitLab repository
+		token, err := git.GetGitLabToken(c.Request.Context(), reqK8s, project, userID.(string))
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+			return
 		}
-	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"branches": branches,
-	})
+		// Parse GitLab repository URL
+		parsed, err := gitlab.ParseGitLabURL(repo)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid GitLab URL: %v", err)})
+			return
+		}
+
+		// Create GitLab client and fetch branches
+		client := gitlab.NewClient(parsed.APIURL, token)
+		gitlabBranches, err := client.GetAllBranches(c.Request.Context(), parsed.ProjectID)
+		if err != nil {
+			if gitlabErr, ok := err.(*types.GitLabAPIError); ok {
+				c.JSON(gitlabErr.StatusCode, gin.H{"error": gitlabErr.Error()})
+				return
+			}
+			c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("GitLab request failed: %v", err)})
+			return
+		}
+
+		// Map GitLab branches to common format
+		branches := gitlab.MapGitLabBranchesToCommon(gitlabBranches)
+		c.JSON(http.StatusOK, gin.H{"branches": branches})
+
+	case types.ProviderGitHub:
+		// Handle GitHub repository (existing logic)
+		token, err := GetGitHubTokenRepo(c.Request.Context(), reqK8s, reqDyn, project, userID.(string))
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+			return
+		}
+
+		owner, repoName, err := parseOwnerRepo(repo)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		api := githubAPIBaseURL("github.com")
+		url := fmt.Sprintf("%s/repos/%s/%s/branches", api, owner, repoName)
+		resp, err := doGitHubRequest(c.Request.Context(), http.MethodGet, url, "Bearer "+token, "", nil)
+		if err != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("GitHub request failed: %v", err)})
+			return
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			b, _ := io.ReadAll(resp.Body)
+			c.JSON(resp.StatusCode, gin.H{"error": string(b)})
+			return
+		}
+
+		var branchesResp []map[string]interface{}
+		if err := json.NewDecoder(resp.Body).Decode(&branchesResp); err != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("failed to parse GitHub response: %v", err)})
+			return
+		}
+
+		// Map GitHub branches to common format
+		branches := make([]types.Branch, 0, len(branchesResp))
+		for _, b := range branchesResp {
+			name, _ := b["name"].(string)
+			if name != "" {
+				branches = append(branches, types.Branch{Name: name})
+			}
+		}
+
+		c.JSON(http.StatusOK, gin.H{"branches": branches})
+
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported repository provider (only GitHub and GitLab are supported)"})
+	}
 }
 
 // GetRepoBlob handles GET /projects/:projectName/repo/blob
-// Fetch blob (text) via backend proxy
+// Fetch blob (text) via backend proxy (supports both GitHub and GitLab)
 func GetRepoBlob(c *gin.Context) {
 	project := c.Param("projectName")
 	repo := c.Query("repo")
@@ -397,75 +489,130 @@ func GetRepoBlob(c *gin.Context) {
 	userID, _ := c.Get("userID")
 	reqK8s, reqDyn := GetK8sClientsForRequestRepo(c)
 
-	// Try to get GitHub token (GitHub App or PAT from runner secret)
-	token, err := GetGitHubTokenRepo(c.Request.Context(), reqK8s, reqDyn, project, userID.(string))
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
-		return
-	}
+	// Detect provider from repo URL
+	provider := types.DetectProvider(repo)
 
-	owner, repoName, err := parseOwnerRepo(repo)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	api := githubAPIBaseURL("github.com")
-	url := fmt.Sprintf("%s/repos/%s/%s/contents/%s?ref=%s", api, owner, repoName, strings.TrimPrefix(path, "/"), ref)
-	resp, err := doGitHubRequest(c.Request.Context(), http.MethodGet, url, "Bearer "+token, "", nil)
-	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("GitHub request failed: %v", err)})
-		return
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		b, _ := io.ReadAll(resp.Body)
-		c.JSON(resp.StatusCode, gin.H{"error": string(b)})
-		return
-	}
-	// Decode generically first because GitHub returns an array for directories
-	var decoded interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&decoded); err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("failed to parse GitHub response: %v", err)})
-		return
-	}
-	// If the response is an array, the path is a directory. Return entries for convenience.
-	if arr, ok := decoded.([]interface{}); ok {
-		entries := []map[string]interface{}{}
-		for _, item := range arr {
-			if m, ok := item.(map[string]interface{}); ok {
-				name, _ := m["name"].(string)
-				typ, _ := m["type"].(string)
-				size, _ := m["size"].(float64)
-				mapped := "blob"
-				switch strings.ToLower(typ) {
-				case "dir":
-					mapped = "tree"
-				case "file", "symlink", "submodule":
-					mapped = "blob"
-				default:
-					if strings.TrimSpace(typ) == "" {
-						mapped = "blob"
-					}
-				}
-				entries = append(entries, map[string]interface{}{"name": name, "type": mapped, "size": int(size)})
-			}
+	switch provider {
+	case types.ProviderGitLab:
+		// Handle GitLab repository
+		token, err := git.GetGitLabToken(c.Request.Context(), reqK8s, project, userID.(string))
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+			return
 		}
-		c.JSON(http.StatusOK, gin.H{"isDir": true, "path": path, "entries": entries})
-		return
-	}
-	// Otherwise, treat as a file object
-	if m, ok := decoded.(map[string]interface{}); ok {
-		content, _ := m["content"].(string)
-		encoding, _ := m["encoding"].(string)
+
+		// Parse GitLab repository URL
+		parsed, err := gitlab.ParseGitLabURL(repo)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid GitLab URL: %v", err)})
+			return
+		}
+
+		// Create GitLab client and fetch file content
+		client := gitlab.NewClient(parsed.APIURL, token)
+		fileContent, err := client.GetFileContents(c.Request.Context(), parsed.ProjectID, path, ref)
+		if err != nil {
+			if gitlabErr, ok := err.(*types.GitLabAPIError); ok {
+				c.JSON(gitlabErr.StatusCode, gin.H{"error": gitlabErr.Error()})
+				return
+			}
+			c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("GitLab request failed: %v", err)})
+			return
+		}
+
+		// Decode base64 content if needed
+		content := fileContent.Content
+		encoding := fileContent.Encoding
 		if strings.ToLower(encoding) == "base64" {
 			raw := strings.ReplaceAll(content, "\n", "")
 			if data, err := base64.StdEncoding.DecodeString(raw); err == nil {
-				c.JSON(http.StatusOK, gin.H{"content": string(data), "encoding": "utf-8"})
-				return
+				content = string(data)
+				encoding = "utf-8"
 			}
 		}
+
 		c.JSON(http.StatusOK, gin.H{"content": content, "encoding": encoding})
-		return
+
+	case types.ProviderGitHub:
+		// Handle GitHub repository (existing logic)
+		token, err := GetGitHubTokenRepo(c.Request.Context(), reqK8s, reqDyn, project, userID.(string))
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+			return
+		}
+
+		owner, repoName, err := parseOwnerRepo(repo)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		api := githubAPIBaseURL("github.com")
+		url := fmt.Sprintf("%s/repos/%s/%s/contents/%s?ref=%s", api, owner, repoName, strings.TrimPrefix(path, "/"), ref)
+		resp, err := doGitHubRequest(c.Request.Context(), http.MethodGet, url, "Bearer "+token, "", nil)
+		if err != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("GitHub request failed: %v", err)})
+			return
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			b, _ := io.ReadAll(resp.Body)
+			c.JSON(resp.StatusCode, gin.H{"error": string(b)})
+			return
+		}
+		// Decode generically first because GitHub returns an array for directories
+		var decoded interface{}
+		if err := json.NewDecoder(resp.Body).Decode(&decoded); err != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("failed to parse GitHub response: %v", err)})
+			return
+		}
+		// If the response is an array, the path is a directory. Return entries for convenience.
+		if arr, ok := decoded.([]interface{}); ok {
+			entries := []types.TreeEntry{}
+			for _, item := range arr {
+				if m, ok := item.(map[string]interface{}); ok {
+					name, _ := m["name"].(string)
+					pathStr, _ := m["path"].(string)
+					typ, _ := m["type"].(string)
+					size, _ := m["size"].(float64)
+					mapped := "blob"
+					switch strings.ToLower(typ) {
+					case "dir":
+						mapped = "tree"
+					case "file", "symlink", "submodule":
+						mapped = "blob"
+					default:
+						if strings.TrimSpace(typ) == "" {
+							mapped = "blob"
+						}
+					}
+					entries = append(entries, types.TreeEntry{
+						Name: name,
+						Path: pathStr,
+						Type: mapped,
+						Size: int(size),
+					})
+				}
+			}
+			c.JSON(http.StatusOK, gin.H{"isDir": true, "path": path, "entries": entries})
+			return
+		}
+		// Otherwise, treat as a file object
+		if m, ok := decoded.(map[string]interface{}); ok {
+			content, _ := m["content"].(string)
+			encoding, _ := m["encoding"].(string)
+			if strings.ToLower(encoding) == "base64" {
+				raw := strings.ReplaceAll(content, "\n", "")
+				if data, err := base64.StdEncoding.DecodeString(raw); err == nil {
+					c.JSON(http.StatusOK, gin.H{"content": string(data), "encoding": "utf-8"})
+					return
+				}
+			}
+			c.JSON(http.StatusOK, gin.H{"content": content, "encoding": encoding})
+			return
+		}
+
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported repository provider (only GitHub and GitLab are supported)"})
 	}
 	// Fallback unexpected structure
 	c.JSON(http.StatusBadGateway, gin.H{"error": "unexpected GitHub response structure"})
