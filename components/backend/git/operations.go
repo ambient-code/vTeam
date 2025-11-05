@@ -22,6 +22,9 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
+
+	"ambient-code-backend/gitlab"
+	"ambient-code-backend/types"
 )
 
 // Package-level dependencies (set from main package)
@@ -107,6 +110,57 @@ func GetGitHubToken(ctx context.Context, k8sClient *kubernetes.Clientset, dynCli
 
 	log.Printf("Using GITHUB_TOKEN from integration secret %s/%s", project, secretName)
 	return string(token), nil
+}
+
+// GetGitLabToken retrieves a GitLab Personal Access Token for a user
+func GetGitLabToken(ctx context.Context, k8sClient *kubernetes.Clientset, project, userID string) (string, error) {
+	if k8sClient == nil {
+		log.Printf("Cannot read GitLab token: k8s client is nil")
+		return "", fmt.Errorf("no GitLab credentials available. Please connect your GitLab account")
+	}
+
+	// GitLab tokens are stored in the backend namespace (not project namespace)
+	// Use the default namespace where gitlab-user-tokens secret is stored
+	backendNamespace := "vteam-backend" // TODO: Make this configurable
+
+	secret, err := k8sClient.CoreV1().Secrets(backendNamespace).Get(ctx, "gitlab-user-tokens", v1.GetOptions{})
+	if err != nil {
+		log.Printf("Failed to get gitlab-user-tokens secret in %s: %v", backendNamespace, err)
+		return "", fmt.Errorf("no GitLab credentials available. Please connect your GitLab account")
+	}
+
+	if secret.Data == nil {
+		log.Printf("Secret gitlab-user-tokens exists but Data is nil")
+		return "", fmt.Errorf("no GitLab credentials available. Please connect your GitLab account")
+	}
+
+	token, ok := secret.Data[userID]
+	if !ok {
+		log.Printf("Secret gitlab-user-tokens has no token for user %s", userID)
+		return "", fmt.Errorf("no GitLab credentials available. Please connect your GitLab account")
+	}
+
+	if len(token) == 0 {
+		log.Printf("Secret gitlab-user-tokens has token for user %s but value is empty", userID)
+		return "", fmt.Errorf("no GitLab credentials available. Please connect your GitLab account")
+	}
+
+	log.Printf("Using GitLab token for user %s from gitlab-user-tokens secret", userID)
+	return string(token), nil
+}
+
+// GetGitToken retrieves a Git token based on the repository provider
+func GetGitToken(ctx context.Context, k8sClient *kubernetes.Clientset, dynClient dynamic.Interface, repoURL, project, userID string) (string, error) {
+	provider := types.DetectProvider(repoURL)
+
+	switch provider {
+	case types.ProviderGitHub:
+		return GetGitHubToken(ctx, k8sClient, dynClient, project, userID)
+	case types.ProviderGitLab:
+		return GetGitLabToken(ctx, k8sClient, project, userID)
+	default:
+		return "", fmt.Errorf("unsupported repository provider for URL: %s", repoURL)
+	}
 }
 
 // getSecretKeys returns a list of keys from a secret's Data map for debugging
@@ -607,6 +661,178 @@ func InjectGitHubToken(gitURL, token string) (string, error) {
 	return u.String(), nil
 }
 
+// InjectGitLabToken injects a GitLab token into a git URL for authentication
+func InjectGitLabToken(gitURL, token string) (string, error) {
+	u, err := url.Parse(gitURL)
+	if err != nil {
+		return "", fmt.Errorf("invalid git URL: %w", err)
+	}
+
+	if u.Scheme != "https" {
+		return gitURL, nil
+	}
+
+	// GitLab uses oauth2:token@ format
+	u.User = url.UserPassword("oauth2", token)
+	return u.String(), nil
+}
+
+// InjectGitToken injects a Git token into a URL based on the repository provider
+func InjectGitToken(gitURL, token string) (string, error) {
+	provider := types.DetectProvider(gitURL)
+
+	switch provider {
+	case types.ProviderGitHub:
+		return InjectGitHubToken(gitURL, token)
+	case types.ProviderGitLab:
+		return InjectGitLabToken(gitURL, token)
+	default:
+		return "", fmt.Errorf("unsupported repository provider for URL: %s", gitURL)
+	}
+}
+
+// DetectPushError analyzes git push error output and provides user-friendly error messages
+func DetectPushError(repoURL, stderr, stdout string) error {
+	provider := types.DetectProvider(repoURL)
+
+	// Common error patterns
+	stderrLower := strings.ToLower(stderr)
+	stdoutLower := strings.ToLower(stdout)
+	combined := stderrLower + " " + stdoutLower
+
+	// Check for authentication/permission errors
+	if strings.Contains(combined, "403") || strings.Contains(combined, "forbidden") {
+		if provider == types.ProviderGitLab {
+			return fmt.Errorf("GitLab push failed: Insufficient permissions. Ensure your GitLab token has 'write_repository' scope. You can update your token by reconnecting your GitLab account with the required permissions")
+		} else if provider == types.ProviderGitHub {
+			return fmt.Errorf("GitHub push failed: Insufficient permissions. Check that your GitHub App installation has write access to this repository")
+		}
+		return fmt.Errorf("Push failed: Insufficient permissions (403 Forbidden)")
+	}
+
+	// Check for authentication failures
+	if strings.Contains(combined, "401") || strings.Contains(combined, "unauthorized") || strings.Contains(combined, "authentication failed") {
+		if provider == types.ProviderGitLab {
+			return fmt.Errorf("GitLab push failed: Authentication failed. Your GitLab token may be invalid or expired. Please reconnect your GitLab account")
+		} else if provider == types.ProviderGitHub {
+			return fmt.Errorf("GitHub push failed: Authentication failed. Check your GitHub App installation")
+		}
+		return fmt.Errorf("Push failed: Authentication failed (401 Unauthorized)")
+	}
+
+	// Check for network errors
+	if strings.Contains(combined, "could not resolve host") || strings.Contains(combined, "connection refused") {
+		return fmt.Errorf("Push failed: Unable to connect to %s. Check network connectivity", extractHostFromURL(repoURL))
+	}
+
+	// Check for rate limiting
+	if strings.Contains(combined, "429") || strings.Contains(combined, "rate limit") {
+		if provider == types.ProviderGitLab {
+			return fmt.Errorf("GitLab push failed: Rate limit exceeded. Please wait a few minutes before retrying")
+		}
+		return fmt.Errorf("Push failed: API rate limit exceeded. Please wait before retrying")
+	}
+
+	// Check for repository not found
+	if strings.Contains(combined, "404") || strings.Contains(combined, "not found") || strings.Contains(combined, "repository not found") {
+		return fmt.Errorf("Push failed: Repository not found. Verify the repository URL: %s", repoURL)
+	}
+
+	// Return original error if no pattern matched
+	errMsg := strings.TrimSpace(stderr)
+	if errMsg == "" {
+		errMsg = strings.TrimSpace(stdout)
+	}
+	if len(errMsg) > 500 {
+		errMsg = errMsg[:500] + "..."
+	}
+	return fmt.Errorf("Push failed: %s", errMsg)
+}
+
+// extractHostFromURL extracts the host from a git URL for error messages
+func extractHostFromURL(gitURL string) string {
+	if strings.HasPrefix(gitURL, "git@") {
+		// SSH format: git@host:owner/repo
+		parts := strings.Split(gitURL, "@")
+		if len(parts) > 1 {
+			hostParts := strings.Split(parts[1], ":")
+			if len(hostParts) > 0 {
+				return hostParts[0]
+			}
+		}
+	} else {
+		// HTTPS format
+		u, err := url.Parse(gitURL)
+		if err == nil && u.Host != "" {
+			return u.Host
+		}
+	}
+	return "repository host"
+}
+
+// ConstructBranchURL constructs a web URL to view a branch based on the provider
+func ConstructBranchURL(repoURL, branch string) (string, error) {
+	provider := types.DetectProvider(repoURL)
+
+	switch provider {
+	case types.ProviderGitHub:
+		return ConstructGitHubBranchURL(repoURL, branch)
+	case types.ProviderGitLab:
+		return ConstructGitLabBranchURL(repoURL, branch)
+	default:
+		return "", fmt.Errorf("unsupported provider for URL: %s", repoURL)
+	}
+}
+
+// ConstructGitHubBranchURL constructs a GitHub web URL for a branch
+func ConstructGitHubBranchURL(repoURL, branch string) (string, error) {
+	owner, repo, err := ParseGitHubURL(repoURL)
+	if err != nil {
+		return "", err
+	}
+
+	// Clean repo name (remove .git if present)
+	repo = strings.TrimSuffix(repo, ".git")
+
+	return fmt.Sprintf("https://github.com/%s/%s/tree/%s", owner, repo, branch), nil
+}
+
+// ConstructGitLabBranchURL constructs a GitLab web URL for a branch
+func ConstructGitLabBranchURL(repoURL, branch string) (string, error) {
+	parsed, err := gitlab.ParseGitLabURL(repoURL)
+	if err != nil {
+		return "", err
+	}
+
+	// GitLab branch URL format: https://gitlab.com/owner/repo/-/tree/branch
+	return fmt.Sprintf("https://%s/%s/%s/-/tree/%s", parsed.Host, parsed.Owner, parsed.Repo, branch), nil
+}
+
+// GetRepositoryWebURL returns the main web URL for a repository
+func GetRepositoryWebURL(repoURL string) (string, error) {
+	provider := types.DetectProvider(repoURL)
+
+	switch provider {
+	case types.ProviderGitHub:
+		owner, repo, err := ParseGitHubURL(repoURL)
+		if err != nil {
+			return "", err
+		}
+		repo = strings.TrimSuffix(repo, ".git")
+		return fmt.Sprintf("https://github.com/%s/%s", owner, repo), nil
+
+	case types.ProviderGitLab:
+		parsed, err := gitlab.ParseGitLabURL(repoURL)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("https://%s/%s/%s", parsed.Host, parsed.Owner, parsed.Repo), nil
+
+	default:
+		return "", fmt.Errorf("unsupported provider for URL: %s", repoURL)
+	}
+}
+
 // DeriveRepoFolderFromURL extracts the repo folder from a Git URL
 func DeriveRepoFolderFromURL(u string) string {
 	s := strings.TrimSpace(u)
@@ -764,7 +990,8 @@ func PushRepo(ctx context.Context, repoDir, commitMessage, outputRepoURL, branch
 			sout = sout[:2000] + "..."
 		}
 		log.Printf("gitPushRepo: push failed url=%q ref=%q err=%v stderr.snip=%q stdout.snip=%q", outputRepoURL, ref, err, serr, sout)
-		return "", fmt.Errorf("push failed: %s", errOut)
+		// Use enhanced error detection for user-friendly messages
+		return "", DetectPushError(outputRepoURL, errOut, out)
 	}
 
 	if len(out) > 2000 {
