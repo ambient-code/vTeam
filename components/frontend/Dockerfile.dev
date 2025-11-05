@@ -10,9 +10,17 @@ RUN apk add --no-cache libc6-compat python3 make g++ tar rsync
 ENV NODE_ENV=development
 ENV NEXT_TELEMETRY_DISABLED=1
 
+# Copy package files
+COPY package.json package-lock.json* ./
+
+# Install dependencies
+RUN npm ci
+
+# Copy source code
+COPY . .
+
 # Expose port
 EXPOSE 3000
 
-# Install dependencies when container starts (source mounted as volume)
 # Run Next.js in development mode
-CMD ["sh", "-c", "npm ci && npm run dev"]
+CMD ["npm", "run", "dev"]

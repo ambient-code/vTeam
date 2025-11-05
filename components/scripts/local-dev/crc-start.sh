@@ -275,9 +275,12 @@ apply_rbac() {
   log "Creating frontend authentication..."
   oc apply -f "${MANIFESTS_DIR}/frontend-auth.yaml" -n "$PROJECT_NAME"
   
-  # Wait for token secret to be populated
+  # Wait for token secret to be populated (service account tokens are auto-created)
   log "Waiting for frontend auth token to be created..."
-  oc wait --for=condition=complete secret/frontend-auth-token --timeout=60s -n "$PROJECT_NAME" || true
+  until oc get secret/frontend-auth-token -n "$PROJECT_NAME" -o jsonpath='{.data.token}' 2>/dev/null | grep -q .; do
+    sleep 1
+  done
+  log "Frontend auth token created successfully"
 }
 
 apply_operator_rbac() {

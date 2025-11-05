@@ -11,9 +11,17 @@ ENV AGENTS_DIR=/app/agents
 ENV CGO_ENABLED=0
 ENV GOOS=linux
 
+# Copy go mod and sum files
+COPY go.mod go.sum ./
+
+# Download dependencies
+RUN go mod download
+
+# Copy the source code
+COPY . .
+
 # Expose port
 EXPOSE 8080
 
 # Simple development mode - just run the Go app directly
-# Note: Source code will be mounted as volume at runtime
-CMD ["sh", "-c", "while [ ! -f main.go ]; do echo 'Waiting for source sync...'; sleep 2; done && go run ."]
+CMD ["go", "run", "."]
