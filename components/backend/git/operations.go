@@ -173,38 +173,75 @@ func getSecretKeys(data map[string][]byte) []string {
 }
 
 // CheckRepoSeeding checks if a repo has been seeded by verifying .claude/commands/ and .specify/ exist
-func CheckRepoSeeding(ctx context.Context, repoURL string, branch *string, githubToken string) (bool, map[string]interface{}, error) {
-	owner, repo, err := ParseGitHubURL(repoURL)
-	if err != nil {
-		return false, nil, err
-	}
-
+// Supports both GitHub and GitLab repositories
+func CheckRepoSeeding(ctx context.Context, repoURL string, branch *string, token string) (bool, map[string]interface{}, error) {
 	branchName := "main"
 	if branch != nil && strings.TrimSpace(*branch) != "" {
 		branchName = strings.TrimSpace(*branch)
 	}
 
-	claudeExists, err := checkGitHubPathExists(ctx, owner, repo, branchName, ".claude", githubToken)
-	if err != nil {
-		return false, nil, fmt.Errorf("failed to check .claude: %w", err)
-	}
+	provider := types.DetectProvider(repoURL)
 
-	// Check for .claude/commands directory (spec-kit slash commands)
-	claudeCommandsExists, err := checkGitHubPathExists(ctx, owner, repo, branchName, ".claude/commands", githubToken)
-	if err != nil {
-		return false, nil, fmt.Errorf("failed to check .claude/commands: %w", err)
-	}
+	var claudeExists, claudeCommandsExists, claudeAgentsExists, specifyExists bool
+	var err error
 
-	// Check for .claude/agents directory
-	claudeAgentsExists, err := checkGitHubPathExists(ctx, owner, repo, branchName, ".claude/agents", githubToken)
-	if err != nil {
-		return false, nil, fmt.Errorf("failed to check .claude/agents: %w", err)
-	}
+	switch provider {
+	case types.ProviderGitHub:
+		owner, repo, err := ParseGitHubURL(repoURL)
+		if err != nil {
+			return false, nil, err
+		}
 
-	// Check for .specify directory (from spec-kit)
-	specifyExists, err := checkGitHubPathExists(ctx, owner, repo, branchName, ".specify", githubToken)
-	if err != nil {
-		return false, nil, fmt.Errorf("failed to check .specify: %w", err)
+		claudeExists, err = checkGitHubPathExists(ctx, owner, repo, branchName, ".claude", token)
+		if err != nil {
+			return false, nil, fmt.Errorf("failed to check .claude: %w", err)
+		}
+
+		claudeCommandsExists, err = checkGitHubPathExists(ctx, owner, repo, branchName, ".claude/commands", token)
+		if err != nil {
+			return false, nil, fmt.Errorf("failed to check .claude/commands: %w", err)
+		}
+
+		claudeAgentsExists, err = checkGitHubPathExists(ctx, owner, repo, branchName, ".claude/agents", token)
+		if err != nil {
+			return false, nil, fmt.Errorf("failed to check .claude/agents: %w", err)
+		}
+
+		specifyExists, err = checkGitHubPathExists(ctx, owner, repo, branchName, ".specify", token)
+		if err != nil {
+			return false, nil, fmt.Errorf("failed to check .specify: %w", err)
+		}
+
+	case types.ProviderGitLab:
+		parsed, err := gitlab.ParseGitLabURL(repoURL)
+		if err != nil {
+			return false, nil, fmt.Errorf("invalid GitLab URL: %w", err)
+		}
+
+		client := gitlab.NewClient(parsed.APIURL, token)
+
+		claudeExists, err = checkGitLabPathExists(ctx, client, parsed.ProjectID, branchName, ".claude")
+		if err != nil {
+			return false, nil, fmt.Errorf("failed to check .claude: %w", err)
+		}
+
+		claudeCommandsExists, err = checkGitLabPathExists(ctx, client, parsed.ProjectID, branchName, ".claude/commands")
+		if err != nil {
+			return false, nil, fmt.Errorf("failed to check .claude/commands: %w", err)
+		}
+
+		claudeAgentsExists, err = checkGitLabPathExists(ctx, client, parsed.ProjectID, branchName, ".claude/agents")
+		if err != nil {
+			return false, nil, fmt.Errorf("failed to check .claude/agents: %w", err)
+		}
+
+		specifyExists, err = checkGitLabPathExists(ctx, client, parsed.ProjectID, branchName, ".specify")
+		if err != nil {
+			return false, nil, fmt.Errorf("failed to check .specify: %w", err)
+		}
+
+	default:
+		return false, nil, fmt.Errorf("unsupported repository provider for URL: %s", repoURL)
 	}
 
 	details := map[string]interface{}{
@@ -217,6 +254,24 @@ func CheckRepoSeeding(ctx context.Context, repoURL string, branch *string, githu
 	// Repo is properly seeded if all critical components exist
 	isSeeded := claudeCommandsExists && claudeAgentsExists && specifyExists
 	return isSeeded, details, nil
+}
+
+// checkGitLabPathExists checks if a path exists in a GitLab repository
+func checkGitLabPathExists(ctx context.Context, client *gitlab.Client, projectID, branch, path string) (bool, error) {
+	// Try to get the tree for this path
+	entries, err := client.GetAllTreeEntries(ctx, projectID, branch, path)
+	if err != nil {
+		// Check if it's a 404 error (path doesn't exist)
+		if gitlabErr, ok := err.(*types.GitLabAPIError); ok {
+			if gitlabErr.StatusCode == 404 {
+				return false, nil
+			}
+		}
+		return false, err
+	}
+
+	// Path exists if we got entries
+	return len(entries) > 0 || entries != nil, nil
 }
 
 // ParseGitHubURL extracts owner and repo from a GitHub URL
