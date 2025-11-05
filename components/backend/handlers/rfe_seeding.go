@@ -9,13 +9,16 @@ import (
 	"os"
 	"strings"
 
+	"ambient-code-backend/git"
+	"ambient-code-backend/types"
+
 	"github.com/gin-gonic/gin"
 	"k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// SeedRequest holds the request body for seeding an RFE workflow
-type SeedRequest struct {
+// RFESeedRequest holds the request body for seeding an RFE workflow
+type RFESeedRequest struct {
 	AgentSourceURL    string `json:"agentSourceUrl,omitempty"`
 	AgentSourceBranch string `json:"agentSourceBranch,omitempty"`
 	AgentSourcePath   string `json:"agentSourcePath,omitempty"`
@@ -73,9 +76,9 @@ func SeedProjectRFEWorkflow(c *gin.Context) {
 	var token string
 	var err error
 	if wf.UmbrellaRepo != nil && wf.UmbrellaRepo.URL != "" {
-		provider := DetectProvider(wf.UmbrellaRepo.URL)
+		provider := types.DetectProvider(wf.UmbrellaRepo.URL)
 		switch provider {
-		case ProviderGitHub:
+		case types.ProviderGitHub:
 			token, err = GetGitHubToken(c.Request.Context(), reqK8s, reqDyn, project, userIDStr)
 			if err != nil {
 				c.JSON(http.StatusBadRequest, gin.H{
@@ -84,8 +87,8 @@ func SeedProjectRFEWorkflow(c *gin.Context) {
 				})
 				return
 			}
-		case ProviderGitLab:
-			token, err = GetGitLabToken(c.Request.Context(), reqK8s, project, userIDStr)
+		case types.ProviderGitLab:
+			token, err = git.GetGitLabToken(c.Request.Context(), reqK8s, project, userIDStr)
 			if err != nil {
 				c.JSON(http.StatusUnauthorized, gin.H{
 					"error":       err.Error(),
@@ -107,7 +110,7 @@ func SeedProjectRFEWorkflow(c *gin.Context) {
 	}
 
 	// Read request body for optional agent source and spec-kit settings
-	var req SeedRequest
+	var req RFESeedRequest
 	_ = c.ShouldBindJSON(&req)
 
 	// Defaults
@@ -214,9 +217,9 @@ func CheckProjectRFEWorkflowSeeding(c *gin.Context) {
 	var token string
 	var err error
 	if wf.UmbrellaRepo != nil && wf.UmbrellaRepo.URL != "" {
-		provider := DetectProvider(wf.UmbrellaRepo.URL)
+		provider := types.DetectProvider(wf.UmbrellaRepo.URL)
 		switch provider {
-		case ProviderGitHub:
+		case types.ProviderGitHub:
 			token, err = GetGitHubToken(c.Request.Context(), reqK8s, reqDyn, project, userIDStr)
 			if err != nil {
 				c.JSON(http.StatusBadRequest, gin.H{
@@ -225,8 +228,8 @@ func CheckProjectRFEWorkflowSeeding(c *gin.Context) {
 				})
 				return
 			}
-		case ProviderGitLab:
-			token, err = GetGitLabToken(c.Request.Context(), reqK8s, project, userIDStr)
+		case types.ProviderGitLab:
+			token, err = git.GetGitLabToken(c.Request.Context(), reqK8s, project, userIDStr)
 			if err != nil {
 				c.JSON(http.StatusUnauthorized, gin.H{
 					"error":       err.Error(),
