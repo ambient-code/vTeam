@@ -183,7 +183,7 @@ export function CreateWorkspaceDialog({
           )}
 
           {/* Basic Information */}
-          <div className="space-y-4">
+          <div className="space-y-6">
 
             {/* OpenShift-only fields */}
             {isOpenShift && (
@@ -234,9 +234,6 @@ export function CreateWorkspaceDialog({
                   maxLength={500}
                   rows={3}
                 />
-                <p className="text-sm text-gray-600">
-                  Optional description (max 500 characters)
-                </p>
               </div>
             )}
           </div>
@@ -247,7 +244,7 @@ export function CreateWorkspaceDialog({
             </div>
           )}
 
-          <DialogFooter>
+          <DialogFooter className="pt-2">
             <Button
               type="button"
               variant="outline"
