@@ -78,15 +78,38 @@ export default function ProjectsPage() {
   }
 
   return (
-    <div className="container mx-auto p-0">
+    <div className="min-h-screen bg-[#f8fafc]">
       {/* Sticky header */}
-      <div className="sticky top-0 z-20 bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b">
-        <div className="px-6 py-4">
+      <div className="sticky top-0 z-20 bg-white border-b">
+        <div className="container mx-auto px-6 py-4">
           <PageHeader
             title="Workspaces"
-            description="Select a workspace or create a new one to get started"
-            actions={
-              <>
+            description="Select a workspace or create a new one to get started YOLO"
+          />
+        </div>
+      </div>
+
+      <div className="container mx-auto p-0">
+        {/* Error state */}
+        {error && (
+          <div className="px-6 pt-4">
+            <ErrorMessage error={error} onRetry={() => refetch()} />
+          </div>
+        )}
+
+        {/* Content */}
+        <div className="px-6 pt-4">
+        <Card>
+          <CardHeader>
+            <div className="flex items-start justify-between">
+              <div>
+                <CardTitle>Workspaces</CardTitle>
+                <CardDescription>
+                  Configure and manage workspace settings, resource limits, and access
+                  controls
+                </CardDescription>
+              </div>
+              <div className="flex gap-2">
                 <Button
                   variant="outline"
                   onClick={handleRefreshClick}
@@ -103,28 +126,8 @@ export default function ProjectsPage() {
                     New Workspace
                   </Button>
                 </Link>
-              </>
-            }
-          />
-        </div>
-      </div>
-
-      {/* Error state */}
-      {error && (
-        <div className="px-6 pt-4">
-          <ErrorMessage error={error} onRetry={() => refetch()} />
-        </div>
-      )}
-
-      {/* Content */}
-      <div className="px-6 pt-4">
-        <Card>
-          <CardHeader>
-            <CardTitle>Workspaces</CardTitle>
-            <CardDescription>
-              Configure and manage workspace settings, resource limits, and access
-              controls
-            </CardDescription>
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
             {projects.length === 0 ? (
@@ -213,16 +216,17 @@ export default function ProjectsPage() {
         </Card>
       </div>
 
-      {/* Delete confirmation dialog */}
-      <DestructiveConfirmationDialog
-        open={showDeleteDialog}
-        onOpenChange={setShowDeleteDialog}
-        onConfirm={confirmDelete}
-        title="Delete workspace"
-        description={`Are you sure you want to delete workspace "${projectToDelete?.name}"? This will permanently remove the workspace and all related resources. This action cannot be undone.`}
-        confirmText="Delete"
-        loading={deleteProjectMutation.isPending}
-      />
+        {/* Delete confirmation dialog */}
+        <DestructiveConfirmationDialog
+          open={showDeleteDialog}
+          onOpenChange={setShowDeleteDialog}
+          onConfirm={confirmDelete}
+          title="Delete workspace"
+          description={`Are you sure you want to delete workspace "${projectToDelete?.name}"? This will permanently remove the workspace and all related resources. This action cannot be undone.`}
+          confirmText="Delete"
+          loading={deleteProjectMutation.isPending}
+        />
+      </div>
     </div>
   );
 }

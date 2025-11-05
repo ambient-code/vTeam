@@ -1,15 +1,16 @@
 'use client';
 
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, usePathname } from 'next/navigation';
 import { formatDistanceToNow } from 'date-fns';
-import { Plus, RefreshCw, MoreVertical, Square, Trash2, ArrowRight, Brain } from 'lucide-react';
+import { Plus, RefreshCw, MoreVertical, Square, Trash2, ArrowRight, Brain, Star, Settings, Users } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { ProjectSubpageHeader } from '@/components/project-subpage-header';
+import { PageHeader } from '@/components/page-header';
 import { EmptyState } from '@/components/empty-state';
 import { ErrorMessage } from '@/components/error-message';
 import { SessionPhaseBadge } from '@/components/status-badge';
@@ -20,6 +21,7 @@ import { successToast, errorToast } from '@/hooks/use-toast';
 
 export default function ProjectSessionsListPage() {
   const params = useParams();
+  const pathname = usePathname();
   const projectName = params?.name as string;
 
   // React Query hooks replace all manual state management
@@ -27,6 +29,13 @@ export default function ProjectSessionsListPage() {
   const stopSessionMutation = useStopSession();
   const deleteSessionMutation = useDeleteSession();
   const continueSessionMutation = useContinueSession();
+
+  const base = `/projects/${projectName}`;
+  const navItems = [
+    { href: `${base}/sessions`, label: "Sessions", icon: Star },
+    { href: `${base}/permissions`, label: "Sharing", icon: Users },
+    { href: `${base}/settings`, label: "Workspace Settings", icon: Settings },
+  ];
 
   const handleStop = async (sessionName: string) => {
     stopSessionMutation.mutate(
@@ -92,52 +101,93 @@ export default function ProjectSessionsListPage() {
   });
 
   return (
-    <div className="space-y-4">
-      <Breadcrumbs
-        items={[
-          { label: 'Projects', href: '/projects' },
-          { label: projectName, href: `/projects/${projectName}` },
-          { label: 'Sessions' },
-        ]}
-        className="mb-4"
-      />
-      <ProjectSubpageHeader
-        title={<>Agentic Sessions</>}
-        description={<>Sessions scoped to this workspace</>}
-        actions={
-          <>
-            <Link href={`/projects/${encodeURIComponent(projectName)}/sessions/new`}>
-              <Button>
-                <Plus className="w-4 h-4 mr-2" />
-                New Session
-              </Button>
-            </Link>
-            <Button variant="outline" onClick={() => refetch()} disabled={isLoading}>
-              <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-              Refresh
-            </Button>
-          </>
-        }
-      />
+    <div className="min-h-screen bg-[#f8fafc]">
+      {/* Sticky header */}
+      <div className="sticky top-0 z-20 bg-white border-b">
+        <div className="container mx-auto px-6 py-4">
+          <Breadcrumbs
+            items={[
+              { label: 'Workspaces', href: '/projects' },
+              { label: projectName, href: `/projects/${projectName}` },
+              { label: 'Agentic Sessions' },
+            ]}
+            className="mb-4"
+          />
+          <PageHeader
+            title="Agentic Sessions"
+            description="Manage and monitor agentic sessions for this workspace"
+          />
+        </div>
+      </div>
 
-      {/* Error state */}
-      {error && <ErrorMessage error={error} onRetry={() => refetch()} />}
+      <div className="container mx-auto p-0">
+        {/* Error state */}
+        {error && (
+          <div className="px-6 pt-4">
+            <ErrorMessage error={error} onRetry={() => refetch()} />
+          </div>
+        )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Agentic Sessions ({sessions?.length || 0})</CardTitle>
-          <CardDescription>Sessions scoped to this workspace</CardDescription>
-        </CardHeader>
-        <CardContent>
+        {/* Content */}
+        <div className="px-6 pt-4 flex gap-6">
+          {/* Sidebar Navigation */}
+          <aside className="w-56 shrink-0">
+            <Card>
+              <CardHeader>
+                <CardTitle>Workspace</CardTitle>
+              </CardHeader>
+              <CardContent className="p-4">
+                <div className="space-y-1">
+                  {navItems.map((item) => {
+                    const isActive = pathname === item.href || (item.href !== base && pathname?.startsWith(item.href));
+                    const Icon = item.icon;
+                    return (
+                      <Link key={item.href} href={item.href}>
+                        <Button 
+                          variant={isActive ? "secondary" : "ghost"} 
+                          className={cn("w-full justify-start", isActive && "font-semibold")}
+                        >
+                          <Icon className="w-4 h-4 mr-2" />
+                          {item.label}
+                        </Button>
+                      </Link>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          </aside>
+
+          {/* Main Content */}
+          <Card className="flex-1">
+            <CardHeader>
+              <div className="flex items-start justify-between">
+                <div>
+                  <CardTitle>Agentic Sessions</CardTitle>
+                  <CardDescription>
+                    Sessions scoped to this workspace
+                  </CardDescription>
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={() => refetch()} disabled={isLoading}>
+                    <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+                    Refresh
+                  </Button>
+                  <Link href={`/projects/${encodeURIComponent(projectName)}/sessions/new`}>
+                    <Button>
+                      <Plus className="w-4 h-4 mr-2" />
+                      New Session
+                    </Button>
+                  </Link>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
           {sessions.length === 0 ? (
             <EmptyState
               icon={Brain}
               title="No sessions found"
               description="Create your first agentic session"
-              action={{
-                label: 'Create Session',
-                onClick: () => (window.location.href = `/projects/${encodeURIComponent(projectName)}/sessions/new`),
-              }}
             />
           ) : (
             <div className="overflow-x-auto">
@@ -222,8 +272,10 @@ export default function ProjectSessionsListPage() {
               </Table>
             </div>
           )}
-        </CardContent>
-      </Card>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
     </div>
   );
 }
