@@ -94,6 +94,13 @@
 - [ ] T034 [P] Add RLHF feedback collection (thumbs up/down)
 - [ ] T035 [P] Create feedback storage and analysis pipeline
 
+## Phase 3.9: Commit Planning & Validation
+- [ ] T036 Plan commit boundaries based on completed tasks (max 150-500 lines per commit)
+- [ ] T037 Validate each commit is atomic and independently testable
+- [ ] T038 Verify conventional commit format: type(scope): description
+- [ ] T039 Ensure commit messages explain WHY, not WHAT
+- [ ] T040 Verify PR size ≤600 lines (excluding generated code/deps)
+
 ## Dependencies
 - Tests (T004-T007) before implementation (T008-T014)
 - T008 blocks T009, T015

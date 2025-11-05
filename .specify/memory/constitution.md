@@ -1,9 +1,17 @@
 <!--
 Sync Impact Report - Constitution Update
-Version: 0.0.1 (DRAFT)
+Version: 0.1.0 (DRAFT)
 Last Updated: 2025-11-05
 
-Changelog:
+Changelog (v0.1.0):
+  - Added Principle X: Commit Discipline & Code Review
+    * Line count thresholds by change type (bugfix ≤150, feature ≤300/500, refactor ≤400)
+    * Mandatory exceptions for generated code, migrations, dependencies
+    * Conventional commit format requirements
+    * PR size limits (600 lines) with justification requirements
+    * Measurement guidelines (what counts vs excluded)
+
+Changelog (v0.0.1):
   - Added Principle VIII: Context Engineering & Prompt Optimization
   - Added Principle IX: Data Access & Knowledge Augmentation
   - Enhanced Principle IV: E2E testing, coverage standards, CI/CD automation
@@ -16,13 +24,15 @@ Changelog:
 
 Templates Status:
   ✅ plan-template.md - References constitution check dynamically
-  ✅ tasks-template.md - Added Phase 3.6-3.8 for new principles
+  ✅ tasks-template.md - Added Phase 3.9 for commit planning/validation (T036-T040)
   ✅ spec-template.md - No updates needed
 
 Follow-up TODOs:
   - Implement /metrics endpoints in all components
   - Create prompt template library
   - Design RAG pipeline architecture
+  - Add commit size validation tooling (pre-commit hook or CI check)
+  - Update PR template to include commit discipline checklist
 -->
 
 # ACP Constitution (DRAFT)
@@ -157,6 +167,76 @@ Enable agents to access external knowledge and learn from interactions:
 
 **Rationale**: Static prompts have limited effectiveness. Platforms must continuously improve through knowledge retrieval and learning from user feedback.
 
+### X. Commit Discipline & Code Review
+
+Each commit MUST be atomic, reviewable, and independently testable:
+
+**Line Count Thresholds** (excludes generated code, test fixtures, vendor/deps):
+
+- **Bug Fix**: ≤150 lines
+  - Single issue resolution
+  - Includes test demonstrating the bug
+  - Includes fix verification
+
+- **Feature (Small)**: ≤300 lines
+  - Single user-facing capability
+  - Includes unit + contract tests
+  - Updates relevant documentation
+
+- **Feature (Medium)**: ≤500 lines
+  - Multi-component feature
+  - Requires design justification in commit message
+  - MUST be reviewable in 30 minutes
+
+- **Refactoring**: ≤400 lines
+  - Behavior-preserving changes only
+  - MUST NOT mix with feature/bug changes
+  - Existing tests MUST pass unchanged
+
+- **Documentation**: ≤200 lines
+  - Pure documentation changes
+  - Can be larger for initial docs
+
+- **Test Addition**: ≤250 lines
+  - Adding missing test coverage
+  - MUST NOT include implementation changes
+
+**Mandatory Exceptions** (requires justification in PR description):
+
+- **Code Generation**: Generated CRD YAML, OpenAPI schemas, protobuf
+- **Data Migration**: Database migrations, fixture updates
+- **Dependency Updates**: go.mod, package.json, requirements.txt
+- **Configuration**: Kubernetes manifests for new components (≤800 lines)
+
+**Commit Requirements**:
+
+- **Atomic**: Single logical change that can be independently reverted
+- **Self-Contained**: Each commit MUST pass all tests and linters
+- **Conventional Format**: `type(scope): description`
+  - Types: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`, `perf`, `ci`
+  - Scope: component name (backend, frontend, operator, runner)
+- **Message Content**: Explain WHY, not WHAT (code shows what)
+- **No WIP Commits**: Squash before PR submission
+
+**Review Standards**:
+
+- PR over 600 lines MUST be broken into multiple PRs
+- Each commit reviewed independently (enable per-commit review in GitHub)
+- Large PRs require design doc or RFC first
+- Incremental delivery preferred over "big bang" merges
+
+**Measurement** (what counts toward limits):
+
+- ✅ Source code (`*.go`, `*.ts`, `*.tsx`, `*.py`)
+- ✅ Configuration specific to feature (new YAML, JSON)
+- ✅ Test code
+- ❌ Generated code (CRDs, OpenAPI, mocks)
+- ❌ Lock files (`go.sum`, `package-lock.json`)
+- ❌ Vendored dependencies
+- ❌ Binary files
+
+**Rationale**: Large commits hide bugs, slow reviews, complicate bisecting, and create merge conflicts. Specific thresholds provide objective guidance while exceptions handle legitimate cases. Small, focused commits enable faster feedback, easier debugging (git bisect), and safer reverts.
+
 ## Development Standards
 
 ### Go Code (Backend & Operator)
@@ -269,4 +349,4 @@ Runtime development guidance is maintained in:
 - Component-specific README files
 - MkDocs documentation in `/docs`
 
-**Version**: 0.0.1 (DRAFT) | **Status**: Draft | **Created**: 2025-11-05
+**Version**: 0.1.0 (DRAFT) | **Status**: Draft | **Created**: 2025-11-05 | **Last Amended**: 2025-11-05
