@@ -63,6 +63,9 @@ func main() {
 		return github.GetInstallation(ctx, userID)
 	}
 	git.GitHubTokenManager = github.Manager
+	git.GetBackendNamespace = func() string {
+		return server.Namespace
+	}
 
 	// Initialize CRD package
 	crd.GetRFEWorkflowResource = k8s.GetRFEWorkflowResource

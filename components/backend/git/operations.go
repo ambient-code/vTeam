@@ -32,6 +32,7 @@ var (
 	GetProjectSettingsResource func() schema.GroupVersionResource
 	GetGitHubInstallation      func(context.Context, string) (interface{}, error)
 	GitHubTokenManager         interface{} // *GitHubTokenManager from main package
+	GetBackendNamespace        func() string
 )
 
 // ProjectSettings represents the project configuration
@@ -159,8 +160,8 @@ func GetGitLabToken(ctx context.Context, k8sClient *kubernetes.Clientset, projec
 	}
 
 	// GitLab tokens are stored in the backend namespace (not project namespace)
-	// Use the default namespace where gitlab-user-tokens secret is stored
-	backendNamespace := "vteam-backend" // TODO: Make this configurable
+	// Get the backend namespace from server configuration
+	backendNamespace := GetBackendNamespace()
 
 	secret, err := k8sClient.CoreV1().Secrets(backendNamespace).Get(ctx, "gitlab-user-tokens", v1.GetOptions{})
 	if err != nil {
