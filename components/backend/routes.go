@@ -43,6 +43,8 @@ func registerRoutes(r *gin.Engine) {
 			projectGroup.GET("/repo/tree", handlers.GetRepoTree)
 			projectGroup.GET("/repo/blob", handlers.GetRepoBlob)
 			projectGroup.GET("/repo/branches", handlers.ListRepoBranches)
+			projectGroup.GET("/repo/seed-status", handlers.GetRepoSeedStatus)
+			projectGroup.POST("/repo/seed", handlers.SeedRepositoryEndpoint)
 
 			projectGroup.GET("/agentic-sessions", handlers.ListSessions)
 			projectGroup.POST("/agentic-sessions", handlers.CreateSession)
