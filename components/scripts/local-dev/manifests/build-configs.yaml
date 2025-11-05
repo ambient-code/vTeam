@@ -25,7 +25,7 @@ spec:
   strategy:
     type: Docker
     dockerStrategy:
-      dockerfilePath: Dockerfile
+      dockerfilePath: Dockerfile.dev
   output:
     to:
       kind: ImageStreamTag
@@ -43,7 +43,7 @@ spec:
   strategy:
     type: Docker
     dockerStrategy:
-      dockerfilePath: Dockerfile
+      dockerfilePath: Dockerfile.dev
   output:
     to:
       kind: ImageStreamTag
