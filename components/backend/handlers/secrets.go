@@ -67,7 +67,7 @@ func GetRunnerSecretsConfig(c *gin.Context) {
 
 	secretName := ""
 	if obj != nil {
-		if spec, ok := obj.Object["spec"].(map[string]interface{}); ok {
+		if spec, ok := GetSpecMap(obj); ok {
 			if v, ok := spec["runnerSecretsName"].(string); ok {
 				secretName = v
 			}
@@ -107,7 +107,10 @@ func UpdateRunnerSecretsConfig(c *gin.Context) {
 	}
 
 	// Update spec.runnerSecretsName
-	spec, _ := obj.Object["spec"].(map[string]interface{})
+	spec, ok := GetSpecMap(obj)
+	if !ok {
+		spec = make(map[string]interface{})
+	}
 	if spec == nil {
 		spec = map[string]interface{}{}
 		obj.Object["spec"] = spec
@@ -138,7 +141,7 @@ func ListRunnerSecrets(c *gin.Context) {
 	}
 	secretName := ""
 	if obj != nil {
-		if spec, ok := obj.Object["spec"].(map[string]interface{}); ok {
+		if spec, ok := GetSpecMap(obj); ok {
 			if v, ok := spec["runnerSecretsName"].(string); ok {
 				secretName = v
 			}
