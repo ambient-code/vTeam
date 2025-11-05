@@ -12,6 +12,7 @@ The **Ambient Code Platform** is an AI automation platform that combines Claude 
 
 - **Intelligent Agentic Sessions**: AI-powered automation for analysis, research, content creation, and development tasks
 - **Multi-Agent Workflows**: Specialized AI agents model realistic software team dynamics
+- **Git Provider Support**: Native integration with GitHub and GitLab (SaaS and self-hosted)
 - **Kubernetes Native**: Built with Custom Resources, Operators, and proper RBAC for enterprise deployment
 - **Real-time Monitoring**: Live status updates and job execution tracking
 
@@ -34,6 +35,42 @@ The platform consists of containerized microservices orchestrated via Kubernetes
 4. **AI Execution**: Pod runs Claude Code CLI with multi-agent collaboration for intelligent analysis
 5. **Result Storage**: Analysis results stored back in Custom Resource status
 6. **UI Updates**: Frontend displays real-time progress and completed results
+
+## Git Provider Support
+
+### Supported Providers
+
+**GitHub**:
+- ✅ GitHub.com (public and private repositories)
+- ✅ GitHub Enterprise Server
+- ✅ GitHub App authentication
+- ✅ Personal Access Token authentication
+
+**GitLab** (v1.1.0+):
+- ✅ GitLab.com (SaaS)
+- ✅ Self-hosted GitLab (Community & Enterprise editions)
+- ✅ Personal Access Token authentication
+- ✅ HTTPS and SSH URL formats
+- ✅ Custom domains and ports
+
+### Key Features
+
+- **Automatic Provider Detection**: Repositories automatically identified as GitHub or GitLab from URL
+- **Multi-Provider Projects**: Use GitHub and GitLab repositories in the same project
+- **Secure Token Storage**: All credentials encrypted in Kubernetes Secrets
+- **Provider-Specific Error Handling**: Clear, actionable error messages for each platform
+
+### Getting Started with GitLab
+
+1. **Create Personal Access Token**: [GitLab PAT Setup Guide](docs/gitlab-token-setup.md)
+2. **Connect Account**: Settings → Integrations → GitLab
+3. **Configure Repository**: Add GitLab repository URL to project settings
+4. **Create Sessions**: AgenticSessions work seamlessly with GitLab repos
+
+**Documentation**:
+- [GitLab Integration Guide](docs/gitlab-integration.md) - Complete user guide
+- [GitLab Token Setup](docs/gitlab-token-setup.md) - Step-by-step PAT creation
+- [Self-Hosted GitLab](docs/gitlab-self-hosted.md) - Enterprise configuration
 
 ## Prerequisites
 
@@ -412,10 +449,17 @@ npm test                      # Run test suite
 
 ## Support & Documentation
 
+### Deployment & Configuration
 - **Deployment Guide**: [docs/OPENSHIFT_DEPLOY.md](docs/OPENSHIFT_DEPLOY.md)
 - **OAuth Setup**: [docs/OPENSHIFT_OAUTH.md](docs/OPENSHIFT_OAUTH.md)
 - **Architecture Details**: [diagrams/](diagrams/)
 - **API Documentation**: Available in web interface after deployment
+
+### GitLab Integration
+- **GitLab Integration Guide**: [docs/gitlab-integration.md](docs/gitlab-integration.md)
+- **GitLab Token Setup**: [docs/gitlab-token-setup.md](docs/gitlab-token-setup.md)
+- **Self-Hosted GitLab**: [docs/gitlab-self-hosted.md](docs/gitlab-self-hosted.md)
+- **GitLab Testing**: [docs/gitlab-testing-procedures.md](docs/gitlab-testing-procedures.md)
 
 ## Legacy vTeam References
 
