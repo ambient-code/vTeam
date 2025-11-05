@@ -447,9 +447,30 @@ func PerformRepoSeeding(ctx context.Context, wf Workflow, branchName, token, age
 	}
 
 	// Check if feature branch already exists remotely
-	cmd = exec.CommandContext(ctx, "git", "-C", umbrellaDir, "ls-remote", "--heads", "origin", branchName)
+	// Use authenticated URL directly to avoid issues with shallow clone remote setup
+	cmd = exec.CommandContext(ctx, "git", "ls-remote", "--heads", authenticatedURL, fmt.Sprintf("refs/heads/%s", branchName))
 	lsRemoteOut, lsRemoteErr := cmd.CombinedOutput()
-	branchExistsRemotely := lsRemoteErr == nil && strings.TrimSpace(string(lsRemoteOut)) != ""
+	log.Printf("DEBUG: ls-remote for branch '%s': error=%v, output='%s'", branchName, lsRemoteErr, string(lsRemoteOut))
+
+	// Check if branch exists by looking for actual git ref (ignoring warnings)
+	// Valid output format: "<sha>\trefs/heads/<branch>"
+	branchExistsRemotely := false
+	if lsRemoteErr == nil {
+		lines := strings.Split(string(lsRemoteOut), "\n")
+		for _, line := range lines {
+			trimmed := strings.TrimSpace(line)
+			// Skip empty lines and warning messages
+			if trimmed == "" || strings.HasPrefix(trimmed, "warning:") {
+				continue
+			}
+			// Check if line contains the branch ref
+			if strings.Contains(trimmed, fmt.Sprintf("refs/heads/%s", branchName)) {
+				branchExistsRemotely = true
+				break
+			}
+		}
+	}
+	log.Printf("DEBUG: branchExistsRemotely=%v", branchExistsRemotely)
 
 	if branchExistsRemotely {
 		// Branch exists - check it out instead of creating new
@@ -1332,7 +1353,8 @@ func validateGitLabPushAccess(ctx context.Context, repoURL, gitlabToken string) 
 	log.Printf("Validating push access to GitLab repo %s with token (len=%d)", repoURL, len(gitlabToken))
 
 	// Get project details to check permissions
-	apiURL := fmt.Sprintf("%s/projects/%s", parsed.APIURL, url.PathEscape(parsed.ProjectID))
+	// Note: parsed.ProjectID is already URL-encoded, don't double-encode it
+	apiURL := fmt.Sprintf("%s/projects/%s", parsed.APIURL, parsed.ProjectID)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
 	if err != nil {
@@ -1355,7 +1377,7 @@ func validateGitLabPushAccess(ctx context.Context, repoURL, gitlabToken string) 
 	}
 
 	if resp.StatusCode == http.StatusNotFound {
-		return fmt.Errorf("repository %s not found or you don't have access to it. Verify the repository URL and your GitLab token permissions", parsed.ProjectID)
+		return fmt.Errorf("repository %s/%s not found or you don't have access to it. Verify the repository URL and your GitLab token permissions", parsed.Owner, parsed.Repo)
 	}
 
 	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
