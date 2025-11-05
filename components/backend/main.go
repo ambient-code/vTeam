@@ -64,6 +64,9 @@ func main() {
 		return github.GetInstallation(ctx, userID)
 	}
 	git.GitHubTokenManager = github.Manager
+	git.GetBackendNamespace = func() string {
+		return server.Namespace
+	}
 
 	// Initialize content handlers
 	handlers.StateBaseDir = server.StateBaseDir
