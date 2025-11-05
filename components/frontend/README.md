@@ -50,6 +50,19 @@ npm run dev
 # Open http://localhost:3000
 ```
 
+### Mock Mode (No Backend Required)
+npm ci
+npm run dev
+# Open http://localhost:3000
+```
+
+**Mock Mode Features:**
+- Pre-populated projects, sessions, and RFE workflows
+- Auto-logged in as `developer` user with admin permissions
+- GitHub integration pre-connected with mock repositories
+- Full onboarding wizard support
+- Configurable network delay simulation
+
 ### Header forwarding model (dev and prod)
 Next.js API routes forward incoming headers to the backend. They do not auto-inject user identity. In development, you can optionally provide values via environment or `oc`:
 

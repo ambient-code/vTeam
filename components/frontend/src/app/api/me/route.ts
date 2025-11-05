@@ -1,6 +1,13 @@
 import { buildForwardHeadersAsync } from '@/lib/auth';
+import { USE_MOCKS } from '@/lib/mock-config';
+import { handleGetMe } from '@/lib/mocks/handlers';
 
 export async function GET(request: Request) {
+  // Return mock data if enabled
+  if (USE_MOCKS) {
+    return handleGetMe();
+  }
+
   try {
     // Use the shared helper so dev oc whoami and env fallbacks apply uniformly
     const headers = await buildForwardHeadersAsync(request);

@@ -56,7 +56,7 @@ function getBooleanEnv(key: string, defaultValue = false): boolean {
 export const env: EnvConfig = {
   NODE_ENV: (process.env.NODE_ENV || 'development') as Environment,
   BACKEND_URL: getEnv('BACKEND_URL', 'http://localhost:8080/api'),
-  GITHUB_APP_SLUG: getEnv('GITHUB_APP_SLUG', 'ambient-code-vteam'),
+  GITHUB_APP_SLUG: getEnv('NEXT_PUBLIC_GITHUB_APP_SLUG', 'ambient-code-vteam'),
   VTEAM_VERSION: getOptionalEnv('VTEAM_VERSION') || 'latest',
   OC_TOKEN: getOptionalEnv('OC_TOKEN'),
   OC_USER: getOptionalEnv('OC_USER'),

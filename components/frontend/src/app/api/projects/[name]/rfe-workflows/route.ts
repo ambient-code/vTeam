@@ -1,11 +1,19 @@
 import { BACKEND_URL } from '@/lib/config'
 import { buildForwardHeadersAsync } from '@/lib/auth'
+import { USE_MOCKS } from '@/lib/mock-config'
+import { handleListRFEWorkflows } from '@/lib/mocks/handlers'
 
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ name: string }> },
 ) {
   const { name } = await params
+
+  // Return mock data if enabled
+  if (USE_MOCKS) {
+    return handleListRFEWorkflows(name);
+  }
+
   const headers = await buildForwardHeadersAsync(request)
   const resp = await fetch(`${BACKEND_URL}/projects/${encodeURIComponent(name)}/rfe-workflows`, { headers })
   const data = await resp.text()

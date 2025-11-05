@@ -152,7 +152,7 @@ export function OnboardingWizard({ appSlug, canSkip = false }: OnboardingWizardP
             <div>
               <h1 className="text-3xl font-bold">Get Started</h1>
               <p className="text-muted-foreground mt-1">
-                Set up your Ambient Code workspace
+                Set up your Ambient Code for your organization
               </p>
             </div>
             {canSkip && (

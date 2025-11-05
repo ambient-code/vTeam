@@ -1,13 +1,21 @@
 import { BACKEND_URL } from '@/lib/config';
 import { buildForwardHeadersAsync } from '@/lib/auth';
+import { USE_MOCKS } from '@/lib/mock-config';
+import { handleListSessions } from '@/lib/mocks/handlers';
 
 // GET /api/projects/[name]/agentic-sessions - List sessions in a project
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ name: string }> }
 ) {
+  const { name } = await params;
+
+  // Return mock data if enabled
+  if (USE_MOCKS) {
+    return handleListSessions(name);
+  }
+
   try {
-    const { name } = await params;
     const headers = await buildForwardHeadersAsync(request);
     const response = await fetch(`${BACKEND_URL}/projects/${encodeURIComponent(name)}/agentic-sessions`, { headers });
     const text = await response.text();
