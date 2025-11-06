@@ -141,7 +141,7 @@ jobs:
         run: |
           oc apply -k components/manifests/base/crds/
           oc apply -k components/manifests/base/rbac/
-          oc apply -k components/manifests/overlays/production/operator-config-openshift.yaml -n ambient-code
+          oc apply -f components/manifests/overlays/production/operator-config-openshift.yaml -n ambient-code
 
   deploy-to-openshift:
     runs-on: ubuntu-latest
