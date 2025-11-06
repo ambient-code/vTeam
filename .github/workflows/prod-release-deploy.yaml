@@ -220,7 +220,7 @@ jobs:
 
       - name: Deploy updated components to OpenShift
         run: |
-          oc apply -k components/manifests
+          oc apply -k components/manifests/overlays/production
 
       - name: Update frontend if changed
         run: |
