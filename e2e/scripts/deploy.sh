@@ -57,17 +57,22 @@ echo "Waiting for deployments to be ready..."
 
 echo ""
 echo "Extracting test user token..."
-# Wait a moment for the secret to be populated
-sleep 2
-
-TOKEN=$(kubectl get secret test-user-token -n ambient-code -o jsonpath='{.data.token}' 2>/dev/null | base64 -d || echo "")
-
-if [ -z "$TOKEN" ]; then
-  echo "❌ Failed to extract test token"
-  echo "   The secret may not be ready yet. Check with:"
-  echo "   kubectl get secret test-user-token -n ambient-code"
-  exit 1
-fi
+# Wait for the secret to be populated with a token (max 30 seconds)
+TOKEN=""
+for i in {1..15}; do
+  TOKEN=$(kubectl get secret test-user-token -n ambient-code -o jsonpath='{.data.token}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
+  if [ -n "$TOKEN" ]; then
+    echo "   ✓ Token extracted successfully"
+    break
+  fi
+  if [ $i -eq 15 ]; then
+    echo "❌ Failed to extract test token after 30 seconds"
+    echo "   The secret may not be ready. Check with:"
+    echo "   kubectl get secret test-user-token -n ambient-code"
+    exit 1
+  fi
+  sleep 2
+done
 
 # Detect which port to use (check kind cluster config)
 HTTP_PORT=80
