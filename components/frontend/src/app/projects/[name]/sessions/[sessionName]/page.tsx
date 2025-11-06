@@ -90,6 +90,7 @@ export default function ProjectSessionDetailPage({
   const [openAccordionItems, setOpenAccordionItems] = useState<string[]>([]);
   const [contextModalOpen, setContextModalOpen] = useState(false);
   const [contextUrl, setContextUrl] = useState("");
+  const [contextBranch, setContextBranch] = useState("main");
 
   // Extract params
   useEffect(() => {
@@ -1299,16 +1300,42 @@ export default function ProjectSessionDetailPage({
                   Context
                 </AccordionTrigger>
                 <AccordionContent className="pt-2 pb-3">
-                  <div className="text-center py-6">
-                    <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gray-100 mb-3">
-                      <FolderTree className="h-8 w-8 text-gray-400" />
+                  {!rfeWorkflowId || !rfeWorkflow?.supportingRepos || rfeWorkflow.supportingRepos.length === 0 ? (
+                    <div className="text-center py-6">
+                      <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gray-100 mb-3">
+                        <FolderTree className="h-8 w-8 text-gray-400" />
+                      </div>
+                      <p className="text-sm font-medium text-gray-900 mb-1">No associated repositories configured</p>
+                      <p className="text-xs text-muted-foreground mb-4">Add context from external sources</p>
+                      <Button onClick={() => setContextModalOpen(true)} disabled={!rfeWorkflowId}>
+                        Add Repository
+                      </Button>
+                      {!rfeWorkflowId && (
+                        <p className="text-xs text-muted-foreground mt-2">Configure a spec repository first</p>
+                      )}
                     </div>
-                    <p className="text-sm font-medium text-gray-900 mb-1">No associated repositories configured</p>
-                    <p className="text-xs text-muted-foreground mb-4">Add context from external sources</p>
-                    <Button onClick={() => setContextModalOpen(true)}>
-                      Add Repository
-                    </Button>
-                  </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="space-y-2">
+                        {rfeWorkflow.supportingRepos.map((repo, index) => (
+                          <div key={index} className="flex items-start gap-2 p-2 rounded border bg-gray-50 hover:bg-gray-100 transition-colors">
+                            <GitBranch className="h-4 w-4 text-gray-600 mt-0.5 flex-shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-medium truncate">{repo.url}</div>
+                              {repo.branch && (
+                                <div className="text-xs text-muted-foreground">
+                                  Branch: <code className="text-xs bg-white px-1 py-0.5 rounded">{repo.branch}</code>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      <Button onClick={() => setContextModalOpen(true)} variant="outline" className="w-full" size="sm">
+                        Add Another Repository
+                      </Button>
+                    </div>
+                  )}
                 </AccordionContent>
               </AccordionItem>
 
@@ -1545,31 +1572,27 @@ export default function ProjectSessionDetailPage({
         <div className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="context-url">Repository URL</Label>
-            <div className="flex gap-2">
-              <Input
-                id="context-url"
-                placeholder="https://github.com/org/repo"
-                value={contextUrl}
-                onChange={(e) => setContextUrl(e.target.value)}
-                className="flex-1"
-              />
-              <Button
-                type="button"
-                onClick={() => {
-                  if (contextUrl.trim()) {
-                    // TODO: Implement adding context
-                    successToast('Context repository will be added');
-                    setContextUrl("");
-                    setContextModalOpen(false);
-                  }
-                }}
-                disabled={!contextUrl.trim()}
-              >
-                Add
-              </Button>
-            </div>
+            <Input
+              id="context-url"
+              placeholder="https://github.com/org/repo"
+              value={contextUrl}
+              onChange={(e) => setContextUrl(e.target.value)}
+            />
             <p className="text-xs text-muted-foreground">
               Currently supports GitHub repositories for code context
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="context-branch">Branch (optional)</Label>
+            <Input
+              id="context-branch"
+              placeholder="main"
+              value={contextBranch}
+              onChange={(e) => setContextBranch(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              Leave empty to use the default branch
             </p>
           </div>
 
@@ -1587,10 +1610,57 @@ export default function ProjectSessionDetailPage({
             variant="outline"
             onClick={() => {
               setContextUrl("");
+              setContextBranch("main");
               setContextModalOpen(false);
             }}
           >
-            Close
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            onClick={async () => {
+              if (!contextUrl.trim() || !rfeWorkflowId) return;
+              
+              try {
+                // Get existing supporting repos
+                const existingSupportingRepos = rfeWorkflow?.supportingRepos || [];
+                
+                // Add new repository
+                const newRepo = {
+                  url: contextUrl.trim(),
+                  ...(contextBranch.trim() && { branch: contextBranch.trim() })
+                };
+                
+                // Update workflow with new supporting repos
+                await updateWorkflowMutation.mutateAsync({
+                  projectName,
+                  workflowId: rfeWorkflowId,
+                  data: {
+                    supportingRepos: [...existingSupportingRepos, newRepo],
+                  },
+                });
+                
+                successToast('Context repository added successfully');
+                setContextUrl("");
+                setContextBranch("main");
+                setContextModalOpen(false);
+                
+                // Refresh workflow data
+                await refetchWorkflow();
+              } catch (err) {
+                errorToast(err instanceof Error ? err.message : 'Failed to add context repository');
+              }
+            }}
+            disabled={!contextUrl.trim() || !rfeWorkflowId || updateWorkflowMutation.isPending}
+          >
+            {updateWorkflowMutation.isPending ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Adding...
+              </>
+            ) : (
+              'Add'
+            )}
           </Button>
         </DialogFooter>
       </DialogContent>
