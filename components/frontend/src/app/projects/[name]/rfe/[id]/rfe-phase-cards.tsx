@@ -301,7 +301,108 @@ You can invoke agents by using their name in your prompts. For example: "Let's g
                             onStartPhase(phase);
                             const isSpecify = phase === "specify";
                             const basePrompt = isSpecify
-                              ? `/speckit.specify Develop a new feature based on rfe.md or if that does not exist, follow these feature requirements: ${workflow.description}`
+                              ? `MULTI-AGENT COLLABORATIVE SPECIFICATION WORKFLOW:
+
+You MUST follow this structured workflow to create a comprehensive feature specification using multiple agent perspectives.
+
+## CRITICAL REQUIREMENT: Citations and Evidence
+
+**ALL facts, statistics, data points, market research, and claims MUST include proper citations with actual links to sources.**
+
+Citation Requirements:
+- Citations MUST be links to actual sources that were reviewed (web pages, documents, files)
+- Use WebSearch or WebFetch tools to find and verify sources before citing them
+- For internal documents: Link to file path or repository location
+- For external sources: Full URL to the actual page/document
+- If you cannot find a credible source with a link, DO NOT make up a citation
+- If you cannot find a credible source, DO NOT include the claim
+
+**FORBIDDEN**: Making up links, citing sources you didn't actually review, or claiming statistics without verified sources.
+
+Citation Format:
+- "Claim or data point" [[Source Title](actual-url-or-file-path)]
+- For assumptions based on common practice: Clearly label as [Assumption: reasoning] - no citation needed for explicit assumptions
+
+Examples of CORRECT citations:
+- "Next.js App Router supports streaming SSR" [[Next.js Documentation](https://nextjs.org/docs/app/building-your-application/routing)]
+- "The current authentication flow requires 5 steps" [[Source: specs/001-auth/spec.md](specs/001-auth/spec.md)]
+- "Users expect checkout to complete in under 3 minutes" [Assumption: based on standard e-commerce UX practices]
+
+Examples of INCORRECT/FORBIDDEN:
+- "87% of developers prefer dark mode [Source: Stack Overflow Survey 2024]" - NO LINK, FORBIDDEN
+- "Studies show users prefer this" - NO SOURCE AT ALL, FORBIDDEN
+- "Research from MIT indicates..." [[MIT Study](https://fake-url.com)] - MADE UP LINK, FORBIDDEN
+
+**If you need data to support a claim:**
+1. Use WebSearch to find actual sources
+2. Use WebFetch to verify the content
+3. Include the real URL in your citation
+4. If you cannot find a source, remove the claim or mark it as an assumption
+
+## Step 1: PM-Led Initial Outline
+
+Invoke Parker (Product Manager) to create an initial RFE outline based on rfe.md (or if that doesn't exist, use these requirements: ${workflow.description}).
+
+**CRITICAL**: When invoking Parker, you MUST include the complete "CRITICAL REQUIREMENT: Citations and Evidence" section above in Parker's prompt. Parker must follow all citation requirements.
+
+Parker should create an outline containing:
+- Executive summary with business justification and market analysis (with proper citations)
+- Business impact and customer requirements (with proper citations)
+- Technical approach (high-level, no implementation details)
+- User experience considerations (with proper citations where applicable)
+- Implementation scope (in-scope vs out-of-scope)
+- Acceptance criteria
+- Risks and mitigation strategies
+- Success metrics (with proper citations for benchmarks)
+
+## Step 2: Agent Selection
+
+Parker should analyze the feature type and select TWO agents best suited to review the outline:
+
+**Selection criteria by feature type**:
+- Infrastructure/Platform features → Archie (Architect) + Stella (Staff Engineer)
+- User-facing UI features → Felix (UX Feature Lead) + Stella (Staff Engineer)
+- API/Integration features → Archie (Architect) + Taylor (Team Member)
+- Documentation features → Terry (Technical Writer) + Casey (Content Strategist)
+- Testing/Quality features → Neil (Test Engineer) + Stella (Staff Engineer)
+
+## Step 3: Parallel Agent Reviews
+
+Launch BOTH selected agents in parallel (single message with multiple Task tool calls) to review Parker's outline.
+
+**CRITICAL**: When invoking each review agent, you MUST include the complete "CRITICAL REQUIREMENT: Citations and Evidence" section in their prompts. Each agent must verify that all claims in Parker's outline have proper citations and flag any unsupported claims.
+
+Each agent should:
+- Review from their domain expertise perspective
+- Verify all citations are actual links to reviewed sources
+- Flag any claims without proper citations or with fabricated links
+- Provide structured feedback with specific recommendations
+- Identify gaps, risks, architectural concerns, and improvement opportunities
+
+## Step 4: Document Versioning
+
+Save all versions during the refinement process:
+1. Save Parker's initial outline as \`specs/[feature-dir]/outline-v1-pm-initial.md\`
+2. Save Agent 1's feedback as \`specs/[feature-dir]/feedback-agent1.md\`
+3. Save Agent 2's feedback as \`specs/[feature-dir]/feedback-agent2.md\`
+4. Save Parker's revised outline as \`specs/[feature-dir]/outline-v2-revised.md\`
+
+## Step 5: Final Spec Generation
+
+Have Parker incorporate all feedback into a comprehensive revised outline, then you MUST run:
+\`/speckit.specify Develop a new feature based on the revised outline\`
+
+**CRITICAL REQUIREMENTS**:
+- The \`/speckit.specify\` command MUST complete successfully
+- It MUST generate the final \`spec.md\` file in the proper location
+- NO other file can substitute for spec.md (not outline.md, not rfe.md, only spec.md)
+- The spec.md MUST be generated using the collaborative outline as the foundation
+- Do NOT skip this step or consider the workflow complete until spec.md exists
+- If \`/specify\` fails, debug and retry until it succeeds
+
+---
+
+BEGIN WORKFLOW NOW.`
                               : `/speckit.${phase}`;
                             const prompt = basePrompt + getAgentInstructions();
                             const payload: CreateAgenticSessionRequest = {
