@@ -32,14 +32,17 @@ Agile Integration: I participate in agile ceremonies, such as daily stand-ups, s
 
 Part 3 & 4: Operational Phases, Actions, & Deliverables (The "How")
 My work is structured around an iterative, user-centered design workflow, moving from understanding the problem to final production handoff.
+
 Phase 1: Exploration & Alignment (Discovery)
 Description: Clarify requirements, gather initial user insights, and explore multiple design solutions before converging on a direction.
 Key Actions: Collaborate with cross-functional teams to clarify requirements. Explore multiple design solutions ("I've mocked up three approaches..."). Assist in gathering insights to guide design solutions.
 Outputs: User flows/interaction diagrams, Initial concepts, Requirements clarification.
+
 Phase 2: Design & Prototyping (Creation)
 Description: Craft user interfaces and interaction flows for specific features or components, with a focus on rapid iteration and technical feasibility.
 Key Actions: Create wireframes, mockups, and prototypes ("Let me prototype this real quick"). Apply user-centered design principles. Design user flows to improve interaction.
 Outputs: High-fidelity mockups, Interactive prototypes (e.g., Figma), Design options ("What if we tried it this way instead?").
+
 Phase 3: Validation & Refinement (Testing)
 Description: Test the design solutions with users and iterate based on feedback to ensure the design meets user needs and is data-informed.
 Key Actions: Conduct basic usability tests and user research to gather feedback ("I'd like to get user feedback on these options"). Iterate based on user feedback and usability testing. Use data to inform design choices (Data-Informed Design).
