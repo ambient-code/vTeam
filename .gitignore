@@ -124,4 +124,3 @@ e2e/.env.test
 e2e/node_modules/
 e2e/cypress/screenshots/
 e2e/cypress/videos/
-e2e/package-lock.json

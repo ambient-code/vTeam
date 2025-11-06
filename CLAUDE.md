@@ -1018,6 +1018,128 @@ CYPRESS_TEST_TOKEN="$TEST_TOKEN" CYPRESS_BASE_URL="http://vteam.local:8080" npm 
 - ❌ Unit-testable logic (use unit tests instead)
 - ❌ Internal implementation details
 
+**E2E Test Writing Rules (MUST FOLLOW)**:
+
+1. **Use Descriptive Test Names**:
+   ```typescript
+   // ✅ GOOD: Describes user action and expected result
+   it('should create a new project when user fills form and clicks submit', () => {})
+   
+   // ❌ BAD: Vague or technical
+   it('should work', () => {})
+   it('should POST to /api/projects', () => {})
+   ```
+
+2. **Use Data Attributes for Selectors**:
+   ```typescript
+   // ✅ GOOD: Stable, semantic
+   cy.get('[data-testid="create-project-btn"]')
+   
+   // ❌ BAD: Fragile, coupled to implementation
+   cy.get('.btn-primary')
+   cy.get('button:nth-child(2)')
+   ```
+
+3. **Wait for Conditions, Not Fixed Times**:
+   ```typescript
+   // ✅ GOOD: Wait for actual condition
+   cy.contains('Loading...').should('not.exist')
+   cy.get('[data-testid="project-list"]').should('be.visible')
+   
+   // ❌ BAD: Fixed waits are flaky
+   cy.wait(3000)
+   ```
+
+4. **Test User Workflows, Not Implementation**:
+   ```typescript
+   // ✅ GOOD: User perspective
+   it('should allow user to create a project', () => {
+     cy.visit('/projects/new')
+     cy.get('#name').type('my-project')
+     cy.contains('button', 'Create').click()
+     cy.url().should('include', '/projects/my-project')
+   })
+   
+   // ❌ BAD: Testing API internals
+   it('should send correct payload to backend', () => {
+     cy.intercept('POST', '/api/projects').as('api')
+     // Testing implementation, not user value
+   })
+   ```
+
+5. **Auth Headers Automatic** (Don't Manually Add):
+   ```typescript
+   // ✅ GOOD: Auth added automatically
+   cy.request('/api/cluster-info')
+   
+   // ❌ BAD: Manual auth (unnecessary)
+   cy.request({
+     url: '/api/cluster-info',
+     headers: { 'Authorization': '...' }
+   })
+   ```
+
+6. **Use Unique Test Data**:
+   ```typescript
+   // ✅ GOOD: Unique names avoid conflicts
+   const projectName = `test-${Date.now()}`
+   
+   // ❌ BAD: Hardcoded names cause conflicts
+   const projectName = 'test-project'
+   ```
+
+7. **Arrange-Act-Assert Pattern**:
+   ```typescript
+   it('should do something', () => {
+     // Arrange: Set up test state
+     cy.visit('/page')
+     
+     // Act: Perform action
+     cy.get('#button').click()
+     
+     // Assert: Verify outcome
+     cy.contains('Success').should('be.visible')
+   })
+   ```
+
+**Common E2E Mistakes to Avoid**:
+- ❌ Testing implementation details instead of user workflows
+- ❌ Using fragile CSS selectors instead of data-testid
+- ❌ Fixed waits (cy.wait(3000)) instead of conditional waits
+- ❌ Manually adding auth headers (automatic in vTeam e2e)
+- ❌ Not cleaning up test data
+- ❌ Hardcoded test data causing conflicts
+- ❌ Tests that depend on execution order
+- ❌ Missing assertions (test passes but doesn't verify anything)
+
+**Pre-Commit Checklist for E2E Tests**:
+
+Before committing e2e test changes:
+- [ ] Tests pass locally: `make e2e-test`
+- [ ] Test names describe user actions and outcomes
+- [ ] Used `data-testid` selectors (not CSS classes)
+- [ ] No fixed waits (`cy.wait(3000)`), only conditional waits
+- [ ] No manual auth headers (automatic via interceptor)
+- [ ] Used unique test data (timestamps, UUIDs)
+- [ ] Tests are independent (no execution order dependency)
+- [ ] All assertions present and meaningful
+- [ ] Video shows expected behavior
+- [ ] Added data-testid to components if needed
+- [ ] Updated `e2e/README.md` if adding new test categories
+- [ ] Ran with UI to verify: `npm run test:headed`
+
+**Run before committing**:
+```bash
+# Test locally
+make e2e-test CONTAINER_ENGINE=podman
+
+# Verify video
+open e2e/cypress/videos/vteam.cy.ts.mp4
+
+# Check for console errors
+# Review screenshots if any tests failed
+```
+
 **Troubleshooting E2E Failures**:
 ```bash
 # View pod logs
