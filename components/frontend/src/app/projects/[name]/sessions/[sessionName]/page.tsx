@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
-import { formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow, format } from "date-fns";
 import { ArrowLeft, Square, Trash2, Copy, Play, MoreVertical, Bot, Loader2, FolderTree, AlertCircle, Sprout, CheckCircle2, GitBranch, Edit, Info, RefreshCw, Folder, FileText } from "lucide-react";
 import { useRouter } from "next/navigation";
 
@@ -1292,65 +1292,6 @@ export default function ProjectSessionDetailPage({
                 </AccordionContent>
               </AccordionItem>
 
-              <AccordionItem value="overview" className="border rounded-lg px-3 bg-white">
-                <AccordionTrigger className="text-base font-semibold hover:no-underline py-3">
-                  System Resources
-                </AccordionTrigger>
-                <AccordionContent className="space-y-4 pt-2 pb-3">
-                  <OverviewTab
-                    session={session}
-                    promptExpanded={promptExpanded}
-                    setPromptExpanded={setPromptExpanded}
-                    latestLiveMessage={latestLiveMessage as SessionMessage | null}
-                    diffTotals={diffTotals}
-                    k8sResources={k8sResources}
-                    onPush={async (idx) => {
-                        const repo = session.spec.repos?.[idx];
-                        if (!repo) return;
-                      
-                      setBusyRepo((b) => ({ ...b, [idx]: 'push' }));
-                        const folder = deriveRepoFolderFromUrl(repo.input.url);
-                      const repoPath = `/sessions/${sessionName}/workspace/${folder}`;
-                      
-                      pushToGitHubMutation.mutate(
-                        { projectName, sessionName, repoIndex: idx, repoPath },
-                        {
-                          onSuccess: () => {
-                            refetchDiffs();
-                            successToast('Changes pushed to GitHub');
-                          },
-                          onError: (err) => errorToast(err instanceof Error ? err.message : 'Failed to push changes'),
-                          onSettled: () => setBusyRepo((b) => ({ ...b, [idx]: null })),
-                        }
-                      );
-                    }}
-                    onAbandon={async (idx) => {
-                        const repo = session.spec.repos?.[idx];
-                        if (!repo) return;
-                      
-                      setBusyRepo((b) => ({ ...b, [idx]: 'abandon' }));
-                        const folder = deriveRepoFolderFromUrl(repo.input.url);
-                      const repoPath = `/sessions/${sessionName}/workspace/${folder}`;
-                      
-                      abandonChangesMutation.mutate(
-                        { projectName, sessionName, repoIndex: idx, repoPath },
-                        {
-                          onSuccess: () => {
-                            refetchDiffs();
-                            successToast('Changes abandoned');
-                          },
-                          onError: (err) => errorToast(err instanceof Error ? err.message : 'Failed to abandon changes'),
-                          onSettled: () => setBusyRepo((b) => ({ ...b, [idx]: null })),
-                        }
-                      );
-                    }}
-                    busyRepo={busyRepo}
-                    buildGithubCompareUrl={buildGithubCompareUrl}
-                    onRefreshDiff={handleRefreshDiff}
-                  />
-                </AccordionContent>
-              </AccordionItem>
-
               <AccordionItem value="results" className="border rounded-lg px-3 bg-white">
                 <AccordionTrigger className="text-base font-semibold hover:no-underline py-3">
                   Results
@@ -1368,8 +1309,18 @@ export default function ProjectSessionDetailPage({
                   <div className="space-y-3 text-sm">
                     <div className="flex flex-col gap-2">
                       <div className="flex items-baseline gap-2">
+                        <span className="font-semibold text-gray-700">Status:</span>
+                        <span className={`text-gray-900 font-semibold ${getPhaseColor(session.status?.phase || "Pending")}`}>
+                          {session.status?.phase || "Pending"}
+                        </span>
+                      </div>
+                      <div className="flex items-baseline gap-2">
                         <span className="font-semibold text-gray-700">Model:</span>
                         <span className="text-gray-900">{session.spec.llmSettings.model}</span>
+                      </div>
+                      <div className="flex items-baseline gap-2">
+                        <span className="font-semibold text-gray-700">Temperature:</span>
+                        <span className="text-gray-900">{session.spec.llmSettings.temperature}</span>
                       </div>
                       <div className="flex items-baseline gap-2">
                         <span className="font-semibold text-gray-700">Mode:</span>
@@ -1378,13 +1329,25 @@ export default function ProjectSessionDetailPage({
                       {session.status?.startTime && (
                         <div className="flex items-baseline gap-2">
                           <span className="font-semibold text-gray-700">Started:</span>
-                          <span className="text-gray-900">{formatDistanceToNow(new Date(session.status.startTime), { addSuffix: true })}</span>
+                          <span className="text-gray-900">{format(new Date(session.status.startTime), "PPp")}</span>
                         </div>
                       )}
                       <div className="flex items-baseline gap-2">
                         <span className="font-semibold text-gray-700">Duration:</span>
                         <span className="text-gray-900">{typeof durationMs === "number" ? `${durationMs}ms` : "-"}</span>
                       </div>
+                      {k8sResources?.pvcName && (
+                        <div className="flex items-baseline gap-2">
+                          <span className="font-semibold text-gray-700">PVC:</span>
+                          <span className="text-gray-900 font-mono text-xs">{k8sResources.pvcName}</span>
+                        </div>
+                      )}
+                      {k8sResources?.pvcSize && (
+                        <div className="flex items-baseline gap-2">
+                          <span className="font-semibold text-gray-700">PVC Size:</span>
+                          <span className="text-gray-900">{k8sResources.pvcSize}</span>
+                        </div>
+                      )}
                       {session.status?.jobName && (
                         <div className="flex items-baseline gap-2">
                           <span className="font-semibold text-gray-700">K8s Job:</span>
