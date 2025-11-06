@@ -983,7 +983,7 @@ export default function ProjectSessionDetailPage({
                       <div className="text-center py-6">
                         <FolderTree className="h-10 w-10 mx-auto mb-3 opacity-50 text-muted-foreground" />
                         <p className="text-sm text-muted-foreground mb-4">
-                          Connect to GitHub to add a spec repository for this workflow
+                          A spec repository is required to store agent config and workflow artifacts.
                         </p>
                         <Button onClick={() => setGithubModalOpen(true)}>
                           Add Spec Repository
@@ -992,8 +992,7 @@ export default function ProjectSessionDetailPage({
                     ) : (
                       <div className="text-center py-6 text-muted-foreground">
                         <FolderTree className="h-10 w-10 mx-auto mb-2 opacity-50" />
-                        <p className="text-sm">This session is not associated with an RFE workflow</p>
-                        <p className="text-xs mt-1">Spec repository is only available for RFE sessions</p>
+                        <p className="text-sm">A spec repository isn't needed for generic workflows.</p>
                       </div>
                     )
                   ) : (
@@ -1124,6 +1123,51 @@ export default function ProjectSessionDetailPage({
                       )}
                     </div>
                   )}
+
+                  {/* Workspace Content - Always visible for all sessions */}
+                  <div className="mt-4 pt-4 border-t">
+                    {sessionCompleted && !contentPodReady ? (
+                      <Card className="p-8">
+                        <div className="text-center space-y-4">
+                          {contentPodSpawning ? (
+                            <>
+                              <div className="flex items-center justify-center">
+                                <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
+                              </div>
+                              <p className="text-sm font-medium">Starting workspace viewer...</p>
+                              <p className="text-xs text-gray-500">This may take up to 30 seconds</p>
+                            </>
+                          ) : (
+                            <>
+                              <p className="text-sm text-gray-600">
+                                Session has completed. To view and edit your workspace files, please start a workspace viewer.
+                              </p>
+                              <Button onClick={spawnContentPodAsync}>
+                                Start Workspace Viewer
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      </Card>
+                    ) : (
+                      <WorkspaceTab
+                        session={session}
+                        wsLoading={wsLoading}
+                        wsUnavailable={wsUnavailable}
+                        wsTree={wsTree}
+                        wsSelectedPath={wsSelectedPath}
+                        wsFileContent={wsFileContent}
+                        onRefresh={handleRefreshWorkspace}
+                        onSelect={onWsSelect}
+                        onToggle={onWsToggle}
+                        onSave={writeWsFile}
+                        setWsFileContent={setWsFileContent}
+                        k8sResources={k8sResources}
+                        contentPodError={contentPodError}
+                        onRetrySpawn={spawnContentPodAsync}
+                      />
+                    )}
+                  </div>
                 </AccordionContent>
               </AccordionItem>
 
@@ -1251,55 +1295,6 @@ export default function ProjectSessionDetailPage({
                     buildGithubCompareUrl={buildGithubCompareUrl}
                     onRefreshDiff={handleRefreshDiff}
                   />
-                </AccordionContent>
-              </AccordionItem>
-
-              <AccordionItem value="workspace" className="border rounded-lg px-3 bg-white">
-                <AccordionTrigger className="text-base font-semibold hover:no-underline py-3">
-                  Workspace
-                </AccordionTrigger>
-                <AccordionContent className="pt-2 pb-3">
-                  {sessionCompleted && !contentPodReady ? (
-                    <Card className="p-8">
-                      <div className="text-center space-y-4">
-                        {contentPodSpawning ? (
-                          <>
-                            <div className="flex items-center justify-center">
-                              <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
-                            </div>
-                            <p className="text-sm font-medium">Starting workspace viewer...</p>
-                            <p className="text-xs text-gray-500">This may take up to 30 seconds</p>
-                          </>
-                        ) : (
-                          <>
-                            <p className="text-sm text-gray-600">
-                              Session has completed. To view and edit your workspace files, please start a workspace viewer.
-                            </p>
-                            <Button onClick={spawnContentPodAsync}>
-                              Start Workspace Viewer
-                            </Button>
-                          </>
-                        )}
-                      </div>
-                    </Card>
-                  ) : (
-                    <WorkspaceTab
-                      session={session}
-                      wsLoading={wsLoading}
-                      wsUnavailable={wsUnavailable}
-                      wsTree={wsTree}
-                      wsSelectedPath={wsSelectedPath}
-                      wsFileContent={wsFileContent}
-                      onRefresh={handleRefreshWorkspace}
-                      onSelect={onWsSelect}
-                      onToggle={onWsToggle}
-                      onSave={writeWsFile}
-                      setWsFileContent={setWsFileContent}
-                      k8sResources={k8sResources}
-                      contentPodError={contentPodError}
-                      onRetrySpawn={spawnContentPodAsync}
-                    />
-                  )}
                 </AccordionContent>
               </AccordionItem>
 
