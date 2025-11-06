@@ -63,4 +63,4 @@ jspm_packages/
 next-env.d.ts
 
 # Previous frontend
-components/frontend/previous-frontend
+previous-frontend/

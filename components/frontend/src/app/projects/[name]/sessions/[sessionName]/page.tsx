@@ -20,7 +20,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 import { Checkbox } from "@/components/ui/checkbox";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { CloneSessionDialog } from "@/components/clone-session-dialog";
@@ -1416,6 +1416,27 @@ export default function ProjectSessionDetailPage({
             </Button>
           </div>
         </div>
+
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setGithubModalOpen(false)}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            onClick={() => {
+              // TODO: Implement save functionality to create/update RFE workflow
+              // For now, just close the modal
+              setGithubModalOpen(false);
+            }}
+            disabled={!specRepoUrl.trim()}
+          >
+            Save Configuration
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
     </>
