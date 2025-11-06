@@ -28,21 +28,19 @@ jobs:
       working-directory: e2e
       run: npm ci
       
-    - name: Create kind cluster
-      uses: helm/kind-action@v1.8.0
-      with:
-        cluster_name: vteam-e2e
-        wait: 300s
-        
-    - name: Verify cluster
+    - name: Install kind
       run: |
-        kubectl cluster-info
-        kubectl get nodes
+        # Install kind
+        curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.20.0/kind-linux-amd64
+        chmod +x ./kind
+        sudo mv ./kind /usr/local/bin/kind
+        kind version
         
-    - name: Deploy vTeam
+    - name: Setup kind cluster and deploy vTeam
       working-directory: e2e
       run: |
         chmod +x scripts/*.sh
+        ./scripts/setup-kind.sh
         ./scripts/deploy.sh
         
     - name: Verify deployment
@@ -93,5 +91,6 @@ jobs:
     - name: Cleanup
       if: always()
       run: |
+        # Just delete the kind cluster (no /etc/hosts cleanup needed in CI)
         kind delete cluster --name vteam-e2e || true
 
