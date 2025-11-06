@@ -401,6 +401,16 @@ cd components/frontend
 npm test                      # Run test suite
 ```
 
+## Agent Strategy for RFE Pilot
+To ensure maximum focus and efficiency for the current RFE (Request for Enhancement) pilot, we are temporarily streamlining the active agent pool.
+
+Active Agents (Focused Scope): The 5 agents required for this specific RFE workflow are currently located in the agents folder.
+
+Agent Bullpen (Holding Pattern): All remaining agent definitions have been relocated to the "agent bullpen" folder. This transition does not signify the deprecation of any roles.
+
+Future Planning: Agents in the "agent bullpen" are designated for future reintegration and will be actively utilized as we expand to address subsequent processes and workflows across the organization.
+
+
 ### Documentation
 
 - Update relevant documentation when changing functionality
