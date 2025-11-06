@@ -90,7 +90,8 @@ jobs:
         
     - name: Cleanup
       if: always()
+      working-directory: e2e
       run: |
-        # Just delete the kind cluster (no /etc/hosts cleanup needed in CI)
-        kind delete cluster --name vteam-e2e || true
+        # Clean up cluster and artifacts in CI
+        CLEANUP_ARTIFACTS=true ./scripts/cleanup.sh || true
 

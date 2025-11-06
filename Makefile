@@ -152,11 +152,11 @@ e2e-test: ## Run complete e2e test suite (setup, deploy, test, cleanup)
 	@echo "Running e2e tests..."
 	@# Clean up any existing cluster first
 	@cd e2e && CONTAINER_ENGINE=$(CONTAINER_ENGINE) ./scripts/cleanup.sh 2>/dev/null || true
-	@# Run tests with cleanup trap on exit
-	@cd e2e && trap 'CONTAINER_ENGINE=$(CONTAINER_ENGINE) ./scripts/cleanup.sh' EXIT; \
-		CONTAINER_ENGINE=$(CONTAINER_ENGINE) ./scripts/setup-kind.sh && \
-		CONTAINER_ENGINE=$(CONTAINER_ENGINE) ./scripts/deploy.sh && \
-		./scripts/run-tests.sh
+	@# Setup and deploy (allows password prompt for /etc/hosts)
+	cd e2e && CONTAINER_ENGINE=$(CONTAINER_ENGINE) ./scripts/setup-kind.sh
+	cd e2e && CONTAINER_ENGINE=$(CONTAINER_ENGINE) ./scripts/deploy.sh
+	@# Run tests with cleanup trap (no more password prompts needed)
+	@cd e2e && trap 'CONTAINER_ENGINE=$(CONTAINER_ENGINE) ./scripts/cleanup.sh' EXIT; ./scripts/run-tests.sh
 
 e2e-setup: ## Install e2e test dependencies
 	@echo "Installing e2e test dependencies..."

@@ -7,14 +7,19 @@ describe('vTeam E2E Tests', () => {
   })
 
   it('should access the UI with token authentication', () => {
-    cy.visit('/')
+    // Visit root, which redirects to /projects
+    cy.visit('/', { failOnStatusCode: false })
     
-    // Wait for the page to load and verify we see the Projects header
+    // Wait for redirect and page to load
+    cy.url({ timeout: 15000 }).should('include', '/projects')
     cy.contains('Projects', { timeout: 15000 }).should('be.visible')
   })
 
   it('should navigate to new project page', () => {
     cy.visit('/projects')
+    
+    // Wait for page to be fully loaded
+    cy.get('body').should('be.visible')
     
     // Click the "New Project" button
     cy.contains('New Project').click()

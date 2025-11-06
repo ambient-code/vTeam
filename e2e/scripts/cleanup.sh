@@ -51,14 +51,23 @@ if [ -f .env.test ]; then
   echo "   ✓ Removed .env.test"
 fi
 
-if [ -d cypress/screenshots ]; then
-  rm -rf cypress/screenshots
-  echo "   ✓ Removed Cypress screenshots"
-fi
+# Only clean screenshots/videos if CLEANUP_ARTIFACTS=true (for CI)
+# Keep them locally for debugging
+if [ "${CLEANUP_ARTIFACTS:-false}" = "true" ]; then
+  if [ -d cypress/screenshots ]; then
+    rm -rf cypress/screenshots
+    echo "   ✓ Removed Cypress screenshots"
+  fi
 
-if [ -d cypress/videos ]; then
-  rm -rf cypress/videos
-  echo "   ✓ Removed Cypress videos"
+  if [ -d cypress/videos ]; then
+    rm -rf cypress/videos
+    echo "   ✓ Removed Cypress videos"
+  fi
+else
+  if [ -d cypress/screenshots ] || [ -d cypress/videos ]; then
+    echo "   ℹ️  Keeping screenshots/videos for review"
+    echo "   To remove: rm -rf cypress/screenshots cypress/videos"
+  fi
 fi
 
 echo ""
