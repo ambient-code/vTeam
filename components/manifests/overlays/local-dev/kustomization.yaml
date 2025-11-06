@@ -1,0 +1,41 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: vteam-dev
+
+# Resources (base + local-dev-specific)
+resources:
+- ../../base
+- build-configs.yaml
+- dev-users.yaml
+- frontend-auth.yaml
+- backend-route.yaml
+- frontend-route.yaml
+
+# Patches for local dev environment
+patchesStrategicMerge:
+- backend-deployment-patch.yaml
+- frontend-deployment-patch.yaml
+- operator-patch.yaml
+- pvc-patch.yaml
+- backend-clusterrole-patch.yaml
+- operator-clusterrole-patch.yaml
+
+# Name prefix for local dev resources
+namePrefix: vteam-
+
+# Images for local dev (internal registry)
+images:
+- name: quay.io/ambient_code/vteam_backend
+  newName: image-registry.openshift-image-registry.svc:5000/vteam-dev/vteam-backend
+  newTag: latest
+- name: quay.io/ambient_code/vteam_frontend
+  newName: image-registry.openshift-image-registry.svc:5000/vteam-dev/vteam-frontend
+  newTag: latest
+- name: quay.io/ambient_code/vteam_operator
+  newName: image-registry.openshift-image-registry.svc:5000/vteam-dev/vteam-operator
+  newTag: latest
+- name: quay.io/ambient_code/vteam_claude_runner
+  newName: quay.io/ambient_code/vteam_claude_runner
+  newTag: latest
+

@@ -1,0 +1,10 @@
+# Patch to add OpenShift-specific namespace annotations
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ambient-code
+  annotations:
+    openshift.io/description: "vTeam Ambient Agentic Runner - AI-powered automation system"
+    openshift.io/display-name: "vTeam Ambient Runner"
+    openshift.io/cluster-monitoring: "true"
+

@@ -1,0 +1,50 @@
+# Patch for local dev backend deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend-api
+spec:
+  template:
+    spec:
+      initContainers:
+      - name: init-workspace
+        image: registry.access.redhat.com/ubi9/ubi-minimal:9.5
+        command: ['sh', '-c', 'mkdir -p /workspace/sessions && chmod 755 /workspace/sessions']
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+        volumeMounts:
+        - name: backend-state
+          mountPath: /workspace
+      containers:
+      - name: backend-api
+        image: image-registry.openshift-image-registry.svc:5000/vteam-dev/vteam-backend:latest
+        env:
+        - name: AGENTS_DIR
+          value: "/app/agents"
+---
+# Service for local dev
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-service
+---
+# Route for local dev backend
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: vteam-backend
+  labels:
+    app: vteam-backend
+spec:
+  to:
+    kind: Service
+    name: vteam-backend
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+

@@ -1,0 +1,21 @@
+# Patch for local dev operator deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agentic-operator
+spec:
+  template:
+    spec:
+      containers:
+      - name: agentic-operator
+        image: image-registry.openshift-image-registry.svc:5000/vteam-dev/vteam-operator:latest
+        env:
+        - name: BACKEND_NAMESPACE
+          value: "vteam-dev"
+        - name: BACKEND_API_URL
+          value: "http://vteam-backend:8080/api"
+        - name: CONTENT_SERVICE_IMAGE
+          value: "image-registry.openshift-image-registry.svc:5000/vteam-dev/vteam-backend:latest"
+        - name: IMAGE_PULL_POLICY
+          value: "IfNotPresent"
+

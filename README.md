@@ -403,6 +403,28 @@ cd components/frontend
 npm test                      # Run test suite
 ```
 
+### E2E Testing
+
+Run automated end-to-end tests in a local kind cluster:
+
+```bash
+make e2e-test                # Full test suite (setup, deploy, test, cleanup)
+```
+
+Or run steps individually:
+
+```bash
+cd e2e
+./scripts/setup-kind.sh      # Create kind cluster
+./scripts/deploy.sh          # Deploy vTeam
+./scripts/run-tests.sh       # Run Cypress tests
+./scripts/cleanup.sh         # Clean up
+```
+
+The e2e tests deploy the complete vTeam stack to a kind (Kubernetes in Docker) cluster and verify core functionality including project creation and UI navigation. Tests run automatically in GitHub Actions on every PR.
+
+See [e2e/README.md](e2e/README.md) for detailed documentation, troubleshooting, and development guide.
+
 ### Documentation
 
 - Update relevant documentation when changing functionality

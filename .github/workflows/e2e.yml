@@ -1,0 +1,97 @@
+name: E2E Tests
+
+on:
+  pull_request:
+    branches: [ main, master ]
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  e2e:
+    name: End-to-End Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15  # Typical runtime: 6-7 minutes
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+        cache-dependency-path: e2e/package-lock.json
+        
+    - name: Install Cypress dependencies
+      working-directory: e2e
+      run: npm ci
+      
+    - name: Install kind
+      run: |
+        # Install kind
+        curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.20.0/kind-linux-amd64
+        chmod +x ./kind
+        sudo mv ./kind /usr/local/bin/kind
+        kind version
+        
+    - name: Setup kind cluster and deploy vTeam
+      working-directory: e2e
+      run: |
+        chmod +x scripts/*.sh
+        ./scripts/setup-kind.sh
+        ./scripts/deploy.sh
+        
+    - name: Verify deployment
+      run: |
+        echo "Checking pods..."
+        kubectl get pods -n ambient-code
+        echo ""
+        echo "Checking services..."
+        kubectl get svc -n ambient-code
+        echo ""
+        echo "Checking ingress..."
+        kubectl get ingress -n ambient-code
+        
+    - name: Run Cypress tests
+      working-directory: e2e
+      run: ./scripts/run-tests.sh
+      
+    - name: Upload test results
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: cypress-screenshots
+        path: e2e/cypress/screenshots
+        if-no-files-found: ignore
+        retention-days: 7
+        
+    - name: Upload test videos
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: cypress-videos
+        path: e2e/cypress/videos
+        if-no-files-found: ignore
+        retention-days: 7
+        
+    - name: Debug logs on failure
+      if: failure()
+      run: |
+        echo "=== Frontend logs ==="
+        kubectl logs -n ambient-code -l app=frontend --tail=100 || true
+        echo ""
+        echo "=== Backend logs ==="
+        kubectl logs -n ambient-code -l app=backend-api --tail=100 || true
+        echo ""
+        echo "=== Operator logs ==="
+        kubectl logs -n ambient-code -l app=agentic-operator --tail=100 || true
+        
+    - name: Cleanup
+      if: always()
+      working-directory: e2e
+      run: |
+        # Clean up cluster and artifacts in CI
+        CLEANUP_ARTIFACTS=true ./scripts/cleanup.sh || true
+

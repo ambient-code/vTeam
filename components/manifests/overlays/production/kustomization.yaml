@@ -1,0 +1,55 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: vteam-production
+
+# Namespace for all resources (can be overridden with kustomize edit set namespace)
+namespace: ambient-code
+
+# Resources (base + production-specific)
+resources:
+- ../../base
+- route.yaml
+- backend-route.yaml
+- github-app-secret.yaml
+
+# Patches for production environment
+patches:
+- path: namespace-patch.yaml
+  target:
+    kind: Namespace
+    name: ambient-code
+- path: frontend-oauth-deployment-patch.yaml
+  target:
+    kind: Deployment
+    name: frontend
+- path: frontend-oauth-service-patch.yaml
+  target:
+    kind: Service
+    name: frontend-service
+
+# Production images
+images:
+- name: quay.io/ambient_code/vteam_backend
+  newName: quay.io/ambient_code/vteam_backend
+  newTag: latest
+- name: quay.io/ambient_code/vteam_frontend
+  newName: quay.io/ambient_code/vteam_frontend
+  newTag: latest
+- name: quay.io/ambient_code/vteam_operator
+  newName: quay.io/ambient_code/vteam_operator
+  newTag: latest
+- name: quay.io/ambient_code/vteam_claude_runner
+  newName: quay.io/ambient_code/vteam_claude_runner
+  newTag: latest
+
+# Secret generator for OAuth configuration (populated by deploy.sh)
+# Commented out - will be added at deploy time
+# secretGenerator:
+# - name: frontend-oauth-config
+#   envs:
+#   - oauth-secret.env
+#   options:
+#     disableNameSuffixHash: true
+

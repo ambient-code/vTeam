@@ -1,0 +1,8 @@
+# Patch to add e2e-specific namespace label
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ambient-code
+  labels:
+    ambient-code.io/managed: "true"
+
