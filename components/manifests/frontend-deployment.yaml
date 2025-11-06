@@ -62,7 +62,7 @@ spec:
         - --cookie-secret-file=/etc/oauth/config/cookie_secret
         - --cookie-expire=23h0m0s
         - --pass-access-token
-        - --scope=user:full
+        - --scope=user:info
         - --openshift-delegate-urls={"/":{"resource":"projects","verb":"list"}}
         - --skip-auth-regex=^/metrics
         ports:

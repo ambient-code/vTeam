@@ -145,6 +145,21 @@ Visit the printed URL. You should be redirected to OpenShift login and returned 
 - You do NOT need ODH secret generators or a ServiceAccount OAuth redirect for this minimal setup.
 - You do NOT need app-level env like `OAUTH_SERVER_URL`; the sidecar handles the flow.
 
+### Security: Limiting OAuth Scope
+
+The OAuth proxy is configured with `--scope=user:info` which provides minimal permissions:
+- **user:info**: Allows reading basic user information (username, display name) but does NOT grant:
+  - OpenShift console access
+  - kubectl/oc CLI access
+  - Any cluster resource permissions
+
+Users can authenticate to vTeam but cannot use the same OAuth token to access the cluster.
+
+**Alternative scopes:**
+- `user:full`: Grants full cluster access (console + kubectl) - NOT RECOMMENDED for application-only authentication
+- `user:check-access`: Allows checking RBAC permissions without granting access
+- `user:list-projects`: Allows listing projects only
+
 ### Reference
 - ODH Dashboard uses a similar oauth-proxy sidecar pattern (with more bells and whistles):
   [opendatahub-io/odh-dashboard](https://github.com/opendatahub-io/odh-dashboard)
