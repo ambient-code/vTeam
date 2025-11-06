@@ -34,6 +34,7 @@ export type ArtifactFile = {
   content: string;
   lastModified: string;
   size: number;
+  type?: 'blob' | 'tree'; // blob = file, tree = directory
   agent?: string;
   phase?: string;
 };

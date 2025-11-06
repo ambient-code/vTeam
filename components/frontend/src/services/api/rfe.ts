@@ -116,16 +116,44 @@ export async function getRfeWorkflowStatus(
 }
 
 /**
- * Get artifacts for an RFE workflow
+ * Get artifacts for an RFE workflow by listing files from the spec repository
+ * This uses the /repo/tree endpoint to list files from the workflow's umbrella repository
  */
 export async function getWorkflowArtifacts(
   projectName: string,
   workflowId: string
 ): Promise<ArtifactFile[]> {
-  const response = await apiClient.get<GetArtifactsResponse>(
-    `/projects/${projectName}/rfe-workflows/${workflowId}/artifacts`
+  // First, get the workflow to retrieve repo URL and branch
+  const workflow = await getRfeWorkflow(projectName, workflowId);
+  
+  if (!workflow.umbrellaRepo?.url || !workflow.branchName) {
+    return [];
+  }
+  
+  // Use the /repo/tree endpoint to list files from the repository
+  const treeResponse = await apiClient.get<{ path: string; entries: Array<{ name: string; type: string; size: number }> }>(
+    `/projects/${projectName}/repo/tree`,
+    {
+      params: {
+        repo: workflow.umbrellaRepo.url,
+        ref: workflow.branchName,
+        path: '', // Root directory
+      }
+    }
   );
-  return response.artifacts;
+  
+  // Convert tree entries to ArtifactFile format
+  // Include both files (blob) and directories (tree)
+  const artifacts: ArtifactFile[] = treeResponse.entries.map(entry => ({
+    path: entry.name,
+    name: entry.name,
+    content: '', // Content not fetched in list view
+    lastModified: new Date().toISOString(), // Not available from tree endpoint
+    size: entry.size || 0,
+    type: entry.type as 'blob' | 'tree', // Preserve type for UI
+  }));
+  
+  return artifacts;
 }
 
 /**

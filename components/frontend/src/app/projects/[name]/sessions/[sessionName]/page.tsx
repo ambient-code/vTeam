@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
-import { ArrowLeft, Square, Trash2, Copy, Play, MoreVertical, Bot, Loader2, FolderTree, AlertCircle, Sprout, CheckCircle2, GitBranch, Edit, Info } from "lucide-react";
+import { ArrowLeft, Square, Trash2, Copy, Play, MoreVertical, Bot, Loader2, FolderTree, AlertCircle, Sprout, CheckCircle2, GitBranch, Edit, Info, RefreshCw, Folder, FileText } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 // Custom components
@@ -56,7 +56,9 @@ import {
   useUpdateRfeWorkflow,
   useCreateRfeWorkflow,
   useGitHubStatus,
+  useWorkflowArtifacts,
   workspaceKeys,
+  rfeKeys,
 } from "@/services/queries";
 import { useSecretsValues } from "@/services/queries/use-secrets";
 import { successToast, errorToast } from "@/hooks/use-toast";
@@ -141,6 +143,12 @@ export default function ProjectSessionDetailPage({
   const seedWorkflowMutation = useSeedRfeWorkflow();
   const updateWorkflowMutation = useUpdateRfeWorkflow();
   const createWorkflowMutation = useCreateRfeWorkflow();
+  
+  // Fetch artifacts for the spec repository
+  const { data: workflowArtifacts = [], isLoading: artifactsLoading, refetch: refetchArtifacts } = useWorkflowArtifacts(
+    projectName,
+    rfeWorkflowId || ''
+  );
 
   // Workspace state
   const [wsSelectedPath, setWsSelectedPath] = useState<string | undefined>();
@@ -192,6 +200,16 @@ export default function ProjectSessionDetailPage({
       queryKey: workspaceKeys.files(),
     });
   }, [queryClient]);
+
+  // Handler to refresh spec repository artifacts
+  const handleRefreshArtifacts = useCallback(async () => {
+    if (!rfeWorkflowId) return;
+    // Invalidate artifacts query to force fresh fetch
+    await queryClient.invalidateQueries({
+      queryKey: rfeKeys.artifacts(projectName, rfeWorkflowId),
+    });
+    await refetchArtifacts();
+  }, [queryClient, projectName, rfeWorkflowId, refetchArtifacts]);
 
   // GitHub diff state
   const [busyRepo, setBusyRepo] = useState<Record<number, 'push' | 'abandon' | null>>({});
@@ -1134,50 +1152,72 @@ export default function ProjectSessionDetailPage({
                     </div>
                   )}
 
-                  {/* Workspace Content - Only show after spec repository is seeded */}
+                  {/* Spec Repository Files - Only show after spec repository is seeded */}
                   {rfeWorkflowId && isSeeded && (
                     <div className="mt-4 pt-4 border-t">
-                      {sessionCompleted && !contentPodReady ? (
-                        <Card className="p-8">
-                          <div className="text-center space-y-4">
-                            {contentPodSpawning ? (
-                              <>
-                                <div className="flex items-center justify-center">
-                                  <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
-                                </div>
-                                <p className="text-sm font-medium">Starting workspace viewer...</p>
-                                <p className="text-xs text-gray-500">This may take up to 30 seconds</p>
-                              </>
-                            ) : (
-                              <>
-                                <p className="text-sm text-gray-600">
-                                  Session has completed. To view and edit your workspace files, please start a workspace viewer.
-                                </p>
-                                <Button onClick={spawnContentPodAsync}>
-                                  Start Workspace Viewer
-                                </Button>
-                              </>
+                      <div className="border rounded-md overflow-hidden">
+                        <div className="p-3 border-b flex items-center justify-between bg-gray-50">
+                          <div className="flex items-center gap-2">
+                            <FolderTree className="h-4 w-4 text-muted-foreground" />
+                            <span className="text-sm font-medium">Files</span>
+                            {!artifactsLoading && (
+                              <span className="text-xs text-muted-foreground">
+                                ({workflowArtifacts.length} {workflowArtifacts.length === 1 ? 'file' : 'files'})
+                              </span>
                             )}
                           </div>
-                        </Card>
-                      ) : (
-                        <WorkspaceTab
-                          session={session}
-                          wsLoading={wsLoading}
-                          wsUnavailable={wsUnavailable}
-                          wsTree={wsTree}
-                          wsSelectedPath={wsSelectedPath}
-                          wsFileContent={wsFileContent}
-                          onRefresh={handleRefreshWorkspace}
-                          onSelect={onWsSelect}
-                          onToggle={onWsToggle}
-                          onSave={writeWsFile}
-                          setWsFileContent={setWsFileContent}
-                          k8sResources={k8sResources}
-                          contentPodError={contentPodError}
-                          onRetrySpawn={spawnContentPodAsync}
-                        />
-                      )}
+                          <Button 
+                            size="sm" 
+                            variant="outline" 
+                            onClick={handleRefreshArtifacts} 
+                            disabled={artifactsLoading}
+                            className="h-8"
+                          >
+                            <RefreshCw className={`h-4 w-4 ${artifactsLoading ? 'animate-spin' : ''}`} />
+                          </Button>
+                        </div>
+                        <div className="p-3">
+                          {artifactsLoading ? (
+                            <div className="flex items-center justify-center h-32 text-sm text-muted-foreground">
+                              <Loader2 className="animate-spin h-4 w-4 mr-2" /> Loading files...
+                            </div>
+                          ) : workflowArtifacts.length === 0 ? (
+                            <div className="flex flex-col items-center justify-center h-32 text-center text-sm text-muted-foreground">
+                              <FolderTree className="h-10 w-10 mb-2 opacity-50" />
+                              <p className="font-medium">No files yet</p>
+                              <p className="text-xs mt-1">Files will appear here as agents create artifacts</p>
+                            </div>
+                          ) : (
+                            <div className="space-y-1">
+                              {workflowArtifacts.map((artifact) => {
+                                const isDirectory = artifact.type === 'tree';
+                                const Icon = isDirectory ? Folder : FileText;
+                                const iconColor = isDirectory ? 'text-yellow-600' : 'text-blue-500';
+                                
+                                return (
+                                  <div
+                                    key={artifact.path}
+                                    className="flex items-center gap-2 p-2 rounded hover:bg-gray-50 text-sm"
+                                  >
+                                    <Icon className={`h-4 w-4 ${iconColor} flex-shrink-0`} />
+                                    <div className="flex-1 min-w-0">
+                                      <div className="font-medium truncate">{artifact.name}</div>
+                                      {artifact.path !== artifact.name && (
+                                        <div className="text-xs text-muted-foreground truncate">{artifact.path}</div>
+                                      )}
+                                    </div>
+                                    {!isDirectory && artifact.size > 0 && (
+                                      <div className="text-xs text-muted-foreground flex-shrink-0">
+                                        {(artifact.size / 1024).toFixed(1)} KB
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   )}
                 </AccordionContent>
@@ -1254,7 +1294,7 @@ export default function ProjectSessionDetailPage({
 
               <AccordionItem value="overview" className="border rounded-lg px-3 bg-white">
                 <AccordionTrigger className="text-base font-semibold hover:no-underline py-3">
-                  Context
+                  System Resources
                 </AccordionTrigger>
                 <AccordionContent className="space-y-4 pt-2 pb-3">
                   <OverviewTab
@@ -1325,25 +1365,51 @@ export default function ProjectSessionDetailPage({
                   Session Details
                 </AccordionTrigger>
                 <AccordionContent className="pt-2 pb-3">
-                  <div className="grid grid-cols-3 gap-3">
-                    <Card className="py-2">
-                      <CardContent className="p-2">
-                        <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Duration</div>
-                        <div className="text-sm font-semibold">{typeof durationMs === "number" ? `${durationMs} ms` : "-"}</div>
-                      </CardContent>
-                    </Card>
-                    <Card className="py-2">
-                      <CardContent className="p-2">
-                        <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Messages</div>
-                        <div className="text-sm font-semibold">{messages.length}</div>
-                      </CardContent>
-                    </Card>
-                    <Card className="py-2">
-                      <CardContent className="p-2">
-                        <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Agents</div>
-                        <div className="text-sm font-semibold">{subagentStats.uniqueCount > 0 ? subagentStats.uniqueCount : "-"}</div>
-                      </CardContent>
-                    </Card>
+                  <div className="space-y-3 text-sm">
+                    <div className="flex flex-col gap-2">
+                      <div className="flex items-baseline gap-2">
+                        <span className="font-semibold text-gray-700">Model:</span>
+                        <span className="text-gray-900">{session.spec.llmSettings.model}</span>
+                      </div>
+                      <div className="flex items-baseline gap-2">
+                        <span className="font-semibold text-gray-700">Mode:</span>
+                        <span className="text-gray-900">{session.spec?.interactive ? "Interactive" : "Headless"}</span>
+                      </div>
+                      {session.status?.startTime && (
+                        <div className="flex items-baseline gap-2">
+                          <span className="font-semibold text-gray-700">Started:</span>
+                          <span className="text-gray-900">{formatDistanceToNow(new Date(session.status.startTime), { addSuffix: true })}</span>
+                        </div>
+                      )}
+                      <div className="flex items-baseline gap-2">
+                        <span className="font-semibold text-gray-700">Duration:</span>
+                        <span className="text-gray-900">{typeof durationMs === "number" ? `${durationMs}ms` : "-"}</span>
+                      </div>
+                      {session.status?.jobName && (
+                        <div className="flex items-baseline gap-2">
+                          <span className="font-semibold text-gray-700">K8s Job:</span>
+                          <span className="text-gray-900 font-mono text-xs">{session.status.jobName}</span>
+                        </div>
+                      )}
+                      <div className="flex items-baseline gap-2">
+                        <span className="font-semibold text-gray-700">Messages:</span>
+                        <span className="text-gray-900">{messages.length}</span>
+                      </div>
+                      <div className="flex items-baseline gap-2">
+                        <span className="font-semibold text-gray-700">Session prompt:</span>
+                        <button
+                          onClick={() => setPromptExpanded(!promptExpanded)}
+                          className="text-blue-600 hover:underline"
+                        >
+                          {promptExpanded ? "hide" : "view"}
+                        </button>
+                      </div>
+                      {promptExpanded && session.spec.prompt && (
+                        <div className="mt-2 p-3 bg-gray-50 rounded border border-gray-200">
+                          <p className="whitespace-pre-wrap text-sm text-gray-800">{session.spec.prompt}</p>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </AccordionContent>
               </AccordionItem>
