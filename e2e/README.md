@@ -398,7 +398,14 @@ The GitHub Actions workflow (`.github/workflows/e2e.yml`) runs automatically on:
 5. Deploy vTeam using e2e overlay
 6. Run tests
 7. Upload artifacts (screenshots/videos) on failure
-8. Cleanup cluster
+8. Cleanup cluster (always runs, even on failure)
+
+**CI Environment:**
+- **No password prompt**: GitHub Actions runners have passwordless sudo
+- **Uses Docker**: Standard setup (no Podman needed)
+- **Standard ports**: Port 80 (no rootless restrictions)
+- **Timeout**: 15 minutes (typical runtime: 6-7 minutes)
+- **Cleanup guaranteed**: Runs even if tests fail
 
 **View test results:**
 - GitHub Actions tab → E2E Tests workflow

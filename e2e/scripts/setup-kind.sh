@@ -125,8 +125,15 @@ echo "Adding vteam.local to /etc/hosts..."
 if grep -q "vteam.local" /etc/hosts 2>/dev/null; then
   echo "   vteam.local already in /etc/hosts"
 else
-  echo "127.0.0.1 vteam.local" | sudo tee -a /etc/hosts > /dev/null
-  echo "   ✓ Added vteam.local to /etc/hosts"
+  # In CI, sudo typically doesn't require password (NOPASSWD configured)
+  # Locally, user will be prompted for password
+  if echo "127.0.0.1 vteam.local" | sudo tee -a /etc/hosts > /dev/null 2>&1; then
+    echo "   ✓ Added vteam.local to /etc/hosts"
+  else
+    echo "   ⚠️  Warning: Could not modify /etc/hosts (permission denied)"
+    echo "   Tests may fail if DNS resolution doesn't work"
+    echo "   Manual fix: Add '127.0.0.1 vteam.local' to /etc/hosts"
+  fi
 fi
 
 echo ""
