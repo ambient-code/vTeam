@@ -46,6 +46,7 @@ nav:
     - Lab 1 - Your First Agentic Session: labs/basic/lab-1-first-rfe.md
   - Reference:
     - Overview: reference/index.md
+    - Constitution: reference/constitution.md
     - Glossary: reference/glossary.md
   - Deployment Guides:
     - GitHub App Setup: GITHUB_APP_SETUP.md
