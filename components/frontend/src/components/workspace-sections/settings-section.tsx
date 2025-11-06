@@ -176,7 +176,7 @@ export function SettingsSection({ projectName }: SettingsSectionProps) {
         <Card>
           <CardHeader>
             <CardTitle>General Settings</CardTitle>
-            <CardDescription>Manage workspace display name and description</CardDescription>
+            <CardDescription>Basic workspace configuration</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
@@ -188,6 +188,17 @@ export function SettingsSection({ projectName }: SettingsSectionProps) {
                 placeholder="My Awesome Workspace"
                 maxLength={100}
               />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="workspaceName">Workspace Name</Label>
+              <Input
+                id="workspaceName"
+                value={projectName}
+                readOnly
+                disabled
+                className="bg-muted/80 text-muted-foreground"
+              />
+              <p className="text-sm text-muted-foreground">Workspace name cannot be changed after creation</p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="description">Description</Label>
@@ -235,7 +246,7 @@ export function SettingsSection({ projectName }: SettingsSectionProps) {
         <CardHeader>
           <CardTitle>Runner Secrets</CardTitle>
           <CardDescription>
-            Configure the Secret and manage key/value pairs used by project runners.
+            Configure the Secret and manage key/value pairs used by workspace runners.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -292,9 +303,9 @@ export function SettingsSection({ projectName }: SettingsSectionProps) {
           {(mode === "new" || (mode === "existing" && !!secretName)) && (
             <div className="pt-2 space-y-2">
               <div className="flex items-center justify-between">
-                <Label>Key/Value Pairs</Label>
+                <Label>Additional Secrets</Label>
                 <Button variant="outline" onClick={addSecretRow}>
-                  <Plus className="w-4 h-4 mr-2" /> Add Row
+                  <Plus className="w-4 h-4 mr-2" /> Add Secret
                 </Button>
               </div>
               <div className="space-y-2">
