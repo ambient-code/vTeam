@@ -54,6 +54,7 @@ import {
   useRfeWorkflowSeeding,
   useSeedRfeWorkflow,
   useUpdateRfeWorkflow,
+  useCreateRfeWorkflow,
   useGitHubStatus,
   workspaceKeys,
 } from "@/services/queries";
@@ -127,20 +128,19 @@ export default function ProjectSessionDetailPage({
   const writeWorkspaceFileMutation = useWriteWorkspaceFile();
   
   // Get RFE workflow ID from session if this is an RFE session
-  const rfeWorkflowId = session?.metadata?.labels?.['rfe-workflow-id'];
-  const { data: rfeWorkflow, refetch: refetchWorkflow } = useRfeWorkflow(projectName, rfeWorkflowId || '', { enabled: !!rfeWorkflowId });
+  const rfeWorkflowId = session?.metadata?.labels?.['rfe-workflow'];
+  const { data: rfeWorkflow, refetch: refetchWorkflow } = useRfeWorkflow(projectName, rfeWorkflowId || '');
   const { data: repoAgents = [], isLoading: loadingAgents } = useRfeWorkflowAgents(
     projectName,
-    rfeWorkflowId || '',
-    { enabled: !!rfeWorkflowId }
+    rfeWorkflowId || ''
   );
   const { data: seedingData, isLoading: checkingSeeding, error: seedingQueryError, refetch: refetchSeeding } = useRfeWorkflowSeeding(
     projectName,
-    rfeWorkflowId || '',
-    { enabled: !!rfeWorkflowId }
+    rfeWorkflowId || ''
   );
   const seedWorkflowMutation = useSeedRfeWorkflow();
   const updateWorkflowMutation = useUpdateRfeWorkflow();
+  const createWorkflowMutation = useCreateRfeWorkflow();
 
   // Workspace state
   const [wsSelectedPath, setWsSelectedPath] = useState<string | undefined>();
@@ -1134,50 +1134,52 @@ export default function ProjectSessionDetailPage({
                     </div>
                   )}
 
-                  {/* Workspace Content - Always visible for all sessions */}
-                  <div className="mt-4 pt-4 border-t">
-                    {sessionCompleted && !contentPodReady ? (
-                      <Card className="p-8">
-                        <div className="text-center space-y-4">
-                          {contentPodSpawning ? (
-                            <>
-                              <div className="flex items-center justify-center">
-                                <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
-                              </div>
-                              <p className="text-sm font-medium">Starting workspace viewer...</p>
-                              <p className="text-xs text-gray-500">This may take up to 30 seconds</p>
-                            </>
-                          ) : (
-                            <>
-                              <p className="text-sm text-gray-600">
-                                Session has completed. To view and edit your workspace files, please start a workspace viewer.
-                              </p>
-                              <Button onClick={spawnContentPodAsync}>
-                                Start Workspace Viewer
-                              </Button>
-                            </>
-                          )}
-                        </div>
-                      </Card>
-                    ) : (
-                      <WorkspaceTab
-                        session={session}
-                        wsLoading={wsLoading}
-                        wsUnavailable={wsUnavailable}
-                        wsTree={wsTree}
-                        wsSelectedPath={wsSelectedPath}
-                        wsFileContent={wsFileContent}
-                        onRefresh={handleRefreshWorkspace}
-                        onSelect={onWsSelect}
-                        onToggle={onWsToggle}
-                        onSave={writeWsFile}
-                        setWsFileContent={setWsFileContent}
-                        k8sResources={k8sResources}
-                        contentPodError={contentPodError}
-                        onRetrySpawn={spawnContentPodAsync}
-                      />
-                    )}
-                  </div>
+                  {/* Workspace Content - Only show after spec repository is seeded */}
+                  {rfeWorkflowId && isSeeded && (
+                    <div className="mt-4 pt-4 border-t">
+                      {sessionCompleted && !contentPodReady ? (
+                        <Card className="p-8">
+                          <div className="text-center space-y-4">
+                            {contentPodSpawning ? (
+                              <>
+                                <div className="flex items-center justify-center">
+                                  <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
+                                </div>
+                                <p className="text-sm font-medium">Starting workspace viewer...</p>
+                                <p className="text-xs text-gray-500">This may take up to 30 seconds</p>
+                              </>
+                            ) : (
+                              <>
+                                <p className="text-sm text-gray-600">
+                                  Session has completed. To view and edit your workspace files, please start a workspace viewer.
+                                </p>
+                                <Button onClick={spawnContentPodAsync}>
+                                  Start Workspace Viewer
+                                </Button>
+                              </>
+                            )}
+                          </div>
+                        </Card>
+                      ) : (
+                        <WorkspaceTab
+                          session={session}
+                          wsLoading={wsLoading}
+                          wsUnavailable={wsUnavailable}
+                          wsTree={wsTree}
+                          wsSelectedPath={wsSelectedPath}
+                          wsFileContent={wsFileContent}
+                          onRefresh={handleRefreshWorkspace}
+                          onSelect={onWsSelect}
+                          onToggle={onWsToggle}
+                          onSave={writeWsFile}
+                          setWsFileContent={setWsFileContent}
+                          k8sResources={k8sResources}
+                          contentPodError={contentPodError}
+                          onRetrySpawn={spawnContentPodAsync}
+                        />
+                      )}
+                    </div>
+                  )}
                 </AccordionContent>
               </AccordionItem>
               )}
@@ -1429,14 +1431,53 @@ export default function ProjectSessionDetailPage({
           </Button>
           <Button
             type="button"
-            onClick={() => {
-              // TODO: Implement save functionality to create/update RFE workflow
-              // For now, just close the modal
-              setGithubModalOpen(false);
+            onClick={async () => {
+              if (!specRepoUrl.trim() || !projectName || !sessionName) return;
+              
+              // Generate a unique branch name based on session name
+              const timestamp = Date.now();
+              const branchName = `feature/${sessionName}-${timestamp}`;
+              
+              try {
+                // Create the workflow
+                const result = await createWorkflowMutation.mutateAsync({
+                  projectName,
+                  data: {
+                    title: `Workflow for ${sessionName}`,
+                    description: `Auto-generated workflow for session ${sessionName}`,
+                    branchName,
+                    umbrellaRepo: {
+                      url: specRepoUrl.trim(),
+                      branch: baseBranch.trim() || 'main',
+                    },
+                    supportingRepos: [],
+                  },
+                });
+                
+                // Link the session to the workflow
+                const { linkSessionToWorkflow } = await import('@/services/api/rfe');
+                await linkSessionToWorkflow(projectName, result.id, sessionName);
+                
+                successToast('Spec repository configured successfully');
+                setGithubModalOpen(false);
+                
+                // Refresh the session to get the updated workflow ID
+                await refetchSession();
+                await refetchWorkflow();
+              } catch (err) {
+                errorToast(err instanceof Error ? err.message : 'Failed to configure repository');
+              }
             }}
-            disabled={!specRepoUrl.trim()}
+            disabled={!specRepoUrl.trim() || createWorkflowMutation.isPending}
           >
-            Save Configuration
+            {createWorkflowMutation.isPending ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              'Save Configuration'
+            )}
           </Button>
         </DialogFooter>
       </DialogContent>

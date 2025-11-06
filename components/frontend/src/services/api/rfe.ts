@@ -225,3 +225,18 @@ export async function publishWorkflowPathToJira(
     { path }
   );
 }
+
+/**
+ * Link an existing session to an RFE workflow
+ */
+export async function linkSessionToWorkflow(
+  projectName: string,
+  workflowId: string,
+  sessionName: string,
+  phase?: string
+): Promise<{ message: string; session: string }> {
+  return apiClient.post<{ message: string; session: string }, { existingName: string; phase?: string }>(
+    `/projects/${projectName}/rfe-workflows/${workflowId}/sessions/link`,
+    { existingName: sessionName, phase }
+  );
+}
