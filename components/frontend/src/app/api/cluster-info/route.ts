@@ -1,4 +1,6 @@
 import { BACKEND_URL } from '@/lib/config';
+import { USE_MOCKS } from '@/lib/mock-config';
+import { handleGetClusterInfo } from '@/lib/mocks/handlers';
 
 /**
  * GET /api/cluster-info
@@ -6,6 +8,11 @@ import { BACKEND_URL } from '@/lib/config';
  * This endpoint does not require authentication as it's public cluster information
  */
 export async function GET() {
+  // Return mock data if enabled
+  if (USE_MOCKS) {
+    return handleGetClusterInfo();
+  }
+
   try {
     const response = await fetch(`${BACKEND_URL}/cluster-info`, {
       method: 'GET',

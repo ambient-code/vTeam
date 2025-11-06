@@ -17,6 +17,7 @@ subjects:
   name: frontend-dev-user
   namespace: vteam-dev
 ---
+# TODO local testing.
 apiVersion: v1
 kind: Secret
 metadata:
@@ -24,3 +25,17 @@ metadata:
   annotations:
     kubernetes.io/service-account.name: frontend-dev-user
 type: kubernetes.io/service-account-token
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: frontend-dev-user-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: backend-api-local
+subjects:
+- kind: User
+  name: kubeadmin
+  apiGroup: rbac.authorization.k8s.io
+---

@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "NEXT_PUBLIC_USE_MOCKS=true NEXT_PUBLIC_MOCK_DELAY=300 GITHUB_APP_SLUG=ambient-code NEXT_PUBLIC_LOG_MOCKS=true next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"

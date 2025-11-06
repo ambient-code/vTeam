@@ -29,6 +29,11 @@ rules:
 - apiGroups: ["rbac.authorization.k8s.io"]
   resources: ["roles", "rolebindings"]
   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+# ClusterRole binding permission - allows backend to grant ambient-project-admin to users
+- apiGroups: ["rbac.authorization.k8s.io"]
+  resources: ["clusterroles"]
+  resourceNames: ["ambient-project-admin", "ambient-project-edit", "ambient-project-view"]
+  verbs: ["bind"]
 # vTeam custom resources
 - apiGroups: ["vteam.ambient-code"]
   resources: ["agenticsessions", "projectsettings", "rfeworkflows"]
@@ -40,6 +45,40 @@ rules:
 - apiGroups: [""]
   resources: ["secrets", "configmaps"]
   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+# Jobs (for monitoring and cleanup when stopping sessions)
+- apiGroups: ["batch"]
+  resources: ["jobs"]
+  verbs: ["get", "list", "watch", "delete"]
+# Pods (for cleanup when stopping sessions and spawning temp content pods)
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list", "watch", "create", "delete", "deletecollection"]
+- apiGroups: [""]
+  resources: ["pods/log"]
+  verbs: ["get"]
+# PVCs (for checking workspace status and spawning temp content pods)
+# Includes delete to allow granting ambient-project-admin role
+- apiGroups: [""]
+  resources: ["persistentvolumeclaims"]
+  verbs: ["get", "list", "watch", "delete"]
+# Services (for temp content pod services)
+# Includes watch to allow granting ambient-project-admin role
+- apiGroups: [""]
+  resources: ["services"]
+  verbs: ["get", "list", "watch", "create", "delete"]
+# Deployments (content services management)
+# Required to allow granting ambient-project-admin role
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["get", "list", "watch", "delete"]
+# SubjectAccessReviews (for permission validation)
+- apiGroups: ["authorization.k8s.io"]
+  resources: ["subjectaccessreviews", "selfsubjectaccessreviews"]
+  verbs: ["create"]
+# TokenReviews for runner SA validation
+- apiGroups: ["authentication.k8s.io"]
+  resources: ["tokenreviews"]
+  verbs: ["create"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding

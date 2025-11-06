@@ -1,8 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { BACKEND_URL } from "@/lib/config";
 import { buildForwardHeadersAsync } from "@/lib/auth";
+import { USE_MOCKS } from "@/lib/mock-config";
+import { handleListProjects, handleCreateProject } from "@/lib/mocks/handlers";
 
 export async function GET(request: NextRequest) {
+  // Return mock data if enabled
+  if (USE_MOCKS) {
+    return handleListProjects();
+  }
+
   try {
     const headers = await buildForwardHeadersAsync(request);
 
@@ -30,6 +37,11 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  // Return mock data if enabled
+  if (USE_MOCKS) {
+    return handleCreateProject(request);
+  }
+
   try {
     const body = await request.text();
 

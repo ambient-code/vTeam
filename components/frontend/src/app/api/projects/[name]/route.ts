@@ -1,13 +1,21 @@
 import { BACKEND_URL } from '@/lib/config';
 import { buildForwardHeadersAsync } from '@/lib/auth';
+import { USE_MOCKS } from '@/lib/mock-config';
+import { handleGetProject, handleDeleteProject } from '@/lib/mocks/handlers';
 
 // GET /api/projects/[name] - Get project by name
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ name: string }> }
 ) {
+  const { name } = await params;
+
+  // Return mock data if enabled
+  if (USE_MOCKS) {
+    return handleGetProject(name);
+  }
+
   try {
-    const { name } = await params;
     const headers = await buildForwardHeadersAsync(request);
 
     const response = await fetch(`${BACKEND_URL}/projects/${name}`, { headers });
@@ -56,8 +64,14 @@ export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ name: string }> }
 ) {
+  const { name } = await params;
+
+  // Return mock data if enabled
+  if (USE_MOCKS) {
+    return handleDeleteProject(name);
+  }
+
   try {
-    const { name } = await params;
     const headers = await buildForwardHeadersAsync(request);
 
     const response = await fetch(`${BACKEND_URL}/projects/${name}`, {
