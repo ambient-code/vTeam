@@ -72,7 +72,7 @@ const WorkspaceTab: React.FC<WorkspaceTabProps> = ({ session, wsLoading, wsUnava
     );
   }
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-0">
+    <div className="grid grid-cols-1 gap-0">
       <div className="border rounded-md overflow-hidden">
         <div className="p-3 border-b flex items-center justify-between">
           <div className="flex-1">
@@ -110,6 +110,7 @@ const WorkspaceTab: React.FC<WorkspaceTabProps> = ({ session, wsLoading, wsUnava
           )}
         </div>
       </div>
+      {/* TODO: Artifact/File Viewer - Temporarily hidden until Artifact Viewer feature is implemented
       <div className="overflow-auto">
         <Card className="m-3">
           <CardContent className="p-4">
@@ -140,6 +141,7 @@ const WorkspaceTab: React.FC<WorkspaceTabProps> = ({ session, wsLoading, wsUnava
           </CardContent>
         </Card>
       </div>
+      */}
     </div>
   );
 };
