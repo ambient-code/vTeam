@@ -57,6 +57,7 @@ import {
   useGitHubStatus,
   workspaceKeys,
 } from "@/services/queries";
+import { useSecretsValues } from "@/services/queries/use-secrets";
 import { successToast, errorToast } from "@/hooks/use-toast";
 import { workspaceApi } from "@/services/api";
 import { useQueryClient } from "@tanstack/react-query";
@@ -115,6 +116,7 @@ export default function ProjectSessionDetailPage({
   const { data: messages = [] } = useSessionMessages(projectName, sessionName, session?.status?.phase);
   const { data: k8sResources } = useSessionK8sResources(projectName, sessionName);
   const { data: githubStatus } = useGitHubStatus();
+  const { data: secretsValues } = useSecretsValues(projectName);
   const stopMutation = useStopSession();
   const deleteMutation = useDeleteSession();
   const continueMutation = useContinueSession();
@@ -1379,7 +1381,7 @@ export default function ProjectSessionDetailPage({
           </DialogDescription>
         </DialogHeader>
         
-        {!githubStatus?.installed && (
+        {!githubStatus?.installed && !secretsValues?.some(secret => secret.key === 'GIT_TOKEN' && secret.value) && (
           <div className="mb-4">
             <GitHubConnectionCard appSlug="ambient-code-vteam" showManageButton={false} />
           </div>
