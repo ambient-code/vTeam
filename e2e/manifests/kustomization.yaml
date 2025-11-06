@@ -1,0 +1,32 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: ambient-code
+
+resources:
+- namespace.yaml
+- crds
+- rbac
+- secrets.yaml
+- test-user.yaml
+- workspace-pvc.yaml
+- backend-deployment.yaml
+- backend-ingress.yaml
+- operator-deployment.yaml
+- frontend-deployment.yaml
+- frontend-ingress.yaml
+
+images:
+- name: quay.io/ambient_code/vteam_backend
+  newName: quay.io/ambient_code/vteam_backend
+  newTag: latest
+- name: quay.io/ambient_code/vteam_frontend
+  newName: quay.io/ambient_code/vteam_frontend
+  newTag: latest
+- name: quay.io/ambient_code/vteam_operator
+  newName: quay.io/ambient_code/vteam_operator
+  newTag: latest
+- name: quay.io/ambient_code/vteam_claude_runner
+  newName: quay.io/ambient_code/vteam_claude_runner
+  newTag: latest
+

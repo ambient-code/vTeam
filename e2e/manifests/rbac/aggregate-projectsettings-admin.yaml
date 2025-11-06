@@ -1,0 +1,15 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: projectsettings-aggregate-to-admin
+  labels:
+    rbac.authorization.k8s.io/aggregate-to-admin: "true"
+rules:
+- apiGroups: ["vteam.ambient-code"]
+  resources: ["projectsettings"]
+  verbs: ["*"]
+- apiGroups: ["vteam.ambient-code"]
+  resources: ["projectsettings/status"]
+  verbs: ["get", "update", "patch"]
+
+
