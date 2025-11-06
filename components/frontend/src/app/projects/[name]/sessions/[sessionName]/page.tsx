@@ -973,114 +973,6 @@ export default function ProjectSessionDetailPage({
                 </AccordionContent>
               </AccordionItem>
 
-              <AccordionItem value="overview" className="border rounded-lg px-3 bg-white">
-                <AccordionTrigger className="text-base font-semibold hover:no-underline py-3">
-                  Overview
-                </AccordionTrigger>
-                <AccordionContent className="space-y-4 pt-2 pb-3">
-                  <OverviewTab
-                    session={session}
-                    promptExpanded={promptExpanded}
-                    setPromptExpanded={setPromptExpanded}
-                    latestLiveMessage={latestLiveMessage as SessionMessage | null}
-                    diffTotals={diffTotals}
-                    k8sResources={k8sResources}
-                    onPush={async (idx) => {
-                        const repo = session.spec.repos?.[idx];
-                        if (!repo) return;
-                      
-                      setBusyRepo((b) => ({ ...b, [idx]: 'push' }));
-                        const folder = deriveRepoFolderFromUrl(repo.input.url);
-                      const repoPath = `/sessions/${sessionName}/workspace/${folder}`;
-                      
-                      pushToGitHubMutation.mutate(
-                        { projectName, sessionName, repoIndex: idx, repoPath },
-                        {
-                          onSuccess: () => {
-                            refetchDiffs();
-                            successToast('Changes pushed to GitHub');
-                          },
-                          onError: (err) => errorToast(err instanceof Error ? err.message : 'Failed to push changes'),
-                          onSettled: () => setBusyRepo((b) => ({ ...b, [idx]: null })),
-                        }
-                      );
-                    }}
-                    onAbandon={async (idx) => {
-                        const repo = session.spec.repos?.[idx];
-                        if (!repo) return;
-                      
-                      setBusyRepo((b) => ({ ...b, [idx]: 'abandon' }));
-                        const folder = deriveRepoFolderFromUrl(repo.input.url);
-                      const repoPath = `/sessions/${sessionName}/workspace/${folder}`;
-                      
-                      abandonChangesMutation.mutate(
-                        { projectName, sessionName, repoIndex: idx, repoPath },
-                        {
-                          onSuccess: () => {
-                            refetchDiffs();
-                            successToast('Changes abandoned');
-                          },
-                          onError: (err) => errorToast(err instanceof Error ? err.message : 'Failed to abandon changes'),
-                          onSettled: () => setBusyRepo((b) => ({ ...b, [idx]: null })),
-                        }
-                      );
-                    }}
-                    busyRepo={busyRepo}
-                    buildGithubCompareUrl={buildGithubCompareUrl}
-                    onRefreshDiff={handleRefreshDiff}
-                  />
-                </AccordionContent>
-              </AccordionItem>
-
-              <AccordionItem value="workspace" className="border rounded-lg px-3 bg-white">
-                <AccordionTrigger className="text-base font-semibold hover:no-underline py-3">
-                  Workspace
-                </AccordionTrigger>
-                <AccordionContent className="pt-2 pb-3">
-                  {sessionCompleted && !contentPodReady ? (
-                    <Card className="p-8">
-                      <div className="text-center space-y-4">
-                        {contentPodSpawning ? (
-                          <>
-                            <div className="flex items-center justify-center">
-                              <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
-                            </div>
-                            <p className="text-sm font-medium">Starting workspace viewer...</p>
-                            <p className="text-xs text-gray-500">This may take up to 30 seconds</p>
-                          </>
-                        ) : (
-                          <>
-                            <p className="text-sm text-gray-600">
-                              Session has completed. To view and edit your workspace files, please start a workspace viewer.
-                            </p>
-                            <Button onClick={spawnContentPodAsync}>
-                              Start Workspace Viewer
-                            </Button>
-                          </>
-                        )}
-                      </div>
-                    </Card>
-                  ) : (
-                    <WorkspaceTab
-                      session={session}
-                      wsLoading={wsLoading}
-                      wsUnavailable={wsUnavailable}
-                      wsTree={wsTree}
-                      wsSelectedPath={wsSelectedPath}
-                      wsFileContent={wsFileContent}
-                      onRefresh={handleRefreshWorkspace}
-                      onSelect={onWsSelect}
-                      onToggle={onWsToggle}
-                      onSave={writeWsFile}
-                      setWsFileContent={setWsFileContent}
-                      k8sResources={k8sResources}
-                      contentPodError={contentPodError}
-                      onRetrySpawn={spawnContentPodAsync}
-                    />
-                  )}
-                </AccordionContent>
-              </AccordionItem>
-
               <AccordionItem value="spec-repository" className="border rounded-lg px-3 bg-white">
                 <AccordionTrigger className="text-base font-semibold hover:no-underline py-3">
                   Spec Repository
@@ -1299,6 +1191,114 @@ export default function ProjectSessionDetailPage({
                         </div>
                       )}
                     </>
+                  )}
+                </AccordionContent>
+              </AccordionItem>
+
+              <AccordionItem value="overview" className="border rounded-lg px-3 bg-white">
+                <AccordionTrigger className="text-base font-semibold hover:no-underline py-3">
+                  Context
+                </AccordionTrigger>
+                <AccordionContent className="space-y-4 pt-2 pb-3">
+                  <OverviewTab
+                    session={session}
+                    promptExpanded={promptExpanded}
+                    setPromptExpanded={setPromptExpanded}
+                    latestLiveMessage={latestLiveMessage as SessionMessage | null}
+                    diffTotals={diffTotals}
+                    k8sResources={k8sResources}
+                    onPush={async (idx) => {
+                        const repo = session.spec.repos?.[idx];
+                        if (!repo) return;
+                      
+                      setBusyRepo((b) => ({ ...b, [idx]: 'push' }));
+                        const folder = deriveRepoFolderFromUrl(repo.input.url);
+                      const repoPath = `/sessions/${sessionName}/workspace/${folder}`;
+                      
+                      pushToGitHubMutation.mutate(
+                        { projectName, sessionName, repoIndex: idx, repoPath },
+                        {
+                          onSuccess: () => {
+                            refetchDiffs();
+                            successToast('Changes pushed to GitHub');
+                          },
+                          onError: (err) => errorToast(err instanceof Error ? err.message : 'Failed to push changes'),
+                          onSettled: () => setBusyRepo((b) => ({ ...b, [idx]: null })),
+                        }
+                      );
+                    }}
+                    onAbandon={async (idx) => {
+                        const repo = session.spec.repos?.[idx];
+                        if (!repo) return;
+                      
+                      setBusyRepo((b) => ({ ...b, [idx]: 'abandon' }));
+                        const folder = deriveRepoFolderFromUrl(repo.input.url);
+                      const repoPath = `/sessions/${sessionName}/workspace/${folder}`;
+                      
+                      abandonChangesMutation.mutate(
+                        { projectName, sessionName, repoIndex: idx, repoPath },
+                        {
+                          onSuccess: () => {
+                            refetchDiffs();
+                            successToast('Changes abandoned');
+                          },
+                          onError: (err) => errorToast(err instanceof Error ? err.message : 'Failed to abandon changes'),
+                          onSettled: () => setBusyRepo((b) => ({ ...b, [idx]: null })),
+                        }
+                      );
+                    }}
+                    busyRepo={busyRepo}
+                    buildGithubCompareUrl={buildGithubCompareUrl}
+                    onRefreshDiff={handleRefreshDiff}
+                  />
+                </AccordionContent>
+              </AccordionItem>
+
+              <AccordionItem value="workspace" className="border rounded-lg px-3 bg-white">
+                <AccordionTrigger className="text-base font-semibold hover:no-underline py-3">
+                  Workspace
+                </AccordionTrigger>
+                <AccordionContent className="pt-2 pb-3">
+                  {sessionCompleted && !contentPodReady ? (
+                    <Card className="p-8">
+                      <div className="text-center space-y-4">
+                        {contentPodSpawning ? (
+                          <>
+                            <div className="flex items-center justify-center">
+                              <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
+                            </div>
+                            <p className="text-sm font-medium">Starting workspace viewer...</p>
+                            <p className="text-xs text-gray-500">This may take up to 30 seconds</p>
+                          </>
+                        ) : (
+                          <>
+                            <p className="text-sm text-gray-600">
+                              Session has completed. To view and edit your workspace files, please start a workspace viewer.
+                            </p>
+                            <Button onClick={spawnContentPodAsync}>
+                              Start Workspace Viewer
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                    </Card>
+                  ) : (
+                    <WorkspaceTab
+                      session={session}
+                      wsLoading={wsLoading}
+                      wsUnavailable={wsUnavailable}
+                      wsTree={wsTree}
+                      wsSelectedPath={wsSelectedPath}
+                      wsFileContent={wsFileContent}
+                      onRefresh={handleRefreshWorkspace}
+                      onSelect={onWsSelect}
+                      onToggle={onWsToggle}
+                      onSave={writeWsFile}
+                      setWsFileContent={setWsFileContent}
+                      k8sResources={k8sResources}
+                      contentPodError={contentPodError}
+                      onRetrySpawn={spawnContentPodAsync}
+                    />
                   )}
                 </AccordionContent>
               </AccordionItem>
