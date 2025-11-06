@@ -4,6 +4,8 @@
 # This configuration is pragmatic for a Kubernetes-native application.
 # We focus on catching real bugs rather than style issues.
 
+version: "2"
+
 run:
   timeout: 5m
 
