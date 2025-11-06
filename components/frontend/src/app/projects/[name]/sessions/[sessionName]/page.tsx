@@ -83,6 +83,7 @@ export default function ProjectSessionDetailPage({
   const [githubModalOpen, setGithubModalOpen] = useState(false);
   const [specRepoUrl, setSpecRepoUrl] = useState("https://github.com/org/repo.git");
   const [baseBranch, setBaseBranch] = useState("main");
+  const [openAccordionItems, setOpenAccordionItems] = useState<string[]>([]);
 
   // Extract params
   useEffect(() => {
@@ -96,6 +97,18 @@ export default function ProjectSessionDetailPage({
       } catch {}
     });
   }, [params]);
+
+  // Open spec-repository accordion when plan-feature or develop-feature is selected
+  useEffect(() => {
+    if (selectedWorkflow === "plan-feature" || selectedWorkflow === "develop-feature") {
+      setOpenAccordionItems(prev => {
+        if (!prev.includes("spec-repository")) {
+          return [...prev, "spec-repository"];
+        }
+        return prev;
+      });
+    }
+  }, [selectedWorkflow]);
 
   // React Query hooks
   const { data: session, isLoading, error, refetch: refetchSession } = useSession(projectName, sessionName);
@@ -945,7 +958,7 @@ export default function ProjectSessionDetailPage({
         <div className="grid grid-cols-1 lg:grid-cols-[40%_1fr] gap-6">
           {/* Left Column - Accordions */}
           <div>
-            <Accordion type="multiple" className="w-full space-y-3">
+            <Accordion type="multiple" value={openAccordionItems} onValueChange={setOpenAccordionItems} className="w-full space-y-3">
               <AccordionItem value="workflows" className="border rounded-lg px-3 bg-white">
                 <AccordionTrigger className="text-base font-semibold hover:no-underline py-3">
                   Workflows
@@ -973,28 +986,23 @@ export default function ProjectSessionDetailPage({
                 </AccordionContent>
               </AccordionItem>
 
+              {/* Only show Spec Repository for plan-feature and develop-feature workflows */}
+              {(selectedWorkflow === "plan-feature" || selectedWorkflow === "develop-feature") && (
               <AccordionItem value="spec-repository" className="border rounded-lg px-3 bg-white">
                 <AccordionTrigger className="text-base font-semibold hover:no-underline py-3">
                   Spec Repository
                 </AccordionTrigger>
                 <AccordionContent className="pt-2 pb-3">
                   {!rfeWorkflowId ? (
-                    selectedWorkflow !== "none" ? (
-                      <div className="text-center py-6">
-                        <FolderTree className="h-10 w-10 mx-auto mb-3 opacity-50 text-muted-foreground" />
-                        <p className="text-sm text-muted-foreground mb-4">
-                          A spec repository is required to store agent config and workflow artifacts.
-                        </p>
-                        <Button onClick={() => setGithubModalOpen(true)}>
-                          Add Spec Repository
-                        </Button>
-                      </div>
-                    ) : (
-                      <div className="text-center py-6 text-muted-foreground">
-                        <FolderTree className="h-10 w-10 mx-auto mb-2 opacity-50" />
-                        <p className="text-sm">A spec repository isn't needed for generic workflows.</p>
-                      </div>
-                    )
+                    <div className="text-center py-6">
+                      <FolderTree className="h-10 w-10 mx-auto mb-3 opacity-50 text-muted-foreground" />
+                      <p className="text-sm text-muted-foreground mb-4">
+                        A spec repository is required to store agent config and workflow artifacts.
+                      </p>
+                      <Button onClick={() => setGithubModalOpen(true)}>
+                        Add Spec Repository
+                      </Button>
+                    </div>
                   ) : (
                     <div className="space-y-3">
                       <div className="text-sm text-muted-foreground">Workspace: {workflowWorkspace}</div>
@@ -1170,6 +1178,7 @@ export default function ProjectSessionDetailPage({
                   </div>
                 </AccordionContent>
               </AccordionItem>
+              )}
 
               <AccordionItem value="agents" className="border rounded-lg px-3 bg-white">
                 <AccordionTrigger className="text-base font-semibold hover:no-underline py-3">
