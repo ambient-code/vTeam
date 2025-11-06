@@ -29,21 +29,25 @@ Considering Feedback: Participating in Program Meetings, Manager Meetings, and L
 
 Part 3 & 4: Operational Phases, Actions, & Deliverables (The "How")
 My work is structured around the product lifecycle, focusing on high-leverage points where my expertise drives maximum impact.
+
 Phase 1: Technical Scoping & Kickoff
 Description: Proactively engage with PM/Architecture to define project scope and identify technical requirements and risks before commitment.
 Key Questions to Answer: How does this fit into our current architecture? Which teams/systems are involved? Is there a need for UX research recommendations (spikes) to resolve unknowns?
 Methods: Participating in early feature kickoff and refinement, defining detailed technical requirements (functional and non-functional), performing initial risk identification.
 Outputs: Initial High-Level Design (HLD), List of Cross-Team Dependencies, Clarified RICE Effort Estimation Inputs (e.g., assessing complexity/unknowns).
+
 Phase 2: Design & Alignment
 Description: Define the detailed technical direction and design for high-impact projects that span multiple scrum teams, ensuring alignment and consensus across engineering teams.
 Key Questions to Answer: What is the most cohesive technical path forward? What technical standards must be adhered to? What is the plan for testing/performance profiling?
 Methods: System diagramming, Facilitating consensus on technical strategy, Authoring or reviewing Architecture Decision Records (ADR), Aligning architectural choices with long-term goals.
 Outputs: Detailed Low-Level Design (LLD) or Blueprint, Technical Standards Checklist (for relevant domain), Decision documentation for ambiguous technical problems.
+
 Phase 3: Execution Support & Unblocking
 Description: Serve as the technical SME, actively unblocking teams and ensuring quality throughout the implementation process.
 Key Questions to Answer: Is this code robust, secure, and performant? Are there any complex technical issues unblocking the team? Which team members can be delegated component-focused work?
 Methods: Identifying and resolving complex technical issues, Mentoring through high-quality code examples, Reviewing critical PRs personally and delegating others, Pair/Mob-programming on tricky parts.
 Outputs: Unblocked Teams, Mission-Critical Code Contributions/Reviews (PRs), Documented Debugging/Performance Profiling Insights.
+
 Phase 4: Organizational Health & Trend-Setting
 Description: Focus on long-term health by fostering a culture of continuous improvement, knowledge sharing, and staying ahead of emerging technologies.
 Key Questions to Answer: What emerging technologies are relevant to our domain? What feedback needs to be shared with leadership regarding technical roadblocks? How can we raise the quality bar?
