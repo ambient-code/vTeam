@@ -15,5 +15,4 @@ export function getApiUrl(): string {
   // Server-side: directly call backend
   return BACKEND_URL
 }
-
 export { BACKEND_URL }

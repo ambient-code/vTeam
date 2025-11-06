@@ -20,10 +20,12 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 import { Checkbox } from "@/components/ui/checkbox";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { CloneSessionDialog } from "@/components/clone-session-dialog";
 import { Breadcrumbs } from "@/components/breadcrumbs";
 import { PageHeader } from "@/components/page-header";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
+import { GitHubConnectionCard } from "@/components/github-connection-card";
 import type { FileTreeNode } from "@/components/file-tree";
 
 import type { SessionMessage } from "@/types";
@@ -75,6 +77,7 @@ export default function ProjectSessionDetailPage({
   const [selectedAgents, setSelectedAgents] = useState<string[]>([]);
   const [editRepoDialogOpen, setEditRepoDialogOpen] = useState(false);
   const [selectedWorkflow, setSelectedWorkflow] = useState<string>("none");
+  const [githubModalOpen, setGithubModalOpen] = useState(false);
 
   // Extract params
   useEffect(() => {
@@ -1078,11 +1081,23 @@ export default function ProjectSessionDetailPage({
                 </AccordionTrigger>
                 <AccordionContent className="pt-2 pb-3">
                   {!rfeWorkflowId ? (
-                    <div className="text-center py-6 text-muted-foreground">
-                      <FolderTree className="h-10 w-10 mx-auto mb-2 opacity-50" />
-                      <p className="text-sm">This session is not associated with an RFE workflow</p>
-                      <p className="text-xs mt-1">Spec repository is only available for RFE sessions</p>
-                    </div>
+                    selectedWorkflow !== "none" ? (
+                      <div className="text-center py-6">
+                        <FolderTree className="h-10 w-10 mx-auto mb-3 opacity-50 text-muted-foreground" />
+                        <p className="text-sm text-muted-foreground mb-4">
+                          Connect to GitHub to add a spec repository for this workflow
+                        </p>
+                        <Button onClick={() => setGithubModalOpen(true)}>
+                          Add Spec Repository
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="text-center py-6 text-muted-foreground">
+                        <FolderTree className="h-10 w-10 mx-auto mb-2 opacity-50" />
+                        <p className="text-sm">This session is not associated with an RFE workflow</p>
+                        <p className="text-xs mt-1">Spec repository is only available for RFE sessions</p>
+                      </div>
+                    )
                   ) : (
                     <div className="space-y-3">
                       <div className="text-sm text-muted-foreground">Workspace: {workflowWorkspace}</div>
@@ -1343,6 +1358,19 @@ export default function ProjectSessionDetailPage({
         </div>
       </div>
     </div>
+
+    {/* GitHub Connection Modal */}
+    <Dialog open={githubModalOpen} onOpenChange={setGithubModalOpen}>
+      <DialogContent className="sm:max-w-[500px]">
+        <DialogHeader>
+          <DialogTitle>Connect to GitHub</DialogTitle>
+          <DialogDescription>
+            Connect your GitHub account to add a spec repository for this workflow
+          </DialogDescription>
+        </DialogHeader>
+        <GitHubConnectionCard appSlug="ambient-code-vteam" showManageButton={false} />
+      </DialogContent>
+    </Dialog>
     </>
   );
 }
