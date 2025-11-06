@@ -88,6 +88,8 @@ export default function ProjectSessionDetailPage({
   const [specRepoUrl, setSpecRepoUrl] = useState("https://github.com/org/repo.git");
   const [baseBranch, setBaseBranch] = useState("main");
   const [openAccordionItems, setOpenAccordionItems] = useState<string[]>([]);
+  const [contextModalOpen, setContextModalOpen] = useState(false);
+  const [contextUrl, setContextUrl] = useState("");
 
   // Extract params
   useEffect(() => {
@@ -1292,6 +1294,24 @@ export default function ProjectSessionDetailPage({
                 </AccordionContent>
               </AccordionItem>
 
+              <AccordionItem value="context" className="border rounded-lg px-3 bg-white">
+                <AccordionTrigger className="text-base font-semibold hover:no-underline py-3">
+                  Context
+                </AccordionTrigger>
+                <AccordionContent className="pt-2 pb-3">
+                  <div className="text-center py-6">
+                    <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gray-100 mb-3">
+                      <FolderTree className="h-8 w-8 text-gray-400" />
+                    </div>
+                    <p className="text-sm font-medium text-gray-900 mb-1">No associated repositories configured</p>
+                    <p className="text-xs text-muted-foreground mb-4">Add context from external sources</p>
+                    <Button onClick={() => setContextModalOpen(true)}>
+                      Add Repository
+                    </Button>
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+
               <AccordionItem value="results" className="border rounded-lg px-3 bg-white">
                 <AccordionTrigger className="text-base font-semibold hover:no-underline py-3">
                   Results
@@ -1507,6 +1527,70 @@ export default function ProjectSessionDetailPage({
             ) : (
               'Save Configuration'
             )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    {/* Add Context Modal */}
+    <Dialog open={contextModalOpen} onOpenChange={setContextModalOpen}>
+      <DialogContent className="sm:max-w-[500px]">
+        <DialogHeader>
+          <DialogTitle>Add Context</DialogTitle>
+          <DialogDescription>
+            Add external context sources to enhance agent understanding
+          </DialogDescription>
+        </DialogHeader>
+        
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="context-url">Repository URL</Label>
+            <div className="flex gap-2">
+              <Input
+                id="context-url"
+                placeholder="https://github.com/org/repo"
+                value={contextUrl}
+                onChange={(e) => setContextUrl(e.target.value)}
+                className="flex-1"
+              />
+              <Button
+                type="button"
+                onClick={() => {
+                  if (contextUrl.trim()) {
+                    // TODO: Implement adding context
+                    successToast('Context repository will be added');
+                    setContextUrl("");
+                    setContextModalOpen(false);
+                  }
+                }}
+                disabled={!contextUrl.trim()}
+              >
+                Add
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Currently supports GitHub repositories for code context
+            </p>
+          </div>
+
+          <Alert className="border-blue-200 bg-blue-50">
+            <Info className="h-4 w-4 text-blue-600" />
+            <AlertDescription className="text-blue-800 text-sm">
+              Google Drive and Jira support coming soon
+            </AlertDescription>
+          </Alert>
+        </div>
+
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              setContextUrl("");
+              setContextModalOpen(false);
+            }}
+          >
+            Close
           </Button>
         </DialogFooter>
       </DialogContent>
