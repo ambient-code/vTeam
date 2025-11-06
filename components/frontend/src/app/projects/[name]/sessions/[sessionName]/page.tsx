@@ -21,6 +21,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { CloneSessionDialog } from "@/components/clone-session-dialog";
 import { Breadcrumbs } from "@/components/breadcrumbs";
 import { PageHeader } from "@/components/page-header";
@@ -52,6 +54,7 @@ import {
   useRfeWorkflowSeeding,
   useSeedRfeWorkflow,
   useUpdateRfeWorkflow,
+  useGitHubStatus,
   workspaceKeys,
 } from "@/services/queries";
 import { successToast, errorToast } from "@/hooks/use-toast";
@@ -78,6 +81,8 @@ export default function ProjectSessionDetailPage({
   const [editRepoDialogOpen, setEditRepoDialogOpen] = useState(false);
   const [selectedWorkflow, setSelectedWorkflow] = useState<string>("none");
   const [githubModalOpen, setGithubModalOpen] = useState(false);
+  const [specRepoUrl, setSpecRepoUrl] = useState("https://github.com/org/repo.git");
+  const [baseBranch, setBaseBranch] = useState("main");
 
   // Extract params
   useEffect(() => {
@@ -96,6 +101,7 @@ export default function ProjectSessionDetailPage({
   const { data: session, isLoading, error, refetch: refetchSession } = useSession(projectName, sessionName);
   const { data: messages = [] } = useSessionMessages(projectName, sessionName, session?.status?.phase);
   const { data: k8sResources } = useSessionK8sResources(projectName, sessionName);
+  const { data: githubStatus } = useGitHubStatus();
   const stopMutation = useStopSession();
   const deleteMutation = useDeleteSession();
   const continueMutation = useContinueSession();
@@ -1359,16 +1365,53 @@ export default function ProjectSessionDetailPage({
       </div>
     </div>
 
-    {/* GitHub Connection Modal */}
+    {/* Add Spec Repository Modal */}
     <Dialog open={githubModalOpen} onOpenChange={setGithubModalOpen}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-[600px]">
         <DialogHeader>
-          <DialogTitle>Connect to GitHub</DialogTitle>
+          <DialogTitle>Add spec repository</DialogTitle>
           <DialogDescription>
-            Connect your GitHub account to add a spec repository for this workflow
+            Set the spec repo and optional supporting repos. Base branch is the branch from which the feature branch will be set up. All modifications will be made to the feature branch.
           </DialogDescription>
         </DialogHeader>
-        <GitHubConnectionCard appSlug="ambient-code-vteam" showManageButton={false} />
+        
+        {!githubStatus?.installed && (
+          <div className="mb-4">
+            <GitHubConnectionCard appSlug="ambient-code-vteam" showManageButton={false} />
+          </div>
+        )}
+
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="spec-repo-url">Spec Repo URL</Label>
+            <Input
+              id="spec-repo-url"
+              placeholder="https://github.com/org/repo.git"
+              value={specRepoUrl}
+              onChange={(e) => setSpecRepoUrl(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              The spec repository contains your feature specifications, planning documents, and agent configurations for this RFE workspace
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="base-branch">Base Branch</Label>
+            <Input
+              id="base-branch"
+              placeholder="main"
+              value={baseBranch}
+              onChange={(e) => setBaseBranch(e.target.value)}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Supporting Repositories (optional)</Label>
+            <Button variant="outline" className="w-full">
+              Add supporting repo
+            </Button>
+          </div>
+        </div>
       </DialogContent>
     </Dialog>
     </>
