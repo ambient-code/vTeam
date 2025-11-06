@@ -1,0 +1,43 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: ambient-code
+
+# Resources (base + e2e-specific)
+resources:
+- ../../base
+- secrets.yaml
+- test-user.yaml
+- frontend-ingress.yaml
+- backend-ingress.yaml
+
+# Patches for e2e environment
+patches:
+- path: namespace-patch.yaml
+  target:
+    kind: Namespace
+    name: ambient-code
+- path: pvc-patch.yaml
+  target:
+    kind: PersistentVolumeClaim
+    name: backend-state-pvc
+- path: frontend-test-patch.yaml
+  target:
+    kind: Deployment
+    name: frontend
+
+# E2E images (same as production, but can be overridden for local testing)
+images:
+- name: quay.io/ambient_code/vteam_backend
+  newName: quay.io/ambient_code/vteam_backend
+  newTag: latest
+- name: quay.io/ambient_code/vteam_frontend
+  newName: quay.io/ambient_code/vteam_frontend
+  newTag: latest
+- name: quay.io/ambient_code/vteam_operator
+  newName: quay.io/ambient_code/vteam_operator
+  newTag: latest
+- name: quay.io/ambient_code/vteam_claude_runner
+  newName: quay.io/ambient_code/vteam_claude_runner
+  newTag: latest
+

@@ -1,0 +1,48 @@
+# Patch for local dev frontend deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+spec:
+  template:
+    spec:
+      containers:
+      - name: frontend
+        image: image-registry.openshift-image-registry.svc:5000/vteam-dev/vteam-frontend:latest
+        env:
+        - name: NEXT_PUBLIC_BACKEND_URL
+          value: "https://vteam-backend-vteam-dev.apps-crc.testing/api"
+        - name: BACKEND_URL
+          value: "http://vteam-backend:8080/api"
+        - name: OC_USER
+          value: "developer"
+        - name: OC_EMAIL
+          value: "developer@vteam-dev.local"
+        - name: OC_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: frontend-auth-token
+              key: token
+        - name: NODE_TLS_REJECT_UNAUTHORIZED
+          value: "0"
+        resources:
+          limits:
+            memory: "1Gi"
+---
+# Route for local dev frontend
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: vteam-frontend
+  labels:
+    app: vteam-frontend
+spec:
+  to:
+    kind: Service
+    name: vteam-frontend
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+

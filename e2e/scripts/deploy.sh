@@ -48,7 +48,8 @@ done
 
 echo ""
 echo "Applying manifests with kustomize..."
-kubectl apply -k manifests/
+# Use e2e overlay from components/manifests
+kubectl apply -k ../components/manifests/overlays/e2e/
 
 echo ""
 echo "Waiting for deployments to be ready..."

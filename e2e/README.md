@@ -2,15 +2,40 @@
 
 End-to-end testing suite for the vTeam platform using Cypress and kind (Kubernetes in Docker).
 
+> **Status**: ✅ Production Ready | **Tests**: 5/5 Passing | **CI**: Automated on PRs
+
 ## Overview
 
 This test suite deploys the complete vTeam application stack to a local kind cluster and runs automated tests to verify core functionality including project creation and navigation.
 
-**Architecture:**
-- **Kind cluster**: Lightweight local Kubernetes cluster
-- **Direct authentication**: ServiceAccount token (no OAuth proxy)
-- **Cypress**: Modern e2e testing framework
-- **CI-ready**: Automated testing in GitHub Actions
+**What This Provides:**
+- 🚀 **Automated E2E Testing**: Full stack deployment verification
+- 🔄 **CI Integration**: Runs on every PR automatically  
+- 🧪 **Local Testing**: Developers can run tests before pushing
+- 📊 **Visual Debugging**: Video recordings and screenshots
+- 🐳 **Flexible Runtime**: Supports both Docker and Podman
+
+## Quick Start
+
+Run the complete test suite with one command:
+
+**From repository root (recommended):**
+```bash
+# Auto-detect container engine
+make e2e-test
+
+# Force Podman
+make e2e-test CONTAINER_ENGINE=podman
+```
+
+**From e2e directory:**
+```bash
+cd e2e
+./scripts/setup-kind.sh    # Create kind cluster
+./scripts/deploy.sh         # Deploy vTeam
+./scripts/run-tests.sh      # Run Cypress tests
+./scripts/cleanup.sh        # Clean up (when done)
+```
 
 ## Prerequisites
 
@@ -20,9 +45,9 @@ This test suite deploys the complete vTeam application stack to a local kind clu
   - Docker: https://docs.docker.com/get-docker/
   - Podman (alternative): `brew install podman` (macOS)
 - **kind**: Kubernetes in Docker
-  - Install: `brew install kind` (macOS) or see https://kind.sigs.k8s.io/docs/user/quick-start/
+  - Install: `brew install kind` (macOS) or see https://kind.sigs.k8s.io/
 - **kubectl**: Kubernetes CLI
-  - Install: `brew install kubectl` (macOS) or see https://kubernetes.io/docs/tasks/tools/
+  - Install: `brew install kubectl` (macOS) or see https://kubernetes.io/
 - **Node.js 20+**: For Cypress
   - Install: `brew install node` (macOS) or https://nodejs.org/
 
@@ -30,58 +55,66 @@ This test suite deploys the complete vTeam application stack to a local kind clu
 
 **With Docker:**
 ```bash
-docker --version
-docker ps  # Verify Docker is running
+docker --version && docker ps
 kind --version
 kubectl version --client
 node --version
-npm --version
 ```
 
 **With Podman:**
 ```bash
 podman --version
-podman machine init     # First time only
 podman machine start    # Start Podman VM
 podman ps              # Verify Podman is running
 kind --version
 kubectl version --client
-node --version
-npm --version
 ```
 
-## Quick Start
+## Architecture
 
-Run the complete test suite with one command:
+**Test Environment:**
+- **Kind cluster**: Lightweight local Kubernetes cluster
+- **Direct authentication**: ServiceAccount token (no OAuth proxy for CI simplicity)
+- **Cypress**: Modern e2e testing framework with TypeScript
+- **Nginx Ingress**: Standard Kubernetes ingress controller
+- **Kustomize overlays**: Uses `components/manifests/overlays/e2e/`
 
-**With Docker (auto-detected):**
-```bash
-cd e2e
-./scripts/setup-kind.sh    # Create kind cluster
-./scripts/deploy.sh         # Deploy vTeam
-./scripts/run-tests.sh      # Run Cypress tests
-./scripts/cleanup.sh        # Clean up (when done)
+**Key Differences from Production:**
+- Frontend: No oauth-proxy sidecar (direct token via env vars)
+- Ingress: Uses Kubernetes Ingress instead of OpenShift Routes
+- Storage: Explicit `storageClassName: standard` for kind
+- Auth: ServiceAccount token instead of OAuth flow
+
+## Project Structure
+
 ```
+e2e/
+├── scripts/               # Orchestration scripts
+│   ├── setup-kind.sh      # Create kind cluster + ingress
+│   ├── deploy.sh          # Deploy vTeam (uses overlay)
+│   ├── wait-for-ready.sh  # Wait for pods
+│   ├── run-tests.sh       # Run Cypress tests
+│   └── cleanup.sh         # Teardown
+├── cypress/               # Cypress test framework
+│   ├── e2e/
+│   │   └── vteam.cy.ts    # Main test suite
+│   ├── support/
+│   │   ├── commands.ts    # Custom commands
+│   │   └── e2e.ts        # Support file
+│   └── fixtures/          # Test data
+├── cypress.config.ts      # Cypress configuration
+├── package.json           # npm dependencies
+├── tsconfig.json          # TypeScript config
+└── README.md             # This file
 
-**With Podman (explicitly specify):**
-```bash
-cd e2e
-CONTAINER_ENGINE=podman ./scripts/setup-kind.sh
-./scripts/deploy.sh
-./scripts/run-tests.sh
-./scripts/cleanup.sh
-
-# Note: Podman uses ports 8080/8443 (not 80/443)
-# Access at: http://vteam.local:8080
-```
-
-**Or use the Makefile from the repo root:**
-```bash
-# Auto-detect (prefers Docker, falls back to Podman)
-make e2e-test
-
-# Force Podman
-make e2e-test CONTAINER_ENGINE=podman
+# Manifests are in components/manifests/overlays/e2e/
+../components/manifests/overlays/e2e/
+├── kustomization.yaml     # E2E overlay config
+├── frontend-ingress.yaml
+├── backend-ingress.yaml
+├── test-user.yaml         # ServiceAccount for testing
+├── secrets.yaml           # Minimal secrets
+└── *-patch.yaml          # Environment-specific patches
 ```
 
 ## Detailed Workflow
@@ -98,6 +131,8 @@ This will:
 - Install nginx-ingress controller
 - Add `vteam.local` to `/etc/hosts` (requires sudo)
 
+**With Podman:** The script detects Podman and automatically uses ports 8080/8443 (not 80/443).
+
 **Verify:**
 ```bash
 kind get clusters
@@ -112,19 +147,18 @@ kubectl get nodes
 ```
 
 This will:
-- Apply all Kubernetes manifests (CRDs, RBAC, deployments, ingress)
+- Apply manifests using `../components/manifests/overlays/e2e/`
 - Wait for all pods to be ready
 - Extract test user token to `.env.test`
 
 **Verify:**
 ```bash
 kubectl get pods -n ambient-code
-kubectl get ingress -n ambient-code
 
 # With Docker:
 curl http://vteam.local/api/health
 
-# With Podman (port 8080):
+# With Podman:
 curl http://vteam.local:8080/api/health
 ```
 
@@ -166,40 +200,49 @@ The Cypress test suite (`cypress/e2e/vteam.cy.ts`) includes:
 4. **Project listing**: Verify created projects appear
 5. **API health check**: Test backend connectivity
 
-## Project Structure
+### Writing Tests
 
+Example test structure:
+
+```typescript
+describe('vTeam Feature', () => {
+  beforeEach(() => {
+    // Setup runs before each test
+    cy.visit('/')
+  })
+
+  it('should do something', () => {
+    cy.get('[data-testid="element"]').click()
+    cy.contains('Expected Text').should('be.visible')
+  })
+})
 ```
-e2e/
-├── manifests/              # Kubernetes manifests
-│   ├── crds/              # Custom Resource Definitions (copied from prod)
-│   ├── rbac/              # RBAC roles and bindings (copied from prod)
-│   ├── namespace.yaml     # Namespace definition
-│   ├── backend-deployment.yaml
-│   ├── backend-ingress.yaml
-│   ├── operator-deployment.yaml
-│   ├── frontend-deployment.yaml  # Without oauth-proxy sidecar
-│   ├── frontend-ingress.yaml
-│   ├── workspace-pvc.yaml
-│   ├── test-user.yaml     # ServiceAccount for testing
-│   ├── secrets.yaml       # Minimal secrets
-│   └── kustomization.yaml # Kustomize configuration
-├── scripts/               # Orchestration scripts
-│   ├── setup-kind.sh      # Create kind cluster
-│   ├── deploy.sh          # Deploy vTeam
-│   ├── wait-for-ready.sh  # Wait for pods
-│   ├── run-tests.sh       # Run Cypress tests
-│   └── cleanup.sh         # Teardown
-├── cypress/               # Cypress test framework
-│   ├── e2e/
-│   │   └── vteam.cy.ts    # Main test suite
-│   ├── support/
-│   │   ├── commands.ts    # Custom commands
-│   │   └── e2e.ts        # Support file
-│   └── fixtures/          # Test data
-├── cypress.config.ts      # Cypress configuration
-├── package.json           # npm dependencies
-├── tsconfig.json          # TypeScript config
-└── README.md             # This file
+
+### Running Individual Tests
+
+```bash
+source .env.test
+
+# Run specific test file
+CYPRESS_TEST_TOKEN="$TEST_TOKEN" npx cypress run --spec "cypress/e2e/vteam.cy.ts"
+
+# Run with UI
+CYPRESS_TEST_TOKEN="$TEST_TOKEN" npm run test:headed
+```
+
+### Debugging Tests
+
+```bash
+# Open Cypress UI
+source .env.test
+CYPRESS_TEST_TOKEN="$TEST_TOKEN" npm run test:headed
+
+# Enable debug logs
+DEBUG=cypress:* npm test
+
+# Check screenshots/videos
+ls cypress/screenshots/
+ls cypress/videos/
 ```
 
 ## Configuration
@@ -210,11 +253,12 @@ The test token is stored in `.env.test` (auto-generated by `deploy.sh`):
 
 ```bash
 TEST_TOKEN=eyJhbGciOiJSUzI1NiIsImtpZCI6Ii...
+CYPRESS_BASE_URL=http://vteam.local  # or :8080 for Podman
 ```
 
 Cypress loads this via `CYPRESS_TEST_TOKEN` environment variable.
 
-### Custom Cypress Settings
+### Cypress Settings
 
 Edit `cypress.config.ts` to customize:
 - Base URL
@@ -222,24 +266,20 @@ Edit `cypress.config.ts` to customize:
 - Screenshot/video settings
 - Viewport size
 
-### Kubernetes Resources
+### Kubernetes Manifests
 
-Manifests are in `manifests/` directory. Key differences from production:
+E2E manifests are managed via Kustomize overlay at:
+```
+../components/manifests/overlays/e2e/
+```
 
-**Frontend:**
-- No oauth-proxy sidecar (direct port 3000 exposure)
-- Simplified service (only HTTP port)
+Key configurations:
+- **Frontend**: No oauth-proxy sidecar, test env vars injected
+- **Ingress**: nginx-ingress with `vteam.local` host
+- **Storage**: `storageClassName: standard` for kind
+- **Auth**: Test user ServiceAccount with cluster-admin role
 
-**Ingress:**
-- Uses nginx-ingress instead of OpenShift Routes
-- Host: `vteam.local`
-
-**Storage:**
-- Explicit `storageClassName: standard` for kind
-
-**Authentication:**
-- Test user ServiceAccount with cluster-admin role
-- Token authentication instead of OAuth flow
+See `../components/manifests/README.md` for overlay structure details.
 
 ## Troubleshooting
 
@@ -250,8 +290,6 @@ Manifests are in `manifests/` directory. Key differences from production:
 # Check Docker is running
 docker ps
 
-# If Docker isn't running, start it (GUI or colima/orbstack)
-
 # Delete and recreate
 kind delete cluster --name vteam-e2e
 ./scripts/setup-kind.sh
@@ -259,30 +297,25 @@ kind delete cluster --name vteam-e2e
 
 **With Podman:**
 ```bash
-# Check Podman machine is running
+# Check Podman machine
 podman machine list
-
-# Start Podman machine if needed
 podman machine start
 
 # Verify Podman works
 podman ps
 
-# Delete and recreate with Podman
+# Recreate with Podman
 kind delete cluster --name vteam-e2e
 CONTAINER_ENGINE=podman ./scripts/setup-kind.sh
 ```
 
 **Common issues:**
 - **"Cannot connect to Docker daemon"**: Docker/Podman not running
-  - Docker: Start Docker Desktop or your container runtime
+  - Docker: Start Docker Desktop
   - Podman: Run `podman machine start`
-- **"rootlessport cannot expose privileged port 80"**: Podman can't bind to ports < 1024
-  - This is expected! The setup script automatically uses port 8080 instead
+- **"rootlessport cannot expose privileged port 80"**: Expected with Podman!
+  - The setup script automatically uses port 8080 instead
   - Access at: `http://vteam.local:8080`
-- **"docker.sock permission denied"**: User not in docker group (Linux)
-  - Add user to docker group: `sudo usermod -aG docker $USER`
-  - Log out and back in
 
 ### Pods not starting
 
@@ -293,7 +326,6 @@ kubectl get pods -n ambient-code
 # Check pod logs
 kubectl logs -n ambient-code -l app=frontend
 kubectl logs -n ambient-code -l app=backend-api
-kubectl logs -n ambient-code -l app=agentic-operator
 
 # Describe pod for events
 kubectl describe pod -n ambient-code <pod-name>
@@ -307,7 +339,6 @@ kubectl get pods -n ingress-nginx
 
 # Check ingress resources
 kubectl get ingress -n ambient-code
-kubectl describe ingress frontend-ingress -n ambient-code
 
 # Test directly (bypass ingress)
 kubectl port-forward -n ambient-code svc/frontend-service 3000:3000
@@ -329,10 +360,11 @@ CYPRESS_TEST_TOKEN="$TEST_TOKEN" npm run test:headed
 ls cypress/screenshots/
 
 # Verify backend is accessible
-curl http://vteam.local/api/health
+curl http://vteam.local/api/health  # Add :8080 for Podman
 
-# Check frontend
-curl http://vteam.local
+# Manually test with token
+source .env.test
+curl -H "Authorization: Bearer $TEST_TOKEN" http://vteam.local/api/projects
 ```
 
 ### Token extraction fails
@@ -363,7 +395,7 @@ The GitHub Actions workflow (`.github/workflows/e2e.yml`) runs automatically on:
 2. Set up Node.js
 3. Install Cypress dependencies
 4. Create kind cluster
-5. Deploy vTeam
+5. Deploy vTeam using e2e overlay
 6. Run tests
 7. Upload artifacts (screenshots/videos) on failure
 8. Cleanup cluster
@@ -391,41 +423,6 @@ The GitHub Actions workflow (`.github/workflows/e2e.yml`) runs automatically on:
 
 These limitations are acceptable trade-offs for fast, reliable CI testing.
 
-## Development
-
-### Adding New Tests
-
-Edit `cypress/e2e/vteam.cy.ts`:
-
-```typescript
-it('should do something new', () => {
-  cy.visit('/some-page')
-  cy.contains('Expected Text').should('be.visible')
-  // ... more assertions
-})
-```
-
-### Running Individual Tests
-
-```bash
-# Run specific test file
-CYPRESS_TEST_TOKEN="$TEST_TOKEN" npx cypress run --spec "cypress/e2e/vteam.cy.ts"
-
-# Run tests matching pattern
-CYPRESS_TEST_TOKEN="$TEST_TOKEN" npx cypress run --spec "cypress/e2e/**/*project*.cy.ts"
-```
-
-### Debugging
-
-```bash
-# Open Cypress UI
-source .env.test
-CYPRESS_TEST_TOKEN="$TEST_TOKEN" npm run test:headed
-
-# Enable debug logs
-DEBUG=cypress:* npm test
-```
-
 ## Performance
 
 **Typical run times:**
@@ -439,22 +436,97 @@ DEBUG=cypress:* npm test
 - Memory: ~4-6 GB
 - CPU: Moderate during startup, low during tests
 
-## Additional Resources
+## Quick Reference
+
+### Manual Verification
+
+After running `./scripts/deploy.sh`, test manually:
+
+```bash
+# Check all pods running
+kubectl get pods -n ambient-code
+
+# Test frontend (add :8080 for Podman)
+curl http://vteam.local
+
+# Test backend API
+curl http://vteam.local/api/health
+
+# Get test token
+cat .env.test
+
+# Test with authentication
+source .env.test
+curl -H "Authorization: Bearer $TEST_TOKEN" http://vteam.local/api/projects
+```
+
+### Keep Cluster Running
+
+For iterative test development:
+
+```bash
+# Setup once
+./scripts/setup-kind.sh
+./scripts/deploy.sh
+
+# Run tests multiple times
+./scripts/run-tests.sh
+
+# Iterate on tests...
+npm run test:headed
+
+# When done
+./scripts/cleanup.sh
+```
+
+### Port Reference
+
+| Container Engine | HTTP Port | HTTPS Port | URL |
+|-----------------|-----------|------------|-----|
+| Docker | 80 | 443 | http://vteam.local |
+| Podman | 8080 | 8443 | http://vteam.local:8080 |
+
+## Maintenance Checklist
+
+### Before Merging PR
+
+- [ ] All tests passing locally
+- [ ] Tests passing in CI
+- [ ] No new console errors in Cypress
+- [ ] Screenshots/videos reviewed if tests failed
+- [ ] Test covers new functionality (if applicable)
+
+### Monthly
+
+- [ ] Update Cypress and dependencies: `npm update`
+- [ ] Verify tests still pass with latest versions
+- [ ] Review and update test timeouts if needed
+- [ ] Check for deprecated Cypress commands
+
+### After Major Changes
+
+- [ ] Backend API changes: Update test assertions
+- [ ] Frontend UI changes: Update selectors
+- [ ] Auth flow changes: Update token handling
+- [ ] Deployment changes: Verify manifests in overlay
+
+## External Resources
 
 - [Cypress Documentation](https://docs.cypress.io/)
 - [Kind Documentation](https://kind.sigs.k8s.io/)
 - [Kubernetes Ingress](https://kubernetes.io/docs/concepts/services-networking/ingress/)
+- [vTeam Manifests](../components/manifests/README.md) - Kustomize overlay structure
 - [vTeam Main Documentation](../README.md)
 
 ## Support
 
 For issues or questions:
-1. Check [Troubleshooting](#troubleshooting) section
-2. Review GitHub Actions logs for CI failures
+1. Check [Troubleshooting](#troubleshooting) section above
+2. Check GitHub Actions logs for CI failures
 3. Check pod logs: `kubectl logs -n ambient-code <pod-name>`
-4. Open an issue in the repository
+4. Review manifest overlay: `../components/manifests/overlays/e2e/`
+5. Open an issue in the repository
 
 ## License
 
 Same as parent project (MIT License)
-

@@ -62,12 +62,12 @@ build-runner: ## Build the Claude Code runner container image
 	cd components/runners && $(CONTAINER_ENGINE) build $(PLATFORM_FLAG) $(BUILD_FLAGS) -t $(RUNNER_IMAGE) -f claude-code-runner/Dockerfile .
 
 # Kubernetes deployment
-deploy: ## Deploy all components to Kubernetes
-	@echo "Deploying to Kubernetes..."
+deploy: ## Deploy all components to OpenShift (production overlay)
+	@echo "Deploying to OpenShift..."
 	cd components/manifests && ./deploy.sh
 
 # Cleanup
-clean: ## Clean up all Kubernetes resources
+clean: ## Clean up all Kubernetes resources (production overlay)
 	@echo "Cleaning up Kubernetes resources..."
 	cd components/manifests && ./deploy.sh clean
 
