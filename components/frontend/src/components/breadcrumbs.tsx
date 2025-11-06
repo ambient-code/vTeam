@@ -29,9 +29,11 @@ export function Breadcrumbs({
   showHome = true,
   separator = <ChevronRight className="h-4 w-4" />,
 }: BreadcrumbsProps) {
-  const allItems: BreadcrumbItem[] = showHome
-    ? [{ label: 'Home', href: '/', icon: <Home className="h-4 w-4" /> }, ...items]
-    : items;
+  // Temporarily hiding Home from breadcrumbs
+  // const allItems: BreadcrumbItem[] = showHome
+  //   ? [{ label: 'Home', href: '/', icon: <Home className="h-4 w-4" /> }, ...items]
+  //   : items;
+  const allItems: BreadcrumbItem[] = items;
 
   return (
     <nav aria-label="Breadcrumb" className={cn('flex items-center space-x-1 text-sm', className)}>
@@ -75,9 +77,11 @@ export function Breadcrumbs({
  * Compact breadcrumbs that collapse middle items on mobile
  */
 export function CompactBreadcrumbs({ items, className, showHome = true }: BreadcrumbsProps) {
-  const allItems: BreadcrumbItem[] = showHome
-    ? [{ label: 'Home', href: '/', icon: <Home className="h-4 w-4" /> }, ...items]
-    : items;
+  // Temporarily hiding Home from breadcrumbs
+  // const allItems: BreadcrumbItem[] = showHome
+  //   ? [{ label: 'Home', href: '/', icon: <Home className="h-4 w-4" /> }, ...items]
+  //   : items;
+  const allItems: BreadcrumbItem[] = items;
 
   // On mobile, show first, last, and ellipsis if there are many items
   const shouldCollapse = allItems.length > 3;
