@@ -50,6 +50,31 @@ npm run dev
 # Open http://localhost:3000
 ```
 
+### Development Commands
+
+```bash
+cd components/frontend
+
+# Install dependencies
+npm install
+
+# Development server
+npm run dev
+
+# Build
+npm run build
+
+# Production server
+npm start
+
+# Linting
+npm run lint
+```
+
+**Pre-commit checklist**:
+- Run `npm run build` - must pass with 0 errors, 0 warnings
+- See `DESIGN_GUIDELINES.md` for comprehensive frontend development standards
+
 ### Header forwarding model (dev and prod)
 Next.js API routes forward incoming headers to the backend. They do not auto-inject user identity. In development, you can optionally provide values via environment or `oc`:
 

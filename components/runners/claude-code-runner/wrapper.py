@@ -283,6 +283,10 @@ class ClaudeCodeAdapter:
             model = self.context.get_env('LLM_MODEL')
             if model:
                 try:
+                    # Map Anthropic API model names to Vertex AI model names if using Vertex
+                    if use_vertex:
+                        model = self._map_to_vertex_model(model)
+                        logging.info(f"Mapped to Vertex AI model: {model}")
                     options.model = model  # type: ignore[attr-defined]
                 except Exception:
                     pass
@@ -467,6 +471,28 @@ class ClaudeCodeAdapter:
                 "success": False,
                 "error": str(e)
             }
+
+    def _map_to_vertex_model(self, model: str) -> str:
+        """Map Anthropic API model names to Vertex AI model names.
+
+        Args:
+            model: Anthropic API model name (e.g., 'claude-sonnet-4-5')
+
+        Returns:
+            Vertex AI model name (e.g., 'claude-sonnet-4-5@20250929')
+        """
+        # Model mapping from Anthropic API to Vertex AI
+        # Reference: https://cloud.google.com/vertex-ai/generative-ai/docs/partner-models/use-claude
+        model_map = {
+            'claude-opus-4-1': 'claude-opus-4-1@20250805',
+            'claude-sonnet-4-5': 'claude-sonnet-4-5@20250929',
+            'claude-haiku-4-5': 'claude-haiku-4-5@20251001',
+        }
+
+        mapped = model_map.get(model, model)
+        if mapped != model:
+            logging.info(f"Model mapping: {model} → {mapped}")
+        return mapped
 
     async def _setup_vertex_credentials(self) -> dict:
         """Set up Google Cloud Vertex AI credentials from service account.
