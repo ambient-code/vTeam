@@ -188,18 +188,18 @@ export function CreateWorkspaceDialog({
             {/* OpenShift-only fields */}
             {isOpenShift && (
               <div className="space-y-2">
-                <Label htmlFor="displayName">Display Name *</Label>
+                <Label htmlFor="displayName">Workspace Name *</Label>
                 <Input
                   id="displayName"
                   value={formData.displayName}
                   onChange={(e) => handleDisplayNameChange(e.target.value)}
-                  placeholder="My Research Workspace"
+                  placeholder="e.g. My Research Workspace"
                   maxLength={100}
                 />
               </div>
             )}
 
-            <div className="space-y-2">
+            {/* <div className="space-y-2">
               <Label htmlFor="name">Workspace Name *</Label>
               <Input
                 id="name"
@@ -215,7 +215,7 @@ export function CreateWorkspaceDialog({
                   : "Lowercase alphanumeric with hyphens."
                 }
               </p>
-            </div>
+            </div> */}
 
             {/* OpenShift-only description field */}
             {isOpenShift && (
