@@ -5,11 +5,12 @@ import { useRouter } from "next/navigation";
 import { UserBubble } from "@/components/user-bubble";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Plug, LogOut } from "lucide-react";
-import { publicEnv } from "@/lib/env";
 
+type NavigationProps = {
+  feedbackUrl?: string;
+};
 
-
-export function Navigation() {
+export function Navigation({ feedbackUrl }: NavigationProps) {
   // const pathname = usePathname();
   // const segments = pathname?.split("/").filter(Boolean) || [];
   const router = useRouter();
@@ -30,9 +31,9 @@ export function Navigation() {
             </Link>
           </div>
           <div className="flex items-center gap-3">
-            {publicEnv.FEEDBACK_URL && (
+            {feedbackUrl && (
               <a 
-                href={publicEnv.FEEDBACK_URL}
+                href={feedbackUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-sm text-muted-foreground hover:text-foreground transition-colors"

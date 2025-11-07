@@ -1003,7 +1003,7 @@ export default function ProjectSessionDetailPage({
                       </Select>
                     </div>
                     <p className="text-sm text-muted-foreground">
-                      Workflows provide a structured processes for Ambient Code Platform agents to follow and achieve complex goals.
+                      Workflows provide Ambient agents with structured steps to follow toward more complex goals.
                     </p>
                   </div>
                 </AccordionContent>
