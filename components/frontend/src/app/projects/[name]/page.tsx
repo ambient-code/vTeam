@@ -83,7 +83,7 @@ export default function ProjectDetailsPage() {
               <CardHeader>
                 <CardTitle>Workspace</CardTitle>
               </CardHeader>
-              <CardContent className="p-4">
+              <CardContent className="px-4 pb-4 pt-2">
                 <div className="space-y-1">
                   {navItems.map((item) => {
                     const isActive = activeSection === item.id;
