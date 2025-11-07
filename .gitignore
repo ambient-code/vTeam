@@ -118,3 +118,9 @@ Thumbs.db
 .stories/
 .testplans/
 .spikes/
+
+# E2E testing
+e2e/.env.test
+e2e/node_modules/
+e2e/cypress/screenshots/
+e2e/cypress/videos/

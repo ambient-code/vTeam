@@ -1,3 +1,4 @@
+// Package jira provides JIRA integration for publishing RFE workflows.
 package jira
 
 import (
@@ -218,7 +219,7 @@ func AttachFileToJiraIssue(ctx context.Context, jiraBase, issueKey, authHeader s
 	return nil
 }
 
-// NewMultipartWriter creates a new multipart writer with boundary
+// MultipartWriter creates a new multipart writer with boundary.
 type MultipartWriter struct {
 	w        io.Writer
 	boundary string
@@ -250,8 +251,8 @@ func (mw *MultipartWriter) Close() error {
 	return err
 }
 
+// PublishWorkflowFileToJira creates or updates a Jira issue from a GitHub file and updates the RFEWorkflow CR with the linkage.
 // POST /api/projects/:projectName/rfe-workflows/:id/jira { path, phase }
-// Creates or updates a Jira issue from a GitHub file and updates the RFEWorkflow CR with the linkage
 // Supports phase-specific logic: specify (Feature + rfe.md attachment), plan (Epic with artifact links), tasks (attach tasks.md)
 func (h *Handler) PublishWorkflowFileToJira(c *gin.Context) {
 	project := c.Param("projectName")

@@ -1,3 +1,4 @@
+// Package k8s provides Kubernetes client creation and configuration utilities.
 package k8s
 
 import "k8s.io/apimachinery/pkg/runtime/schema"

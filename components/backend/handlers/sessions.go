@@ -1,3 +1,4 @@
+// Package handlers implements HTTP request handlers for the vTeam backend API.
 package handlers
 
 import (
@@ -778,9 +779,9 @@ func GetSession(c *gin.Context) {
 	c.JSON(http.StatusOK, session)
 }
 
+// MintSessionGitHubToken validates the token via TokenReview, ensures SA matches CR annotation, and returns a short-lived GitHub token.
 // POST /api/projects/:projectName/agentic-sessions/:sessionName/github/token
 // Auth: Authorization: Bearer <BOT_TOKEN> (K8s SA token with audience "ambient-backend")
-// Validates the token via TokenReview, ensures SA matches CR annotation, and returns a short-lived GitHub token.
 func MintSessionGitHubToken(c *gin.Context) {
 	project := c.Param("projectName")
 	sessionName := c.Param("sessionName")
@@ -856,21 +857,21 @@ func MintSessionGitHubToken(c *gin.Context) {
 
 	// Read authoritative userId from spec.userContext.userId
 	spec, _ := obj.Object["spec"].(map[string]interface{})
-	userId := ""
+	userID := ""
 	if spec != nil {
 		if uc, ok := spec["userContext"].(map[string]interface{}); ok {
 			if v, ok := uc["userId"].(string); ok {
-				userId = strings.TrimSpace(v)
+				userID = strings.TrimSpace(v)
 			}
 		}
 	}
-	if userId == "" {
+	if userID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "session missing user context"})
 		return
 	}
 
 	// Get GitHub token (GitHub App or PAT fallback via project runner secret)
-	tokenStr, err := GetGitHubToken(c.Request.Context(), K8sClient, DynamicClient, project, userId)
+	tokenStr, err := GetGitHubToken(c.Request.Context(), K8sClient, DynamicClient, project, userID)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return
@@ -1013,8 +1014,8 @@ func UpdateSession(c *gin.Context) {
 	c.JSON(http.StatusOK, session)
 }
 
+// UpdateSessionDisplayName updates only the spec.displayName field on the AgenticSession.
 // PUT /api/projects/:projectName/agentic-sessions/:sessionName/displayname
-// updateSessionDisplayName updates only the spec.displayName field on the AgenticSession
 func UpdateSessionDisplayName(c *gin.Context) {
 	project := c.GetString("project")
 	sessionName := c.Param("sessionName")
@@ -1565,8 +1566,8 @@ func StopSession(c *gin.Context) {
 	c.JSON(http.StatusAccepted, session)
 }
 
+// UpdateSessionStatus writes selected fields to PVC-backed files and updates CR status.
 // PUT /api/projects/:projectName/agentic-sessions/:sessionName/status
-// updateSessionStatus writes selected fields to PVC-backed files and updates CR status
 func UpdateSessionStatus(c *gin.Context) {
 	project := c.GetString("project")
 	sessionName := c.Param("sessionName")
@@ -2101,7 +2102,7 @@ func setRepoStatus(dyn dynamic.Interface, project, sessionName string, repoIndex
 	return nil
 }
 
-// listSessionWorkspace proxies to per-job content service for directory listing
+// ListSessionWorkspace proxies to per-job content service for directory listing.
 func ListSessionWorkspace(c *gin.Context) {
 	// Get project from context (set by middleware) or param
 	project := c.GetString("project")
@@ -2170,7 +2171,7 @@ func ListSessionWorkspace(c *gin.Context) {
 	c.Data(resp.StatusCode, resp.Header.Get("Content-Type"), b)
 }
 
-// getSessionWorkspaceFile reads a file via content service
+// GetSessionWorkspaceFile reads a file via content service.
 func GetSessionWorkspaceFile(c *gin.Context) {
 	// Get project from context (set by middleware) or param
 	project := c.GetString("project")
@@ -2220,7 +2221,7 @@ func GetSessionWorkspaceFile(c *gin.Context) {
 	c.Data(resp.StatusCode, resp.Header.Get("Content-Type"), b)
 }
 
-// putSessionWorkspaceFile writes a file via content service
+// PutSessionWorkspaceFile writes a file via content service.
 func PutSessionWorkspaceFile(c *gin.Context) {
 	// Get project from context (set by middleware) or param
 	project := c.GetString("project")
@@ -2278,7 +2279,7 @@ func PutSessionWorkspaceFile(c *gin.Context) {
 	c.Data(resp.StatusCode, resp.Header.Get("Content-Type"), rb)
 }
 
-// pushSessionRepo proxies a push request for a given session repo to the per-job content service.
+// PushSessionRepo proxies a push request for a given session repo to the per-job content service.
 // POST /api/projects/:projectName/agentic-sessions/:sessionName/github/push
 // Body: { repoIndex: number, commitMessage?: string, branch?: string }
 func PushSessionRepo(c *gin.Context) {
@@ -2387,16 +2388,16 @@ func PushSessionRepo(c *gin.Context) {
 		obj, err := reqDyn.Resource(gvr).Namespace(project).Get(c.Request.Context(), session, v1.GetOptions{})
 		if err == nil {
 			spec, _ := obj.Object["spec"].(map[string]interface{})
-			userId := ""
+			userID := ""
 			if spec != nil {
 				if uc, ok := spec["userContext"].(map[string]interface{}); ok {
 					if v, ok := uc["userId"].(string); ok {
-						userId = strings.TrimSpace(v)
+						userID = strings.TrimSpace(v)
 					}
 				}
 			}
-			if userId != "" {
-				if tokenStr, err := GetGitHubToken(c.Request.Context(), reqK8s, reqDyn, project, userId); err == nil && strings.TrimSpace(tokenStr) != "" {
+			if userID != "" {
+				if tokenStr, err := GetGitHubToken(c.Request.Context(), reqK8s, reqDyn, project, userID); err == nil && strings.TrimSpace(tokenStr) != "" {
 					req.Header.Set("X-GitHub-Token", tokenStr)
 					log.Printf("pushSessionRepo: attached short-lived GitHub token for project=%s session=%s", project, session)
 				} else if err != nil {
@@ -2441,7 +2442,7 @@ func PushSessionRepo(c *gin.Context) {
 	c.Data(http.StatusOK, "application/json", bodyBytes)
 }
 
-// abandonSessionRepo instructs sidecar to discard local changes for a repo
+// AbandonSessionRepo instructs sidecar to discard local changes for a repo.
 func AbandonSessionRepo(c *gin.Context) {
 	project := c.Param("projectName")
 	session := c.Param("sessionName")
@@ -2509,7 +2510,7 @@ func AbandonSessionRepo(c *gin.Context) {
 	c.Data(http.StatusOK, "application/json", bodyBytes)
 }
 
-// diffSessionRepo proxies diff counts for a given session repo to the content sidecar
+// DiffSessionRepo proxies diff counts for a given session repo to the content sidecar.
 // GET /api/projects/:projectName/agentic-sessions/:sessionName/github/diff?repoIndex=0&repoPath=...
 func DiffSessionRepo(c *gin.Context) {
 	project := c.Param("projectName")

@@ -25,7 +25,7 @@ type AgenticSessionSpec struct {
 	MainRepoIndex *int                 `json:"mainRepoIndex,omitempty"`
 }
 
-// Named repository types for multi-repo session support
+// NamedGitRepo represents named repository types for multi-repo session support.
 type NamedGitRepo struct {
 	URL    string  `json:"url"`
 	Branch *string `json:"branch,omitempty"`
@@ -36,7 +36,7 @@ type OutputNamedGitRepo struct {
 	Branch *string `json:"branch,omitempty"`
 }
 
-// Unified session repo mapping
+// SessionRepoMapping is a unified session repo mapping.
 type SessionRepoMapping struct {
 	Input  NamedGitRepo        `json:"input"`
 	Output *OutputNamedGitRepo `json:"output,omitempty"`

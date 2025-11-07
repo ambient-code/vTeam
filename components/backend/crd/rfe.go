@@ -1,3 +1,4 @@
+// Package crd provides Custom Resource Definition utilities and helpers.
 package crd
 
 import (

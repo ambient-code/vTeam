@@ -1,0 +1,17 @@
+# Route for local dev backend
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: backend
+  labels:
+    app: backend-api
+spec:
+  to:
+    kind: Service
+    name: backend-service
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+

@@ -39,7 +39,7 @@ The platform consists of containerized microservices orchestrated via Kubernetes
 
 ### Required Tools
 - **OpenShift Local (CRC)** for local development or OpenShift cluster for production
-- **oc** (OpenShift CLI) or **kubectl** v1.28+ configured to access your cluster  
+- **oc** (OpenShift CLI) or **kubectl** v1.28+ configured to access your cluster
 - **Docker or Podman** for building container images
 - **Container registry access** (Docker Hub, Quay.io, ECR, etc.) for production
 - **Go 1.24+** for building backend services (if building from source)
@@ -156,6 +156,61 @@ For cluster-based authentication and authorization, the deployment script can co
 
 ## Configuration & Secrets
 
+### Operator Configuration (Vertex AI vs Direct API)
+
+The operator supports two modes for accessing Claude AI:
+
+#### Direct Anthropic API (Default)
+Use `operator-config.yaml` or `operator-config-crc.yaml` for standard deployments:
+
+```bash
+# Apply the standard config (Vertex AI disabled)
+kubectl apply -f components/manifests/operator-config.yaml -n ambient-code
+```
+
+**When to use:**
+- Standard cloud deployments without Google Cloud integration
+- Local development with CRC/Minikube
+- Any environment using direct Anthropic API access
+
+**Configuration:** Sets `CLAUDE_CODE_USE_VERTEX=0`
+
+#### Google Cloud Vertex AI
+Use `operator-config-openshift.yaml` for production OpenShift deployments with Vertex AI:
+
+```bash
+# Apply the Vertex AI config
+kubectl apply -f components/manifests/operator-config-openshift.yaml -n ambient-code
+```
+
+**When to use:**
+- Production deployments on Google Cloud
+- Environments requiring Vertex AI integration
+- Enterprise deployments with Google Cloud service accounts
+
+**Configuration:** Sets `CLAUDE_CODE_USE_VERTEX=1` and configures:
+- `CLOUD_ML_REGION`: Google Cloud region (default: "global")
+- `ANTHROPIC_VERTEX_PROJECT_ID`: Your GCP project ID
+- `GOOGLE_APPLICATION_CREDENTIALS`: Path to service account key file
+
+**Creating the Vertex AI Secret:**
+
+When using Vertex AI, you must create a secret containing your Google Cloud service account key:
+
+```bash
+# The key file MUST be named ambient-code-key.json
+kubectl create secret generic ambient-vertex \
+  --from-file=ambient-code-key.json=ambient-code-key.json \
+  -n ambient-code
+```
+
+**Important Requirements:**
+- ✅ Secret name must be `ambient-vertex`
+- ✅ Key file must be named `ambient-code-key.json`
+- ✅ Service account must have Vertex AI API access
+- ✅ Project ID in config must match the service account's project
+
+
 ### Session Timeout Configuration
 
 Sessions have a configurable timeout (default: 300 seconds):
@@ -243,7 +298,7 @@ make dev-start
 
 **What this provides:**
 - ✅ Full OpenShift cluster with CRC
-- ✅ Real OpenShift authentication and RBAC  
+- ✅ Real OpenShift authentication and RBAC
 - ✅ Production-like environment
 - ✅ Automatic image builds and deployments
 - ✅ Working frontend-backend integration
@@ -402,6 +457,28 @@ go test ./... -v              # Run all tests
 cd components/frontend
 npm test                      # Run test suite
 ```
+
+### E2E Testing
+
+Run automated end-to-end tests in a local kind cluster:
+
+```bash
+make e2e-test                # Full test suite (setup, deploy, test, cleanup)
+```
+
+Or run steps individually:
+
+```bash
+cd e2e
+./scripts/setup-kind.sh      # Create kind cluster
+./scripts/deploy.sh          # Deploy vTeam
+./scripts/run-tests.sh       # Run Cypress tests
+./scripts/cleanup.sh         # Clean up
+```
+
+The e2e tests deploy the complete vTeam stack to a kind (Kubernetes in Docker) cluster and verify core functionality including project creation and UI navigation. Tests run automatically in GitHub Actions on every PR.
+
+See [e2e/README.md](e2e/README.md) for detailed documentation, troubleshooting, and development guide.
 
 ### Documentation
 

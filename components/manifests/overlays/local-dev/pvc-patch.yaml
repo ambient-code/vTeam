@@ -1,0 +1,9 @@
+# Patch to add CRC storageClassName
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: backend-state-pvc
+spec:
+  # CRC requires explicit storageClassName as it has no default
+  storageClassName: crc-csi-hostpath-provisioner
+

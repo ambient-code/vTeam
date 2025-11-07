@@ -1,6 +1,6 @@
 package types
 
-// RFE Workflow Data Structures
+// RFEWorkflow represents RFE (Request For Enhancement) workflow data structures.
 type RFEWorkflow struct {
 	ID              string             `json:"id"`
 	Title           string             `json:"title"`

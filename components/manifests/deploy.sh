@@ -157,7 +157,8 @@ if [ "${1:-}" = "uninstall" ] || [ "${1:-}" = "clean" ]; then
         exit 1
     fi
 
-    # Delete using kustomize
+    # Delete using kustomize (from production overlay)
+    cd overlays/production
     if [ "$NAMESPACE" != "ambient-code" ]; then
         kustomize edit set namespace "$NAMESPACE"
     fi
@@ -168,6 +169,7 @@ if [ "${1:-}" = "uninstall" ] || [ "${1:-}" = "clean" ]; then
     if [ "$NAMESPACE" != "ambient-code" ]; then
         kustomize edit set namespace ambient-code
     fi
+    cd ../..
 
     echo -e "${GREEN}✅ vTeam uninstalled from namespace ${NAMESPACE}${NC}"
     echo -e "${YELLOW}Note: Namespace ${NAMESPACE} still exists. Delete manually if needed:${NC}"
@@ -288,6 +290,9 @@ echo ""
 # Deploy using kustomize
 echo -e "${YELLOW}Deploying to OpenShift using Kustomize...${NC}"
 
+# Use production overlay
+cd overlays/production
+
 # Set namespace if different from default
 if [ "$NAMESPACE" != "ambient-code" ]; then
     echo -e "${BLUE}Setting custom namespace: ${NAMESPACE}${NC}"
@@ -304,6 +309,9 @@ kustomize edit set image quay.io/ambient_code/vteam_claude_runner:latest=${DEFAU
 # Build and apply manifests
 echo -e "${BLUE}Building and applying manifests...${NC}"
 kustomize build . | oc apply -f -
+
+# Return to manifests root
+cd ../..
 
 # Check if namespace exists and is active
 echo -e "${YELLOW}Checking namespace status...${NC}"
@@ -411,6 +419,7 @@ echo ""
 
 # Restore kustomization if we modified it
 echo -e "${BLUE}Restoring kustomization defaults...${NC}"
+cd overlays/production
 if [ "$NAMESPACE" != "ambient-code" ]; then
     kustomize edit set namespace ambient-code
 fi
@@ -419,5 +428,6 @@ kustomize edit set image quay.io/ambient_code/vteam_backend:latest=quay.io/ambie
 kustomize edit set image quay.io/ambient_code/vteam_frontend:latest=quay.io/ambient_code/vteam_frontend:latest
 kustomize edit set image quay.io/ambient_code/vteam_operator:latest=quay.io/ambient_code/vteam_operator:latest
 kustomize edit set image quay.io/ambient_code/vteam_claude_runner:latest=quay.io/ambient_code/vteam_claude_runner:latest
+cd ../..
 
 echo -e "${GREEN}🎯 Ready to create RFE workflows with multi-agent collaboration!${NC}"

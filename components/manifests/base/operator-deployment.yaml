@@ -1,0 +1,75 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agentic-operator
+  labels:
+    app: agentic-operator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agentic-operator
+  template:
+    metadata:
+      labels:
+        app: agentic-operator
+    spec:
+      serviceAccountName: agentic-operator
+      containers:
+      - name: agentic-operator
+        image: quay.io/ambient_code/vteam_operator:latest
+        imagePullPolicy: Always
+        env:
+        - name: NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: BACKEND_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: BACKEND_API_URL
+          value: "http://backend-service:8080/api"
+        - name: AMBIENT_CODE_RUNNER_IMAGE
+          value: "quay.io/ambient_code/vteam_claude_runner:latest"
+        - name: CONTENT_SERVICE_IMAGE
+          value: "quay.io/ambient_code/vteam_backend:latest"
+        - name: IMAGE_PULL_POLICY
+          value: "Always"
+        # Vertex AI configuration from ConfigMap
+        - name: CLAUDE_CODE_USE_VERTEX
+          valueFrom:
+            configMapKeyRef:
+              name: operator-config
+              key: CLAUDE_CODE_USE_VERTEX
+        - name: CLOUD_ML_REGION
+          valueFrom:
+            configMapKeyRef:
+              name: operator-config
+              key: CLOUD_ML_REGION
+        - name: ANTHROPIC_VERTEX_PROJECT_ID
+          valueFrom:
+            configMapKeyRef:
+              name: operator-config
+              key: ANTHROPIC_VERTEX_PROJECT_ID
+        - name: GOOGLE_APPLICATION_CREDENTIALS
+          valueFrom:
+            configMapKeyRef:
+              name: operator-config
+              key: GOOGLE_APPLICATION_CREDENTIALS
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 200m
+            memory: 256Mi
+        livenessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - "ps aux | grep '[o]perator' || exit 1"
+          initialDelaySeconds: 30
+          periodSeconds: 10
+      restartPolicy: Always

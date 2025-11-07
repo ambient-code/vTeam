@@ -1,0 +1,27 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: vteam-ambient-runner-base
+
+# Common resources across all environments
+resources:
+- namespace.yaml
+- crds
+- rbac
+- backend-deployment.yaml
+- frontend-deployment.yaml
+- operator-deployment.yaml
+- workspace-pvc.yaml
+
+# Default images (can be overridden by overlays)
+images:
+- name: quay.io/ambient_code/vteam_backend
+  newTag: latest
+- name: quay.io/ambient_code/vteam_frontend
+  newTag: latest
+- name: quay.io/ambient_code/vteam_operator
+  newTag: latest
+- name: quay.io/ambient_code/vteam_claude_runner
+  newTag: latest
+

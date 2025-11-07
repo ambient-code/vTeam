@@ -249,7 +249,7 @@ func userOwnsInstallation(userToken string, installationID int64) (bool, string,
 	}
 	var data struct {
 		Installations []struct {
-			Id      int64 `json:"id"`
+			ID      int64 `json:"id"`
 			Account struct {
 				Login string `json:"login"`
 			} `json:"account"`
@@ -259,7 +259,7 @@ func userOwnsInstallation(userToken string, installationID int64) (bool, string,
 		return false, "", err
 	}
 	for _, inst := range data.Installations {
-		if inst.Id == installationID {
+		if inst.ID == installationID {
 			return true, inst.Account.Login, nil
 		}
 	}

@@ -1,3 +1,4 @@
+// Package types defines common type definitions for AgenticSession, ProjectSettings, and RFE workflows.
 package types
 
 // Common types used across the application
@@ -40,7 +41,7 @@ type Paths struct {
 	Inbox     string `json:"inbox,omitempty"`
 }
 
-// Helper functions for pointer types
+// BoolPtr returns a pointer to the given bool value.
 func BoolPtr(b bool) *bool {
 	return &b
 }

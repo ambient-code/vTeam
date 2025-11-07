@@ -34,7 +34,7 @@ var (
 	RfeFromUnstructured        func(*unstructured.Unstructured) *types.RFEWorkflow
 )
 
-// Type aliases for RFE workflow types
+// RFEWorkflow is a type alias for types.RFEWorkflow.
 type RFEWorkflow = types.RFEWorkflow
 type CreateRFEWorkflowRequest = types.CreateRFEWorkflowRequest
 type GitRepository = types.GitRepository

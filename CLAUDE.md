@@ -872,6 +872,293 @@ go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
 
 ## Testing Strategy
 
+### E2E Tests (Cypress + Kind)
+
+**Purpose**: Automated end-to-end testing of the complete vTeam stack in a Kubernetes environment.
+
+**Location**: `e2e/`
+
+**Quick Start**:
+```bash
+make e2e-test CONTAINER_ENGINE=podman  # Or docker
+```
+
+**What Gets Tested**:
+- ✅ Full vTeam deployment in kind (Kubernetes in Docker)
+- ✅ Frontend UI rendering and navigation
+- ✅ Backend API connectivity
+- ✅ Project creation workflow (main user journey)
+- ✅ Authentication with ServiceAccount tokens
+- ✅ Ingress routing
+- ✅ All pods deploy and become ready
+
+**What Doesn't Get Tested**:
+- ❌ OAuth proxy flow (uses direct token auth for simplicity)
+- ❌ Session pod execution (requires Anthropic API key)
+- ❌ Multi-user scenarios
+
+**Test Suite** (`e2e/cypress/e2e/vteam.cy.ts`):
+1. UI loads with token authentication
+2. Navigate to new project page
+3. Create a new project
+4. List created projects
+5. Backend API cluster-info endpoint
+
+**CI Integration**: Tests run automatically on all PRs via GitHub Actions (`.github/workflows/e2e.yml`)
+
+**Key Implementation Details**:
+
+- **Architecture**: Frontend without oauth-proxy, direct token injection via environment variables
+- **Authentication**: Test user ServiceAccount with cluster-admin permissions
+- **Token Handling**: Frontend deployment includes `OC_TOKEN`, `OC_USER`, `OC_EMAIL` env vars
+- **Podman Support**: Auto-detects runtime, uses ports 8080/8443 for rootless Podman
+- **Ingress**: Standard nginx-ingress with path-based routing
+
+**Adding New Tests**:
+```typescript
+it('should test new feature', () => {
+  cy.visit('/some-page')
+  cy.contains('Expected Content').should('be.visible')
+  cy.get('#button').click()
+  // Auth header automatically injected via beforeEach interceptor
+})
+```
+
+**Debugging Tests**:
+```bash
+cd e2e
+source .env.test
+CYPRESS_TEST_TOKEN="$TEST_TOKEN" CYPRESS_BASE_URL="http://vteam.local:8080" npm run test:headed
+```
+
+**Documentation**: See `e2e/README.md` for comprehensive guide, troubleshooting, and architecture details.
+
+**Constitution Alignment** (Principle IV: Test-Driven Development):
+- ✅ **E2E Tests for Critical Journeys**: Project creation workflow is core user journey
+- ✅ **CI/CD Enforcement**: GitHub Actions runs e2e tests on all PRs
+- ✅ **Tests Must Pass**: PR merge blocked if tests fail
+- 📋 **Future**: Add session creation and execution tests (requires API key setup)
+
+**E2E Testing Patterns**:
+
+1. **Test Environment Isolation**:
+   ```bash
+   # Each test run gets fresh environment
+   - Setup: Create new kind cluster
+   - Test: Run Cypress suite
+   - Teardown: Delete cluster and artifacts
+   ```
+
+2. **Authentication Strategy**:
+   ```yaml
+   # Frontend deployment gets test token via env vars
+   env:
+   - name: OC_TOKEN
+     valueFrom:
+       secretKeyRef:
+         name: test-user-token
+         key: token
+   ```
+   - Leverages existing frontend fallback auth logic (`buildForwardHeadersAsync`)
+   - No code changes needed in frontend
+   - ServiceAccount with cluster-admin for e2e tests only
+
+3. **Port Configuration**:
+   ```bash
+   # Auto-detects container runtime
+   Docker:  ports 80/443  → http://vteam.local
+   Podman:  ports 8080/8443 → http://vteam.local:8080
+   ```
+
+4. **Manifest Management**:
+   ```
+   e2e/manifests/
+   ├── Production manifests (copied as-is):
+   │   ├── crds/ (all CRDs)
+   │   ├── rbac/ (all RBAC)
+   │   ├── backend-deployment.yaml
+   │   └── operator-deployment.yaml
+   ├── Adapted for kind:
+   │   ├── frontend-deployment.yaml (no oauth-proxy)
+   │   ├── workspace-pvc.yaml (storageClassName: standard)
+   │   └── namespace.yaml (no OpenShift annotations)
+   └── Kind-specific:
+       ├── *-ingress.yaml (replaces Routes)
+       ├── test-user.yaml (ServiceAccount)
+       └── secrets.yaml (minimal config)
+   ```
+
+5. **Test Organization**:
+   ```typescript
+   // Use descriptive test names
+   it('should create a new project', () => {
+     // Arrange: Navigate to form
+     cy.visit('/projects/new')
+     
+     // Act: Fill and submit
+     cy.get('#name').type('test-project')
+     cy.contains('button', 'Create Project').click()
+     
+     // Assert: Verify success
+     cy.url().should('include', '/projects/test-project')
+   })
+   ```
+
+6. **Adding Tests for New Features**:
+   - Add test to `e2e/cypress/e2e/vteam.cy.ts`
+   - Ensure auth header is automatically added (no manual setup needed)
+   - Use `cy.visit()`, `cy.contains()`, `cy.get()` for UI interactions
+   - Use `cy.request()` for direct API testing
+   - Run locally first: `cd e2e && npm run test:headed`
+
+**When to Add E2E Tests**:
+- ✅ New critical user workflows (project creation, session management)
+- ✅ Multi-component integrations (frontend → backend → operator)
+- ✅ Breaking changes to core flows
+- ❌ Unit-testable logic (use unit tests instead)
+- ❌ Internal implementation details
+
+**E2E Test Writing Rules (MUST FOLLOW)**:
+
+1. **Use Descriptive Test Names**:
+   ```typescript
+   // ✅ GOOD: Describes user action and expected result
+   it('should create a new project when user fills form and clicks submit', () => {})
+   
+   // ❌ BAD: Vague or technical
+   it('should work', () => {})
+   it('should POST to /api/projects', () => {})
+   ```
+
+2. **Use Data Attributes for Selectors**:
+   ```typescript
+   // ✅ GOOD: Stable, semantic
+   cy.get('[data-testid="create-project-btn"]')
+   
+   // ❌ BAD: Fragile, coupled to implementation
+   cy.get('.btn-primary')
+   cy.get('button:nth-child(2)')
+   ```
+
+3. **Wait for Conditions, Not Fixed Times**:
+   ```typescript
+   // ✅ GOOD: Wait for actual condition
+   cy.contains('Loading...').should('not.exist')
+   cy.get('[data-testid="project-list"]').should('be.visible')
+   
+   // ❌ BAD: Fixed waits are flaky
+   cy.wait(3000)
+   ```
+
+4. **Test User Workflows, Not Implementation**:
+   ```typescript
+   // ✅ GOOD: User perspective
+   it('should allow user to create a project', () => {
+     cy.visit('/projects/new')
+     cy.get('#name').type('my-project')
+     cy.contains('button', 'Create').click()
+     cy.url().should('include', '/projects/my-project')
+   })
+   
+   // ❌ BAD: Testing API internals
+   it('should send correct payload to backend', () => {
+     cy.intercept('POST', '/api/projects').as('api')
+     // Testing implementation, not user value
+   })
+   ```
+
+5. **Auth Headers Automatic** (Don't Manually Add):
+   ```typescript
+   // ✅ GOOD: Auth added automatically
+   cy.request('/api/cluster-info')
+   
+   // ❌ BAD: Manual auth (unnecessary)
+   cy.request({
+     url: '/api/cluster-info',
+     headers: { 'Authorization': '...' }
+   })
+   ```
+
+6. **Use Unique Test Data**:
+   ```typescript
+   // ✅ GOOD: Unique names avoid conflicts
+   const projectName = `test-${Date.now()}`
+   
+   // ❌ BAD: Hardcoded names cause conflicts
+   const projectName = 'test-project'
+   ```
+
+7. **Arrange-Act-Assert Pattern**:
+   ```typescript
+   it('should do something', () => {
+     // Arrange: Set up test state
+     cy.visit('/page')
+     
+     // Act: Perform action
+     cy.get('#button').click()
+     
+     // Assert: Verify outcome
+     cy.contains('Success').should('be.visible')
+   })
+   ```
+
+**Common E2E Mistakes to Avoid**:
+- ❌ Testing implementation details instead of user workflows
+- ❌ Using fragile CSS selectors instead of data-testid
+- ❌ Fixed waits (cy.wait(3000)) instead of conditional waits
+- ❌ Manually adding auth headers (automatic in vTeam e2e)
+- ❌ Not cleaning up test data
+- ❌ Hardcoded test data causing conflicts
+- ❌ Tests that depend on execution order
+- ❌ Missing assertions (test passes but doesn't verify anything)
+
+**Pre-Commit Checklist for E2E Tests**:
+
+Before committing e2e test changes:
+- [ ] Tests pass locally: `make e2e-test`
+- [ ] Test names describe user actions and outcomes
+- [ ] Used `data-testid` selectors (not CSS classes)
+- [ ] No fixed waits (`cy.wait(3000)`), only conditional waits
+- [ ] No manual auth headers (automatic via interceptor)
+- [ ] Used unique test data (timestamps, UUIDs)
+- [ ] Tests are independent (no execution order dependency)
+- [ ] All assertions present and meaningful
+- [ ] Video shows expected behavior
+- [ ] Added data-testid to components if needed
+- [ ] Updated `e2e/README.md` if adding new test categories
+- [ ] Ran with UI to verify: `npm run test:headed`
+
+**Run before committing**:
+```bash
+# Test locally
+make e2e-test CONTAINER_ENGINE=podman
+
+# Verify video
+open e2e/cypress/videos/vteam.cy.ts.mp4
+
+# Check for console errors
+# Review screenshots if any tests failed
+```
+
+**Troubleshooting E2E Failures**:
+```bash
+# View pod logs
+kubectl logs -n ambient-code -l app=frontend
+kubectl logs -n ambient-code -l app=backend-api
+
+# Check ingress
+kubectl get ingress -n ambient-code
+kubectl describe ingress frontend-ingress -n ambient-code
+
+# Test manually
+curl http://vteam.local:8080/api/cluster-info
+
+# Run with UI for debugging
+cd e2e
+source .env.test
+CYPRESS_TEST_TOKEN="$TEST_TOKEN" CYPRESS_BASE_URL="$CYPRESS_BASE_URL" npm run test:headed
+```
+
 ### Backend Tests (Go)
 - **Unit tests** (`tests/unit/`): Isolated component logic
 - **Contract tests** (`tests/contract/`): API contract validation
@@ -881,8 +1168,8 @@ go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
   - Permission tests validate RBAC boundaries
 
 ### Frontend Tests (NextJS)
-- Jest for component testing
-- Cypress for e2e testing (when configured)
+- Jest for component testing (when configured)
+- Cypress for e2e testing (see E2E Tests section above)
 
 ### Operator Tests (Go)
 - Controller reconciliation logic tests

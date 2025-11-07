@@ -1,3 +1,4 @@
+// Package git provides Git repository operations including cloning, forking, and PR creation.
 package git
 
 import (

@@ -1,0 +1,8 @@
+# Patch to add storageClassName for kind cluster
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: backend-state-pvc
+spec:
+  storageClassName: standard  # kind default storage class
+

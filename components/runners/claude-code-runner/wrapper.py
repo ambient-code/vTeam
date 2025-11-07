@@ -152,10 +152,49 @@ class ClaudeCodeAdapter:
     async def _run_claude_agent_sdk(self, prompt: str):
         """Execute the Claude Code SDK with the given prompt."""
         try:
-            from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
+            # Check for authentication method: API key or service account
+            # IMPORTANT: Must check and set env vars BEFORE importing SDK
             api_key = self.context.get_env('ANTHROPIC_API_KEY', '')
-            if not api_key:
-                raise RuntimeError("ANTHROPIC_API_KEY is required for Claude Code SDK")
+            # SDK official flag is CLAUDE_CODE_USE_VERTEX=1
+            use_vertex = (
+                self.context.get_env('CLAUDE_CODE_USE_VERTEX', '').strip() == '1'
+                )
+
+            # Determine which authentication method to use
+            if not api_key and not use_vertex:
+                raise RuntimeError("Either ANTHROPIC_API_KEY or CLAUDE_CODE_USE_VERTEX=1 must be set")
+
+            # Set environment variables BEFORE importing SDK
+            # The Anthropic SDK checks these during initialization
+            if api_key:
+                os.environ['ANTHROPIC_API_KEY'] = api_key
+                logging.info("Using Anthropic API key authentication")
+
+            # Configure Vertex AI if requested
+            if use_vertex:
+                vertex_credentials = await self._setup_vertex_credentials()
+
+                # Clear API key if set, to force Vertex AI mode
+                if 'ANTHROPIC_API_KEY' in os.environ:
+                    logging.info("Clearing ANTHROPIC_API_KEY to force Vertex AI mode")
+                    del os.environ['ANTHROPIC_API_KEY']
+
+                # Set the SDK's official Vertex AI flag
+                os.environ['CLAUDE_CODE_USE_VERTEX'] = '1'
+
+                # Set Vertex AI environment variables
+                os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = vertex_credentials.get('credentials_path', '')
+                os.environ['ANTHROPIC_VERTEX_PROJECT_ID'] = vertex_credentials.get('project_id', '')
+                os.environ['CLOUD_ML_REGION'] = vertex_credentials.get('region', '')
+
+                logging.info(f"Vertex AI environment configured:")
+                logging.info(f"  CLAUDE_CODE_USE_VERTEX: {os.environ.get('CLAUDE_CODE_USE_VERTEX')}")
+                logging.info(f"  GOOGLE_APPLICATION_CREDENTIALS: {os.environ.get('GOOGLE_APPLICATION_CREDENTIALS')}")
+                logging.info(f"  ANTHROPIC_VERTEX_PROJECT_ID: {os.environ.get('ANTHROPIC_VERTEX_PROJECT_ID')}")
+                logging.info(f"  CLOUD_ML_REGION: {os.environ.get('CLOUD_ML_REGION')}")
+
+            # NOW we can safely import the SDK with the correct environment set
+            from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
 
             # Check if continuing from previous session
             # If PARENT_SESSION_ID is set, use SDK's built-in resume functionality
@@ -206,7 +245,7 @@ class ClaudeCodeAdapter:
 
             # Configure SDK options with session resumption if continuing
             options = ClaudeAgentOptions(
-                cwd=cwd_path, 
+                cwd=cwd_path,
                 permission_mode="acceptEdits",
                 allowed_tools= allowed_tools,
                 mcp_servers=mcp_servers,
@@ -214,7 +253,7 @@ class ClaudeCodeAdapter:
                 system_prompt={"type":"preset",
                                "preset":"claude_code"}
                 )
-            
+
             # Use SDK's built-in session resumption if continuing
             # The CLI stores session state in /app/.claude which is now persisted in PVC
             # We need to get the SDK's UUID session ID, not our K8s session name
@@ -266,8 +305,6 @@ class ClaudeCodeAdapter:
                 except Exception:
                     pass
 
-            os.environ['ANTHROPIC_API_KEY'] = api_key
-
             result_payload = None
             self._turn_count = 0
             # Import SDK message and content types for accurate mapping
@@ -285,7 +322,7 @@ class ClaudeCodeAdapter:
             interactive = str(self.context.get_env('INTERACTIVE', 'false')).strip().lower() in ('1', 'true', 'yes')
 
             sdk_session_id = None
-            
+
             async def process_response_stream(client_obj):
                 nonlocal result_payload, sdk_session_id
                 async for message in client_obj.receive_response():
@@ -369,7 +406,7 @@ class ClaudeCodeAdapter:
                 if is_continuation and parent_session_id:
                     await self._send_log("✅ SDK resuming session with full context")
                     logging.info(f"SDK is handling session resumption for {parent_session_id}")
-                
+
                 async def process_one_prompt(text: str):
                     await self.shell._send_message(MessageType.AGENT_RUNNING, {})
                     await client.query(text)
@@ -431,6 +468,42 @@ class ClaudeCodeAdapter:
                 "error": str(e)
             }
 
+    async def _setup_vertex_credentials(self) -> dict:
+        """Set up Google Cloud Vertex AI credentials from service account.
+
+        Returns:
+            dict with 'credentials_path', 'project_id', and 'region'
+
+        Raises:
+            RuntimeError: If required Vertex AI configuration is missing
+        """
+        # Get service account configuration from environment
+        # These are passed by the operator from its own environment
+        service_account_path = self.context.get_env('GOOGLE_APPLICATION_CREDENTIALS', '').strip()
+        project_id = self.context.get_env('ANTHROPIC_VERTEX_PROJECT_ID', '').strip()
+        region = self.context.get_env('CLOUD_ML_REGION', '').strip()
+
+        # Validate required fields
+        if not service_account_path:
+            raise RuntimeError("GOOGLE_APPLICATION_CREDENTIALS must be set when CLAUDE_CODE_USE_VERTEX=1")
+        if not project_id:
+            raise RuntimeError("ANTHROPIC_VERTEX_PROJECT_ID must be set when CLAUDE_CODE_USE_VERTEX=1")
+        if not region:
+            raise RuntimeError("CLOUD_ML_REGION must be set when CLAUDE_CODE_USE_VERTEX=1")
+
+        # Verify service account file exists
+        if not Path(service_account_path).exists():
+            raise RuntimeError(f"Service account key file not found at {service_account_path}")
+
+        logging.info(f"Vertex AI configured: project={project_id}, region={region}")
+        await self._send_log(f"Using Vertex AI with project {project_id} in {region}")
+
+        return {
+            'credentials_path': service_account_path,
+            'project_id': project_id,
+            'region': region,
+        }
+
     async def _prepare_workspace(self):
         """Clone input repo/branch into workspace and configure git remotes."""
         token = os.getenv("GITHUB_TOKEN") or await self._fetch_github_token()
@@ -440,7 +513,7 @@ class ClaudeCodeAdapter:
         # Check if reusing workspace from previous session
         parent_session_id = self.context.get_env('PARENT_SESSION_ID', '').strip()
         reusing_workspace = bool(parent_session_id)
-        
+
         logging.info(f"Workspace preparation: parent_session_id={parent_session_id[:8] if parent_session_id else 'None'}, reusing={reusing_workspace}")
         if reusing_workspace:
             await self._send_log(f"♻️ Reusing workspace from session {parent_session_id[:8]}")
@@ -458,10 +531,10 @@ class ClaudeCodeAdapter:
                     if not name or not url:
                         continue
                     repo_dir = workspace / name
-                    
+
                     # Check if repo already exists
                     repo_exists = repo_dir.exists() and (repo_dir / ".git").exists()
-                    
+
                     if not repo_exists:
                         # Clone fresh copy
                         await self._send_log(f"📥 Cloning {name}...")
@@ -512,10 +585,10 @@ class ClaudeCodeAdapter:
             return
         input_branch = os.getenv("INPUT_BRANCH", "").strip() or "main"
         output_repo = os.getenv("OUTPUT_REPO_URL", "").strip()
-        
+
         workspace_has_git = (workspace / ".git").exists()
         logging.info(f"Single-repo setup: workspace_has_git={workspace_has_git}, reusing={reusing_workspace}")
-        
+
         try:
             if not workspace_has_git:
                 # Clone fresh copy
@@ -617,7 +690,7 @@ class ClaudeCodeAdapter:
             logging.info("GitHub token obtained for push operations")
         else:
             logging.warning("No GitHub token available - push may fail for private repos")
-        
+
         repos_cfg = self._get_repos_config()
         if repos_cfg:
             # Multi-repo flow
@@ -631,33 +704,33 @@ class ClaudeCodeAdapter:
                     if not status.strip():
                         logging.info(f"No changes detected for {name}, skipping push")
                         continue
-                    
+
                     out = r.get('output') or {}
                     out_url_raw = (out.get('url') or '').strip()
                     if not out_url_raw:
                         logging.warning(f"No output URL configured for {name}, skipping push")
                         continue
-                    
+
                     # Add token to output URL
                     out_url = self._url_with_token(out_url_raw, token) if token else out_url_raw
-                    
+
                     in_ = r.get('input') or {}
                     in_branch = (in_.get('branch') or '').strip()
                     out_branch = (out.get('branch') or '').strip() or f"sessions/{self.context.session_id}"
 
                     await self._send_log(f"Pushing changes for {name}...")
                     logging.info(f"Configuring output remote with authentication for {name}")
-                    
+
                     # Reconfigure output remote with token before push
                     await self._run_cmd(["git", "remote", "remove", "output"], cwd=str(repo_dir), ignore_errors=True)
                     await self._run_cmd(["git", "remote", "add", "output", out_url], cwd=str(repo_dir))
-                    
+
                     logging.info(f"Checking out branch {out_branch} for {name}")
                     await self._run_cmd(["git", "checkout", "-B", out_branch], cwd=str(repo_dir))
-                    
+
                     logging.info(f"Staging all changes for {name}")
                     await self._run_cmd(["git", "add", "-A"], cwd=str(repo_dir))
-                    
+
                     logging.info(f"Committing changes for {name}")
                     try:
                         await self._run_cmd(["git", "commit", "-m", f"Session {self.context.session_id}: update"], cwd=str(repo_dir))
@@ -668,19 +741,19 @@ class ClaudeCodeAdapter:
                         else:
                             logging.error(f"Commit failed for {name}: {e}")
                             raise
-                    
+
                     # Verify we have a valid output remote
                     logging.info(f"Verifying output remote for {name}")
                     remotes_output = await self._run_cmd(["git", "remote", "-v"], cwd=str(repo_dir), capture_stdout=True)
                     logging.info(f"Git remotes for {name}:\n{self._redact_secrets(remotes_output)}")
-                    
+
                     if "output" not in remotes_output:
                         raise RuntimeError(f"Output remote not configured for {name}")
-                    
+
                     logging.info(f"Pushing to output remote: {out_branch} for {name}")
                     await self._send_log(f"Pushing {name} to {out_branch}...")
                     await self._run_cmd(["git", "push", "-u", "output", f"HEAD:{out_branch}"], cwd=str(repo_dir))
-                    
+
                     logging.info(f"Push completed for {name}")
                     await self._send_log(f"✓ Push completed for {name}")
 
@@ -704,10 +777,10 @@ class ClaudeCodeAdapter:
         if not output_repo_raw:
             logging.info("No OUTPUT_REPO_URL configured, skipping legacy single-repo push")
             return
-        
+
         # Add token to output URL
         output_repo = self._url_with_token(output_repo_raw, token) if token else output_repo_raw
-        
+
         output_branch = os.getenv("OUTPUT_BRANCH", "").strip() or f"sessions/{self.context.session_id}"
         input_repo = os.getenv("INPUT_REPO_URL", "").strip()
         input_branch = os.getenv("INPUT_BRANCH", "").strip()
@@ -717,20 +790,20 @@ class ClaudeCodeAdapter:
             if not status.strip():
                 await self._send_log({"level": "system", "message": "No changes to push."})
                 return
-            
+
             await self._send_log("Committing and pushing changes...")
             logging.info("Configuring output remote with authentication")
-            
+
             # Reconfigure output remote with token before push
             await self._run_cmd(["git", "remote", "remove", "output"], cwd=str(workspace), ignore_errors=True)
             await self._run_cmd(["git", "remote", "add", "output", output_repo], cwd=str(workspace))
-            
+
             logging.info(f"Checking out branch {output_branch}")
             await self._run_cmd(["git", "checkout", "-B", output_branch], cwd=str(workspace))
-            
+
             logging.info("Staging all changes")
             await self._run_cmd(["git", "add", "-A"], cwd=str(workspace))
-            
+
             logging.info("Committing changes")
             try:
                 await self._run_cmd(["git", "commit", "-m", f"Session {self.context.session_id}: update"], cwd=str(workspace))
@@ -742,19 +815,19 @@ class ClaudeCodeAdapter:
                 else:
                     logging.error(f"Commit failed: {e}")
                     raise
-            
+
             # Verify we have a valid output remote
             logging.info("Verifying output remote")
             remotes_output = await self._run_cmd(["git", "remote", "-v"], cwd=str(workspace), capture_stdout=True)
             logging.info(f"Git remotes:\n{self._redact_secrets(remotes_output)}")
-            
+
             if "output" not in remotes_output:
                 raise RuntimeError("Output remote not configured")
-            
+
             logging.info(f"Pushing to output remote: {output_branch}")
             await self._send_log(f"Pushing to {output_branch}...")
             await self._run_cmd(["git", "push", "-u", "output", f"HEAD:{output_branch}"], cwd=str(workspace))
-            
+
             logging.info("Push completed")
             await self._send_log("✓ Push completed")
 
@@ -908,7 +981,7 @@ class ClaudeCodeAdapter:
         status_url = self._compute_status_url()
         if not status_url:
             return
-        
+
         # Transform status URL to patch endpoint
         try:
             from urllib.parse import urlparse as _up, urlunparse as _uu
@@ -918,7 +991,7 @@ class ClaudeCodeAdapter:
             if new_path.endswith("/status"):
                 new_path = new_path[:-7]
             url = _uu((p.scheme, p.netloc, new_path, '', '', ''))
-            
+
             # JSON merge patch to update annotations
             patch = _json.dumps({
                 "metadata": {
@@ -927,15 +1000,15 @@ class ClaudeCodeAdapter:
                     }
                 }
             }).encode('utf-8')
-            
+
             req = _urllib_request.Request(url, data=patch, headers={
                 'Content-Type': 'application/merge-patch+json'
             }, method='PATCH')
-            
+
             token = (os.getenv('BOT_TOKEN') or '').strip()
             if token:
                 req.add_header('Authorization', f'Bearer {token}')
-            
+
             loop = asyncio.get_event_loop()
             def _do():
                 try:
@@ -946,11 +1019,11 @@ class ClaudeCodeAdapter:
                 except Exception as e:
                     logging.error(f"Annotation update failed: {e}")
                     return False
-            
+
             await loop.run_in_executor(None, _do)
         except Exception as e:
             logging.error(f"Failed to update annotation: {e}")
-    
+
     async def _update_cr_status(self, fields: dict, blocking: bool = False):
         """Update CR status. Set blocking=True for critical final updates before container exit."""
         url = self._compute_status_url()
@@ -991,7 +1064,7 @@ class ClaudeCodeAdapter:
         # Redact secrets from command for logging
         cmd_safe = [self._redact_secrets(str(arg)) for arg in cmd]
         logging.info(f"Running command: {' '.join(cmd_safe)}")
-        
+
         proc = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
@@ -1001,18 +1074,18 @@ class ClaudeCodeAdapter:
         stdout_data, stderr_data = await proc.communicate()
         stdout_text = stdout_data.decode("utf-8", errors="replace")
         stderr_text = stderr_data.decode("utf-8", errors="replace")
-        
+
         # Log output for debugging (redacted)
         if stdout_text.strip():
             logging.info(f"Command stdout: {self._redact_secrets(stdout_text.strip())}")
         if stderr_text.strip():
             logging.info(f"Command stderr: {self._redact_secrets(stderr_text.strip())}")
-            
+
         if proc.returncode != 0 and not ignore_errors:
             raise RuntimeError(stderr_text or f"Command failed: {' '.join(cmd_safe)}")
-        
+
         logging.info(f"Command completed with return code: {proc.returncode}")
-        
+
         if capture_stdout:
             return stdout_text
         return ""
@@ -1048,7 +1121,7 @@ class ClaudeCodeAdapter:
 
     async def _send_log(self, payload):
         """Send a system-level message. Accepts either a string or a dict payload.
-        
+
         Args:
             payload: String message or dict with 'message' key
         """
@@ -1061,12 +1134,12 @@ class ClaudeCodeAdapter:
             text = str(payload.get("message", ""))
         else:
             text = str(payload)
-        
+
         # Create payload dict
         message_payload = {
             "message": text
         }
-        
+
         await self.shell._send_message(
             MessageType.SYSTEM_MESSAGE,
             message_payload,
@@ -1106,13 +1179,13 @@ class ClaudeCodeAdapter:
         if not status_url:
             logging.warning("Cannot fetch SDK session ID: status URL not available")
             return ""
-        
+
         try:
             # Transform status URL to point to parent session
             from urllib.parse import urlparse as _up, urlunparse as _uu
             p = _up(status_url)
             path_parts = [pt for pt in p.path.split('/') if pt]
-            
+
             if 'projects' in path_parts and 'agentic-sessions' in path_parts:
                 proj_idx = path_parts.index('projects')
                 project = path_parts[proj_idx + 1] if len(path_parts) > proj_idx + 1 else ''
@@ -1126,12 +1199,12 @@ class ClaudeCodeAdapter:
         except Exception as e:
             logging.error(f"Failed to construct session URL: {e}")
             return ""
-        
+
         req = _urllib_request.Request(url, headers={'Content-Type': 'application/json'}, method='GET')
         bot = (os.getenv('BOT_TOKEN') or '').strip()
         if bot:
             req.add_header('Authorization', f'Bearer {bot}')
-        
+
         loop = asyncio.get_event_loop()
         def _do_req():
             try:
@@ -1143,18 +1216,18 @@ class ClaudeCodeAdapter:
             except Exception as e:
                 logging.warning(f"SDK session ID fetch failed: {e}")
                 return ''
-        
+
         resp_text = await loop.run_in_executor(None, _do_req)
         if not resp_text:
             return ""
-        
+
         try:
             data = _json.loads(resp_text)
             # Look for SDK session ID in annotations (persists across restarts)
             metadata = data.get('metadata', {})
             annotations = metadata.get('annotations', {})
             sdk_session_id = annotations.get('ambient-code.io/sdk-session-id', '')
-            
+
             if sdk_session_id:
                 # Validate it's a UUID
                 if '-' in sdk_session_id and len(sdk_session_id) == 36:
@@ -1176,13 +1249,13 @@ class ClaudeCodeAdapter:
         if cached:
             logging.info("Using GITHUB_TOKEN from environment")
             return cached
-        
+
         # Build mint URL from status URL if available
         status_url = self._compute_status_url()
         if not status_url:
             logging.warning("Cannot fetch GitHub token: status URL not available")
             return ""
-        
+
         try:
             from urllib.parse import urlparse as _up, urlunparse as _uu
             p = _up(status_url)
@@ -1196,7 +1269,7 @@ class ClaudeCodeAdapter:
         except Exception as e:
             logging.error(f"Failed to construct token URL: {e}")
             return ""
-        
+
         req = _urllib_request.Request(url, data=b"{}", headers={'Content-Type': 'application/json'}, method='POST')
         bot = (os.getenv('BOT_TOKEN') or '').strip()
         if bot:
@@ -1204,7 +1277,7 @@ class ClaudeCodeAdapter:
             logging.debug("Using BOT_TOKEN for authentication")
         else:
             logging.warning("No BOT_TOKEN available for token fetch")
-        
+
         loop = asyncio.get_event_loop()
         def _do_req():
             try:
@@ -1213,12 +1286,12 @@ class ClaudeCodeAdapter:
             except Exception as e:
                 logging.warning(f"GitHub token fetch failed: {e}")
                 return ''
-        
+
         resp_text = await loop.run_in_executor(None, _do_req)
         if not resp_text:
             logging.warning("Empty response from token endpoint")
             return ""
-        
+
         try:
             data = _json.loads(resp_text)
             token = str(data.get('token') or '')

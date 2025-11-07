@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: backend-state-pvc
+  labels:
+    app: backend-api
+    component: state-storage
+spec:
+  accessModes:
+    - ReadWriteOnce  # single backend replica mounted to RWO PVC
+  resources:
+    requests:
+      storage: 5Gi
+
