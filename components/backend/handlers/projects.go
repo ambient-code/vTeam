@@ -459,18 +459,19 @@ func GetProject(c *gin.Context) {
 
 	isOpenShift := isOpenShiftCluster()
 
+	// Get namespace using backend SA
+	if K8sClientProjects == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get project"})
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), defaultK8sTimeout)
 	defer cancel()
 
-	ns, err := reqK8s.CoreV1().Namespaces().Get(ctx, projectName, v1.GetOptions{})
+	ns, err := K8sClientProjects.CoreV1().Namespaces().Get(ctx, projectName, v1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Project not found"})
-			return
-		}
-		if errors.IsForbidden(err) {
-			log.Printf("User forbidden to access Namespace %s: %v", projectName, err)
-			c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized to access project"})
 			return
 		}
 		log.Printf("Failed to get Namespace %s: %v", projectName, err)
@@ -482,6 +483,20 @@ func GetProject(c *gin.Context) {
 	if ns.Labels["ambient-code.io/managed"] != "true" {
 		log.Printf("SECURITY: User attempted to access non-managed namespace: %s", projectName)
 		c.JSON(http.StatusNotFound, gin.H{"error": "Project not found or not an Ambient project"})
+		return
+	}
+
+	// Verify user can view the project (GET projectsettings)
+	canView, err := checkUserCanViewProject(reqK8s, projectName)
+	if err != nil {
+		log.Printf("GetProject: Failed to check access for %s: %v", projectName, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify permissions"})
+		return
+	}
+
+	if !canView {
+		log.Printf("User attempted to view project %s without GET projectsettings permission", projectName)
+		c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized to view project"})
 		return
 	}
 
@@ -518,19 +533,19 @@ func UpdateProject(c *gin.Context) {
 
 	isOpenShift := isOpenShiftCluster()
 
+	// Get namespace using backend SA
+	if K8sClientProjects == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update project"})
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), defaultK8sTimeout)
 	defer cancel()
 
-	// Get namespace using user's token (verifies access)
-	ns, err := reqK8s.CoreV1().Namespaces().Get(ctx, projectName, v1.GetOptions{})
+	ns, err := K8sClientProjects.CoreV1().Namespaces().Get(ctx, projectName, v1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Project not found"})
-			return
-		}
-		if errors.IsForbidden(err) {
-			log.Printf("User forbidden to update Namespace %s: %v", projectName, err)
-			c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized to update project"})
 			return
 		}
 		log.Printf("Failed to get Namespace %s: %v", projectName, err)
@@ -542,6 +557,20 @@ func UpdateProject(c *gin.Context) {
 	if ns.Labels["ambient-code.io/managed"] != "true" {
 		log.Printf("SECURITY: User attempted to update non-managed namespace: %s", projectName)
 		c.JSON(http.StatusNotFound, gin.H{"error": "Project not found or not an Ambient project"})
+		return
+	}
+
+	// Verify user can modify the project (UPDATE projectsettings)
+	canModify, err := checkUserCanModifyProject(reqK8s, projectName)
+	if err != nil {
+		log.Printf("UpdateProject: Failed to check access for %s: %v", projectName, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify permissions"})
+		return
+	}
+
+	if !canModify {
+		log.Printf("User attempted to update project %s without UPDATE projectsettings permission", projectName)
+		c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized to update project"})
 		return
 	}
 
@@ -621,16 +650,16 @@ func DeleteProject(c *gin.Context) {
 		return
 	}
 
-	// Verify user has access (use SubjectAccessReview with user's token)
-	hasAccess, err := checkUserCanAccessNamespace(reqK8s, projectName)
+	// Verify user can modify the project (UPDATE projectsettings)
+	canModify, err := checkUserCanModifyProject(reqK8s, projectName)
 	if err != nil {
 		log.Printf("DeleteProject: Failed to check access for %s: %v", projectName, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify permissions"})
 		return
 	}
 
-	if !hasAccess {
-		log.Printf("User attempted to delete project %s without access", projectName)
+	if !canModify {
+		log.Printf("User attempted to delete project %s without UPDATE projectsettings permission", projectName)
 		c.JSON(http.StatusForbidden, gin.H{"error": "Insufficient permissions to delete project"})
 		return
 	}
@@ -653,21 +682,19 @@ func DeleteProject(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-// checkUserCanAccessNamespace uses SelfSubjectAccessReview to verify if user can access a namespace
-// This is the proper Kubernetes-native way - lets RBAC engine determine access from ALL sources
-// (RoleBindings, ClusterRoleBindings, groups, etc.)
-func checkUserCanAccessNamespace(userClient *kubernetes.Clientset, namespace string) (bool, error) {
+// checkUserCanViewProject checks if user can GET projectsettings in the namespace
+// This determines if they can view the project/namespace details
+func checkUserCanViewProject(userClient *kubernetes.Clientset, namespace string) (bool, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	// Check if user can list agenticsessions in the namespace (a good proxy for project access)
 	ssar := &authv1.SelfSubjectAccessReview{
 		Spec: authv1.SelfSubjectAccessReviewSpec{
 			ResourceAttributes: &authv1.ResourceAttributes{
 				Namespace: namespace,
-				Verb:      "list",
+				Verb:      "get",
 				Group:     "vteam.ambient-code",
-				Resource:  "agenticsessions",
+				Resource:  "projectsettings",
 			},
 		},
 	}
@@ -678,6 +705,40 @@ func checkUserCanAccessNamespace(userClient *kubernetes.Clientset, namespace str
 	}
 
 	return result.Status.Allowed, nil
+}
+
+// checkUserCanModifyProject checks if user can UPDATE projectsettings in the namespace
+// This determines if they can update or delete the project/namespace
+func checkUserCanModifyProject(userClient *kubernetes.Clientset, namespace string) (bool, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	ssar := &authv1.SelfSubjectAccessReview{
+		Spec: authv1.SelfSubjectAccessReviewSpec{
+			ResourceAttributes: &authv1.ResourceAttributes{
+				Namespace: namespace,
+				Verb:      "update",
+				Group:     "vteam.ambient-code",
+				Resource:  "projectsettings",
+			},
+		},
+	}
+
+	result, err := userClient.AuthorizationV1().SelfSubjectAccessReviews().Create(ctx, ssar, v1.CreateOptions{})
+	if err != nil {
+		return false, err
+	}
+
+	return result.Status.Allowed, nil
+}
+
+// checkUserCanAccessNamespace uses SelfSubjectAccessReview to verify if user can access a namespace
+// This is the proper Kubernetes-native way - lets RBAC engine determine access from ALL sources
+// (RoleBindings, ClusterRoleBindings, groups, etc.)
+// Deprecated: Use checkUserCanViewProject or checkUserCanModifyProject instead
+func checkUserCanAccessNamespace(userClient *kubernetes.Clientset, namespace string) (bool, error) {
+	// For backward compatibility, check if user can list agenticsessions
+	return checkUserCanViewProject(userClient, namespace)
 }
 
 // getUserSubjectFromContext extracts the user subject from the JWT token in the request
