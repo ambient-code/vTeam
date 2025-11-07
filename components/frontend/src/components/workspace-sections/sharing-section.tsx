@@ -162,8 +162,7 @@ export function SharingSection({ projectName }: SharingSectionProps) {
         <CardHeader>
           <div className="flex items-start justify-between">
             <div>
-              <CardTitle className="flex items-center gap-2">
-                <Users className="w-5 h-5" />
+              <CardTitle>
                 Sharing
               </CardTitle>
               <CardDescription>Users and groups with access to this workspace and their roles</CardDescription>
