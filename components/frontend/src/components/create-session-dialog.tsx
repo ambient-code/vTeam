@@ -39,8 +39,8 @@ import { useCreateSession } from "@/services/queries/use-sessions";
 import { successToast, errorToast } from "@/hooks/use-toast";
 
 const models = [
-  { value: "claude-opus-4-1", label: "Claude Opus 4.1" },
   { value: "claude-sonnet-4-5", label: "Claude Sonnet 4.5" },
+  { value: "claude-opus-4-1", label: "Claude Opus 4.1" },
   { value: "claude-haiku-4-5", label: "Claude Haiku 4.5" },
 ];
 
@@ -73,7 +73,7 @@ export function CreateSessionDialog({
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      model: "claude-3-7-sonnet-latest",
+      model: "claude-sonnet-4-5",
       temperature: 0.7,
       maxTokens: 4000,
       timeout: 300,

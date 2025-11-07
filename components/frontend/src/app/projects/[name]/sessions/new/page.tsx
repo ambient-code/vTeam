@@ -90,7 +90,7 @@ export default function NewProjectSessionPage({ params }: { params: Promise<{ na
     resolver: zodResolver(formSchema),
     defaultValues: {
       prompt: "",
-      model: "claude-3-7-sonnet-latest",
+      model: "claude-sonnet-4-5",
       temperature: 0.7,
       maxTokens: 4000,
       timeout: 300,
