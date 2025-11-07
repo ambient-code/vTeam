@@ -1339,9 +1339,9 @@ export default function ProjectSessionDetailPage({
                 </AccordionContent>
               </AccordionItem>
 
-              <AccordionItem value="results" className="border rounded-lg px-3 bg-white">
+              <AccordionItem value="artifacts" className="border rounded-lg px-3 bg-white">
                 <AccordionTrigger className="text-base font-semibold hover:no-underline py-3">
-                  Results
+                  Artifacts
                 </AccordionTrigger>
                 <AccordionContent className="pt-2 pb-3">
                   <ResultsTab result={null} meta={null} />
