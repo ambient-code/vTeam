@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { UserBubble } from "@/components/user-bubble";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Plug, LogOut } from "lucide-react";
+import { publicEnv } from "@/lib/env";
 
 
 
@@ -29,6 +30,16 @@ export function Navigation() {
             </Link>
           </div>
           <div className="flex items-center gap-3">
+            {publicEnv.FEEDBACK_URL && (
+              <a 
+                href={publicEnv.FEEDBACK_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Share feedback
+              </a>
+            )}
             <DropdownMenu>
               <DropdownMenuTrigger className="outline-none">
                 <UserBubble />

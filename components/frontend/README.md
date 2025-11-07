@@ -67,11 +67,15 @@ In production, put an OAuth/ingress proxy in front of the app to set these heade
 ### Environment variables
 - `BACKEND_URL` (default: `http://localhost:8080/api`)
   - Used by server-side API routes to reach the backend.
+- `FEEDBACK_URL` (optional)
+  - URL for the feedback link in the masthead. If not set, the link will not appear.
 - Optional dev helpers: `OC_USER`, `OC_EMAIL`, `OC_TOKEN`, `ENABLE_OC_WHOAMI=1`
 
 You can also put these in a `.env.local` file in this folder:
 ```
 BACKEND_URL=http://localhost:8080/api
+# Optional: URL for feedback link in masthead
+# FEEDBACK_URL=https://forms.example.com/feedback
 # Optional dev helpers
 # OC_USER=your.name
 # OC_EMAIL=your.name@example.com
