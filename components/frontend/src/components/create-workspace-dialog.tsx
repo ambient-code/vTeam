@@ -162,7 +162,7 @@ export function CreateWorkspaceDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+      <DialogContent className="w-[672px] max-w-[90vw] max-h-[90vh] overflow-y-auto">
         <DialogHeader className="space-y-3">
           <DialogTitle>Create New Workspace</DialogTitle>
           <DialogDescription>
