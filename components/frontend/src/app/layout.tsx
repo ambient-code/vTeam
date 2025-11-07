@@ -22,11 +22,11 @@ export default function RootLayout({
 }) {
   const wsBase = env.BACKEND_URL.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:')
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
         <meta name="backend-ws-base" content={wsBase} />
       </head>
-      <body className={`${inter.className} min-h-screen flex flex-col`}>
+      <body className={`${inter.className} min-h-screen flex flex-col`} suppressHydrationWarning>
         <QueryProvider>
           <Navigation />
           <main className="flex-1 bg-background overflow-auto">{children}</main>
