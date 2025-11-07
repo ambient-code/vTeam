@@ -86,7 +86,7 @@ export default function ProjectsPage() {
         <div className="container mx-auto px-6 py-6">
           <PageHeader
             title="Workspaces"
-            description="Select a workspace or create a new one to get started YOLO"
+            description="Select or create a workspace to get started"
           />
         </div>
       </div>
