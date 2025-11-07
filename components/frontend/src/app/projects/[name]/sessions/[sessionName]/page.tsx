@@ -87,7 +87,7 @@ export default function ProjectSessionDetailPage({
   const [githubModalOpen, setGithubModalOpen] = useState(false);
   const [specRepoUrl, setSpecRepoUrl] = useState("https://github.com/org/repo.git");
   const [baseBranch, setBaseBranch] = useState("main");
-  const [openAccordionItems, setOpenAccordionItems] = useState<string[]>([]);
+  const [openAccordionItems, setOpenAccordionItems] = useState<string[]>(["workflows"]);
   const [contextModalOpen, setContextModalOpen] = useState(false);
   const [contextUrl, setContextUrl] = useState("");
   const [contextBranch, setContextBranch] = useState("main");
