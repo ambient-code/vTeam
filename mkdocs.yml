@@ -44,6 +44,8 @@ nav:
   - Labs:
     - Overview: labs/index.md
     - Lab 1 - Your First Agentic Session: labs/basic/lab-1-first-rfe.md
+  - Testing:
+    - E2E Testing Guide: testing/e2e-guide.md
   - Reference:
     - Overview: reference/index.md
     - Constitution: reference/constitution.md
