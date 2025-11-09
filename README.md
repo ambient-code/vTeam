@@ -216,7 +216,7 @@ kubectl create secret generic ambient-vertex \
 Sessions have a configurable timeout (default: 300 seconds):
 
 - **Environment Variable**: Set `TIMEOUT=1800` for 30-minute sessions
-- **CRD Default**: Modify `components/manifests/crds/agenticsessions-crd.yaml`
+- **CRD Default**: Modify `components/manifests/base/crds/agenticsessions-crd.yaml`
 - **Interactive Mode**: Set `interactive: true` for unlimited chat-based sessions
 
 ### Runner Secrets Management

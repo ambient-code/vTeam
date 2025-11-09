@@ -29,7 +29,7 @@ DEV_MODE="${DEV_MODE:-false}"
 BACKEND_DIR="${REPO_ROOT}/components/backend"
 FRONTEND_DIR="${REPO_ROOT}/components/frontend"
 OPERATOR_DIR="${REPO_ROOT}/components/operator"
-CRDS_DIR="${REPO_ROOT}/components/manifests/crds"
+CRDS_DIR="${REPO_ROOT}/components/manifests/base/crds"
 
 ###############
 # Environment File Loading
