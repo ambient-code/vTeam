@@ -12,7 +12,7 @@ set -euo pipefail
 ###############
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
-MANIFESTS_DIR="${SCRIPT_DIR}/manifests"
+MANIFESTS_DIR="${REPO_ROOT}/components/manifests/overlays/local-dev"
 STATE_DIR="${SCRIPT_DIR}/state"
 mkdir -p "${STATE_DIR}"
 
@@ -291,36 +291,20 @@ apply_operator_rbac() {
 build_and_deploy() {
   log "Creating BuildConfigs..."
   oc apply -f "${MANIFESTS_DIR}/build-configs.yaml" -n "$PROJECT_NAME"
-  oc apply -f "${MANIFESTS_DIR}/operator-build-config.yaml" -n "$PROJECT_NAME"
-  
+
   # Start builds
   log "Building backend image..."
   oc start-build vteam-backend --from-dir="$BACKEND_DIR" --wait -n "$PROJECT_NAME"
-  
-  log "Building frontend image..."  
+
+  log "Building frontend image..."
   oc start-build vteam-frontend --from-dir="$FRONTEND_DIR" --wait -n "$PROJECT_NAME"
-  
+
   log "Building operator image..."
   oc start-build vteam-operator --from-dir="$OPERATOR_DIR" --wait -n "$PROJECT_NAME"
-  
-  # Deploy services
-  log "Creating backend PVC..."
-  oc apply -f "${MANIFESTS_DIR}/backend-pvc.yaml" -n "$PROJECT_NAME"
 
-  log "Deploying backend..."
-  oc apply -f "${MANIFESTS_DIR}/backend-deployment.yaml" -n "$PROJECT_NAME"
-  
-  log "Deploying frontend..."
-  oc apply -f "${MANIFESTS_DIR}/frontend-deployment.yaml" -n "$PROJECT_NAME"
-  
-  log "Creating backend service alias for operator..."
-  oc apply -f "${MANIFESTS_DIR}/backend-service-alias.yaml" -n "$PROJECT_NAME"
-
-  log "Applying operator configuration (CRC - Vertex disabled)..."
-  oc apply -f "${REPO_ROOT}/components/manifests/operator-config-crc.yaml" -n "$PROJECT_NAME"
-
-  log "Deploying operator..."
-  oc apply -f "${REPO_ROOT}/components/manifests/operator-deployment.yaml" -n "$PROJECT_NAME"
+  # Deploy all services using Kustomize (applies base + local-dev patches)
+  log "Deploying all services with Kustomize..."
+  (cd "${MANIFESTS_DIR}" && oc apply -k .)
 }
 
 wait_for_ready() {
