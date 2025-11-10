@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { Play, Loader2, FolderTree, AlertCircle, GitBranch, Edit, RefreshCw, Folder, Info, Sparkles, X, CloudUpload, CloudDownload, MoreVertical, Link, Cloud, FolderSync } from "lucide-react";
+import { Play, Loader2, FolderTree, AlertCircle, GitBranch, Edit, RefreshCw, Folder, Info, Sparkles, X, CloudUpload, CloudDownload, MoreVertical, Link, Cloud, FolderSync, Download } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 // Custom components
@@ -343,6 +343,31 @@ export default function ProjectSessionDetailPage({
       }
     }
   }, [projectName, sessionName, selectedDirectory.path, currentSubPath]);
+
+  // Handler for downloading a single file
+  const handleDownloadFile = useCallback(() => {
+    if (!inlineViewingFile) return;
+
+    try {
+      const fullPath = currentSubPath
+        ? `${selectedDirectory.path}/${currentSubPath}/${inlineViewingFile.path}`
+        : `${selectedDirectory.path}/${inlineViewingFile.path}`;
+
+      const downloadUrl = `/api/projects/${encodeURIComponent(projectName)}/agentic-sessions/${encodeURIComponent(sessionName)}/workspace/${encodeURIComponent(fullPath)}`;
+
+      // Create a hidden link and click it to trigger download
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = inlineViewingFile.path;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      successToast(`Downloading ${inlineViewingFile.path}...`);
+    } catch (err) {
+      errorToast(err instanceof Error ? err.message : "Failed to download file");
+    }
+  }, [inlineViewingFile, currentSubPath, selectedDirectory.path, projectName, sessionName]);
 
   // Compute directory options from session data
   const directoryOptions = useMemo(() => {
@@ -1532,9 +1557,38 @@ export default function ProjectSessionDetailPage({
                             {inlineViewingFile && `/${inlineViewingFile.path}`}
                           </code>
                         </div>
-                        
-                        {/* Refresh button (only when not viewing file) */}
-                        {!inlineViewingFile && (
+
+                        {/* Action buttons */}
+                        {inlineViewingFile ? (
+                          /* Download button when viewing file */
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={handleDownloadFile}
+                              className="h-6 px-2 flex-shrink-0"
+                              title="Download file"
+                            >
+                              <Download className="h-3 w-3" />
+                            </Button>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="sm" className="h-6 px-2 flex-shrink-0">
+                                  <MoreVertical className="h-3 w-3" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem disabled className="text-xs text-muted-foreground">
+                                  Sync to Jira - Coming soon
+                                </DropdownMenuItem>
+                                <DropdownMenuItem disabled className="text-xs text-muted-foreground">
+                                  Sync to GDrive - Coming soon
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+                        ) : (
+                          /* Refresh button when not viewing file */
                           <Button variant="ghost" size="sm" onClick={() => refetchDirectoryFiles()} className="h-6 px-2 flex-shrink-0">
                             <FolderSync className="h-3 w-3" />
                         </Button>
