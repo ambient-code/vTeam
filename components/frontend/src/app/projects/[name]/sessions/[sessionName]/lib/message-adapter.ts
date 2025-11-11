@@ -10,9 +10,10 @@ export function adaptSessionMessages(
   messages: SessionMessage[],
   isInteractive: boolean = false
 ): Array<MessageObject | ToolUseMessages> {
-  const toolUseBlocks: ToolUseBlockWithTimestamp[] = [];
-  const toolResultBlocks: ToolResultBlockWithTimestamp[] = [];
-  const agenticMessages: MessageObject[] = [];
+  try {
+    const toolUseBlocks: ToolUseBlockWithTimestamp[] = [];
+    const toolResultBlocks: ToolResultBlockWithTimestamp[] = [];
+    const agenticMessages: MessageObject[] = [];
 
   for (const raw of messages as RawWireMessage[]) {
     const envelope: InnerEnvelope = ((raw?.payload as InnerEnvelope) ?? (raw as unknown as InnerEnvelope)) || {};
@@ -211,13 +212,17 @@ export function adaptSessionMessages(
     }
   }
 
-  const all = [...agenticMessages, ...toolUseMessages];
-  const sorted = all.sort((a, b) => {
-    const at = new Date(a.timestamp || 0).getTime();
-    const bt = new Date(b.timestamp || 0).getTime();
-    return at - bt;
-  });
-  
-  return isInteractive ? sorted.filter((m) => m.type !== "result_message") : sorted;
+    const all = [...agenticMessages, ...toolUseMessages];
+    const sorted = all.sort((a, b) => {
+      const at = new Date(a.timestamp || 0).getTime();
+      const bt = new Date(b.timestamp || 0).getTime();
+      return at - bt;
+    });
+    
+    return isInteractive ? sorted.filter((m) => m.type !== "result_message") : sorted;
+  } catch (error) {
+    console.error('Failed to adapt session messages:', error);
+    return []; // Return empty array on error
+  }
 }
 

@@ -15,11 +15,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import type { AgenticSession, MessageObject, ToolUseMessages } from "@/types/agentic-session";
-
-type WorkflowMetadata = {
-  commands: Array<{ id: string; name: string; slashCommand: string; description?: string }>;
-  agents: Array<{ id: string; name: string; description?: string }>;
-};
+import type { WorkflowMetadata } from "@/app/projects/[name]/sessions/[sessionName]/lib/types";
 
 export type MessagesTabProps = {
   session: AgenticSession;
@@ -247,9 +243,6 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chat
           setAutocompleteFilter('');
           setAutocompleteSelectedIndex(0);
           setAutocompleteOpen(true);
-          
-          // Calculate position
-          calculateAutocompletePosition(e.target, cursorPos, newValue);
           return;
         }
       }
@@ -278,45 +271,12 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chat
     }
   };
 
-  // Calculate autocomplete position based on cursor
-  const calculateAutocompletePosition = (textarea: HTMLTextAreaElement, cursorPos: number, currentText: string) => {
-    // Create a mirror div to measure text position
-    const div = document.createElement('div');
-    const style = window.getComputedStyle(textarea);
-    
-    // Copy textarea styles to div
-    div.style.position = 'absolute';
-    div.style.visibility = 'hidden';
-    div.style.whiteSpace = 'pre-wrap';
-    div.style.wordWrap = 'break-word';
-    div.style.font = style.font;
-    div.style.padding = style.padding;
-    div.style.border = style.border;
-    div.style.width = style.width;
-    
-    // Add text up to cursor
-    const textBeforeCursor = currentText.substring(0, cursorPos);
-    div.textContent = textBeforeCursor;
-    
-    // Add a span for the cursor position
-    const span = document.createElement('span');
-    span.textContent = '|';
-    div.appendChild(span);
-    
-    document.body.appendChild(div);
-    document.body.removeChild(div);
-  };
-
   return (
     <div className="flex flex-col h-full">
       <div 
         ref={messagesContainerRef}
         onScroll={handleScroll}
-        className="flex-1 flex flex-col gap-2 overflow-y-auto px-3 pb-2"
-        style={{
-          scrollbarWidth: 'thin',
-          scrollbarColor: '#d1d5db #f3f4f6'
-        }}
+        className="flex-1 flex flex-col gap-2 overflow-y-auto px-3 pb-2 scrollbar-thin"
       >
         {filteredMessages.map((m, idx) => (
           <StreamMessage key={`sm-${idx}`} message={m} isNewest={idx === filteredMessages.length - 1} onGoToResults={onGoToResults} />
@@ -548,11 +508,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chat
                           
                           {/* Agents list */}
                           <div 
-                            className="max-h-[400px] overflow-y-scroll space-y-2 pr-2"
-                            style={{
-                              scrollbarWidth: 'thin',
-                              scrollbarColor: '#d1d5db #f3f4f6'
-                            }}
+                            className="max-h-[400px] overflow-y-scroll space-y-2 pr-2 scrollbar-thin"
                           >
                             {workflowMetadata.agents.map((agent) => {
                               const agentNameShort = agent.name.split(' - ')[0];
@@ -634,11 +590,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chat
                           
                           {/* Commands list */}
                           <div 
-                            className="max-h-[400px] overflow-y-scroll space-y-2 pr-2"
-                            style={{
-                              scrollbarWidth: 'thin',
-                              scrollbarColor: '#d1d5db #f3f4f6'
-                            }}
+                            className="max-h-[400px] overflow-y-scroll space-y-2 pr-2 scrollbar-thin"
                           >
                             {workflowMetadata.commands.map((cmd) => {
                               const commandTitle = cmd.name.includes('.') 

@@ -52,3 +52,22 @@ export type WorkflowConfig = {
   enabled: boolean;
 };
 
+export type WorkflowCommand = {
+  id: string;
+  name: string;
+  slashCommand: string;
+  description?: string;
+  icon?: string;
+};
+
+export type WorkflowAgent = {
+  id: string;
+  name: string;
+  description?: string;
+};
+
+export type WorkflowMetadata = {
+  commands: Array<WorkflowCommand>;
+  agents: Array<WorkflowAgent>;
+};
+
