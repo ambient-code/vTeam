@@ -1001,7 +1001,7 @@ export default function ProjectSessionDetailPage({
                           <MessageSquare className="w-8 h-8 mx-auto mb-2 opacity-50" />
                           <div className="flex items-center gap-2">
                             <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
-                            <p className="text-sm">Starting session...</p>
+                            <p className="text-sm">No messages yet</p>
                           </div>
                           <p className="text-xs mt-1">Messages will appear once the session starts...</p>
                         </div>
