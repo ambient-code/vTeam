@@ -48,7 +48,17 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chat
   const [agentsPopoverOpen, setAgentsPopoverOpen] = useState(false);
   const [commandsPopoverOpen, setCommandsPopoverOpen] = useState(false);
   
+  // Autocomplete state
+  const [autocompleteOpen, setAutocompleteOpen] = useState(false);
+  const [autocompleteType, setAutocompleteType] = useState<'agent' | 'command' | null>(null);
+  const [autocompleteFilter, setAutocompleteFilter] = useState('');
+  const [autocompletePosition, setAutocompletePosition] = useState({ top: 0, left: 0 });
+  const [autocompleteTriggerPos, setAutocompleteTriggerPos] = useState(0);
+  const [autocompleteSelectedIndex, setAutocompleteSelectedIndex] = useState(0);
+  
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const autocompleteRef = useRef<HTMLDivElement>(null);
   const [isAtBottom, setIsAtBottom] = useState(true);
 
   const phase = session?.status?.phase || "";
@@ -110,6 +120,26 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chat
     scrollToBottom();
   }, []);
 
+  // Click outside to close autocomplete
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (autocompleteOpen && 
+          autocompleteRef.current && 
+          !autocompleteRef.current.contains(event.target as Node) &&
+          textareaRef.current &&
+          !textareaRef.current.contains(event.target as Node)) {
+        setAutocompleteOpen(false);
+        setAutocompleteType(null);
+        setAutocompleteFilter('');
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [autocompleteOpen]);
+
   const handleSendChat = async () => {
     setSendingChat(true);
     try {
@@ -135,6 +165,158 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chat
     } finally {
       setEnding(false);
     }
+  };
+
+  // Get filtered autocomplete items
+  const getFilteredItems = () => {
+    if (!autocompleteType) return [];
+    
+    if (autocompleteType === 'agent' && workflowMetadata?.agents) {
+      const filter = autocompleteFilter.toLowerCase();
+      return workflowMetadata.agents.filter(agent => 
+        agent.name.toLowerCase().includes(filter)
+      );
+    }
+    
+    if (autocompleteType === 'command' && workflowMetadata?.commands) {
+      const filter = autocompleteFilter.toLowerCase();
+      return workflowMetadata.commands.filter(cmd => 
+        cmd.name.toLowerCase().includes(filter) || 
+        cmd.slashCommand.toLowerCase().includes(filter)
+      );
+    }
+    
+    return [];
+  };
+
+  const filteredAutocompleteItems = getFilteredItems();
+
+  // Handle autocomplete selection
+  const handleAutocompleteSelect = (item: any) => {
+    if (!textareaRef.current) return;
+    
+    const cursorPos = textareaRef.current.selectionStart;
+    const textBefore = chatInput.substring(0, autocompleteTriggerPos);
+    const textAfter = chatInput.substring(cursorPos);
+    
+    let insertText = '';
+    if (autocompleteType === 'agent') {
+      const agentNameShort = item.name.split(' - ')[0];
+      insertText = `@${agentNameShort} `;
+    } else if (autocompleteType === 'command') {
+      insertText = `${item.slashCommand} `;
+    }
+    
+    const newText = textBefore + insertText + textAfter;
+    setChatInput(newText);
+    
+    // Reset autocomplete
+    setAutocompleteOpen(false);
+    setAutocompleteType(null);
+    setAutocompleteFilter('');
+    setAutocompleteSelectedIndex(0);
+    
+    // Set cursor position after insert
+    setTimeout(() => {
+      if (textareaRef.current) {
+        const newCursorPos = textBefore.length + insertText.length;
+        textareaRef.current.selectionStart = newCursorPos;
+        textareaRef.current.selectionEnd = newCursorPos;
+        textareaRef.current.focus();
+      }
+    }, 0);
+  };
+
+  // Handle input change to detect @ or /
+  const handleChatInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const newValue = e.target.value;
+    const cursorPos = e.target.selectionStart;
+    
+    setChatInput(newValue);
+    
+    // Check if we should show autocomplete
+    if (cursorPos > 0) {
+      const charBeforeCursor = newValue[cursorPos - 1];
+      const textBeforeCursor = newValue.substring(0, cursorPos);
+      
+      // Check for @ or / trigger
+      if (charBeforeCursor === '@' || charBeforeCursor === '/') {
+        // Make sure it's at the start or after whitespace
+        if (cursorPos === 1 || /\s/.test(newValue[cursorPos - 2])) {
+          setAutocompleteTriggerPos(cursorPos - 1);
+          setAutocompleteType(charBeforeCursor === '@' ? 'agent' : 'command');
+          setAutocompleteFilter('');
+          setAutocompleteSelectedIndex(0);
+          setAutocompleteOpen(true);
+          
+          // Calculate position
+          calculateAutocompletePosition(e.target, cursorPos, newValue);
+          return;
+        }
+      }
+      
+      // Update filter if autocomplete is open
+      if (autocompleteOpen) {
+        const filterText = textBeforeCursor.substring(autocompleteTriggerPos + 1);
+        
+        // Close if we've moved past the trigger or hit whitespace
+        if (cursorPos <= autocompleteTriggerPos || /\s/.test(filterText)) {
+          setAutocompleteOpen(false);
+          setAutocompleteType(null);
+          setAutocompleteFilter('');
+        } else {
+          setAutocompleteFilter(filterText);
+          setAutocompleteSelectedIndex(0);
+        }
+      }
+    } else {
+      // Cursor at start, close autocomplete
+      if (autocompleteOpen) {
+        setAutocompleteOpen(false);
+        setAutocompleteType(null);
+        setAutocompleteFilter('');
+      }
+    }
+  };
+
+  // Calculate autocomplete position based on cursor
+  const calculateAutocompletePosition = (textarea: HTMLTextAreaElement, cursorPos: number, currentText: string) => {
+    // Create a mirror div to measure text position
+    const div = document.createElement('div');
+    const style = window.getComputedStyle(textarea);
+    
+    // Copy textarea styles to div
+    div.style.position = 'absolute';
+    div.style.visibility = 'hidden';
+    div.style.whiteSpace = 'pre-wrap';
+    div.style.wordWrap = 'break-word';
+    div.style.font = style.font;
+    div.style.padding = style.padding;
+    div.style.border = style.border;
+    div.style.width = style.width;
+    
+    // Add text up to cursor
+    const textBeforeCursor = currentText.substring(0, cursorPos);
+    div.textContent = textBeforeCursor;
+    
+    // Add a span for the cursor position
+    const span = document.createElement('span');
+    span.textContent = '|';
+    div.appendChild(span);
+    
+    document.body.appendChild(div);
+    
+    // Get the position of the span
+    const spanRect = span.getBoundingClientRect();
+    const textareaRect = textarea.getBoundingClientRect();
+    
+    document.body.removeChild(div);
+    
+    // Position relative to textarea
+    const top = spanRect.top - textareaRect.top;
+    const left = spanRect.left - textareaRect.left;
+    
+    setAutocompletePosition({ top: top - 10, left });
   };
 
   return (
@@ -195,22 +377,123 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chat
         <div className="sticky bottom-0 border-t bg-white">
           <div className="p-3">
             <div className="border rounded-md p-3 space-y-2 bg-white">
-              <textarea
-                className="w-full border rounded p-2 text-sm"
-                placeholder="Type a message to the agent... (Press Enter to send, Shift+Enter for new line)"
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    if (chatInput.trim() && !sendingChat) {
-                      handleSendChat();
+              <div className="relative">
+                <textarea
+                  ref={textareaRef}
+                  className="w-full border rounded p-2 text-sm"
+                  placeholder="Type a message to the agent... (Press Enter to send, Shift+Enter for new line)"
+                  value={chatInput}
+                  onChange={handleChatInputChange}
+                  onKeyDown={(e) => {
+                    // Handle autocomplete navigation
+                    if (autocompleteOpen && filteredAutocompleteItems.length > 0) {
+                      if (e.key === "ArrowDown") {
+                        e.preventDefault();
+                        setAutocompleteSelectedIndex(prev => 
+                          prev < filteredAutocompleteItems.length - 1 ? prev + 1 : prev
+                        );
+                        return;
+                      }
+                      if (e.key === "ArrowUp") {
+                        e.preventDefault();
+                        setAutocompleteSelectedIndex(prev => prev > 0 ? prev - 1 : 0);
+                        return;
+                      }
+                      if (e.key === "Enter" || e.key === "Tab") {
+                        e.preventDefault();
+                        handleAutocompleteSelect(filteredAutocompleteItems[autocompleteSelectedIndex]);
+                        return;
+                      }
+                      if (e.key === "Escape") {
+                        e.preventDefault();
+                        setAutocompleteOpen(false);
+                        setAutocompleteType(null);
+                        setAutocompleteFilter('');
+                        return;
+                      }
                     }
-                  }
-                }}
-                rows={3}
-                disabled={sendingChat}
-              />
+                    
+                    // Regular enter to send
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      if (chatInput.trim() && !sendingChat) {
+                        handleSendChat();
+                      }
+                    }
+                  }}
+                  rows={3}
+                  disabled={sendingChat}
+                />
+                
+                {/* Autocomplete popup */}
+                {autocompleteOpen && (
+                  <div 
+                    ref={autocompleteRef}
+                    className="absolute z-[100] bg-white border-2 border-blue-500 rounded-md shadow-lg max-h-60 overflow-y-auto w-80"
+                    style={{
+                      bottom: '100%',
+                      left: '0px',
+                      marginBottom: '5px',
+                    }}
+                  >
+                    {filteredAutocompleteItems.length === 0 ? (
+                      <div className="px-3 py-2 text-sm text-muted-foreground">
+                        No {autocompleteType === 'agent' ? 'agents' : 'commands'} found
+                      </div>
+                    ) : (
+                      <>
+                    {filteredAutocompleteItems.map((item, index) => {
+                      if (autocompleteType === 'agent') {
+                        const agent = item as { id: string; name: string; description?: string };
+                        const agentNameShort = agent.name.split(' - ')[0];
+                        
+                        return (
+                          <div
+                            key={agent.id}
+                            className={`px-3 py-2 cursor-pointer border-b last:border-b-0 ${
+                              index === autocompleteSelectedIndex
+                                ? 'bg-blue-50'
+                                : 'hover:bg-gray-50'
+                            }`}
+                            onClick={() => handleAutocompleteSelect(agent)}
+                            onMouseEnter={() => setAutocompleteSelectedIndex(index)}
+                          >
+                            <div className="font-medium text-sm">@{agentNameShort}</div>
+                            <div className="text-xs text-muted-foreground truncate">
+                              {agent.name}
+                            </div>
+                          </div>
+                        );
+                      } else {
+                        const cmd = item as { id: string; name: string; slashCommand: string; description?: string };
+                        const commandTitle = cmd.name.includes('.') 
+                          ? cmd.name.split('.').pop() 
+                          : cmd.name;
+                        
+                        return (
+                          <div
+                            key={cmd.id}
+                            className={`px-3 py-2 cursor-pointer border-b last:border-b-0 ${
+                              index === autocompleteSelectedIndex
+                                ? 'bg-blue-50'
+                                : 'hover:bg-gray-50'
+                            }`}
+                            onClick={() => handleAutocompleteSelect(cmd)}
+                            onMouseEnter={() => setAutocompleteSelectedIndex(index)}
+                          >
+                            <div className="font-medium text-sm">{cmd.slashCommand}</div>
+                            <div className="text-xs text-muted-foreground truncate capitalize">
+                              {commandTitle}
+                            </div>
+                          </div>
+                        );
+                      }
+                    })}
+                    </>
+                    )}
+                  </div>
+                )}
+              </div>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <DropdownMenu>
