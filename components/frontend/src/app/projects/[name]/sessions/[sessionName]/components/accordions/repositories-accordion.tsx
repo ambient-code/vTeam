@@ -39,7 +39,7 @@ export function RepositoriesAccordion({
       <AccordionContent className="pt-2 pb-3">
         <div className="space-y-3">
           <p className="text-sm text-muted-foreground">
-            Add additional context to enhance the AI&apos;s understanding.
+            Add additional context to improve AI responses.
           </p>
           
           {/* Repository List */}

@@ -45,7 +45,7 @@ export function AddContextModal({
         <DialogHeader>
           <DialogTitle>Add Context</DialogTitle>
           <DialogDescription>
-            Add additional context to enhance the AI&apos;s understanding.
+            Add additional context to improve AI responses.
           </DialogDescription>
         </DialogHeader>
         
