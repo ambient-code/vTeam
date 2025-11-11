@@ -1237,12 +1237,10 @@ export default function ProjectSessionDetailPage({
   // Loading state - also check if params are loaded
   if (isLoading || !projectName || !sessionName) {
     return (
-      <div className="min-h-screen bg-[#f8fafc]">
-        <div className="container mx-auto p-6">
-          <div className="flex items-center justify-center h-64">
-            <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
-            <span className="ml-2">Loading session...</span>
-          </div>
+      <div className="h-screen overflow-hidden bg-[#f8fafc] flex items-center justify-center">
+        <div className="flex items-center">
+          <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
+          <span className="ml-2">Loading session...</span>
         </div>
       </div>
     );
@@ -1251,8 +1249,8 @@ export default function ProjectSessionDetailPage({
   // Error state
   if (error || !session) {
     return (
-      <div className="min-h-screen bg-[#f8fafc]">
-        <div className="sticky top-0 z-20 bg-white border-b">
+      <div className="h-screen overflow-hidden bg-[#f8fafc] flex flex-col">
+        <div className="flex-shrink-0 bg-white border-b">
           <div className="container mx-auto px-6 py-4">
             <Breadcrumbs
               items={[
@@ -1269,8 +1267,8 @@ export default function ProjectSessionDetailPage({
             />
           </div>
         </div>
-        <div className="container mx-auto p-0">
-          <div className="px-6 pt-6">
+        <div className="flex-grow overflow-hidden">
+          <div className="h-full container mx-auto px-6 py-6">
             <Card className="border-red-200 bg-red-50">
               <CardContent className="pt-6">
                 <p className="text-red-700">Error: {error instanceof Error ? error.message : "Session not found"}</p>
@@ -1284,44 +1282,48 @@ export default function ProjectSessionDetailPage({
 
   return (
     <>
-      <div className="min-h-screen bg-[#f8fafc]">
-        {/* Sticky header */}
-      <div className="sticky top-0 z-20 bg-white border-b">
-        <div className="container mx-auto px-6 py-4">
-          <Breadcrumbs
-            items={[
-              { label: 'Workspaces', href: '/projects' },
-              { label: projectName, href: `/projects/${projectName}` },
-              { label: 'Sessions', href: `/projects/${projectName}/sessions` },
-              { label: session.spec.displayName || session.metadata.name },
-            ]}
-            className="mb-4"
-          />
-          <SessionHeader
-                      session={session}
-            projectName={projectName}
-            actionLoading={
-              stopMutation.isPending ? "stopping" :
-              deleteMutation.isPending ? "deleting" :
-              null
-            }
-            onRefresh={refetchSession}
-            onStop={handleStop}
-            onDelete={handleDelete}
-            durationMs={durationMs}
-            k8sResources={k8sResources}
-            messageCount={messages.length}
-          />
+      {/* App-like container - fixed height, no scrolling */}
+      <div className="h-screen overflow-hidden bg-[#f8fafc] flex flex-col">
+        {/* Fixed header */}
+        <div className="flex-shrink-0 bg-white border-b">
+          <div className="container mx-auto px-6 py-4">
+            <Breadcrumbs
+              items={[
+                { label: 'Workspaces', href: '/projects' },
+                { label: projectName, href: `/projects/${projectName}` },
+                { label: 'Sessions', href: `/projects/${projectName}/sessions` },
+                { label: session.spec.displayName || session.metadata.name },
+              ]}
+              className="mb-4"
+            />
+            <SessionHeader
+              session={session}
+              projectName={projectName}
+              actionLoading={
+                stopMutation.isPending ? "stopping" :
+                deleteMutation.isPending ? "deleting" :
+                null
+              }
+              onRefresh={refetchSession}
+              onStop={handleStop}
+              onDelete={handleDelete}
+              durationMs={durationMs}
+              k8sResources={k8sResources}
+              messageCount={messages.length}
+            />
+          </div>
         </div>
-      </div>
 
-      <div className="container mx-auto p-0">
-        <div className="px-6 pt-6">
-        {/* Two Column Layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-[40%_1fr] gap-6">
-          {/* Left Column - Accordions */}
-          <div>
-            <Accordion type="multiple" value={openAccordionItems} onValueChange={setOpenAccordionItems} className="w-full space-y-3">
+        {/* Main content area - fills remaining height */}
+        <div className="flex-grow overflow-hidden">
+          <div className="h-full container mx-auto px-6 py-6">
+            {/* Flexbox layout for columns */}
+            <div className="h-full flex gap-6">
+              {/* Left Column - Accordions */}
+              <div className="w-2/5 flex flex-col min-w-0">
+                {/* Scrollable container with bottom padding */}
+                <div className="overflow-y-auto flex-grow pb-6">
+                  <Accordion type="multiple" value={openAccordionItems} onValueChange={setOpenAccordionItems} className="w-full space-y-3">
               <AccordionItem value="workflows" className="border rounded-lg px-3 bg-white">
                 <AccordionTrigger className="text-base font-semibold hover:no-underline py-3">
                   <div className="flex items-center gap-2">
@@ -1724,7 +1726,7 @@ export default function ProjectSessionDetailPage({
                     {/* Future: Files and URLs would go here */}
                     <div className="border-t pt-3">
                       <p className="text-xs text-muted-foreground text-center">
-                        Additional context types (file imports, Jira, Google drive) coming soon
+                        MCP servers and other sources (file uploads, Jira, Google Drive) coming soon
                       </p>
                             </div>
                           </div>
@@ -2165,13 +2167,14 @@ export default function ProjectSessionDetailPage({
                   </div>
                 </AccordionContent>
               </AccordionItem>
-            </Accordion>
-          </div>
+                  </Accordion>
+                </div>
+              </div>
 
-          {/* Right Column - Messages (Always Visible) */}
-          <div>
-            <Card className="relative">
-              <CardContent className="p-3">
+              {/* Right Column - Messages (Always Visible) */}
+              <div className="flex-1 flex flex-col min-w-0">
+                <Card className="relative flex-1 flex flex-col overflow-hidden">
+                  <CardContent className="p-3 flex-1 flex flex-col overflow-hidden">
                 {/* Workflow activation overlay */}
                 {workflowActivating && (
                   <div className="absolute inset-0 bg-white/90 backdrop-blur-sm z-10 flex items-center justify-center rounded-lg">
@@ -2216,14 +2219,14 @@ export default function ProjectSessionDetailPage({
                     .map(id => workflowMetadata?.agents?.find(a => a.id === id))
                     .filter(Boolean)
                     .map(agent => agent!.name)}
-                />
-              </CardContent>
-            </Card>
+                  />
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
           </div>
         </div>
-        </div>
       </div>
-    </div>
 
     {/* Add Context Modal */}
     <Dialog open={contextModalOpen} onOpenChange={setContextModalOpen}>

@@ -125,11 +125,11 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chat
   };
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col h-full">
       <div 
         ref={messagesContainerRef}
         onScroll={handleScroll}
-        className="flex flex-col gap-2 max-h-[60vh] overflow-y-auto pr-1"
+        className="flex-1 flex flex-col gap-2 overflow-y-auto pr-1 pb-6"
       >
         {filteredMessages.map((m, idx) => (
           <StreamMessage key={`sm-${idx}`} message={m} isNewest={idx === filteredMessages.length - 1} onGoToResults={onGoToResults} />
