@@ -990,6 +990,9 @@ export default function ProjectSessionDetailPage({
                         .map(id => workflowMetadata?.agents?.find(a => a.id === id))
                         .filter(Boolean)
                         .map(agent => agent!.name)}
+                      workflowMetadata={workflowMetadata}
+                      onSetSelectedAgents={setSelectedAgents}
+                      onSetAutoSelectAgents={setAutoSelectAgents}
                     />
                   </CardContent>
                 </Card>

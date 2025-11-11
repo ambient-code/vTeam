@@ -3,7 +3,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Brain, Loader2, Settings, Sparkles } from "lucide-react";
+import { Brain, Loader2, Settings, Sparkles, Users } from "lucide-react";
 import { StreamMessage } from "@/components/ui/stream-message";
 import {
   DropdownMenu,
@@ -11,7 +11,15 @@ import {
   DropdownMenuCheckboxItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import type { AgenticSession, MessageObject, ToolUseMessages } from "@/types/agentic-session";
+
+type WorkflowMetadata = {
+  commands: Array<{ id: string; name: string; slashCommand: string; description?: string }>;
+  agents: Array<{ id: string; name: string; description?: string }>;
+};
 
 export type MessagesTabProps = {
   session: AgenticSession;
@@ -26,14 +34,18 @@ export type MessagesTabProps = {
   selectedAgents?: string[];
   autoSelectAgents?: boolean;
   agentNames?: string[];
+  workflowMetadata?: WorkflowMetadata;
+  onSetSelectedAgents?: (agents: string[]) => void;
+  onSetAutoSelectAgents?: (auto: boolean) => void;
 };
 
 
-const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chatInput, setChatInput, onSendChat, onInterrupt, onEndSession, onGoToResults, onContinue, selectedAgents = [], autoSelectAgents = false, agentNames = [] }) => {
+const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chatInput, setChatInput, onSendChat, onInterrupt, onEndSession, onGoToResults, onContinue, selectedAgents = [], autoSelectAgents = false, agentNames = [], workflowMetadata, onSetSelectedAgents, onSetAutoSelectAgents }) => {
   const [sendingChat, setSendingChat] = useState(false);
   const [interrupting, setInterrupting] = useState(false);
   const [ending, setEnding] = useState(false);
   const [showSystemMessages, setShowSystemMessages] = useState(false);
+  const [agentsPopoverOpen, setAgentsPopoverOpen] = useState(false);
   
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const [isAtBottom, setIsAtBottom] = useState(true);
@@ -236,7 +248,112 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chat
                       </DropdownMenuCheckboxItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
-                  <div className="text-xs text-muted-foreground">Interactive session</div>
+                  
+                  {/* Agents Button with Popover */}
+                  {workflowMetadata?.agents && workflowMetadata.agents.length > 0 && (
+                    <Popover open={agentsPopoverOpen} onOpenChange={setAgentsPopoverOpen}>
+                      <PopoverTrigger asChild>
+                        <Button variant="outline" size="sm" className="h-7 gap-1.5">
+                          <Users className="h-3.5 w-3.5" />
+                          Agents
+                          <Badge variant="secondary" className="ml-0.5 h-4 px-1.5 text-[10px] font-medium">
+                            {autoSelectAgents ? "auto" : selectedAgents.length}
+                          </Badge>
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent 
+                        align="start" 
+                        side="top" 
+                        className="w-[500px]"
+                      >
+                        <div className="space-y-3">
+                          <div className="space-y-2">
+                            <h4 className="font-medium text-sm">Agent Selection</h4>
+                            <p className="text-xs text-muted-foreground">
+                              Select agents to collaborate with or enable automatic selection
+                            </p>
+                          </div>
+
+                          {/* Auto-select checkbox */}
+                          <div className="flex items-center space-x-2 pb-2 border-b">
+                            <Checkbox
+                              id="popover-auto-select-agents"
+                              checked={autoSelectAgents}
+                              onCheckedChange={(checked) => {
+                                if (onSetAutoSelectAgents) {
+                                  onSetAutoSelectAgents(!!checked);
+                                  if (checked && onSetSelectedAgents) {
+                                    onSetSelectedAgents([]);
+                                  }
+                                }
+                              }}
+                            />
+                            <Sparkles className="h-3.5 w-3.5 text-purple-500" />
+                            <Label htmlFor="popover-auto-select-agents" className="text-sm font-normal cursor-pointer">
+                              Automatically select agents
+                            </Label>
+                          </div>
+                          
+                          {/* Agents list */}
+                          <div 
+                            className="max-h-[400px] overflow-y-scroll space-y-2 pr-2"
+                            style={{
+                              scrollbarWidth: 'thin',
+                              scrollbarColor: '#d1d5db #f3f4f6'
+                            }}
+                          >
+                            {workflowMetadata.agents.map((agent) => {
+                              const agentNameShort = agent.name.split(' - ')[0];
+                              const isSelected = selectedAgents.includes(agent.id);
+                              
+                              return (
+                                <div
+                                  key={agent.id}
+                                  className={`p-3 rounded-md border cursor-pointer transition-colors ${
+                                    isSelected 
+                                      ? 'bg-blue-50 border-blue-300 hover:bg-blue-100' 
+                                      : 'bg-muted/30 hover:bg-muted/50'
+                                  } ${autoSelectAgents ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                  onClick={() => {
+                                    if (!autoSelectAgents && onSetSelectedAgents) {
+                                      if (isSelected) {
+                                        onSetSelectedAgents(selectedAgents.filter(id => id !== agent.id));
+                                      } else {
+                                        onSetSelectedAgents([...selectedAgents, agent.id]);
+                                      }
+                                    }
+                                  }}
+                                >
+                                  <div className="flex items-center justify-between mb-1">
+                                    <h3 className="text-sm font-bold">
+                                      {agent.name}
+                                    </h3>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="flex-shrink-0 h-7 text-xs"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setChatInput(chatInput + `@${agentNameShort} `);
+                                        setAgentsPopoverOpen(false);
+                                      }}
+                                    >
+                                      @{agentNameShort}
+                                    </Button>
+                                  </div>
+                                  {agent.description && (
+                                    <p className="text-xs text-muted-foreground">
+                                      {agent.description}
+                                    </p>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </PopoverContent>
+                    </Popover>
+                  )}
                 </div>
                 <div className="flex gap-2">
                   <Button 
