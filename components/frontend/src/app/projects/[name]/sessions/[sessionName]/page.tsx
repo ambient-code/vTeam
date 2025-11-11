@@ -947,8 +947,8 @@ export default function ProjectSessionDetailPage({
 
               {/* Right Column - Messages */}
               <div className="flex-1 flex flex-col min-w-0">
-                <Card className="relative flex-1 flex flex-col overflow-hidden">
-                  <CardContent className="p-3 flex-1 flex flex-col overflow-hidden">
+                <Card className="relative flex-1 flex flex-col overflow-hidden py-4">
+                  <CardContent className="px-3 pt-3 pb-0 flex-1 flex flex-col overflow-hidden">
                     {/* Workflow activation overlay */}
                     {workflowManagement.workflowActivating && (
                       <div className="absolute inset-0 bg-white/90 backdrop-blur-sm z-10 flex items-center justify-center rounded-lg">

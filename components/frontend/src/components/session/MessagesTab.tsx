@@ -324,7 +324,11 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chat
       <div 
         ref={messagesContainerRef}
         onScroll={handleScroll}
-        className="flex-1 flex flex-col gap-2 overflow-y-auto pr-1 pb-6"
+        className="flex-1 flex flex-col gap-2 overflow-y-auto px-3 pb-2"
+        style={{
+          scrollbarWidth: 'thin',
+          scrollbarColor: '#d1d5db #f3f4f6'
+        }}
       >
         {filteredMessages.map((m, idx) => (
           <StreamMessage key={`sm-${idx}`} message={m} isNewest={idx === filteredMessages.length - 1} onGoToResults={onGoToResults} />
@@ -374,9 +378,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chat
       )}
 
       {showChatInterface && (
-        <div className="sticky bottom-0 border-t bg-white">
-          <div className="p-3">
-            <div className="border rounded-md p-3 space-y-2 bg-white">
+        <div className="sticky bottom-0 bg-white">
+          <div className="px-2 pt-2 pb-0 space-y-1.5">
               <div className="relative">
                 <textarea
                   ref={textareaRef}
@@ -722,7 +725,6 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chat
                   </Button>
                 </div>
               </div>
-            </div>
           </div>
         </div>
       )}
