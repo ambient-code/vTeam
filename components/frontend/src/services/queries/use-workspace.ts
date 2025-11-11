@@ -351,3 +351,90 @@ export function useGitListBranches(
   });
 }
 
+/**
+ * Hook to get git status
+ */
+export function useGitStatus(
+  projectName: string,
+  sessionName: string,
+  path: string,
+  options?: { enabled?: boolean }
+) {
+  return useQuery({
+    queryKey: [...workspaceKeys.all, 'git-status', projectName, sessionName, path],
+    queryFn: () => workspaceApi.gitStatus(projectName, sessionName, path),
+    enabled: !!projectName && !!sessionName && !!path && (options?.enabled ?? true),
+    staleTime: 5000, // 5 seconds - status can change frequently
+  });
+}
+
+/**
+ * Hook to configure git remote
+ */
+export function useConfigureGitRemote() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      projectName,
+      sessionName,
+      path,
+      remoteUrl,
+      branch = 'main',
+    }: {
+      projectName: string;
+      sessionName: string;
+      path: string;
+      remoteUrl: string;
+      branch?: string;
+    }) => workspaceApi.configureGitRemote(projectName, sessionName, path, remoteUrl, branch),
+    onSuccess: (_data, { projectName, sessionName, path }) => {
+      // Invalidate git status to reflect new remote
+      queryClient.invalidateQueries({
+        queryKey: [...workspaceKeys.all, 'git-status', projectName, sessionName, path],
+      });
+      // Invalidate branches list
+      queryClient.invalidateQueries({
+        queryKey: [...workspaceKeys.all, 'git-branches', projectName, sessionName, path],
+      });
+    },
+  });
+}
+
+/**
+ * Hook to synchronize git (commit, pull, push)
+ */
+export function useSynchronizeGit() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      projectName,
+      sessionName,
+      path,
+      message,
+      branch,
+    }: {
+      projectName: string;
+      sessionName: string;
+      path: string;
+      message?: string;
+      branch?: string;
+    }) => workspaceApi.synchronizeGit(projectName, sessionName, path, message, branch),
+    onSuccess: (_data, { projectName, sessionName, path }) => {
+      // Invalidate git status
+      queryClient.invalidateQueries({
+        queryKey: [...workspaceKeys.all, 'git-status', projectName, sessionName, path],
+      });
+      // Invalidate workspace to show updated files
+      queryClient.invalidateQueries({
+        queryKey: workspaceKeys.lists(),
+      });
+      // Invalidate merge status
+      queryClient.invalidateQueries({
+        queryKey: [...workspaceKeys.all, 'git-merge-status', projectName, sessionName],
+      });
+    },
+  });
+}
+

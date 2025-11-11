@@ -1,6 +1,7 @@
 "use client";
 
-import { GitBranch, X, Link } from "lucide-react";
+import { useState } from "react";
+import { GitBranch, X, Link, Loader2 } from "lucide-react";
 import { AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,6 +24,19 @@ export function RepositoriesAccordion({
   onAddRepository,
   onRemoveRepository,
 }: RepositoriesAccordionProps) {
+  const [removingRepo, setRemovingRepo] = useState<string | null>(null);
+
+  const handleRemove = async (repoName: string) => {
+    if (confirm(`Remove repository ${repoName}?`)) {
+      setRemovingRepo(repoName);
+      try {
+        await onRemoveRepository(repoName);
+      } finally {
+        setRemovingRepo(null);
+      }
+    }
+  };
+
   return (
     <AccordionItem value="context" className="border rounded-lg px-3 bg-white">
       <AccordionTrigger className="text-base font-semibold hover:no-underline py-3">
@@ -58,6 +72,8 @@ export function RepositoriesAccordion({
             <div className="space-y-2">
               {repositories.map((repo, idx) => {
                 const repoName = repo.input.url.split('/').pop()?.replace('.git', '') || `repo-${idx}`;
+                const isRemoving = removingRepo === repoName;
+                
                 return (
                   <div key={idx} className="flex items-center gap-2 p-2 border rounded bg-muted/30 hover:bg-muted/50 transition-colors">
                     <GitBranch className="h-4 w-4 text-muted-foreground flex-shrink-0" />
@@ -69,13 +85,14 @@ export function RepositoriesAccordion({
                       variant="ghost"
                       size="sm" 
                       className="h-7 w-7 p-0 flex-shrink-0"
-                      onClick={() => {
-                        if (confirm(`Remove repository ${repoName}?`)) {
-                          onRemoveRepository(repoName);
-                        }
-                      }}
+                      onClick={() => handleRemove(repoName)}
+                      disabled={isRemoving}
                     >
-                      <X className="h-3 w-3" />
+                      {isRemoving ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <X className="h-3 w-3" />
+                      )}
                     </Button>
                   </div>
                 );

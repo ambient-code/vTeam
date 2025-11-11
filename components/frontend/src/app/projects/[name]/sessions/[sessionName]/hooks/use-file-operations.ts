@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from "react";
 import { errorToast, successToast } from "@/hooks/use-toast";
+import { readWorkspaceFile } from "@/services/api/workspace";
 import type { FileTreeNode } from "@/components/file-tree";
 
 type ViewingFile = {
@@ -39,18 +40,11 @@ export function useFileOperations({
           ? `${basePath}/${currentSubPath}/${node.name}`
           : `${basePath}/${node.name}`;
         
-        const response = await fetch(
-          `/api/projects/${projectName}/agentic-sessions/${sessionName}/workspace/${encodeURIComponent(fullPath)}`
-        );
-        
-        if (response.ok) {
-          const content = await response.text();
-          setViewingFile({ path: node.name, content });
-        } else {
-          errorToast('Failed to load file');
-        }
-      } catch {
-        errorToast('Failed to load file');
+        const content = await readWorkspaceFile(projectName, sessionName, fullPath);
+        setViewingFile({ path: node.name, content });
+      } catch (error) {
+        console.error("Failed to load file:", error);
+        errorToast(error instanceof Error ? error.message : 'Failed to load file');
       } finally {
         setLoadingFile(false);
       }

@@ -212,3 +212,71 @@ export async function gitListBranches(
   return response.branches;
 }
 
+/**
+ * Git status types
+ */
+export type GitStatus = {
+  branch?: string;
+  remoteUrl?: string;
+  ahead?: number;
+  behind?: number;
+  staged?: number;
+  unstaged?: number;
+  untracked?: number;
+  hasRemote?: boolean;
+  initialized?: boolean;
+  hasChanges?: boolean;
+  uncommittedFiles?: number;
+  filesAdded?: number;
+  filesRemoved?: number;
+  totalAdded?: number;
+  totalRemoved?: number;
+};
+
+/**
+ * Get git status for a directory
+ */
+export async function gitStatus(
+  projectName: string,
+  sessionName: string,
+  path: string
+): Promise<GitStatus> {
+  const response = await apiClient.get<GitStatus>(
+    `/projects/${projectName}/agentic-sessions/${sessionName}/git/status`,
+    { params: { path } }
+  );
+  return response;
+}
+
+/**
+ * Configure git remote for a directory
+ */
+export async function configureGitRemote(
+  projectName: string,
+  sessionName: string,
+  path: string,
+  remoteUrl: string,
+  branch: string = 'main'
+): Promise<void> {
+  await apiClient.post<void, { path: string; remoteUrl: string; branch: string }>(
+    `/projects/${projectName}/agentic-sessions/${sessionName}/git/configure-remote`,
+    { path, remoteUrl, branch }
+  );
+}
+
+/**
+ * Synchronize git (commit, pull, push)
+ */
+export async function synchronizeGit(
+  projectName: string,
+  sessionName: string,
+  path: string,
+  message?: string,
+  branch?: string
+): Promise<void> {
+  await apiClient.post<void, { path: string; message?: string; branch?: string }>(
+    `/projects/${projectName}/agentic-sessions/${sessionName}/git/synchronize`,
+    { path, message, branch }
+  );
+}
+

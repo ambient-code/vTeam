@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Loader2 } from "lucide-react";
 
 type MergeStatus = {
   canMergeClean: boolean;
@@ -23,6 +24,7 @@ type ManageRemoteDialogProps = {
   currentBranch?: string;
   remoteBranches?: string[];
   mergeStatus?: MergeStatus | null;
+  isLoading?: boolean;
 };
 
 export function ManageRemoteDialog({
@@ -34,6 +36,7 @@ export function ManageRemoteDialog({
   currentBranch = "main",
   remoteBranches = [],
   mergeStatus,
+  isLoading = false,
 }: ManageRemoteDialogProps) {
   const [remoteUrl, setRemoteUrl] = useState(currentUrl);
   const [remoteBranch, setRemoteBranch] = useState(currentBranch);
@@ -167,14 +170,22 @@ export function ManageRemoteDialog({
           <Button
             variant="outline"
             onClick={handleCancel}
+            disabled={isLoading}
           >
             Cancel
           </Button>
           <Button
             onClick={handleSave}
-            disabled={!remoteUrl.trim()}
+            disabled={!remoteUrl.trim() || isLoading}
           >
-            Save Remote
+            {isLoading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              "Save Remote"
+            )}
           </Button>
         </DialogFooter>
       </DialogContent>

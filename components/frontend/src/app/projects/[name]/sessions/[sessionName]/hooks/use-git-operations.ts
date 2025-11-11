@@ -1,9 +1,14 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { useGitPull, useGitPush } from "@/services/queries/use-workspace";
+import { 
+  useGitPull, 
+  useGitPush, 
+  useGitStatus,
+  useConfigureGitRemote,
+  useSynchronizeGit 
+} from "@/services/queries/use-workspace";
 import { successToast, errorToast } from "@/hooks/use-toast";
-import type { GitStatus } from "../lib/types";
 
 type UseGitOperationsProps = {
   projectName: string;
@@ -19,60 +24,41 @@ export function useGitOperations({
   remoteBranch = "main",
 }: UseGitOperationsProps) {
   const [synchronizing, setSynchronizing] = useState(false);
-  const [committing, setCommitting] = useState(false);
-  const [gitStatus, setGitStatus] = useState<GitStatus | null>(null);
   
   const gitPullMutation = useGitPull();
   const gitPushMutation = useGitPush();
-
-  // Fetch git status for the current directory
-  const fetchGitStatus = useCallback(async () => {
-    if (!projectName || !sessionName) return;
-    
-    try {
-      const response = await fetch(
-        `/api/projects/${projectName}/agentic-sessions/${sessionName}/git/status?path=${encodeURIComponent(directoryPath)}`
-      );
-      
-      if (response.ok) {
-        const data = await response.json();
-        setGitStatus(data);
-      }
-    } catch (error) {
-      console.error("Failed to fetch git status:", error);
-    }
-  }, [projectName, sessionName, directoryPath]);
+  const configureRemoteMutation = useConfigureGitRemote();
+  const synchronizeGitMutation = useSynchronizeGit();
+  
+  // Use React Query for git status
+  const { data: gitStatus, refetch: fetchGitStatus } = useGitStatus(
+    projectName,
+    sessionName,
+    directoryPath,
+    { enabled: !!projectName && !!sessionName && !!directoryPath }
+  );
 
   // Configure remote for the directory
   const configureRemote = useCallback(async (remoteUrl: string, branch: string) => {
     try {
-      const response = await fetch(
-        `/api/projects/${projectName}/agentic-sessions/${sessionName}/git/configure-remote`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            path: directoryPath,
-            remoteUrl: remoteUrl.trim(),
-            branch: branch.trim() || "main",
-          }),
-        }
-      );
-      
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || "Failed to configure remote");
-      }
+      await configureRemoteMutation.mutateAsync({
+        projectName,
+        sessionName,
+        path: directoryPath,
+        remoteUrl: remoteUrl.trim(),
+        branch: branch.trim() || "main",
+      });
       
       successToast("Remote configured successfully");
       await fetchGitStatus();
       
       return true;
     } catch (error) {
+      console.error("Failed to configure remote:", error);
       errorToast(error instanceof Error ? error.message : "Failed to configure remote");
       return false;
     }
-  }, [projectName, sessionName, directoryPath, fetchGitStatus]);
+  }, [projectName, sessionName, directoryPath, configureRemoteMutation, fetchGitStatus]);
 
   // Pull changes from remote
   const handleGitPull = useCallback((onSuccess?: () => void) => {
@@ -160,41 +146,29 @@ export function useGitOperations({
       return false;
     }
 
-    setCommitting(true);
     try {
-      const response = await fetch(
-        `/api/projects/${projectName}/agentic-sessions/${sessionName}/git/synchronize`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            path: directoryPath,
-            message: commitMessage.trim(),
-            branch: remoteBranch,
-          }),
-        }
-      );
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to commit');
-      }
+      await synchronizeGitMutation.mutateAsync({
+        projectName,
+        sessionName,
+        path: directoryPath,
+        message: commitMessage.trim(),
+        branch: remoteBranch,
+      });
 
       successToast('Changes committed successfully');
       fetchGitStatus();
       return true;
     } catch (error) {
+      console.error("Failed to commit:", error);
       errorToast(error instanceof Error ? error.message : 'Failed to commit');
       return false;
-    } finally {
-      setCommitting(false);
     }
-  }, [projectName, sessionName, directoryPath, remoteBranch, fetchGitStatus]);
+  }, [projectName, sessionName, directoryPath, remoteBranch, synchronizeGitMutation, fetchGitStatus]);
 
   return {
     gitStatus,
     synchronizing,
-    committing,
+    committing: synchronizeGitMutation.isPending,
     fetchGitStatus,
     configureRemote,
     handleGitPull,
@@ -203,6 +177,7 @@ export function useGitOperations({
     handleCommit,
     isPulling: gitPullMutation.isPending,
     isPushing: gitPushMutation.isPending,
+    isConfiguringRemote: configureRemoteMutation.isPending,
   };
 }
 

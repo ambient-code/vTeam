@@ -6,16 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-
-type GitStatus = {
-  initialized: boolean;
-  hasChanges: boolean;
-  uncommittedFiles: number;
-  filesAdded: number;
-  filesRemoved: number;
-  totalAdded: number;
-  totalRemoved: number;
-};
+import type { GitStatus } from "@/services/api/workspace";
 
 type CommitChangesDialogProps = {
   open: boolean;
@@ -79,9 +70,9 @@ export function CommitChangesDialog({
             <div className="text-xs text-muted-foreground bg-muted p-2 rounded">
               <div className="font-medium mb-1">Changes to commit:</div>
               <div className="space-y-0.5">
-                <div>Files: {gitStatus.uncommittedFiles}</div>
-                <div className="text-green-600">+{gitStatus.totalAdded} lines</div>
-                {gitStatus.totalRemoved > 0 && (
+                <div>Files: {gitStatus.uncommittedFiles ?? 0}</div>
+                <div className="text-green-600">+{gitStatus.totalAdded ?? 0} lines</div>
+                {(gitStatus.totalRemoved ?? 0) > 0 && (
                   <div className="text-red-600">-{gitStatus.totalRemoved} lines</div>
                 )}
               </div>

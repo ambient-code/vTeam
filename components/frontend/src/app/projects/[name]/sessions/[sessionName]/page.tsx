@@ -701,12 +701,12 @@ export default function ProjectSessionDetailPage({
                                   <span>File Explorer</span>
                                   {gitOps.gitStatus?.hasChanges && (
                                     <div className="flex gap-1 ml-auto mr-2">
-                                      {gitOps.gitStatus.totalAdded > 0 && (
+                                      {(gitOps.gitStatus?.totalAdded ?? 0) > 0 && (
                                         <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
                                           +{gitOps.gitStatus.totalAdded}
                                         </Badge>
                                       )}
-                                      {gitOps.gitStatus.totalRemoved > 0 && (
+                                      {(gitOps.gitStatus?.totalRemoved ?? 0) > 0 && (
                                         <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
                                           -{gitOps.gitStatus.totalRemoved}
                                         </Badge>
@@ -873,7 +873,7 @@ export default function ProjectSessionDetailPage({
                                               <span>↓{mergeStatus.remoteCommitsAhead}</span>
                                             ) : null}
                                             {gitOps.gitStatus?.hasChanges ? (
-                                              <span className="font-normal">{gitOps.gitStatus.uncommittedFiles} uncommitted</span>
+                                              <span className="font-normal">{gitOps.gitStatus?.uncommittedFiles ?? 0} uncommitted</span>
                                             ) : null}
                                           </div>
                                         ) : null}
@@ -1074,6 +1074,7 @@ export default function ProjectSessionDetailPage({
         currentBranch={currentRemote?.branch}
         remoteBranches={remoteBranches}
         mergeStatus={mergeStatus}
+        isLoading={gitOps.isConfiguringRemote}
       />
 
       <CommitChangesDialog
@@ -1086,7 +1087,7 @@ export default function ProjectSessionDetailPage({
             refetchMergeStatus();
           }
         }}
-        gitStatus={gitOps.gitStatus}
+        gitStatus={gitOps.gitStatus ?? null}
         directoryName={selectedDirectory.name}
         isCommitting={gitOps.committing}
       />
