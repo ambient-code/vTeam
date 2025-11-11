@@ -15,6 +15,7 @@ import (
 
 	"ambient-code-backend/git"
 
+	"github.com/bmatcuk/doublestar/v4"
 	"github.com/gin-gonic/gin"
 )
 
@@ -675,18 +676,7 @@ func ContentWorkflowResults(c *gin.Context) {
 	results := []ResultFile{}
 
 	for displayName, pattern := range ambientConfig.Results {
-		absPattern := filepath.Join(workspaceBase, pattern)
-		matches, err := filepath.Glob(absPattern)
-
-		if err != nil {
-			results = append(results, ResultFile{
-				DisplayName: displayName,
-				Path:        pattern,
-				Exists:      false,
-				Error:       fmt.Sprintf("Invalid pattern: %v", err),
-			})
-			continue
-		}
+		matches := findMatchingFiles(workspaceBase, pattern)
 
 		if len(matches) == 0 {
 			results = append(results, ResultFile{
@@ -717,6 +707,25 @@ func ContentWorkflowResults(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"results": results})
+}
+
+// findMatchingFiles finds files matching a glob pattern with ** support for recursive matching
+func findMatchingFiles(baseDir, pattern string) []string {
+	// Use doublestar for glob matching with ** support
+	fsys := os.DirFS(baseDir)
+	matches, err := doublestar.Glob(fsys, pattern)
+	if err != nil {
+		log.Printf("findMatchingFiles: glob error for pattern %q: %v", pattern, err)
+		return []string{}
+	}
+
+	// Convert relative paths to absolute paths
+	var absolutePaths []string
+	for _, match := range matches {
+		absolutePaths = append(absolutePaths, filepath.Join(baseDir, match))
+	}
+
+	return absolutePaths
 }
 
 // findActiveWorkflowDir finds the active workflow directory for a session
