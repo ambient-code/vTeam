@@ -1283,7 +1283,7 @@ export default function ProjectSessionDetailPage({
   return (
     <>
       {/* App-like container - fixed height, no scrolling */}
-      <div className="h-screen overflow-hidden bg-[#f8fafc] flex flex-col">
+      <div className="absolute inset-0 overflow-hidden bg-[#f8fafc] flex flex-col">
         {/* Fixed header */}
         <div className="flex-shrink-0 bg-white border-b">
           <div className="container mx-auto px-6 py-4">
