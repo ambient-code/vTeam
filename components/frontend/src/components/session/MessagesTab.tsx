@@ -3,7 +3,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Brain, Loader2, Settings, Sparkles, Users, Terminal } from "lucide-react";
+import { MessageSquare, Loader2, Settings, Sparkles, Users, Terminal } from "lucide-react";
 import { StreamMessage } from "@/components/ui/stream-message";
 import {
   DropdownMenu,
@@ -322,15 +322,13 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chat
           <StreamMessage key={`sm-${idx}`} message={m} isNewest={idx === filteredMessages.length - 1} onGoToResults={onGoToResults} />
         ))}
 
-        {filteredMessages.length === 0 && (
+        {filteredMessages.length === 0 && !isCreating && (
           <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground">
-            <Brain className="w-8 h-8 mx-auto mb-2 opacity-50" />
+            <MessageSquare className="w-8 h-8 mx-auto mb-2 opacity-50" />
             <p className="text-sm">No messages yet</p>
             <p className="text-xs mt-1">
               {isInteractive 
-                ? isCreating 
-                  ? "Session is starting..."
-                  : isTerminalState
+                ? isTerminalState
                   ? `Session has ${phase.toLowerCase()}.`
                   : "Start by sending a message below."
                 : "This session is not interactive."}

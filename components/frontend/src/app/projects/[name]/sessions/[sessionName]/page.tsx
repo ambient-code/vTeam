@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useRef } from "react";
-import { Loader2, FolderTree, GitBranch, Edit, RefreshCw, Folder, Sparkles, X, CloudUpload, CloudDownload, MoreVertical, Cloud, FolderSync, Download } from "lucide-react";
+import { Loader2, FolderTree, GitBranch, Edit, RefreshCw, Folder, Sparkles, X, CloudUpload, CloudDownload, MoreVertical, Cloud, FolderSync, Download, LibraryBig, MessageSquare } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 // Custom components
@@ -630,14 +630,15 @@ export default function ProjectSessionDetailPage({
               <div className="w-2/5 flex flex-col min-w-0 relative">
                 {/* Blocking overlay when first message hasn't loaded and session is pending */}
                 {!firstMessageLoaded && session?.status?.phase === 'Pending' && (
-                  <div className="absolute inset-0 bg-white/60 backdrop-blur-sm z-20 flex items-start justify-center pt-8">
-                    <Alert className="max-w-md mx-4 bg-blue-50 border-blue-200">
-                      <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
-                      <AlertTitle className="text-blue-900">Starting session...</AlertTitle>
-                      <AlertDescription className="text-blue-800">
-                        Context will be available once the session starts...
-                      </AlertDescription>
-                    </Alert>
+                  <div className="absolute inset-0 bg-white/60 backdrop-blur-sm rounded-lg z-20 flex items-center justify-center">
+                    <div className="flex flex-col items-center justify-center text-center text-muted-foreground">
+                      <LibraryBig className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                      <div className="flex items-center gap-2">
+                        <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
+                        <p className="text-sm">No context yet</p>
+                      </div>
+                      <p className="text-xs mt-1">Context will appear once the session starts...</p>
+                    </div>
                   </div>
                 )}
                 <div className={`overflow-y-auto flex-grow pb-6 ${!firstMessageLoaded && session?.status?.phase === 'Pending' ? 'pointer-events-none opacity-50' : ''}`}>
@@ -993,23 +994,39 @@ export default function ProjectSessionDetailPage({
                       </div>
                     )}
                     
-                    <MessagesTab
-                      session={session}
-                      streamMessages={streamMessages}
-                      chatInput={chatInput}
-                      setChatInput={setChatInput}
-                      onSendChat={() => Promise.resolve(sendChat())}
-                      onInterrupt={() => Promise.resolve(handleInterrupt())}
-                      onEndSession={() => Promise.resolve(handleEndSession())}
-                      onGoToResults={() => {}}
-                      onContinue={handleContinue}
-                      selectedAgents={selectedAgents}
-                      autoSelectAgents={autoSelectAgents}
-                      workflowMetadata={workflowMetadata}
-                      onSetSelectedAgents={setSelectedAgents}
-                      onSetAutoSelectAgents={setAutoSelectAgents}
-                      onCommandClick={handleCommandClick}
-                    />
+                    {/* Session starting overlay */}
+                    {!firstMessageLoaded && session?.status?.phase === 'Pending' && (
+                      <div className="absolute inset-0 bg-white/60 backdrop-blur-sm rounded-lg z-20 flex items-center justify-center">
+                        <div className="flex flex-col items-center justify-center text-center text-muted-foreground">
+                          <MessageSquare className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                          <div className="flex items-center gap-2">
+                            <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
+                            <p className="text-sm">Starting session...</p>
+                          </div>
+                          <p className="text-xs mt-1">Messages will appear once the session starts...</p>
+                        </div>
+                      </div>
+                    )}
+                    
+                    <div className={`flex flex-col flex-1 overflow-hidden ${!firstMessageLoaded && session?.status?.phase === 'Pending' ? 'pointer-events-none opacity-50' : ''}`}>
+                      <MessagesTab
+                        session={session}
+                        streamMessages={streamMessages}
+                        chatInput={chatInput}
+                        setChatInput={setChatInput}
+                        onSendChat={() => Promise.resolve(sendChat())}
+                        onInterrupt={() => Promise.resolve(handleInterrupt())}
+                        onEndSession={() => Promise.resolve(handleEndSession())}
+                        onGoToResults={() => {}}
+                        onContinue={handleContinue}
+                        selectedAgents={selectedAgents}
+                        autoSelectAgents={autoSelectAgents}
+                        workflowMetadata={workflowMetadata}
+                        onSetSelectedAgents={setSelectedAgents}
+                        onSetAutoSelectAgents={setAutoSelectAgents}
+                        onCommandClick={handleCommandClick}
+                      />
+                    </div>
                   </CardContent>
                 </Card>
               </div>
