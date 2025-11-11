@@ -43,11 +43,9 @@ export function SessionHeader({
   const canStop = phase === "Running" || phase === "Creating";
   const canDelete = phase === "Completed" || phase === "Failed" || phase === "Stopped" || phase === "Error";
 
-  const mode = session.spec?.interactive ? "Interactive" : "Headless";
   const started = session.status?.startTime 
     ? format(new Date(session.status.startTime), "PPp")
     : null;
-  const modelName = session.spec.llmSettings.model;
 
   return (
     <>
@@ -64,10 +62,6 @@ export function SessionHeader({
           )}
           <div className="text-xs text-gray-500 mt-3">
             <span>Started {started || formatDistanceToNow(new Date(session.metadata.creationTimestamp), { addSuffix: true })}</span>
-            <span className="mx-1">•</span>
-            <span>{mode} session</span>
-            <span className="mx-1">•</span>
-            <span>{modelName}</span>
             <span className="mx-1">•</span>
             <button 
               onClick={() => setDetailsModalOpen(true)}
