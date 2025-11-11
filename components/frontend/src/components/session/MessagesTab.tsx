@@ -33,7 +33,6 @@ export type MessagesTabProps = {
   onContinue: () => void;
   selectedAgents?: string[];
   autoSelectAgents?: boolean;
-  agentNames?: string[];
   workflowMetadata?: WorkflowMetadata;
   onSetSelectedAgents?: (agents: string[]) => void;
   onSetAutoSelectAgents?: (auto: boolean) => void;
@@ -41,7 +40,7 @@ export type MessagesTabProps = {
 };
 
 
-const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chatInput, setChatInput, onSendChat, onInterrupt, onEndSession, onGoToResults, onContinue, selectedAgents = [], autoSelectAgents = false, agentNames = [], workflowMetadata, onSetSelectedAgents, onSetAutoSelectAgents, onCommandClick }) => {
+const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chatInput, setChatInput, onSendChat, onInterrupt, onEndSession, onGoToResults, onContinue, selectedAgents = [], autoSelectAgents = false, workflowMetadata, onSetSelectedAgents, onSetAutoSelectAgents, onCommandClick }) => {
   const [sendingChat, setSendingChat] = useState(false);
   const [interrupting, setInterrupting] = useState(false);
   const [ending, setEnding] = useState(false);
@@ -196,27 +195,6 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chat
         <div className="sticky bottom-0 border-t bg-white">
           <div className="p-3">
             <div className="border rounded-md p-3 space-y-2 bg-white">
-              {/* Agent prepend chips - show when agents selected */}
-              {(selectedAgents.length > 0 || autoSelectAgents) && (
-                <div className="bg-blue-50 border border-blue-200 rounded-md px-3 py-1.5 flex items-center gap-2">
-                  <span className="text-xs text-blue-800 font-medium">Agents:</span>
-                  <div className="flex flex-wrap gap-1 items-center">
-                    {autoSelectAgents ? (
-                      <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200 flex items-center gap-1">
-                        <Sparkles className="h-3 w-3" />
-                        The best agents will automatically be called.
-                      </Badge>
-                    ) : (
-                      agentNames.map((name, idx) => (
-                        <Badge key={idx} variant="outline" className="bg-green-50 text-green-700 border-green-200">
-                          {name.split(' - ')[0]}
-                        </Badge>
-                      ))
-                    )}
-                  </div>
-                </div>
-              )}
-
               <textarea
                 className="w-full border rounded p-2 text-sm"
                 placeholder="Type a message to the agent... (Press Enter to send, Shift+Enter for new line)"
@@ -498,7 +476,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chat
                             onClick={onContinue}
                             className="text-blue-600 hover:underline font-medium"
                           >
-                            Continue this session
+                            Resume this session
                           </button>
                           {" "}to restart it.
                         </>

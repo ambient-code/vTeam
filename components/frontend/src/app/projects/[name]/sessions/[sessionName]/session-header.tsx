@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { formatDistanceToNow, format } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { RefreshCw, Square, Trash2, Copy, MoreVertical, Info } from 'lucide-react';
+import { RefreshCw, Octagon, Trash2, Copy, MoreVertical, Info, Play } from 'lucide-react';
 import { CloneSessionDialog } from '@/components/clone-session-dialog';
 import { SessionDetailsModal } from '@/components/session-details-modal';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
@@ -17,6 +17,7 @@ type SessionHeaderProps = {
   actionLoading: string | null;
   onRefresh: () => void;
   onStop: () => void;
+  onContinue: () => void;
   onDelete: () => void;
   durationMs?: number;
   k8sResources?: {
@@ -32,6 +33,7 @@ export function SessionHeader({
   actionLoading,
   onRefresh,
   onStop,
+  onContinue,
   onDelete,
   durationMs,
   k8sResources,
@@ -41,6 +43,7 @@ export function SessionHeader({
   
   const phase = session.status?.phase || "Pending";
   const canStop = phase === "Running" || phase === "Creating";
+  const canResume = phase === "Stopped";
   const canDelete = phase === "Completed" || phase === "Failed" || phase === "Stopped" || phase === "Error";
 
   const started = session.status?.startTime 
@@ -87,9 +90,22 @@ export function SessionHeader({
               size="sm"
               onClick={onStop}
               disabled={actionLoading === "stopping"}
+              className="hover:border-red-600 hover:bg-red-50 group"
             >
-              <Square className="w-4 h-4 mr-2" />
+              <Octagon className="w-4 h-4 mr-2 fill-red-200 stroke-red-500 group-hover:fill-red-500 group-hover:stroke-red-700 transition-colors" />
               Stop
+            </Button>
+          )}
+          {canResume && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onContinue}
+              disabled={actionLoading === "resuming"}
+              className="hover:border-green-600 hover:bg-green-50 group"
+            >
+              <Play className="w-4 h-4 mr-2 fill-green-200 stroke-green-600 group-hover:fill-green-500 group-hover:stroke-green-700 transition-colors" />
+              Resume
             </Button>
           )}
           

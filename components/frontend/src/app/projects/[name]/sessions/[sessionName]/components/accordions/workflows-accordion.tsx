@@ -34,6 +34,7 @@ type WorkflowsAccordionProps = {
   onCommandClick: (slashCommand: string) => void;
   onSetSelectedAgents: (agents: string[]) => void;
   onSetAutoSelectAgents: (auto: boolean) => void;
+  onResume?: () => void;
 };
 
 export function WorkflowsAccordion({
@@ -52,6 +53,7 @@ export function WorkflowsAccordion({
   onCommandClick,
   onSetSelectedAgents,
   onSetAutoSelectAgents,
+  onResume,
 }: WorkflowsAccordionProps) {
   const [showCommandsList, setShowCommandsList] = useState(false);
   const [showAgentsList, setShowAgentsList] = useState(false);
@@ -77,12 +79,26 @@ export function WorkflowsAccordion({
       </AccordionTrigger>
       <AccordionContent className="pt-2 pb-3">
         {isSessionStopped ? (
-          <EmptyState
-            icon={Play}
-            title="Session not running"
-            description="You need to restart this session to use agents, commands, or switch workflows."
-            className="py-8"
-          />
+          <div className="py-8 flex flex-col items-center justify-center space-y-4">
+            <Play className="h-12 w-12 text-muted-foreground/50" />
+            <div className="text-center space-y-1">
+              <h3 className="font-medium text-sm">Session not running</h3>
+              <p className="text-sm text-muted-foreground">
+                You need to resume this session to use workflows.
+              </p>
+            </div>
+            {onResume && sessionPhase === 'Stopped' && (
+              <Button
+                onClick={onResume}
+                size="sm"
+                className="hover:border-green-600 hover:bg-green-50 group"
+                variant="outline"
+              >
+                <Play className="w-4 h-4 mr-2 fill-green-200 stroke-green-600 group-hover:fill-green-500 group-hover:stroke-green-700 transition-colors" />
+                Resume Session
+              </Button>
+            )}
+          </div>
         ) : (
           <div className="space-y-3">
             {/* Workflow selector - always visible except when activating */}

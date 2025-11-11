@@ -604,10 +604,12 @@ export default function ProjectSessionDetailPage({
               actionLoading={
                 stopMutation.isPending ? "stopping" :
                 deleteMutation.isPending ? "deleting" :
+                continueMutation.isPending ? "resuming" :
                 null
               }
               onRefresh={refetchSession}
               onStop={handleStop}
+              onContinue={handleContinue}
               onDelete={handleDelete}
               durationMs={durationMs}
               k8sResources={k8sResources}
@@ -640,6 +642,7 @@ export default function ProjectSessionDetailPage({
                       onCommandClick={handleCommandClick}
                       onSetSelectedAgents={setSelectedAgents}
                       onSetAutoSelectAgents={setAutoSelectAgents}
+                      onResume={handleContinue}
                     />
 
                     <RepositoriesAccordion
@@ -986,10 +989,6 @@ export default function ProjectSessionDetailPage({
                       onContinue={handleContinue}
                       selectedAgents={selectedAgents}
                       autoSelectAgents={autoSelectAgents}
-                      agentNames={selectedAgents
-                        .map(id => workflowMetadata?.agents?.find(a => a.id === id))
-                        .filter(Boolean)
-                        .map(agent => agent!.name)}
                       workflowMetadata={workflowMetadata}
                       onSetSelectedAgents={setSelectedAgents}
                       onSetAutoSelectAgents={setAutoSelectAgents}
