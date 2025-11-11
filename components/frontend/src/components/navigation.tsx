@@ -36,7 +36,7 @@ export function Navigation({ feedbackUrl }: NavigationProps) {
                 href="https://github.com/ambient-code/platform/releases"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-[0.65rem] text-gray-400 pb-0.5 hover:text-gray-600 transition-colors"
+                className="text-[0.65rem] text-gray-400 pb-0.75 hover:text-gray-600 transition-colors"
               >
                 {version}
               </a>
