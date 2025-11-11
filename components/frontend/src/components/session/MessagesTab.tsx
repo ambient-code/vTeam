@@ -3,7 +3,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Brain, Loader2, Settings, Sparkles, Users } from "lucide-react";
+import { Brain, Loader2, Settings, Sparkles, Users, Terminal } from "lucide-react";
 import { StreamMessage } from "@/components/ui/stream-message";
 import {
   DropdownMenu,
@@ -37,15 +37,17 @@ export type MessagesTabProps = {
   workflowMetadata?: WorkflowMetadata;
   onSetSelectedAgents?: (agents: string[]) => void;
   onSetAutoSelectAgents?: (auto: boolean) => void;
+  onCommandClick?: (slashCommand: string) => void;
 };
 
 
-const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chatInput, setChatInput, onSendChat, onInterrupt, onEndSession, onGoToResults, onContinue, selectedAgents = [], autoSelectAgents = false, agentNames = [], workflowMetadata, onSetSelectedAgents, onSetAutoSelectAgents }) => {
+const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chatInput, setChatInput, onSendChat, onInterrupt, onEndSession, onGoToResults, onContinue, selectedAgents = [], autoSelectAgents = false, agentNames = [], workflowMetadata, onSetSelectedAgents, onSetAutoSelectAgents, onCommandClick }) => {
   const [sendingChat, setSendingChat] = useState(false);
   const [interrupting, setInterrupting] = useState(false);
   const [ending, setEnding] = useState(false);
   const [showSystemMessages, setShowSystemMessages] = useState(false);
   const [agentsPopoverOpen, setAgentsPopoverOpen] = useState(false);
+  const [commandsPopoverOpen, setCommandsPopoverOpen] = useState(false);
   
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const [isAtBottom, setIsAtBottom] = useState(true);
@@ -344,6 +346,81 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chat
                                   {agent.description && (
                                     <p className="text-xs text-muted-foreground">
                                       {agent.description}
+                                    </p>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </PopoverContent>
+                    </Popover>
+                  )}
+
+                  {/* Commands Button with Popover */}
+                  {workflowMetadata?.commands && workflowMetadata.commands.length > 0 && (
+                    <Popover open={commandsPopoverOpen} onOpenChange={setCommandsPopoverOpen}>
+                      <PopoverTrigger asChild>
+                        <Button variant="outline" size="sm" className="h-7 gap-1.5">
+                          <Terminal className="h-3.5 w-3.5" />
+                          Commands
+                          <Badge variant="secondary" className="ml-0.5 h-4 px-1.5 text-[10px] font-medium">
+                            {workflowMetadata.commands.length}
+                          </Badge>
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent 
+                        align="start" 
+                        side="top" 
+                        className="w-[500px]"
+                      >
+                        <div className="space-y-3">
+                          <div className="space-y-2">
+                            <h4 className="font-medium text-sm">Available Commands</h4>
+                            <p className="text-xs text-muted-foreground">
+                              Run workflow commands to perform specific actions
+                            </p>
+                          </div>
+                          
+                          {/* Commands list */}
+                          <div 
+                            className="max-h-[400px] overflow-y-scroll space-y-2 pr-2"
+                            style={{
+                              scrollbarWidth: 'thin',
+                              scrollbarColor: '#d1d5db #f3f4f6'
+                            }}
+                          >
+                            {workflowMetadata.commands.map((cmd) => {
+                              const commandTitle = cmd.name.includes('.') 
+                                ? cmd.name.split('.').pop() 
+                                : cmd.name;
+                              
+                              return (
+                                <div
+                                  key={cmd.id}
+                                  className="p-3 rounded-md border bg-muted/30"
+                                >
+                                  <div className="flex items-center justify-between mb-1">
+                                    <h3 className="text-sm font-bold capitalize">
+                                      {commandTitle}
+                                    </h3>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="flex-shrink-0 h-7 text-xs"
+                                      onClick={() => {
+                                        if (onCommandClick) {
+                                          onCommandClick(cmd.slashCommand);
+                                          setCommandsPopoverOpen(false);
+                                        }
+                                      }}
+                                    >
+                                      Run {cmd.slashCommand.replace(/^\/speckit\./, '/')}
+                                    </Button>
+                                  </div>
+                                  {cmd.description && (
+                                    <p className="text-xs text-muted-foreground">
+                                      {cmd.description}
                                     </p>
                                   )}
                                 </div>

@@ -993,6 +993,7 @@ export default function ProjectSessionDetailPage({
                       workflowMetadata={workflowMetadata}
                       onSetSelectedAgents={setSelectedAgents}
                       onSetAutoSelectAgents={setAutoSelectAgents}
+                      onCommandClick={handleCommandClick}
                     />
                   </CardContent>
                 </Card>
