@@ -74,6 +74,7 @@ export default function ProjectSessionDetailPage({
   const [openAccordionItems, setOpenAccordionItems] = useState<string[]>(["workflows"]);
   const [contextModalOpen, setContextModalOpen] = useState(false);
   const [repoChanging, setRepoChanging] = useState(false);
+  const [firstMessageLoaded, setFirstMessageLoaded] = useState(false);
   
   // Directory browser state (unified for artifacts, repos, and workflow)
   const [selectedDirectory, setSelectedDirectory] = useState<DirectoryOption>({
@@ -261,6 +262,13 @@ export default function ProjectSessionDetailPage({
   
   // Track if we've already initialized from session
   const initializedFromSessionRef = useRef(false);
+  
+  // Track when first message loads
+  useEffect(() => {
+    if (messages && messages.length > 0 && !firstMessageLoaded) {
+      setFirstMessageLoaded(true);
+    }
+  }, [messages, firstMessageLoaded]);
   
   // Load active workflow and remotes from session
   useEffect(() => {
@@ -623,8 +631,20 @@ export default function ProjectSessionDetailPage({
           <div className="h-full container mx-auto px-6 py-6">
             <div className="h-full flex gap-6">
               {/* Left Column - Accordions */}
-              <div className="w-2/5 flex flex-col min-w-0">
-                <div className="overflow-y-auto flex-grow pb-6">
+              <div className="w-2/5 flex flex-col min-w-0 relative">
+                {/* Blocking overlay when first message hasn't loaded and session is pending */}
+                {!firstMessageLoaded && session?.status?.phase === 'Pending' && (
+                  <div className="absolute inset-0 bg-white/60 backdrop-blur-sm z-20 flex items-start justify-center pt-8">
+                    <Alert className="max-w-md mx-4 bg-blue-50 border-blue-200">
+                      <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
+                      <AlertTitle className="text-blue-900">Starting session...</AlertTitle>
+                      <AlertDescription className="text-blue-800">
+                        Context will be available once the session starts...
+                      </AlertDescription>
+                    </Alert>
+                  </div>
+                )}
+                <div className={`overflow-y-auto flex-grow pb-6 ${!firstMessageLoaded && session?.status?.phase === 'Pending' ? 'pointer-events-none opacity-50' : ''}`}>
                   <Accordion type="multiple" value={openAccordionItems} onValueChange={setOpenAccordionItems} className="w-full space-y-3">
                     <WorkflowsAccordion
                       sessionPhase={session?.status?.phase}

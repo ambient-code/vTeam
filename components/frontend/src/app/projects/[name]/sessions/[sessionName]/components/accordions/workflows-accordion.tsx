@@ -256,7 +256,7 @@ export function WorkflowsAccordion({
                 )}
 
                 {workflowMetadata?.commands?.length === 0 && (
-                  <p className="text-xs text-muted-foreground text-center py-2">
+                  <p className="text-xs text-muted-foreground text-left py-2">
                     No commands found in this workflow
                   </p>
                 )}
@@ -369,7 +369,7 @@ export function WorkflowsAccordion({
                 )}
 
                 {workflowMetadata?.agents?.length === 0 && (
-                  <p className="text-xs text-muted-foreground text-center py-2">
+                  <p className="text-xs text-muted-foreground text-left py-2">
                     No agents found in this workflow
                   </p>
                 )}
