@@ -235,7 +235,7 @@ export const ToolMessage = React.forwardRef<HTMLDivElement, ToolMessageProps>(
               <div
                 className={cn(
                   "flex items-center justify-between cursor-pointer hover:bg-gray-50 transition-colors",
-                  isCompact ? "py-0.5 px-0" : "p-3"
+                  isCompact ? "py-1 px-0" : "p-3"
                 )}
                 onClick={() => setIsExpanded(!isExpanded)}
               >
@@ -260,7 +260,7 @@ export const ToolMessage = React.forwardRef<HTMLDivElement, ToolMessageProps>(
                   )}
 
                   {/* Tool Name */}
-                  <div className="flex-1">
+                  <div className="flex-1 flex items-center min-h-0">
                     <Badge
                       variant="outline"
                       className={cn(
@@ -270,7 +270,7 @@ export const ToolMessage = React.forwardRef<HTMLDivElement, ToolMessageProps>(
                         isSuccess && "border-green-200 text-green-700",
                         isSubagent && subagentClasses?.badgeBorder,
                         isSubagent && subagentClasses?.badgeText,
-                        isCompact && "py-0 px-1.5"
+                        isCompact && "!py-0 px-1.5 leading-tight"
                       )}
                     >
                       {isSubagent ? displayName : (isLoading ? "Calling" : "Called") + " " + displayName}
