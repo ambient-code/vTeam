@@ -308,7 +308,7 @@ export const ToolMessage = React.forwardRef<HTMLDivElement, ToolMessageProps>(
                   {isExpanded && subagentPrompt && (
                     <div>
                       <h4 className="text-xs font-medium text-gray-700 mb-1">Prompt</h4>
-                      <div className="bg-white rounded p-2 overflow-x-auto border">
+                      <div className="rounded p-2 overflow-x-auto">
                         <ExpandableMarkdown className="prose-sm" content={subagentPrompt} />
                       </div>
                     </div>
