@@ -52,7 +52,6 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chat
   const [autocompleteOpen, setAutocompleteOpen] = useState(false);
   const [autocompleteType, setAutocompleteType] = useState<'agent' | 'command' | null>(null);
   const [autocompleteFilter, setAutocompleteFilter] = useState('');
-  const [autocompletePosition, setAutocompletePosition] = useState({ top: 0, left: 0 });
   const [autocompleteTriggerPos, setAutocompleteTriggerPos] = useState(0);
   const [autocompleteSelectedIndex, setAutocompleteSelectedIndex] = useState(0);
   
@@ -192,7 +191,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chat
   const filteredAutocompleteItems = getFilteredItems();
 
   // Handle autocomplete selection
-  const handleAutocompleteSelect = (item: any) => {
+  const handleAutocompleteSelect = (item: { id: string; name: string; slashCommand?: string; description?: string }) => {
     if (!textareaRef.current) return;
     
     const cursorPos = textareaRef.current.selectionStart;
@@ -305,18 +304,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chat
     div.appendChild(span);
     
     document.body.appendChild(div);
-    
-    // Get the position of the span
-    const spanRect = span.getBoundingClientRect();
-    const textareaRect = textarea.getBoundingClientRect();
-    
     document.body.removeChild(div);
-    
-    // Position relative to textarea
-    const top = spanRect.top - textareaRect.top;
-    const left = spanRect.left - textareaRect.left;
-    
-    setAutocompletePosition({ top: top - 10, left });
   };
 
   return (

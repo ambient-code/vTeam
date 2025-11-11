@@ -1,5 +1,5 @@
 import type { SessionMessage } from "@/types";
-import type { MessageObject, ToolUseMessages, ToolUseBlock, ToolResultBlock } from "@/types/agentic-session";
+import type { MessageObject, ToolUseMessages } from "@/types/agentic-session";
 import type { RawWireMessage, InnerEnvelope, ToolUseBlockWithTimestamp, ToolResultBlockWithTimestamp } from "./types";
 
 /**

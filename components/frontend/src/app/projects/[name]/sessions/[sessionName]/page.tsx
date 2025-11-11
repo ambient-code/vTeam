@@ -1,13 +1,12 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { Play, Loader2, FolderTree, AlertCircle, GitBranch, Edit, RefreshCw, Folder, Sparkles, X, CloudUpload, CloudDownload, MoreVertical, Cloud, FolderSync, Download } from "lucide-react";
+import { useState, useEffect, useMemo, useRef } from "react";
+import { Loader2, FolderTree, GitBranch, Edit, RefreshCw, Folder, Sparkles, X, CloudUpload, CloudDownload, MoreVertical, Cloud, FolderSync, Download } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 // Custom components
 import MessagesTab from "@/components/session/MessagesTab";
 import { FileTree, type FileTreeNode } from "@/components/file-tree";
-import { EmptyState } from "@/components/empty-state";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -86,8 +85,6 @@ export default function ProjectSessionDetailPage({
   const [remoteDialogOpen, setRemoteDialogOpen] = useState(false);
   const [commitModalOpen, setCommitModalOpen] = useState(false);
   const [customWorkflowDialogOpen, setCustomWorkflowDialogOpen] = useState(false);
-  const [newBranchName, setNewBranchName] = useState("");
-  const [showCreateBranch, setShowCreateBranch] = useState(false);
 
   // Extract params
   useEffect(() => {
@@ -232,7 +229,6 @@ export default function ProjectSessionDetailPage({
   });
   
   // File operations for directory explorer
-  const fullDirectoryPath = gitOps.gitStatus ? selectedDirectory.path : selectedDirectory.path;
   const fileOps = useFileOperations({
     projectName,
     sessionName,
