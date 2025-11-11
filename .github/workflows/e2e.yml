@@ -60,7 +60,7 @@ jobs:
       
     - name: Upload test results
       if: failure()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
         name: cypress-screenshots
         path: e2e/cypress/screenshots
@@ -69,7 +69,7 @@ jobs:
         
     - name: Upload test videos
       if: failure()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
         name: cypress-videos
         path: e2e/cypress/videos
