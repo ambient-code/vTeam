@@ -33,7 +33,7 @@ export const StreamMessage: React.FC<StreamMessageProps> = ({ message, onGoToRes
     case "agent_waiting": {
       if (!isNewest) return null;
       return (
-        <span className="text-xs text-gray-500">Waiting for agents...</span>
+        <span className="text-xs text-gray-500">The agents are working between themselves...</span>
       )
     }
     case "user_message":
