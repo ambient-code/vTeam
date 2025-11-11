@@ -337,7 +337,7 @@ export const ToolMessage = React.forwardRef<HTMLDivElement, ToolMessageProps>(
                         <div
                           className={cn(
                             "rounded p-2 overflow-x-auto text-gray-800",
-                            isError ? "bg-red-50 border border-red-200" : "bg-white border"
+                            isError && "bg-red-50 border border-red-200"
                           )}
                         >
                           <ExpandableMarkdown
@@ -382,7 +382,7 @@ export const ToolMessage = React.forwardRef<HTMLDivElement, ToolMessageProps>(
                   </div>
                 </div>
                 <div className="px-3 pb-3">
-                  <div className={cn("rounded p-2 overflow-x-auto text-gray-800 bg-white border")}>
+                  <div className={cn("rounded p-2 overflow-x-auto text-gray-800")}>
                     <ExpandableMarkdown className="prose-sm" content={extractTextFromResultContent(toolResultBlock?.content as unknown)} />
                   </div>
                 </div>
