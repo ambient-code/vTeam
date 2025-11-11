@@ -1334,7 +1334,7 @@ export default function ProjectSessionDetailPage({
                             <AlertDescription className="text-blue-800">
                               <div className="space-y-2 mt-2">
                                 <p className="text-sm">
-                                  Claude will {activeWorkflow ? 'restart and switch to' : 'pause briefly to load'} the workflow. Your chat history will be preserved.
+                                  Please reload this chat session to switch to the new workflow. Your chat history will be preserved.
                                 </p>
                                 <Button 
                                   onClick={handleActivateWorkflow}

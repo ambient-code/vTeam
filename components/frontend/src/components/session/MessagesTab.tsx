@@ -190,7 +190,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chat
                     {autoSelectAgents ? (
                       <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200 flex items-center gap-1">
                         <Sparkles className="h-3 w-3" />
-                        Claude will pick best agents
+                        The best agents will automatically be called.
                       </Badge>
                     ) : (
                       agentNames.map((name, idx) => (
