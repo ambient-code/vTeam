@@ -1237,7 +1237,7 @@ export default function ProjectSessionDetailPage({
   // Loading state - also check if params are loaded
   if (isLoading || !projectName || !sessionName) {
     return (
-      <div className="h-screen overflow-hidden bg-[#f8fafc] flex items-center justify-center">
+      <div className="absolute inset-0 top-16 overflow-hidden bg-[#f8fafc] flex items-center justify-center">
         <div className="flex items-center">
           <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
           <span className="ml-2">Loading session...</span>
@@ -1249,7 +1249,7 @@ export default function ProjectSessionDetailPage({
   // Error state
   if (error || !session) {
     return (
-      <div className="h-screen overflow-hidden bg-[#f8fafc] flex flex-col">
+      <div className="absolute inset-0 top-16 overflow-hidden bg-[#f8fafc] flex flex-col">
         <div className="flex-shrink-0 bg-white border-b">
           <div className="container mx-auto px-6 py-4">
             <Breadcrumbs
@@ -1283,7 +1283,7 @@ export default function ProjectSessionDetailPage({
   return (
     <>
       {/* App-like container - fixed height, no scrolling */}
-      <div className="absolute inset-0 overflow-hidden bg-[#f8fafc] flex flex-col">
+      <div className="absolute inset-0 top-16 overflow-hidden bg-[#f8fafc] flex flex-col">
         {/* Fixed header */}
         <div className="flex-shrink-0 bg-white border-b">
           <div className="container mx-auto px-6 py-4">
