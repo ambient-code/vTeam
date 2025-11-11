@@ -46,12 +46,12 @@ export function RepositoriesAccordion({
           {repositories.length === 0 ? (
             <div className="text-center py-6">
               <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-gray-100 mb-2">
-                <GitBranch className="h-5 w-5 text-gray-400" />
+                <Link className="h-5 w-5 text-gray-400" />
               </div>
-              <p className="text-sm text-muted-foreground mb-3">No repositories added</p>
+              <p className="text-sm text-muted-foreground mb-3">No context added yet</p>
               <Button size="sm" variant="outline" onClick={onAddRepository}>
-                <GitBranch className="mr-2 h-3 w-3" />
-                Add Repository
+                <Link className="mr-2 h-3 w-3" />
+                Add Context
               </Button>
             </div>
           ) : (
@@ -81,17 +81,11 @@ export function RepositoriesAccordion({
                 );
               })}
               <Button onClick={onAddRepository} variant="outline" className="w-full" size="sm">
-                <GitBranch className="mr-2 h-3 w-3" />
-                Add Repository
+                <Link className="mr-2 h-3 w-3" />
+                Add Context
               </Button>
             </div>
           )}
-          
-          <div className="border-t pt-3">
-            <p className="text-xs text-muted-foreground text-center">
-              MCP servers and other sources (file uploads, Jira, Google Drive) coming soon
-            </p>
-          </div>
         </div>
       </AccordionContent>
     </AccordionItem>

@@ -1,11 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { Loader2 } from "lucide-react";
+import { Loader2, Info } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 type AddContextModalProps = {
   open: boolean;
@@ -41,7 +42,7 @@ export function AddContextModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-[600px]">
         <DialogHeader>
           <DialogTitle>Add Context</DialogTitle>
           <DialogDescription>
@@ -50,6 +51,13 @@ export function AddContextModal({
         </DialogHeader>
         
         <div className="space-y-4">
+          <Alert>
+            <Info className="h-4 w-4" />
+            <AlertDescription>
+              Note: additional data sources like Jira, Google Drive, files, and MCP Servers are on the roadmap!
+            </AlertDescription>
+          </Alert>
+
           <div className="space-y-2">
             <Label htmlFor="context-url">Repository URL</Label>
             <Input
