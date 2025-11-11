@@ -291,19 +291,24 @@ export const ToolMessage = React.forwardRef<HTMLDivElement, ToolMessageProps>(
               {/* Subagent primary content (description + prompt) */}
               {isSubagent ? (
                 <div className="px-3 pb-3 space-y-3">
-                  {subagentDescription && (
-                    <div>
+                  <div>
+                    {subagentDescription && subagentDescription.trim() ? (
                       <div className="text-gray-800">
                         <ExpandableMarkdown className="prose-sm" content={subagentDescription} />
                       </div>
-                      {isLoading && (
-                        <div className="flex items-center gap-2 text-xs text-gray-500 mt-2">
-                          <Loader2 className="w-3 h-3 animate-bounce" />
-                          <span>Waiting for result…</span>
-                        </div>
-                      )}
-                    </div>
-                  )}
+                    ) : isLoading ? (
+                      <div className="text-gray-500 text-sm italic">
+                        Working on your request...
+                      </div>
+                    ) : null}
+                    
+                    {isLoading && subagentDescription && subagentDescription.trim() && (
+                      <div className="flex items-center gap-2 text-xs text-gray-500 mt-2">
+                        <Loader2 className="w-3 h-3 animate-bounce" />
+                        <span>Waiting for result…</span>
+                      </div>
+                    )}
+                  </div>
 
                   {isExpanded && subagentPrompt && (
                     <div>

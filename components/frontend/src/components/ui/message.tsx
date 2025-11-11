@@ -74,6 +74,7 @@ const LOADING_MESSAGES = [
   "Surfing the data waves",
   "Juggling bits and bytes",
   "Tipping my fedora",
+  "Reticulating splines",
 ];
 
 export const LoadingDots = () => {
