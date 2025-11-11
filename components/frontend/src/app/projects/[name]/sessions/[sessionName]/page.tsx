@@ -1571,8 +1571,8 @@ export default function ProjectSessionDetailPage({
                 </AccordionTrigger>
                 <AccordionContent className="pt-2 pb-3">
                     <div className="space-y-3">
-                    <p className="text-xs text-muted-foreground">
-                      Add external context sources to enhance Claude&apos;s understanding
+                    <p className="text-sm text-muted-foreground">
+                      Add additional context to enhance the AI's understanding
                     </p>
                     
                     {/* Repository List */}
@@ -2006,7 +2006,7 @@ export default function ProjectSessionDetailPage({
         <DialogHeader>
           <DialogTitle>Add Context</DialogTitle>
           <DialogDescription>
-            Add external context sources to enhance agent understanding
+            Add additional context to enhance the AI's understanding
           </DialogDescription>
         </DialogHeader>
         
