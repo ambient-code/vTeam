@@ -1090,7 +1090,6 @@ export default function ProjectSessionDetailPage({
           setChatInput("");
           // Clear agent selection after sending
           setSelectedAgents([]);
-          setAutoSelectAgents(false);
         },
         onError: (err) => errorToast(err instanceof Error ? err.message : "Failed to send message"),
       }
@@ -1120,7 +1119,6 @@ export default function ProjectSessionDetailPage({
           successToast(`Command ${slashCommand} sent`);
           // Clear agent selection after sending
           setSelectedAgents([]);
-          setAutoSelectAgents(false);
         },
         onError: (err) => errorToast(err instanceof Error ? err.message : "Failed to send command"),
       }
