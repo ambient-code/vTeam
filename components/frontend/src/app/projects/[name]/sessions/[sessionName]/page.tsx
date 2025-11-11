@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { Play, Loader2, FolderTree, AlertCircle, GitBranch, Edit, RefreshCw, Folder, Sparkles, X, CloudUpload, CloudDownload, MoreVertical, Link, Cloud, FolderSync, Download, Workflow, ChevronDown, ChevronRight } from "lucide-react";
+import { Play, Loader2, FolderTree, AlertCircle, GitBranch, Edit, RefreshCw, Folder, Sparkles, X, CloudUpload, CloudDownload, MoreVertical, Link, Cloud, FolderSync, Download, Workflow, ChevronDown, ChevronRight, Info } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 // Custom components
@@ -20,6 +20,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Breadcrumbs } from "@/components/breadcrumbs";
 import { PageHeader } from "@/components/page-header";
 import { SessionHeader } from "./session-header";
@@ -65,6 +66,8 @@ export default function ProjectSessionDetailPage({
   const [contextBranch, setContextBranch] = useState("main");
   const [commandsScrollTop, setCommandsScrollTop] = useState(false);
   const [commandsScrollBottom, setCommandsScrollBottom] = useState(true);
+  const [agentsScrollTop, setAgentsScrollTop] = useState(false);
+  const [agentsScrollBottom, setAgentsScrollBottom] = useState(true);
   const [customWorkflowDialogOpen, setCustomWorkflowDialogOpen] = useState(false);
   const [customWorkflowUrl, setCustomWorkflowUrl] = useState("");
   const [customWorkflowBranch, setCustomWorkflowBranch] = useState("main");
@@ -1458,8 +1461,8 @@ export default function ProjectSessionDetailPage({
                               </Button>
 
                               {showAgentsList && (
-                                <TooltipProvider>
-                                  <div className="space-y-2 max-h-48 overflow-y-auto mt-2 pt-2 m-3">
+                                  <div className="mt-2 pt-2 mx-3 space-y-2">
+                                    {/* Auto-select checkbox - always visible above the scrollable list */}
                                     <div className="flex items-center space-x-2 pb-2">
                                       <Checkbox
                                         id="auto-select-agents"
@@ -1474,11 +1477,25 @@ export default function ProjectSessionDetailPage({
                                         Automatically select recommended agents for each task
                                       </Label>
                                     </div>
-                                    <div className="space-y-1 space-x-6">
-                                      {workflowMetadata.agents.map((agent) => (
-                                        <Tooltip key={agent.id}>
-                                          <TooltipTrigger asChild>
-                                            <div className="flex items-center space-x-2">
+                                    
+                                    {/* Scrollable agents list with fade effects */}
+                                    <div className="relative">
+                                      {agentsScrollTop && (
+                                        <div className="absolute top-0 left-0 right-0 h-8 bg-gradient-to-b from-white to-transparent pointer-events-none z-10" />
+                                      )}
+                                      <div 
+                                        className="max-h-48 overflow-y-auto space-y-1 pr-1"
+                                        onScroll={(e) => {
+                                          const target = e.currentTarget;
+                                          const isScrolledFromTop = target.scrollTop > 10;
+                                          const isScrolledToBottom = target.scrollHeight - target.scrollTop <= target.clientHeight + 10;
+                                          setAgentsScrollTop(isScrolledFromTop);
+                                          setAgentsScrollBottom(!isScrolledToBottom);
+                                        }}
+                                      >
+                                        <div className="space-y-1 space-x-6">
+                                          {workflowMetadata.agents.map((agent) => (
+                                            <div key={agent.id} className="flex items-center gap-2 group">
                                               <Checkbox
                                                 id={`agent-${agent.id}`}
                                                 checked={selectedAgents.includes(agent.id)}
@@ -1493,20 +1510,38 @@ export default function ProjectSessionDetailPage({
                                               />
                                               <Label
                                                 htmlFor={`agent-${agent.id}`}
-                                                className="text-sm font-normal cursor-pointer flex-1"
+                                                className="text-sm font-normal cursor-pointer"
                                               >
                                                 {agent.name}
                                               </Label>
+                                              <Popover>
+                                                <PopoverTrigger asChild>
+                                                  <button
+                                                    className="p-0.5 hover:bg-gray-100 rounded flex-shrink-0"
+                                                    onClick={(e) => {
+                                                      e.preventDefault();
+                                                      e.stopPropagation();
+                                                    }}
+                                                  >
+                                                    <Info className="h-3.5 w-3.5 text-muted-foreground" />
+                                                  </button>
+                                                </PopoverTrigger>
+                                                <PopoverContent className="max-w-xs" align="start">
+                                                  <div className="space-y-2">
+                                                    <p className="font-semibold text-sm">{agent.name}</p>
+                                                    <p className="text-xs text-muted-foreground">{agent.description}</p>
+                                                  </div>
+                                                </PopoverContent>
+                                              </Popover>
                                             </div>
-                                          </TooltipTrigger>
-                                          <TooltipContent>
-                                            <p className="max-w-xs">{agent.description}</p>
-                                          </TooltipContent>
-                                        </Tooltip>
-                                      ))}
+                                          ))}
+                                        </div>
+                                      </div>
+                                      {agentsScrollBottom && (
+                                        <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-white to-transparent pointer-events-none z-10" />
+                                      )}
                                     </div>
                                   </div>
-                                </TooltipProvider>
                               )}
                             </div>
 
@@ -1630,30 +1665,45 @@ export default function ProjectSessionDetailPage({
                 </AccordionContent>
               </AccordionItem>
 
-              {/* File Explorer (unified for artifacts, repos, and workflow) */}
-              <AccordionItem value="directories" className="border rounded-lg px-3 bg-white">
+              {/* Experimental */}
+              <AccordionItem value="experimental" className="border rounded-lg px-3 bg-white">
                 <AccordionTrigger className="text-base font-semibold hover:no-underline py-3">
-                  <div className="flex items-center gap-2 w-full">
-                    <Folder className="h-4 w-4" />
-                    <span>File Explorer</span>
-                    {gitStatus?.hasChanges && (
-                      <div className="flex gap-1 ml-auto mr-2">
-                        {gitStatus.totalAdded > 0 && (
-                          <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-                            +{gitStatus.totalAdded}
-                          </Badge>
-                        )}
-                        {gitStatus.totalRemoved > 0 && (
-                          <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
-                            -{gitStatus.totalRemoved}
-                      </Badge>
-                        )}
-                      </div>
-                    )}
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="h-4 w-4" />
+                    <span>Experimental</span>
                   </div>
                 </AccordionTrigger>
                 <AccordionContent className="pt-2 pb-3">
                   <div className="space-y-3">
+                    {/* File Explorer (unified for artifacts, repos, and workflow) */}
+                    <Accordion 
+                      type="multiple" 
+                      value={openAccordionItems} 
+                      onValueChange={setOpenAccordionItems}
+                    >
+                      <AccordionItem value="directories" className="border rounded-lg px-3 bg-muted/10">
+                        <AccordionTrigger className="text-base font-semibold hover:no-underline py-3">
+                          <div className="flex items-center gap-2 w-full">
+                            <Folder className="h-4 w-4" />
+                            <span>File Explorer</span>
+                            {gitStatus?.hasChanges && (
+                              <div className="flex gap-1 ml-auto mr-2">
+                                {gitStatus.totalAdded > 0 && (
+                                  <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                                    +{gitStatus.totalAdded}
+                                  </Badge>
+                                )}
+                                {gitStatus.totalRemoved > 0 && (
+                                  <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
+                                    -{gitStatus.totalRemoved}
+                                  </Badge>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </AccordionTrigger>
+                        <AccordionContent className="pt-2 pb-3">
+                          <div className="space-y-3">
                     {/* Panel Description */}
                     <p className="text-sm text-muted-foreground">
                       Browse, view, and manage files in your workspace directories. Track changes and sync with Git for version control.
@@ -1929,7 +1979,10 @@ export default function ProjectSessionDetailPage({
                       </div>
                     )}
                     
-                    
+                          </div>
+                        </AccordionContent>
+                      </AccordionItem>
+                    </Accordion>
                   </div>
                 </AccordionContent>
               </AccordionItem>
