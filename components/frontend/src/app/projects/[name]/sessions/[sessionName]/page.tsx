@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { Play, Loader2, FolderTree, AlertCircle, GitBranch, Edit, RefreshCw, Folder, Sparkles, X, CloudUpload, CloudDownload, MoreVertical, Link, Cloud, FolderSync, Download, Workflow, ChevronDown, ChevronRight, Info } from "lucide-react";
+import { Play, Loader2, FolderTree, AlertCircle, GitBranch, Edit, RefreshCw, Folder, Sparkles, X, CloudUpload, CloudDownload, MoreVertical, Link, Cloud, FolderSync, Download, Workflow, ChevronDown, ChevronRight, Info, NotepadText } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 // Custom components
@@ -15,7 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -112,6 +112,11 @@ export default function ProjectSessionDetailPage({
     totalAdded: number;
     totalRemoved: number;
   } | null>(null);
+  
+  // Artifacts panel state (separate from File Explorer)
+  const [artifactsSubPath, setArtifactsSubPath] = useState<string>("");
+  const [artifactsViewingFile, setArtifactsViewingFile] = useState<{path: string; content: string} | null>(null);
+  const [loadingArtifactsFile, setLoadingArtifactsFile] = useState(false);
 
   // Extract params
   useEffect(() => {
@@ -272,6 +277,18 @@ export default function ProjectSessionDetailPage({
     { enabled: openAccordionItems.includes("directories") }
   );
   
+  // Fetch artifacts file listing (separate from File Explorer)
+  const fullArtifactsPath = artifactsSubPath 
+    ? `artifacts/${artifactsSubPath}` 
+    : 'artifacts';
+  
+  const { data: artifactsFiles = [], refetch: refetchArtifactsFiles } = useWorkspaceList(
+    projectName,
+    sessionName,
+    fullArtifactsPath,
+    { enabled: openAccordionItems.includes("artifacts") }
+  );
+  
   // Reset subpath and inline file view when directory changes
   useEffect(() => {
     setCurrentSubPath("");
@@ -382,6 +399,64 @@ export default function ProjectSessionDetailPage({
       errorToast(err instanceof Error ? err.message : "Failed to download file");
     }
   }, [inlineViewingFile, currentSubPath, selectedDirectory.path, projectName, sessionName]);
+
+  // Handler for artifacts file viewing and folder navigation
+  const handleArtifactsFileOrFolderSelect = useCallback(async (node: FileTreeNode) => {
+    if (node.type === 'folder') {
+      // Navigate into folder
+      const newSubPath = artifactsSubPath ? `${artifactsSubPath}/${node.name}` : node.name;
+      setArtifactsSubPath(newSubPath);
+      setArtifactsViewingFile(null);
+    } else {
+      // Load file content inline
+      setLoadingArtifactsFile(true);
+      try {
+        const fullPath = artifactsSubPath 
+          ? `artifacts/${artifactsSubPath}/${node.name}`
+          : `artifacts/${node.name}`;
+        
+        const response = await fetch(
+          `/api/projects/${projectName}/agentic-sessions/${sessionName}/workspace/${encodeURIComponent(fullPath)}`
+        );
+        
+        if (response.ok) {
+          const content = await response.text();
+          setArtifactsViewingFile({ path: node.name, content });
+        } else {
+          errorToast('Failed to load file');
+        }
+      } catch {
+        errorToast('Failed to load file');
+      } finally {
+        setLoadingArtifactsFile(false);
+      }
+    }
+  }, [projectName, sessionName, artifactsSubPath]);
+
+  // Handler for downloading artifacts file
+  const handleDownloadArtifactsFile = useCallback(() => {
+    if (!artifactsViewingFile) return;
+
+    try {
+      const fullPath = artifactsSubPath
+        ? `artifacts/${artifactsSubPath}/${artifactsViewingFile.path}`
+        : `artifacts/${artifactsViewingFile.path}`;
+
+      const downloadUrl = `/api/projects/${encodeURIComponent(projectName)}/agentic-sessions/${encodeURIComponent(sessionName)}/workspace/${encodeURIComponent(fullPath)}`;
+
+      // Create a hidden link and click it to trigger download
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = artifactsViewingFile.path;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      successToast(`Downloading ${artifactsViewingFile.path}...`);
+    } catch (err) {
+      errorToast(err instanceof Error ? err.message : "Failed to download file");
+    }
+  }, [artifactsViewingFile, artifactsSubPath, projectName, sessionName]);
 
   // Compute directory options from session data
   const directoryOptions = useMemo(() => {
@@ -515,7 +590,7 @@ export default function ProjectSessionDetailPage({
     // Set as pending custom workflow
     setPendingWorkflow({
       id: "custom",
-      name: "Custom Workflow",
+      name: "Custom workflow",
       description: `Custom workflow from ${customWorkflowUrl.trim()}`,
       gitUrl: customWorkflowUrl.trim(),
       branch: customWorkflowBranch.trim() || "main",
@@ -1312,9 +1387,10 @@ export default function ProjectSessionDetailPage({
                                   </div>
                                 </SelectItem>
                               ))}
+                              <SelectSeparator />
                               <SelectItem value="custom">
                                 <div className="flex flex-col items-start gap-0.5 py-1">
-                                  <span>Custom Workflow...</span>
+                                  <span>Custom workflow...</span>
                                   <span className="text-xs text-muted-foreground font-normal">
                                     Load a workflow from a custom Git repository
                                   </span>
@@ -1326,12 +1402,12 @@ export default function ProjectSessionDetailPage({
                         
                         {/* Show workflow preview and activate/switch button */}
                         {pendingWorkflow && (
-                          <Alert className="bg-blue-50 border-blue-200">
-                            <AlertCircle className="h-4 w-4 text-blue-600" />
-                            <AlertTitle className="text-blue-900">
+                          <Alert variant="info">
+                            <AlertCircle />
+                            <AlertTitle>
                               Reload required
                             </AlertTitle>
-                            <AlertDescription className="text-blue-800">
+                            <AlertDescription>
                               <div className="space-y-2 mt-2">
                                 <p className="text-sm">
                                   Please reload this chat session to switch to the new workflow. Your chat history will be preserved.
@@ -1572,15 +1648,7 @@ export default function ProjectSessionDetailPage({
                         <AlertTitle>{activeWorkflow ? 'Switching Workflow...' : 'Activating Workflow...'}</AlertTitle>
                         <AlertDescription>
                           <div className="space-y-2">
-                            <p>Claude is restarting with the new workflow.</p>
-                            <ul className="text-sm space-y-1 mt-2 list-disc list-inside">
-                              <li>Cloning workflow repository</li>
-                              <li>Setting up workspace structure</li>
-                              <li>Restarting Claude Code</li>
-                            </ul>
-                            <p className="text-xs text-muted-foreground mt-2">
-                              This may take 10-30 seconds...
-                            </p>
+                            <p>Please wait. This may take 10-20 seconds...</p>
                           </div>
                         </AlertDescription>
                       </Alert>
@@ -1607,7 +1675,7 @@ export default function ProjectSessionDetailPage({
                 <AccordionContent className="pt-2 pb-3">
                     <div className="space-y-3">
                     <p className="text-sm text-muted-foreground">
-                      Add additional context to enhance the AI&apos;s understanding
+                      Add additional context to enhance the AI&apos;s understanding.
                     </p>
                     
                     {/* Repository List */}
@@ -1662,6 +1730,119 @@ export default function ProjectSessionDetailPage({
                       </p>
                             </div>
                           </div>
+                </AccordionContent>
+              </AccordionItem>
+
+              {/* Artifacts */}
+              <AccordionItem value="artifacts" className="border rounded-lg px-3 bg-white">
+                <AccordionTrigger className="text-base font-semibold hover:no-underline py-3">
+                  <div className="flex items-center gap-2">
+                    <NotepadText className="h-4 w-4" />
+                    <span>Artifacts</span>
+                  </div>
+                </AccordionTrigger>
+                <AccordionContent className="pt-2 pb-3">
+                  <div className="space-y-3">
+                    <p className="text-sm text-muted-foreground">
+                      Artifacts created by the AI will be added here.
+                    </p>
+                    
+                    {/* File Browser for Artifacts */}
+                    <div className="border rounded-lg overflow-hidden">
+                      {/* Header with breadcrumbs and actions */}
+                      <div className="px-2 py-1.5 border-b flex items-center justify-between bg-muted/30">
+                        <div className="flex items-center gap-1 text-xs text-muted-foreground min-w-0 flex-1">
+                          {/* Back button when in subfolder or viewing file */}
+                          {(artifactsSubPath || artifactsViewingFile) && (
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              onClick={() => {
+                                if (artifactsViewingFile) {
+                                  // Go back to file tree
+                                  setArtifactsViewingFile(null);
+                                } else if (artifactsSubPath) {
+                                  // Go back to parent folder
+                                  const pathParts = artifactsSubPath.split('/');
+                                  pathParts.pop();
+                                  setArtifactsSubPath(pathParts.join('/'));
+                                }
+                              }}
+                              className="h-6 px-1.5 mr-1"
+                            >
+                              ← Back
+                            </Button>
+                          )}
+                          
+                          {/* Breadcrumb path */}
+                          <Folder className="inline h-3 w-3 mr-1 flex-shrink-0" />
+                          <code className="bg-muted px-1 py-0.5 rounded text-xs truncate">
+                            artifacts
+                            {artifactsSubPath && `/${artifactsSubPath}`}
+                            {artifactsViewingFile && `/${artifactsViewingFile.path}`}
+                          </code>
+                        </div>
+
+                        {/* Action buttons */}
+                        {artifactsViewingFile ? (
+                          /* Download button when viewing file */
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={handleDownloadArtifactsFile}
+                            className="h-6 px-2 flex-shrink-0"
+                            title="Download file"
+                          >
+                            <Download className="h-3 w-3" />
+                          </Button>
+                        ) : (
+                          /* Refresh button when not viewing file */
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            onClick={() => refetchArtifactsFiles()} 
+                            className="h-6 px-2 flex-shrink-0"
+                          >
+                            <FolderSync className="h-3 w-3" />
+                          </Button>
+                        )}
+                      </div>
+                      
+                      {/* Content area */}
+                      <div className="p-2 max-h-64 overflow-y-auto">
+                        {loadingArtifactsFile ? (
+                          <div className="flex items-center justify-center py-8">
+                            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                          </div>
+                        ) : artifactsViewingFile ? (
+                          /* File content view */
+                          <div className="text-xs">
+                            <pre className="bg-muted/50 p-2 rounded overflow-x-auto">
+                              <code>{artifactsViewingFile.content}</code>
+                            </pre>
+                          </div>
+                        ) : artifactsFiles.length === 0 ? (
+                          /* Empty state */
+                          <div className="text-center py-4 text-sm text-muted-foreground">
+                            <NotepadText className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                            <p>No artifacts yet</p>
+                            <p className="text-xs mt-1">AI-generated artifacts will appear here</p>
+                          </div>
+                        ) : (
+                          /* File tree */
+                          <FileTree 
+                            nodes={artifactsFiles.map((item): FileTreeNode => ({
+                              name: item.name,
+                              path: item.path,
+                              type: item.isDir ? 'folder' : 'file',
+                              sizeKb: item.size ? item.size / 1024 : undefined,
+                            }))}
+                            onSelect={handleArtifactsFileOrFolderSelect}
+                          />
+                        )}
+                      </div>
+                    </div>
+                  </div>
                 </AccordionContent>
               </AccordionItem>
 
@@ -2000,7 +2181,7 @@ export default function ProjectSessionDetailPage({
                       <Loader2 className="h-4 w-4 animate-spin" />
                       <AlertTitle>Activating Workflow...</AlertTitle>
                       <AlertDescription>
-                        <p>Claude is restarting with the new workflow. Please wait...</p>
+                        <p>The new workflow is being loaded. Please wait...</p>
                       </AlertDescription>
                     </Alert>
                   </div>
@@ -2014,14 +2195,7 @@ export default function ProjectSessionDetailPage({
                       <AlertTitle>Updating Repositories...</AlertTitle>
                       <AlertDescription>
                         <div className="space-y-2">
-                          <p>Claude is paused while repositories are being updated.</p>
-                          <ul className="text-sm space-y-1 mt-2 list-disc list-inside">
-                            <li>Cloning repository to workspace</li>
-                            <li>Restarting Claude Code</li>
-                          </ul>
-                          <p className="text-xs text-muted-foreground mt-2">
-                            This may take 10-20 seconds...
-                          </p>
+                          <p>Please wait while repositories are being updated. This may take 10-20 seconds...</p>
                         </div>
                       </AlertDescription>
                     </Alert>
@@ -2059,7 +2233,7 @@ export default function ProjectSessionDetailPage({
         <DialogHeader>
           <DialogTitle>Add Context</DialogTitle>
           <DialogDescription>
-            Add additional context to enhance the AI&apos;s understanding
+            Add additional context to enhance the AI&apos;s understanding.
           </DialogDescription>
         </DialogHeader>
         

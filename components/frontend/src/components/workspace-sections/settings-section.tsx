@@ -255,10 +255,10 @@ export function SettingsSection({ projectName }: SettingsSectionProps) {
         <Separator />
         <CardContent className="space-y-6">
           {/* Warning about centralized integrations */}
-          <Alert variant="default" className="border-amber-200 bg-amber-50">
-            <AlertTriangle className="h-4 w-4 text-amber-600" />
-            <AlertTitle className="text-amber-900">Centralized Integrations Recommended</AlertTitle>
-            <AlertDescription className="text-amber-800 text-sm">
+          <Alert variant="warning">
+            <AlertTriangle />
+            <AlertTitle>Centralized Integrations Recommended</AlertTitle>
+            <AlertDescription>
               <p>Cluster-level integrations (Vertex AI, GitHub App, Jira OAuth) are more secure than personal tokens. Only configure these secrets if centralized integrations are unavailable.</p>
             </AlertDescription>
           </Alert>
@@ -279,9 +279,9 @@ export function SettingsSection({ projectName }: SettingsSectionProps) {
             {anthropicExpanded && (
               <div className="px-3 pb-3 space-y-3 border-t pt-3">
                 {vertexEnabled && anthropicApiKey && (
-                  <Alert variant="default" className="border-amber-200 bg-amber-50">
-                    <AlertTriangle className="h-4 w-4 text-amber-600" />
-                    <AlertDescription className="text-amber-800 text-sm">
+                  <Alert variant="warning">
+                    <AlertTriangle />
+                    <AlertDescription>
                       Vertex AI is enabled for this cluster. The ANTHROPIC_API_KEY will be ignored. Sessions will use Vertex AI instead.
                     </AlertDescription>
                   </Alert>
