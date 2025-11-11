@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -601,10 +602,11 @@ func parseFrontmatter(filePath string) map[string]string {
 
 // AmbientConfig represents the ambient.json configuration
 type AmbientConfig struct {
-	Name         string `json:"name"`
-	Description  string `json:"description"`
-	SystemPrompt string `json:"systemPrompt"`
-	ArtifactsDir string `json:"artifactsDir"`
+	Name         string            `json:"name"`
+	Description  string            `json:"description"`
+	SystemPrompt string            `json:"systemPrompt"`
+	ArtifactsDir string            `json:"artifactsDir"`
+	Results      map[string]string `json:"results,omitempty"` // displayName -> glob pattern
 }
 
 // parseAmbientConfig reads and parses ambient.json from workflow directory
@@ -638,6 +640,83 @@ func parseAmbientConfig(workflowDir string) *AmbientConfig {
 
 	log.Printf("parseAmbientConfig: loaded config: name=%q artifactsDir=%q", config.Name, config.ArtifactsDir)
 	return &config
+}
+
+// ResultFile represents a workflow result file
+type ResultFile struct {
+	DisplayName string `json:"displayName"`
+	Path        string `json:"path"` // Relative path from workspace
+	Exists      bool   `json:"exists"`
+	Content     string `json:"content,omitempty"`
+	Error       string `json:"error,omitempty"`
+}
+
+// ContentWorkflowResults handles GET /content/workflow-results?session=
+func ContentWorkflowResults(c *gin.Context) {
+	sessionName := c.Query("session")
+	if sessionName == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "missing session parameter"})
+		return
+	}
+
+	workflowDir := findActiveWorkflowDir(sessionName)
+	if workflowDir == "" {
+		c.JSON(http.StatusOK, gin.H{"results": []ResultFile{}})
+		return
+	}
+
+	ambientConfig := parseAmbientConfig(workflowDir)
+	if len(ambientConfig.Results) == 0 {
+		c.JSON(http.StatusOK, gin.H{"results": []ResultFile{}})
+		return
+	}
+
+	workspaceBase := filepath.Join(StateBaseDir, "sessions", sessionName, "workspace")
+	results := []ResultFile{}
+
+	for displayName, pattern := range ambientConfig.Results {
+		absPattern := filepath.Join(workspaceBase, pattern)
+		matches, err := filepath.Glob(absPattern)
+
+		if err != nil {
+			results = append(results, ResultFile{
+				DisplayName: displayName,
+				Path:        pattern,
+				Exists:      false,
+				Error:       fmt.Sprintf("Invalid pattern: %v", err),
+			})
+			continue
+		}
+
+		if len(matches) == 0 {
+			results = append(results, ResultFile{
+				DisplayName: displayName,
+				Path:        pattern,
+				Exists:      false,
+			})
+		} else {
+			for _, matchedPath := range matches {
+				relPath, _ := filepath.Rel(workspaceBase, matchedPath)
+				content, readErr := os.ReadFile(matchedPath)
+
+				result := ResultFile{
+					DisplayName: displayName,
+					Path:        relPath,
+					Exists:      true,
+				}
+
+				if readErr != nil {
+					result.Error = fmt.Sprintf("Failed to read: %v", readErr)
+				} else {
+					result.Content = string(content)
+				}
+
+				results = append(results, result)
+			}
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{"results": results})
 }
 
 // findActiveWorkflowDir finds the active workflow directory for a session

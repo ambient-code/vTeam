@@ -1329,6 +1329,64 @@ func GetWorkflowMetadata(c *gin.Context) {
 	c.Data(resp.StatusCode, "application/json", b)
 }
 
+// GetWorkflowResults retrieves workflow result files from the active workflow
+// GET /api/projects/:projectName/agentic-sessions/:sessionName/workflow/results
+func GetWorkflowResults(c *gin.Context) {
+	project := c.GetString("project")
+	if project == "" {
+		project = c.Param("projectName")
+	}
+	sessionName := c.Param("sessionName")
+
+	if project == "" {
+		log.Printf("GetWorkflowResults: project is empty, session=%s", sessionName)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Project namespace required"})
+		return
+	}
+
+	// Get authorization token
+	token := c.GetHeader("Authorization")
+	if strings.TrimSpace(token) == "" {
+		token = c.GetHeader("X-Forwarded-Access-Token")
+	}
+
+	// Try temp service first (for completed sessions), then regular service
+	serviceName := fmt.Sprintf("temp-content-%s", sessionName)
+	reqK8s, _ := GetK8sClientsForRequest(c)
+	if reqK8s != nil {
+		if _, err := reqK8s.CoreV1().Services(project).Get(c.Request.Context(), serviceName, v1.GetOptions{}); err != nil {
+			// Temp service doesn't exist, use regular service
+			serviceName = fmt.Sprintf("ambient-content-%s", sessionName)
+		}
+	} else {
+		serviceName = fmt.Sprintf("ambient-content-%s", sessionName)
+	}
+
+	// Build URL to content service
+	endpoint := fmt.Sprintf("http://%s.%s.svc:8080", serviceName, project)
+	u := fmt.Sprintf("%s/content/workflow-results?session=%s", endpoint, sessionName)
+
+	log.Printf("GetWorkflowResults: project=%s session=%s endpoint=%s", project, sessionName, endpoint)
+
+	// Create and send request to content pod
+	req, _ := http.NewRequestWithContext(c.Request.Context(), http.MethodGet, u, nil)
+	if strings.TrimSpace(token) != "" {
+		req.Header.Set("Authorization", token)
+	}
+	client := &http.Client{Timeout: 4 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("GetWorkflowResults: content service request failed: %v", err)
+		// Return empty results on error
+		c.JSON(http.StatusOK, gin.H{"results": []interface{}{}})
+		return
+	}
+	defer resp.Body.Close()
+
+	b, _ := io.ReadAll(resp.Body)
+	c.Data(resp.StatusCode, "application/json", b)
+}
+
 // fetchGitHubFileContent fetches a file from GitHub via API
 // token is optional - works for public repos without authentication (but has rate limits)
 func fetchGitHubFileContent(ctx context.Context, owner, repo, ref, path, token string) ([]byte, error) {

@@ -60,3 +60,25 @@ export async function getWorkflowMetadata(
   return response;
 }
 
+export type ResultFile = {
+  displayName: string;
+  path: string;
+  exists: boolean;
+  content?: string;
+  error?: string;
+};
+
+export type WorkflowResultsResponse = {
+  results: ResultFile[];
+};
+
+export async function getWorkflowResults(
+  projectName: string,
+  sessionName: string
+): Promise<WorkflowResultsResponse> {
+  const response = await apiClient.get<WorkflowResultsResponse>(
+    `/projects/${projectName}/agentic-sessions/${sessionName}/workflow/results`
+  );
+  return response;
+}
+

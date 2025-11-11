@@ -120,6 +120,60 @@
   body {
     @apply bg-background text-foreground;
   }
+
+  /* Force light scrollbar styling */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(203 213 225) rgb(241 245 249);
+  }
+  
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  
+  *::-webkit-scrollbar-track {
+    background: rgb(241 245 249);
+  }
+  
+  *::-webkit-scrollbar-thumb {
+    background: rgb(203 213 225);
+    border-radius: 4px;
+  }
+  
+  *::-webkit-scrollbar-thumb:hover {
+    background: rgb(148 163 184);
+  }
+
+  /* Force light mode for checkboxes in markdown */
+  article input[type="checkbox"] {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 1rem;
+    height: 1rem;
+    border: 1px solid rgb(209 213 219);
+    border-radius: 0.25rem;
+    background-color: white;
+    cursor: not-allowed;
+    position: relative;
+  }
+
+  article input[type="checkbox"]:checked {
+    background-color: rgb(37 99 235);
+    border-color: rgb(37 99 235);
+  }
+
+  article input[type="checkbox"]:checked::after {
+    content: '';
+    position: absolute;
+    left: 0.25rem;
+    top: 0.1rem;
+    width: 0.375rem;
+    height: 0.625rem;
+    border: solid white;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+  }
 }
 
 /* Thin scrollbar styling */

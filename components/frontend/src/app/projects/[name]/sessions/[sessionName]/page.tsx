@@ -1,8 +1,10 @@
 "use client";
 
 import { useState, useEffect, useMemo, useRef } from "react";
-import { Loader2, FolderTree, GitBranch, Edit, RefreshCw, Folder, Sparkles, X, CloudUpload, CloudDownload, MoreVertical, Cloud, FolderSync, Download, LibraryBig, MessageSquare } from "lucide-react";
+import { Loader2, FolderTree, AlertCircle, GitBranch, Edit, RefreshCw, Folder, Sparkles, X, CloudUpload, CloudDownload, MoreVertical, Cloud, FolderSync, Download, FileCheck, CheckCircle2, Clock, LibraryBig, MessageSquare } from "lucide-react";
 import { useRouter } from "next/navigation";
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 // Custom components
 import MessagesTab from "@/components/session/MessagesTab";
@@ -52,7 +54,8 @@ import {
 } from "@/services/queries";
 import { useWorkspaceList, useGitMergeStatus, useGitListBranches } from "@/services/queries/use-workspace";
 import { successToast, errorToast } from "@/hooks/use-toast";
-import { useOOTBWorkflows, useWorkflowMetadata } from "@/services/queries/use-workflows";
+import { useOOTBWorkflows, useWorkflowMetadata, useWorkflowResults } from "@/services/queries/use-workflows";
+import { cn } from "@/lib/utils";
 import { useMutation } from "@tanstack/react-query";
 
 export default function ProjectSessionDetailPage({
@@ -74,6 +77,10 @@ export default function ProjectSessionDetailPage({
   const [contextModalOpen, setContextModalOpen] = useState(false);
   const [repoChanging, setRepoChanging] = useState(false);
   const [firstMessageLoaded, setFirstMessageLoaded] = useState(false);
+  
+  // Tabbed interface state
+  const [openTabs, setOpenTabs] = useState<Array<{id: string; name: string; path: string; content: string}>>([{id: 'chat', name: 'Chat', path: '', content: ''}]);
+  const [activeTab, setActiveTab] = useState<string>('chat');
   
   // Directory browser state (unified for artifacts, repos, and workflow)
   const [selectedDirectory, setSelectedDirectory] = useState<DirectoryOption>({
@@ -202,6 +209,12 @@ export default function ProjectSessionDetailPage({
     projectName,
     sessionName,
     !!workflowManagement.activeWorkflow && !workflowManagement.workflowActivating
+  );
+  
+  // Fetch workflow results
+  const { data: workflowResults } = useWorkflowResults(
+    projectName,
+    sessionName
   );
   
   // Git operations for selected directory
@@ -958,6 +971,77 @@ export default function ProjectSessionDetailPage({
                         </div>
                       </AccordionContent>
                     </AccordionItem>
+
+                    {/* Results - Workflow Output Files */}
+                    {workflowResults?.results && workflowResults.results.length > 0 && (
+                      <AccordionItem value="results" className="border rounded-lg px-3 bg-white">
+                        <AccordionTrigger className="text-base font-semibold hover:no-underline py-3">
+                          <div className="flex items-center gap-2">
+                            <FileCheck className="h-4 w-4" />
+                            <span>Results</span>
+                            {workflowResults.results.filter(r => r.exists).length > 0 && (
+                              <Badge variant="secondary" className="ml-auto mr-2">
+                                {workflowResults.results.filter(r => r.exists).length}
+                              </Badge>
+                            )}
+                          </div>
+                        </AccordionTrigger>
+                        <AccordionContent className="pt-2 pb-3">
+                          <div className="space-y-3">
+                            <p className="text-sm text-muted-foreground">
+                              View workflow output files
+                            </p>
+
+                            <div className="space-y-2">
+                              {workflowResults.results.map((result, idx) => (
+                                <div
+                                  key={idx}
+                                  className={cn(
+                                    "rounded-lg border p-3",
+                                    result.exists ? "bg-white hover:bg-gray-50 cursor-pointer" : "bg-gray-50"
+                                  )}
+                                  onClick={() => {
+                                    if (result.exists && result.content) {
+                                      const tabId = `result-${idx}`;
+                                      if (!openTabs.find(t => t.id === tabId)) {
+                                        setOpenTabs([...openTabs, {
+                                          id: tabId,
+                                          name: result.displayName,
+                                          path: result.path,
+                                          content: result.content
+                                        }]);
+                                      }
+                                      setActiveTab(tabId);
+                                    }
+                                  }}
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                      {result.exists ? (
+                                        <CheckCircle2 className="h-4 w-4 text-green-600" />
+                                      ) : (
+                                        <Clock className="h-4 w-4 text-gray-400" />
+                                      )}
+                                      <div>
+                                        <span className="text-sm font-medium">{result.displayName}</span>
+                                        <p className="text-xs text-muted-foreground">{result.path}</p>
+                                      </div>
+                                    </div>
+                                    {result.error && (
+                                      <AlertCircle className="h-4 w-4 text-red-600" />
+                                    )}
+                                  </div>
+
+                                  {result.error && (
+                                    <p className="text-xs text-red-600 mt-2">{result.error}</p>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </AccordionContent>
+                      </AccordionItem>
+                    )}
                   </Accordion>
                 </div>
               </div>
@@ -1008,24 +1092,182 @@ export default function ProjectSessionDetailPage({
                       </div>
                     )}
                     
+                    {/* Tabbed Interface */}
                     <div className={`flex flex-col flex-1 overflow-hidden ${!firstMessageLoaded && session?.status?.phase === 'Pending' ? 'pointer-events-none opacity-50' : ''}`}>
-                      <MessagesTab
-                        session={session}
-                        streamMessages={streamMessages}
-                        chatInput={chatInput}
-                        setChatInput={setChatInput}
-                        onSendChat={() => Promise.resolve(sendChat())}
-                        onInterrupt={() => Promise.resolve(handleInterrupt())}
-                        onEndSession={() => Promise.resolve(handleEndSession())}
-                        onGoToResults={() => {}}
-                        onContinue={handleContinue}
-                        selectedAgents={selectedAgents}
-                        autoSelectAgents={autoSelectAgents}
-                        workflowMetadata={workflowMetadata}
-                        onSetSelectedAgents={setSelectedAgents}
-                        onSetAutoSelectAgents={setAutoSelectAgents}
-                        onCommandClick={handleCommandClick}
-                      />
+                      {(() => {
+                        const fileTabs = openTabs.filter(t => t.id !== 'chat');
+                        
+                        // If no file tabs, show chat directly without tabs
+                        if (fileTabs.length === 0) {
+                          return (
+                            <MessagesTab
+                              session={session}
+                              streamMessages={streamMessages}
+                              chatInput={chatInput}
+                              setChatInput={setChatInput}
+                              onSendChat={() => Promise.resolve(sendChat())}
+                              onInterrupt={() => Promise.resolve(handleInterrupt())}
+                              onEndSession={() => Promise.resolve(handleEndSession())}
+                              onGoToResults={() => {}}
+                              onContinue={handleContinue}
+                              selectedAgents={selectedAgents}
+                              autoSelectAgents={autoSelectAgents}
+                              workflowMetadata={workflowMetadata}
+                              onSetSelectedAgents={setSelectedAgents}
+                              onSetAutoSelectAgents={setAutoSelectAgents}
+                              onCommandClick={handleCommandClick}
+                            />
+                          );
+                        }
+                        
+                        // Show tabs when there are files
+                        return (
+                          <>
+                            {/* Tab Headers */}
+                            <div className="flex items-center gap-1 border-b bg-gray-50 px-2">
+                              {openTabs.map(tab => (
+                                <div
+                                  key={tab.id}
+                                  className={cn(
+                                    "flex items-center gap-2 px-3 py-2 cursor-pointer border-b-2 transition-colors",
+                                    activeTab === tab.id
+                                      ? "border-blue-500 bg-white"
+                                      : "border-transparent hover:bg-gray-100"
+                                  )}
+                                  onClick={() => setActiveTab(tab.id)}
+                                >
+                                  <span className="text-sm font-medium">{tab.name}</span>
+                                  {tab.id !== 'chat' && (
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        const remainingTabs = openTabs.filter(t => t.id !== tab.id);
+                                        setOpenTabs(remainingTabs);
+                                        
+                                        // If closing the active tab, switch to another tab
+                                        if (activeTab === tab.id) {
+                                          const remainingFileTabs = remainingTabs.filter(t => t.id !== 'chat');
+                                          if (remainingFileTabs.length > 0) {
+                                            // Switch to first file tab
+                                            setActiveTab(remainingFileTabs[0].id);
+                                          } else {
+                                            // No more file tabs, switch to chat
+                                            setActiveTab('chat');
+                                          }
+                                        }
+                                      }}
+                                      className="hover:bg-gray-200 rounded p-0.5"
+                                    >
+                                      <X className="h-3 w-3" />
+                                    </button>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+
+                            {/* Tab Content */}
+                            <div className="flex-1 overflow-auto">
+                              {activeTab === 'chat' ? (
+                                <MessagesTab
+                                  session={session}
+                                  streamMessages={streamMessages}
+                                  chatInput={chatInput}
+                                  setChatInput={setChatInput}
+                                  onSendChat={() => Promise.resolve(sendChat())}
+                                  onInterrupt={() => Promise.resolve(handleInterrupt())}
+                                  onEndSession={() => Promise.resolve(handleEndSession())}
+                                  onGoToResults={() => {}}
+                                  onContinue={handleContinue}
+                                  selectedAgents={selectedAgents}
+                                  autoSelectAgents={autoSelectAgents}
+                                  workflowMetadata={workflowMetadata}
+                                  onSetSelectedAgents={setSelectedAgents}
+                                  onSetAutoSelectAgents={setAutoSelectAgents}
+                                  onCommandClick={handleCommandClick}
+                                />
+                              ) : (
+                                <div className="p-6">
+                                  {(() => {
+                                    const tab = openTabs.find(t => t.id === activeTab);
+                                    if (!tab) return null;
+
+                                    const isMarkdown = tab.path.endsWith('.md');
+
+                                    return (
+                                      <div className="max-w-4xl mx-auto">
+                                        <div className="mb-4 pb-4 border-b">
+                                          <h2 className="text-xl font-semibold">{tab.name}</h2>
+                                          <p className="text-sm text-muted-foreground">{tab.path}</p>
+                                        </div>
+
+                                        {isMarkdown ? (
+                                          <article className="prose prose-slate prose-headings:text-gray-900 prose-h1:text-4xl prose-h1:font-bold prose-h2:text-2xl prose-h2:font-semibold prose-h3:text-xl prose-h3:font-semibold prose-p:text-gray-700 prose-li:text-gray-700 prose-strong:text-gray-900 prose-a:text-blue-600 hover:prose-a:text-blue-800 prose-code:text-pink-600 prose-code:bg-gray-100 prose-code:px-1 prose-code:py-0.5 prose-code:rounded max-w-none">
+                                            <ReactMarkdown 
+                                              remarkPlugins={[remarkGfm]}
+                                              components={{
+                                                h1: ({children}) => <h1 className="text-3xl font-bold mt-8 mb-4 text-gray-900 border-b pb-2">{children}</h1>,
+                                                h2: ({children}) => <h2 className="text-2xl font-semibold mt-6 mb-3 text-gray-900">{children}</h2>,
+                                                h3: ({children}) => <h3 className="text-xl font-semibold mt-4 mb-2 text-gray-800">{children}</h3>,
+                                                h4: ({children}) => <h4 className="text-lg font-semibold mt-3 mb-2 text-gray-800">{children}</h4>,
+                                                p: ({children}) => <p className="mb-4 text-gray-700 leading-7">{children}</p>,
+                                                a: ({href, children}) => <a href={href} className="text-blue-600 hover:text-blue-800 underline" target="_blank" rel="noopener noreferrer">{children}</a>,
+                                                ul: ({children, className}) => {
+                                                  const isTaskList = className?.includes('contains-task-list');
+                                                  return isTaskList ? 
+                                                    <ul className="mb-4 space-y-2 list-none">{children}</ul> :
+                                                    <ul className="list-disc list-inside mb-4 space-y-2">{children}</ul>;
+                                                },
+                                                ol: ({children}) => <ol className="list-decimal list-inside mb-4 space-y-2">{children}</ol>,
+                                                li: ({children, className}) => {
+                                                  const isTaskItem = className?.includes('task-list-item');
+                                                  return isTaskItem ?
+                                                    <li className="flex items-center gap-2 text-gray-700">{children}</li> :
+                                                    <li className="text-gray-700 ml-4">{children}</li>;
+                                                },
+                                                input: ({type, checked}) => 
+                                                  type === 'checkbox' ? 
+                                                    <input 
+                                                      type="checkbox" 
+                                                      checked={checked} 
+                                                      disabled 
+                                                      className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 bg-white"
+                                                    /> : 
+                                                    null,
+                                                blockquote: ({children}) => <blockquote className="border-l-4 border-gray-300 pl-4 py-2 my-4 italic text-gray-600 bg-gray-50">{children}</blockquote>,
+                                                code: ({inline, children}: {inline?: boolean; children?: React.ReactNode}) => 
+                                                  inline ? 
+                                                    <code className="bg-gray-100 text-pink-600 px-1.5 py-0.5 rounded text-sm font-mono">{children}</code> : 
+                                                    <code className="block bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto text-sm font-mono my-4">{children}</code>,
+                                                pre: ({children}) => <pre className="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto my-4">{children}</pre>,
+                                                table: ({children}) => <table className="min-w-full divide-y divide-gray-200 my-4 border">{children}</table>,
+                                                thead: ({children}) => <thead className="bg-gray-50">{children}</thead>,
+                                                tbody: ({children}) => <tbody className="bg-white divide-y divide-gray-200">{children}</tbody>,
+                                                tr: ({children}) => <tr>{children}</tr>,
+                                                th: ({children}) => <th className="px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase tracking-wider border">{children}</th>,
+                                                td: ({children}) => <td className="px-4 py-2 text-sm text-gray-700 border">{children}</td>,
+                                                hr: () => <hr className="my-8 border-t border-gray-300" />,
+                                                strong: ({children}) => <strong className="font-semibold text-gray-900">{children}</strong>,
+                                                em: ({children}) => <em className="italic text-gray-700">{children}</em>,
+                                                del: ({children}) => <del className="line-through text-gray-500">{children}</del>,
+                                              }}
+                                            >
+                                              {tab.content}
+                                            </ReactMarkdown>
+                                          </article>
+                                        ) : (
+                                          <pre className="bg-gray-50 p-4 rounded-lg overflow-x-auto text-sm">
+                                            <code>{tab.content}</code>
+                                          </pre>
+                                        )}
+                                      </div>
+                                    );
+                                  })()}
+                                </div>
+                              )}
+                            </div>
+                          </>
+                        );
+                      })()}
                     </div>
                   </CardContent>
                 </Card>
