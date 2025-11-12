@@ -1,6 +1,3 @@
-# Fork PR Support: This workflow now supports pull requests from forked repositories
-# See: https://github.com/anthropics/claude-code-action/issues/339
-
 
 name: Claude Code Review
 
@@ -25,6 +22,7 @@ jobs:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
+
       - name: Dismiss old Claude bot comments
         env:
           github_token: ${{ secrets.GITHUB_TOKEN }}
@@ -52,7 +50,10 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
           allowed_non_write_users: '*'  # Allow fork contributors to trigger reviews (safe for read-only review workflows)
+          claude_args: |
+            --allowed-tools "Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*)"
           prompt: |
             Please review this pull request and provide feedback on:
             - Code quality and best practices
@@ -64,7 +65,3 @@ jobs:
             Use the repository's CLAUDE.md for guidance on style and conventions. Be constructive and helpful in your feedback.
 
             Use `gh pr comment` with your Bash tool to leave your review as a comment on the PR.
-
-          # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
-          # or https://docs.anthropic.com/en/docs/claude-code/sdk#command-line for available options
-          claude_args: '--allowed-tools "Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*)"'
