@@ -1,10 +1,11 @@
 # Fork PR Support: This workflow now supports pull requests from forked repositories
 # See: https://github.com/anthropics/claude-code-action/issues/339
 # 
-# Three fixes applied:
+# Features enabled:
 # 1. Checkout fork repository (head.repo.full_name)
 # 2. Add github_token to bypass OIDC authentication issues
 # 3. Add allowed_non_write_users to permit fork contributors
+# 4. use_sticky_comment to update single comment instead of creating new ones (prevents comment spam)
 
 name: Claude Code Review
 
@@ -44,6 +45,7 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ secrets.GITHUB_TOKEN }}  # Fix for OIDC authentication issues with forks
           allowed_non_write_users: '*'  # Allow fork contributors to trigger reviews (safe for read-only review workflows)
+          use_sticky_comment: 'true'  # Update single comment instead of creating new ones on each commit
           prompt: |
             Please review this pull request and provide feedback on:
             - Code quality and best practices
