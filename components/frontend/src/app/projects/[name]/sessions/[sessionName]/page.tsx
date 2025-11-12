@@ -318,6 +318,33 @@ export default function ProjectSessionDetailPage({
     initializedFromSessionRef.current = true;
   }, [session, ootbWorkflows, workflowManagement]);
 
+  // Sync open tabs with latest workflow results (auto-refresh tab content)
+  useEffect(() => {
+    if (!workflowResults?.results) return;
+    
+    setOpenTabs(prevTabs => {
+      return prevTabs.map(tab => {
+        // Don't update chat tab
+        if (tab.id === 'chat') return tab;
+        
+        // Find matching result by path
+        const matchingResult = workflowResults.results.find(r => 
+          r.exists && r.path === tab.path
+        );
+        
+        // Update tab content if we found newer data
+        if (matchingResult?.content && matchingResult.content !== tab.content) {
+          return {
+            ...tab,
+            content: matchingResult.content
+          };
+        }
+        
+        return tab;
+      });
+    });
+  }, [workflowResults]);
+
   // Compute directory options
   const directoryOptions = useMemo<DirectoryOption[]>(() => {
     const options: DirectoryOption[] = [
@@ -563,8 +590,8 @@ export default function ProjectSessionDetailPage({
     return (
       <div className="absolute inset-0 top-16 overflow-hidden bg-[#f8fafc] flex items-center justify-center">
         <div className="flex items-center">
-          <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
-          <span className="ml-2">Loading session...</span>
+            <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
+            <span className="ml-2">Loading session...</span>
         </div>
       </div>
     );
@@ -605,54 +632,54 @@ export default function ProjectSessionDetailPage({
       <div className="absolute inset-0 top-16 overflow-hidden bg-[#f8fafc] flex flex-col">
         {/* Fixed header */}
         <div className="flex-shrink-0 bg-white border-b">
-          <div className="container mx-auto px-6 py-4">
-            <Breadcrumbs
-              items={[
-                { label: 'Workspaces', href: '/projects' },
-                { label: projectName, href: `/projects/${projectName}` },
-                { label: 'Sessions', href: `/projects/${projectName}/sessions` },
-                { label: session.spec.displayName || session.metadata.name },
-              ]}
-              className="mb-4"
-            />
-            <SessionHeader
-              session={session}
-              projectName={projectName}
-              actionLoading={
-                stopMutation.isPending ? "stopping" :
-                deleteMutation.isPending ? "deleting" :
+        <div className="container mx-auto px-6 py-4">
+          <Breadcrumbs
+            items={[
+              { label: 'Workspaces', href: '/projects' },
+              { label: projectName, href: `/projects/${projectName}` },
+              { label: 'Sessions', href: `/projects/${projectName}/sessions` },
+              { label: session.spec.displayName || session.metadata.name },
+            ]}
+            className="mb-4"
+          />
+          <SessionHeader
+                      session={session}
+            projectName={projectName}
+            actionLoading={
+              stopMutation.isPending ? "stopping" :
+              deleteMutation.isPending ? "deleting" :
                 continueMutation.isPending ? "resuming" :
-                null
-              }
-              onRefresh={refetchSession}
-              onStop={handleStop}
+              null
+            }
+            onRefresh={refetchSession}
+            onStop={handleStop}
               onContinue={handleContinue}
-              onDelete={handleDelete}
-              durationMs={durationMs}
-              k8sResources={k8sResources}
-              messageCount={messages.length}
-            />
-          </div>
+            onDelete={handleDelete}
+            durationMs={durationMs}
+            k8sResources={k8sResources}
+            messageCount={messages.length}
+          />
         </div>
+      </div>
 
         {/* Main content area */}
         <div className="flex-grow overflow-hidden">
           <div className="h-full container mx-auto px-6 py-6">
             <div className="h-full flex gap-6">
-              {/* Left Column - Accordions */}
+          {/* Left Column - Accordions */}
               <div className="w-2/5 flex flex-col min-w-0 relative">
                 {/* Blocking overlay when first message hasn't loaded and session is pending */}
                 {!firstMessageLoaded && session?.status?.phase === 'Pending' && (
                   <div className="absolute inset-0 bg-white/60 backdrop-blur-sm rounded-lg z-20 flex items-center justify-center">
                     <div className="flex flex-col items-center justify-center text-center text-muted-foreground">
                       <LibraryBig className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                      <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2">
                         <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
                         <p className="text-sm">No context yet</p>
-                      </div>
-                      <p className="text-xs mt-1">Context will appear once the session starts...</p>
-                    </div>
                   </div>
+                      <p className="text-xs mt-1">Context will appear once the session starts...</p>
+                                </div>
+                                  </div>
                 )}
                 <div className={`overflow-y-auto flex-grow pb-6 ${!firstMessageLoaded && session?.status?.phase === 'Pending' ? 'pointer-events-none opacity-50' : ''}`}>
                   <Accordion type="multiple" value={openAccordionItems} onValueChange={setOpenAccordionItems} className="w-full space-y-3">
@@ -694,276 +721,276 @@ export default function ProjectSessionDetailPage({
 
                     {/* Experimental - File Explorer */}
                     <AccordionItem value="experimental" className="border rounded-lg px-3 bg-white">
-                      <AccordionTrigger className="text-base font-semibold hover:no-underline py-3">
-                        <div className="flex items-center gap-2">
+                <AccordionTrigger className="text-base font-semibold hover:no-underline py-3">
+                  <div className="flex items-center gap-2">
                           <Sparkles className="h-4 w-4" />
                           <span>Experimental</span>
-                        </div>
-                      </AccordionTrigger>
-                      <AccordionContent className="pt-2 pb-3">
-                        <div className="space-y-3">
+                  </div>
+                </AccordionTrigger>
+                <AccordionContent className="pt-2 pb-3">
+                    <div className="space-y-3">
                           <Accordion 
                             type="multiple" 
                             value={openAccordionItems} 
                             onValueChange={setOpenAccordionItems}
                           >
                             <AccordionItem value="directories" className="border rounded-lg px-3 bg-muted/10">
-                              <AccordionTrigger className="text-base font-semibold hover:no-underline py-3">
-                                <div className="flex items-center gap-2 w-full">
-                                  <Folder className="h-4 w-4" />
-                                  <span>File Explorer</span>
+                <AccordionTrigger className="text-base font-semibold hover:no-underline py-3">
+                  <div className="flex items-center gap-2 w-full">
+                    <Folder className="h-4 w-4" />
+                    <span>File Explorer</span>
                                   {gitOps.gitStatus?.hasChanges && (
-                                    <div className="flex gap-1 ml-auto mr-2">
+                      <div className="flex gap-1 ml-auto mr-2">
                                       {(gitOps.gitStatus?.totalAdded ?? 0) > 0 && (
-                                        <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                          <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
                                           +{gitOps.gitStatus.totalAdded}
-                                        </Badge>
-                                      )}
+                          </Badge>
+                        )}
                                       {(gitOps.gitStatus?.totalRemoved ?? 0) > 0 && (
-                                        <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
+                          <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
                                           -{gitOps.gitStatus.totalRemoved}
-                                        </Badge>
-                                      )}
-                                    </div>
-                                  )}
-                                </div>
-                              </AccordionTrigger>
-                              <AccordionContent className="pt-2 pb-3">
-                                <div className="space-y-3">
-                                  <p className="text-sm text-muted-foreground">
-                                    Browse, view, and manage files in your workspace directories. Track changes and sync with Git for version control.
-                                  </p>
-                                  
-                                  {/* Directory Selector */}
-                                  <div className="flex items-center justify-between gap-2">
-                                    <Label className="text-xs text-muted-foreground">Directory:</Label>
-                                    <Select
-                                      value={`${selectedDirectory.type}:${selectedDirectory.path}`}
-                                      onValueChange={(value) => {
-                                        const [type, ...pathParts] = value.split(':');
-                                        const path = pathParts.join(':');
-                                        const option = directoryOptions.find(
-                                          opt => opt.type === type && opt.path === path
-                                        );
-                                        if (option) setSelectedDirectory(option);
-                                      }}
-                                    >
-                                      <SelectTrigger className="w-[250px] h-8">
-                                        <SelectValue />
-                                      </SelectTrigger>
-                                      <SelectContent>
-                                        {directoryOptions.map(opt => (
-                                          <SelectItem key={`${opt.type}:${opt.path}`} value={`${opt.type}:${opt.path}`}>
-                                            <div className="flex items-center gap-2">
-                                              {opt.type === 'artifacts' && <Folder className="h-3 w-3" />}
-                                              {opt.type === 'repo' && <GitBranch className="h-3 w-3" />}
-                                              {opt.type === 'workflow' && <Sparkles className="h-3 w-3" />}
-                                              <span className="text-xs">{opt.name}</span>
-                                            </div>
-                                          </SelectItem>
-                                        ))}
-                                      </SelectContent>
-                                    </Select>
-                                  </div>
-                                  
+                      </Badge>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </AccordionTrigger>
+                <AccordionContent className="pt-2 pb-3">
+                  <div className="space-y-3">
+                    <p className="text-sm text-muted-foreground">
+                      Browse, view, and manage files in your workspace directories. Track changes and sync with Git for version control.
+                    </p>
+                    
+                    {/* Directory Selector */}
+                    <div className="flex items-center justify-between gap-2">
+                      <Label className="text-xs text-muted-foreground">Directory:</Label>
+                      <Select
+                        value={`${selectedDirectory.type}:${selectedDirectory.path}`}
+                        onValueChange={(value) => {
+                          const [type, ...pathParts] = value.split(':');
+                          const path = pathParts.join(':');
+                          const option = directoryOptions.find(
+                            opt => opt.type === type && opt.path === path
+                          );
+                          if (option) setSelectedDirectory(option);
+                        }}
+                      >
+                        <SelectTrigger className="w-[250px] h-8">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {directoryOptions.map(opt => (
+                            <SelectItem key={`${opt.type}:${opt.path}`} value={`${opt.type}:${opt.path}`}>
+                              <div className="flex items-center gap-2">
+                                {opt.type === 'artifacts' && <Folder className="h-3 w-3" />}
+                                {opt.type === 'repo' && <GitBranch className="h-3 w-3" />}
+                                {opt.type === 'workflow' && <Sparkles className="h-3 w-3" />}
+                                <span className="text-xs">{opt.name}</span>
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    
                                   {/* File Browser */}
-                                  <div className="border rounded-lg overflow-hidden">
-                                    <div className="px-2 py-1.5 border-b flex items-center justify-between bg-muted/30">
-                                      <div className="flex items-center gap-1 text-xs text-muted-foreground min-w-0 flex-1">
+                    <div className="border rounded-lg overflow-hidden">
+                      <div className="px-2 py-1.5 border-b flex items-center justify-between bg-muted/30">
+                        <div className="flex items-center gap-1 text-xs text-muted-foreground min-w-0 flex-1">
                                         {(fileOps.currentSubPath || fileOps.viewingFile) && (
-                                          <Button 
-                                            variant="ghost" 
-                                            size="sm" 
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
                                             onClick={fileOps.navigateBack}
-                                            className="h-6 px-1.5 mr-1"
-                                          >
-                                            ← Back
-                                          </Button>
-                                        )}
-                                        
-                                        <Folder className="inline h-3 w-3 mr-1 flex-shrink-0" />
-                                        <code className="bg-muted px-1 py-0.5 rounded text-xs truncate">
-                                          {selectedDirectory.path}
+                              className="h-6 px-1.5 mr-1"
+                            >
+                              ← Back
+                            </Button>
+                          )}
+                          
+                          <Folder className="inline h-3 w-3 mr-1 flex-shrink-0" />
+                          <code className="bg-muted px-1 py-0.5 rounded text-xs truncate">
+                            {selectedDirectory.path}
                                           {fileOps.currentSubPath && `/${fileOps.currentSubPath}`}
                                           {fileOps.viewingFile && `/${fileOps.viewingFile.path}`}
-                                        </code>
-                                      </div>
+                          </code>
+                        </div>
 
                                       {fileOps.viewingFile ? (
-                                        <div className="flex items-center gap-1">
-                                          <Button
-                                            variant="ghost"
-                                            size="sm"
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
                                             onClick={fileOps.handleDownloadFile}
-                                            className="h-6 px-2 flex-shrink-0"
-                                            title="Download file"
-                                          >
-                                            <Download className="h-3 w-3" />
-                                          </Button>
-                                          <DropdownMenu>
-                                            <DropdownMenuTrigger asChild>
-                                              <Button variant="ghost" size="sm" className="h-6 px-2 flex-shrink-0">
-                                                <MoreVertical className="h-3 w-3" />
-                                              </Button>
-                                            </DropdownMenuTrigger>
-                                            <DropdownMenuContent align="end">
-                                              <DropdownMenuItem disabled className="text-xs text-muted-foreground">
-                                                Sync to Jira - Coming soon
-                                              </DropdownMenuItem>
-                                              <DropdownMenuItem disabled className="text-xs text-muted-foreground">
-                                                Sync to GDrive - Coming soon
-                                              </DropdownMenuItem>
-                                            </DropdownMenuContent>
-                                          </DropdownMenu>
-                                        </div>
-                                      ) : (
-                                        <Button variant="ghost" size="sm" onClick={() => refetchDirectoryFiles()} className="h-6 px-2 flex-shrink-0">
-                                          <FolderSync className="h-3 w-3" />
-                                        </Button>
-                                      )}
-                                    </div>
-                                    
-                                    <div className="p-2 max-h-64 overflow-y-auto">
+                              className="h-6 px-2 flex-shrink-0"
+                              title="Download file"
+                            >
+                              <Download className="h-3 w-3" />
+                            </Button>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="sm" className="h-6 px-2 flex-shrink-0">
+                                  <MoreVertical className="h-3 w-3" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem disabled className="text-xs text-muted-foreground">
+                                  Sync to Jira - Coming soon
+                                </DropdownMenuItem>
+                                <DropdownMenuItem disabled className="text-xs text-muted-foreground">
+                                  Sync to GDrive - Coming soon
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+                        ) : (
+                          <Button variant="ghost" size="sm" onClick={() => refetchDirectoryFiles()} className="h-6 px-2 flex-shrink-0">
+                            <FolderSync className="h-3 w-3" />
+                        </Button>
+                        )}
+                      </div>
+                      
+                      <div className="p-2 max-h-64 overflow-y-auto">
                                       {fileOps.loadingFile ? (
-                                        <div className="flex items-center justify-center py-8">
-                                          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                                        </div>
+                          <div className="flex items-center justify-center py-8">
+                            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                          </div>
                                       ) : fileOps.viewingFile ? (
-                                        <div className="text-xs">
-                                          <pre className="bg-muted/50 p-2 rounded overflow-x-auto">
+                          <div className="text-xs">
+                            <pre className="bg-muted/50 p-2 rounded overflow-x-auto">
                                             <code>{fileOps.viewingFile.content}</code>
-                                          </pre>
-                                        </div>
-                                      ) : directoryFiles.length === 0 ? (
-                                        <div className="text-center py-4 text-sm text-muted-foreground">
-                                          <FolderTree className="h-8 w-8 mx-auto mb-2 opacity-30" />
-                                          <p>No files yet</p>
-                                          <p className="text-xs mt-1">Files will appear here</p>
-                                        </div>
-                                      ) : (
-                                        <FileTree 
-                                          nodes={directoryFiles.map((item): FileTreeNode => ({
-                                            name: item.name,
-                                            path: item.path,
-                                            type: item.isDir ? 'folder' : 'file',
-                                            sizeKb: item.size ? item.size / 1024 : undefined,
-                                          }))}
+                            </pre>
+                          </div>
+                        ) : directoryFiles.length === 0 ? (
+                          <div className="text-center py-4 text-sm text-muted-foreground">
+                            <FolderTree className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                            <p>No files yet</p>
+                            <p className="text-xs mt-1">Files will appear here</p>
+                          </div>
+                        ) : (
+                          <FileTree 
+                            nodes={directoryFiles.map((item): FileTreeNode => ({
+                              name: item.name,
+                              path: item.path,
+                              type: item.isDir ? 'folder' : 'file',
+                              sizeKb: item.size ? item.size / 1024 : undefined,
+                            }))}
                                           onSelect={fileOps.handleFileOrFolderSelect}
-                                        />
-                                      )}
-                                    </div>
-                                  </div>
-                                  
+                          />
+                        )}
+                      </div>
+                    </div>
+                    
                                   {/* Remote Configuration */}
-                                  {!currentRemote ? (
-                                    <div className="border border-blue-200 bg-blue-50 rounded-md px-3 py-2 flex items-center justify-between">
-                                      <span className="text-sm text-blue-800">Set up Git remote for version control</span>
+                    {!currentRemote ? (
+                      <div className="border border-blue-200 bg-blue-50 rounded-md px-3 py-2 flex items-center justify-between">
+                        <span className="text-sm text-blue-800">Set up Git remote for version control</span>
                                       <Button onClick={() => setRemoteDialogOpen(true)} size="sm" variant="outline">
-                                        <GitBranch className="mr-2 h-3 w-3" />
-                                        Configure
-                                      </Button>
-                                    </div>
-                                  ) : (
-                                    <div className="border rounded-md px-2 py-1.5">
-                                      <div className="flex items-center gap-2 text-xs">
-                                        <div className="flex items-center gap-1.5 text-muted-foreground">
-                                          <Cloud className="h-3 w-3" />
-                                          <span className="truncate max-w-[200px]">
-                                            {currentRemote?.url?.split('/').slice(-2).join('/').replace('.git', '') || ''}/{currentRemote?.branch || 'main'}
-                                          </span>
-                                        </div>
-                                        
-                                        <div className="flex-1" />
-                                        
-                                        {mergeStatus && !mergeStatus.canMergeClean ? (
-                                          <div className="flex items-center gap-1 text-red-600">
-                                            <X className="h-3 w-3" />
-                                            <span className="font-medium">conflict</span>
-                                          </div>
+                          <GitBranch className="mr-2 h-3 w-3" />
+                          Configure
+                          </Button>
+                      </div>
+                    ) : (
+                      <div className="border rounded-md px-2 py-1.5">
+                        <div className="flex items-center gap-2 text-xs">
+                          <div className="flex items-center gap-1.5 text-muted-foreground">
+                            <Cloud className="h-3 w-3" />
+                            <span className="truncate max-w-[200px]">
+                              {currentRemote?.url?.split('/').slice(-2).join('/').replace('.git', '') || ''}/{currentRemote?.branch || 'main'}
+                            </span>
+                          </div>
+                          
+                          <div className="flex-1" />
+                          
+                          {mergeStatus && !mergeStatus.canMergeClean ? (
+                            <div className="flex items-center gap-1 text-red-600">
+                              <X className="h-3 w-3" />
+                              <span className="font-medium">conflict</span>
+                            </div>
                                         ) : (gitOps.gitStatus?.hasChanges || mergeStatus?.remoteCommitsAhead) ? (
-                                          <div className="flex items-center gap-1.5 text-muted-foreground text-xs">
-                                            {mergeStatus?.remoteCommitsAhead ? (
-                                              <span>↓{mergeStatus.remoteCommitsAhead}</span>
-                                            ) : null}
+                            <div className="flex items-center gap-1.5 text-muted-foreground text-xs">
+                              {mergeStatus?.remoteCommitsAhead ? (
+                                <span>↓{mergeStatus.remoteCommitsAhead}</span>
+                              ) : null}
                                             {gitOps.gitStatus?.hasChanges ? (
                                               <span className="font-normal">{gitOps.gitStatus?.uncommittedFiles ?? 0} uncommitted</span>
-                                            ) : null}
-                                          </div>
-                                        ) : null}
-                                        
-                                        <TooltipProvider>
-                                          <Tooltip>
-                                            <TooltipTrigger asChild>
-                                              <Button 
-                                                size="sm"
-                                                variant="ghost"
+                              ) : null}
+                            </div>
+                          ) : null}
+                          
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                              <Button 
+                                size="sm"
+                                  variant="ghost"
                                                 onClick={() => gitOps.handleGitSynchronize(refetchMergeStatus)}
                                                 disabled={!mergeStatus?.canMergeClean || gitOps.synchronizing || gitOps.gitStatus?.hasChanges}
-                                                className="h-6 w-6 p-0"
-                                              >
+                                  className="h-6 w-6 p-0"
+                                >
                                                 {gitOps.synchronizing ? (
-                                                  <Loader2 className="h-3 w-3 animate-spin" />
-                                                ) : (
-                                                  <RefreshCw className="h-3 w-3" />
-                                                )}
-                                              </Button>
-                                            </TooltipTrigger>
-                                            <TooltipContent>
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : (
+                                    <RefreshCw className="h-3 w-3" />
+                                )}
+                              </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>
                                               <p>{gitOps.gitStatus?.hasChanges ? 'Commit changes first' : `Sync with origin/${currentRemote?.branch || 'main'}`}</p>
-                                            </TooltipContent>
-                                          </Tooltip>
-                                        </TooltipProvider>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
 
-                                        <DropdownMenu>
-                                          <DropdownMenuTrigger asChild>
-                                            <Button size="sm" variant="ghost" className="h-6 w-6 p-0">
-                                              <MoreVertical className="h-3 w-3" />
-                                            </Button>
-                                          </DropdownMenuTrigger>
-                                          <DropdownMenuContent align="end">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button size="sm" variant="ghost" className="h-6 w-6 p-0">
+                                <MoreVertical className="h-3 w-3" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
                                             <DropdownMenuItem onClick={() => setRemoteDialogOpen(true)}>
-                                              <Edit className="mr-2 h-3 w-3" />
-                                              Manage Remote
-                                            </DropdownMenuItem>
-                                            <DropdownMenuSeparator />
-                                            <DropdownMenuItem
+                                <Edit className="mr-2 h-3 w-3" />
+                                Manage Remote
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
                                               onClick={() => setCommitModalOpen(true)}
                                               disabled={!gitOps.gitStatus?.hasChanges}
-                                            >
-                                              <Edit className="mr-2 h-3 w-3" />
-                                              Commit Changes
-                                            </DropdownMenuItem>
-                                            <DropdownMenuItem
+                              >
+                                <Edit className="mr-2 h-3 w-3" />
+                                Commit Changes
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
                                               onClick={() => gitOps.handleGitPull(refetchMergeStatus)}
                                               disabled={!mergeStatus?.canMergeClean || gitOps.isPulling}
-                                            >
-                                              <CloudDownload className="mr-2 h-3 w-3" />
-                                              Pull
-                                            </DropdownMenuItem>
-                                            <DropdownMenuItem
+                              >
+                                <CloudDownload className="mr-2 h-3 w-3" />
+                                Pull
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
                                               onClick={() => gitOps.handleGitPush(refetchMergeStatus)}
                                               disabled={!mergeStatus?.canMergeClean || gitOps.isPushing || gitOps.gitStatus?.hasChanges}
-                                            >
-                                              <CloudUpload className="mr-2 h-3 w-3" />
-                                              Push
-                                            </DropdownMenuItem>
-                                            <DropdownMenuSeparator />
-                                            <DropdownMenuItem
-                                              onClick={() => {
-                                                const newRemotes = {...directoryRemotes};
-                                                delete newRemotes[selectedDirectory.path];
-                                                setDirectoryRemotes(newRemotes);
-                                                successToast("Git remote disconnected");
-                                              }}
-                                            >
-                                              <X className="mr-2 h-3 w-3 text-red-600" />
-                                              Disconnect
-                                            </DropdownMenuItem>
-                                          </DropdownMenuContent>
-                                        </DropdownMenu>
-                                      </div>
-                                    </div>
-                                  )}
+                              >
+                                <CloudUpload className="mr-2 h-3 w-3" />
+                                Push
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  const newRemotes = {...directoryRemotes};
+                                  delete newRemotes[selectedDirectory.path];
+                                  setDirectoryRemotes(newRemotes);
+                                  successToast("Git remote disconnected");
+                                }}
+                              >
+                                <X className="mr-2 h-3 w-3 text-red-600" />
+                                Disconnect
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      </div>
+                    )}
                                 </div>
                               </AccordionContent>
                             </AccordionItem>
@@ -1038,46 +1065,46 @@ export default function ProjectSessionDetailPage({
                                 </div>
                               ))}
                             </div>
-                          </div>
-                        </AccordionContent>
-                      </AccordionItem>
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
                     )}
-                  </Accordion>
+            </Accordion>
                 </div>
-              </div>
+          </div>
 
               {/* Right Column - Messages */}
               <div className="flex-1 flex flex-col min-w-0">
                 <Card className="relative flex-1 flex flex-col overflow-hidden py-4">
                   <CardContent className="px-3 pt-3 pb-0 flex-1 flex flex-col overflow-hidden">
-                    {/* Workflow activation overlay */}
+                {/* Workflow activation overlay */}
                     {workflowManagement.workflowActivating && (
-                      <div className="absolute inset-0 bg-white/90 backdrop-blur-sm z-10 flex items-center justify-center rounded-lg">
-                        <Alert className="max-w-md mx-4">
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                          <AlertTitle>Activating Workflow...</AlertTitle>
-                          <AlertDescription>
+                  <div className="absolute inset-0 bg-white/90 backdrop-blur-sm z-10 flex items-center justify-center rounded-lg">
+                    <Alert className="max-w-md mx-4">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <AlertTitle>Activating Workflow...</AlertTitle>
+                      <AlertDescription>
                             <p>The new workflow is being loaded. Please wait...</p>
-                          </AlertDescription>
-                        </Alert>
-                      </div>
-                    )}
-                    
-                    {/* Repository change overlay */}
-                    {repoChanging && (
-                      <div className="absolute inset-0 bg-white/90 backdrop-blur-sm z-10 flex items-center justify-center rounded-lg">
-                        <Alert className="max-w-md mx-4">
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                          <AlertTitle>Updating Repositories...</AlertTitle>
-                          <AlertDescription>
-                            <div className="space-y-2">
+                      </AlertDescription>
+                    </Alert>
+                  </div>
+                )}
+                
+                {/* Repository change overlay */}
+                {repoChanging && (
+                  <div className="absolute inset-0 bg-white/90 backdrop-blur-sm z-10 flex items-center justify-center rounded-lg">
+                    <Alert className="max-w-md mx-4">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <AlertTitle>Updating Repositories...</AlertTitle>
+                      <AlertDescription>
+                        <div className="space-y-2">
                               <p>Please wait while repositories are being updated. This may take 10-20 seconds...</p>
-                            </div>
-                          </AlertDescription>
-                        </Alert>
-                      </div>
-                    )}
-                    
+                        </div>
+                      </AlertDescription>
+                    </Alert>
+                  </div>
+                )}
+                
                     {/* Session starting overlay */}
                     {!firstMessageLoaded && session?.status?.phase === 'Pending' && (
                       <div className="absolute inset-0 bg-white/60 backdrop-blur-sm rounded-lg z-20 flex items-center justify-center">
@@ -1100,18 +1127,18 @@ export default function ProjectSessionDetailPage({
                         // If no file tabs, show chat directly without tabs
                         if (fileTabs.length === 0) {
                           return (
-                            <MessagesTab
-                              session={session}
-                              streamMessages={streamMessages}
-                              chatInput={chatInput}
-                              setChatInput={setChatInput}
-                              onSendChat={() => Promise.resolve(sendChat())}
-                              onInterrupt={() => Promise.resolve(handleInterrupt())}
-                              onEndSession={() => Promise.resolve(handleEndSession())}
-                              onGoToResults={() => {}}
-                              onContinue={handleContinue}
-                              selectedAgents={selectedAgents}
-                              autoSelectAgents={autoSelectAgents}
+                <MessagesTab
+                  session={session}
+                  streamMessages={streamMessages}
+                  chatInput={chatInput}
+                  setChatInput={setChatInput}
+                  onSendChat={() => Promise.resolve(sendChat())}
+                  onInterrupt={() => Promise.resolve(handleInterrupt())}
+                  onEndSession={() => Promise.resolve(handleEndSession())}
+                  onGoToResults={() => {}}
+                  onContinue={handleContinue}
+                  selectedAgents={selectedAgents}
+                  autoSelectAgents={autoSelectAgents}
                               workflowMetadata={workflowMetadata}
                               onSetSelectedAgents={setSelectedAgents}
                               onSetAutoSelectAgents={setAutoSelectAgents}
@@ -1161,9 +1188,9 @@ export default function ProjectSessionDetailPage({
                                       <X className="h-3 w-3" />
                                     </button>
                                   )}
-                                </div>
+          </div>
                               ))}
-                            </div>
+          </div>
 
                             {/* Tab Content */}
                             <div className="flex-1 overflow-auto">
@@ -1198,7 +1225,7 @@ export default function ProjectSessionDetailPage({
                                         <div className="mb-4 pb-4 border-b">
                                           <h2 className="text-xl font-semibold">{tab.name}</h2>
                                           <p className="text-sm text-muted-foreground">{tab.path}</p>
-                                        </div>
+          </div>
 
                                         {isMarkdown ? (
                                           <article className="prose prose-slate prose-headings:text-gray-900 prose-h1:text-4xl prose-h1:font-bold prose-h2:text-2xl prose-h2:font-semibold prose-h3:text-xl prose-h3:font-semibold prose-p:text-gray-700 prose-li:text-gray-700 prose-strong:text-gray-900 prose-a:text-blue-600 hover:prose-a:text-blue-800 prose-code:text-pink-600 prose-code:bg-gray-100 prose-code:px-1 prose-code:py-0.5 prose-code:rounded max-w-none">
@@ -1259,12 +1286,12 @@ export default function ProjectSessionDetailPage({
                                             <code>{tab.content}</code>
                                           </pre>
                                         )}
-                                      </div>
+          </div>
                                     );
                                   })()}
-                                </div>
-                              )}
-                            </div>
+            </div>
+              )}
+            </div>
                           </>
                         );
                       })()}
@@ -1275,7 +1302,7 @@ export default function ProjectSessionDetailPage({
             </div>
           </div>
         </div>
-      </div>
+        </div>
 
       {/* Modals */}
       <AddContextModal
@@ -1325,7 +1352,7 @@ export default function ProjectSessionDetailPage({
         onCommit={async (message) => {
           const success = await gitOps.handleCommit(message);
           if (success) {
-            setCommitModalOpen(false);
+              setCommitModalOpen(false);
             refetchMergeStatus();
           }
         }}

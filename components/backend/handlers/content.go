@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -675,7 +676,15 @@ func ContentWorkflowResults(c *gin.Context) {
 	workspaceBase := filepath.Join(StateBaseDir, "sessions", sessionName, "workspace")
 	results := []ResultFile{}
 
-	for displayName, pattern := range ambientConfig.Results {
+	// Sort keys to ensure consistent order (maps are unordered in Go)
+	displayNames := make([]string, 0, len(ambientConfig.Results))
+	for displayName := range ambientConfig.Results {
+		displayNames = append(displayNames, displayName)
+	}
+	sort.Strings(displayNames)
+
+	for _, displayName := range displayNames {
+		pattern := ambientConfig.Results[displayName]
 		matches := findMatchingFiles(workspaceBase, pattern)
 
 		if len(matches) == 0 {
@@ -685,6 +694,9 @@ func ContentWorkflowResults(c *gin.Context) {
 				Exists:      false,
 			})
 		} else {
+			// Sort matches for consistent order
+			sort.Strings(matches)
+			
 			for _, matchedPath := range matches {
 				relPath, _ := filepath.Rel(workspaceBase, matchedPath)
 				content, readErr := os.ReadFile(matchedPath)
