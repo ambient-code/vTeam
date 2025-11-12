@@ -24,6 +24,9 @@ import (
 // Set by main during initialization
 var StateBaseDir string
 
+// MaxResultFileSize is the maximum size for result files to prevent memory issues
+const MaxResultFileSize = 10 * 1024 * 1024 // 10MB
+
 // Git operation functions - set by main package during initialization
 // These are set to the actual implementations from git package
 var (
@@ -699,14 +702,29 @@ func ContentWorkflowResults(c *gin.Context) {
 			
 			for _, matchedPath := range matches {
 				relPath, _ := filepath.Rel(workspaceBase, matchedPath)
-				content, readErr := os.ReadFile(matchedPath)
-
+				
 				result := ResultFile{
 					DisplayName: displayName,
 					Path:        relPath,
 					Exists:      true,
 				}
 
+				// Check file size before reading
+				fileInfo, statErr := os.Stat(matchedPath)
+				if statErr != nil {
+					result.Error = fmt.Sprintf("Failed to stat file: %v", statErr)
+					results = append(results, result)
+					continue
+				}
+
+				if fileInfo.Size() > MaxResultFileSize {
+					result.Error = fmt.Sprintf("File too large (%d bytes, max %d)", fileInfo.Size(), MaxResultFileSize)
+					results = append(results, result)
+					continue
+				}
+
+				// Read file content
+				content, readErr := os.ReadFile(matchedPath)
 				if readErr != nil {
 					result.Error = fmt.Sprintf("Failed to read: %v", readErr)
 				} else {
