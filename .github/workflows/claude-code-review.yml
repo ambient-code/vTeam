@@ -2,7 +2,7 @@ name: Claude Code Review
 
 on:
   pull_request_target:
-    types: [opened, synchronize]
+    types: [opened, synchronize, ready_for_review, reopened]
 
 jobs:
   claude-review:
@@ -22,7 +22,7 @@ jobs:
       actions: read
 
     steps:
-      - name: Checkout PR head
+      - name: Checkout PR head (fork-compatible)
         uses: actions/checkout@v5
         with:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
@@ -31,9 +31,10 @@ jobs:
 
       - name: Run Claude Code Review
         id: claude-review
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@beta
         with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}\
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}  # Fix for OIDC authentication issues with forks
           allowed_non_write_users: '*'  # Allow fork contributors to trigger reviews (safe for read-only review workflows)
           use_sticky_comment: true
           prompt: |
