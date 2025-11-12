@@ -35,7 +35,7 @@ import (
 var (
 	GetAgenticSessionV1Alpha1Resource func() schema.GroupVersionResource
 	DynamicClient                     dynamic.Interface
-	GetGitHubToken                    func(context.Context, kubernetes.Interface, dynamic.Interface, string, string) (string, error)
+	GetGitHubToken                    func(context.Context, *kubernetes.Clientset, dynamic.Interface, string, string) (string, error)
 	DeriveRepoFolderFromURL           func(string) string
 	SendMessageToSession              func(string, string, map[string]interface{})
 )
@@ -560,7 +560,7 @@ func CreateSession(c *gin.Context) {
 
 // provisionRunnerTokenForSession creates a per-session ServiceAccount, grants minimal RBAC,
 // mints a short-lived token, stores it in a Secret, and annotates the AgenticSession with the Secret name.
-func provisionRunnerTokenForSession(c *gin.Context, reqK8s kubernetes.Interface, reqDyn dynamic.Interface, project string, sessionName string) error {
+func provisionRunnerTokenForSession(c *gin.Context, reqK8s *kubernetes.Clientset, reqDyn dynamic.Interface, project string, sessionName string) error {
 	// Load owning AgenticSession to parent all resources
 	gvr := GetAgenticSessionV1Alpha1Resource()
 	obj, err := reqDyn.Resource(gvr).Namespace(project).Get(c.Request.Context(), sessionName, v1.GetOptions{})
@@ -743,83 +743,6 @@ func GetSession(c *gin.Context) {
 	c.JSON(http.StatusOK, session)
 }
 
-// validateRunnerToken performs TokenReview and verifies ServiceAccount matches session annotation.
-// Returns the validated ServiceAccount name on success.
-// On error, sends appropriate HTTP response and returns empty string.
-func validateRunnerToken(c *gin.Context, project, sessionName, token string) string {
-	// Log token length for debugging (never log actual token value)
-	log.Printf("validateRunnerToken: project=%s, session=%s, tokenLen=%d", project, sessionName, len(token))
-
-	// TokenReview using default audience (works with standard SA tokens)
-	tr := &authnv1.TokenReview{Spec: authnv1.TokenReviewSpec{Token: token}}
-	rv, err := K8sClient.AuthenticationV1().TokenReviews().Create(c.Request.Context(), tr, v1.CreateOptions{})
-	if err != nil {
-		log.Printf("TokenReview failed for project=%s, session=%s: %v", project, sessionName, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "token review failed"})
-		return ""
-	}
-	if rv.Status.Error != "" || !rv.Status.Authenticated {
-		log.Printf("Token authentication failed for project=%s, session=%s: error=%s, authenticated=%t",
-			project, sessionName, rv.Status.Error, rv.Status.Authenticated)
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthenticated"})
-		return ""
-	}
-
-	// Extract ServiceAccount from token subject
-	subj := strings.TrimSpace(rv.Status.User.Username)
-	const pfx = "system:serviceaccount:"
-	if !strings.HasPrefix(subj, pfx) {
-		log.Printf("Token subject is not a ServiceAccount for project=%s, session=%s: %s", project, sessionName, subj)
-		c.JSON(http.StatusForbidden, gin.H{"error": "subject is not a service account"})
-		return ""
-	}
-	rest := strings.TrimPrefix(subj, pfx)
-	segs := strings.SplitN(rest, ":", 2)
-	if len(segs) != 2 {
-		log.Printf("Invalid ServiceAccount subject format for project=%s, session=%s: %s", project, sessionName, subj)
-		c.JSON(http.StatusForbidden, gin.H{"error": "invalid service account subject"})
-		return ""
-	}
-	nsFromToken, saFromToken := segs[0], segs[1]
-	if nsFromToken != project {
-		log.Printf("Namespace mismatch for project=%s, session=%s: token_ns=%s", project, sessionName, nsFromToken)
-		c.JSON(http.StatusForbidden, gin.H{"error": "namespace mismatch"})
-		return ""
-	}
-
-	// Load session and verify SA matches annotation
-	gvr := GetAgenticSessionV1Alpha1Resource()
-	obj, err := DynamicClient.Resource(gvr).Namespace(project).Get(c.Request.Context(), sessionName, v1.GetOptions{})
-	if err != nil {
-		if errors.IsNotFound(err) {
-			log.Printf("Session not found: project=%s, session=%s", project, sessionName)
-			c.JSON(http.StatusNotFound, gin.H{"error": "session not found"})
-			return ""
-		}
-		log.Printf("Failed to get session %s/%s: %v", project, sessionName, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read session"})
-		return ""
-	}
-
-	// Use type-safe unstructured helpers per CLAUDE.md
-	anns, _, _ := unstructured.NestedStringMap(obj.Object, "metadata", "annotations")
-	expectedSA, ok := anns["ambient-code.io/runner-sa"]
-	if !ok {
-		expectedSA = ""
-	} else {
-		expectedSA = strings.TrimSpace(expectedSA)
-	}
-	if expectedSA == "" || expectedSA != saFromToken {
-		log.Printf("ServiceAccount not authorized for session %s/%s: expected=%s, actual=%s",
-			project, sessionName, expectedSA, saFromToken)
-		c.JSON(http.StatusForbidden, gin.H{"error": "service account not authorized for session"})
-		return ""
-	}
-
-	log.Printf("Runner token validated successfully: project=%s, session=%s, sa=%s", project, sessionName, saFromToken)
-	return saFromToken
-}
-
 // MintSessionGitHubToken validates the token via TokenReview, ensures SA matches CR annotation, and returns a short-lived GitHub token.
 // POST /api/projects/:projectName/agentic-sessions/:sessionName/github/token
 // Auth: Authorization: Bearer <BOT_TOKEN> (K8s SA token with audience "ambient-backend")
@@ -827,7 +750,6 @@ func MintSessionGitHubToken(c *gin.Context) {
 	project := c.Param("projectName")
 	sessionName := c.Param("sessionName")
 
-	// Extract and validate Authorization header
 	rawAuth := strings.TrimSpace(c.GetHeader("Authorization"))
 	if rawAuth == "" {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "missing Authorization header"})
@@ -844,23 +766,69 @@ func MintSessionGitHubToken(c *gin.Context) {
 		return
 	}
 
-	// Validate runner token and verify SA matches session annotation
-	if validateRunnerToken(c, project, sessionName, token) == "" {
-		return // validateRunnerToken already sent error response
+	// TokenReview using default audience (works with standard SA tokens)
+	tr := &authnv1.TokenReview{Spec: authnv1.TokenReviewSpec{Token: token}}
+	rv, err := K8sClient.AuthenticationV1().TokenReviews().Create(c.Request.Context(), tr, v1.CreateOptions{})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "token review failed"})
+		return
+	}
+	if rv.Status.Error != "" || !rv.Status.Authenticated {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthenticated"})
+		return
+	}
+	subj := strings.TrimSpace(rv.Status.User.Username)
+	const pfx = "system:serviceaccount:"
+	if !strings.HasPrefix(subj, pfx) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "subject is not a service account"})
+		return
+	}
+	rest := strings.TrimPrefix(subj, pfx)
+	segs := strings.SplitN(rest, ":", 2)
+	if len(segs) != 2 {
+		c.JSON(http.StatusForbidden, gin.H{"error": "invalid service account subject"})
+		return
+	}
+	nsFromToken, saFromToken := segs[0], segs[1]
+	if nsFromToken != project {
+		c.JSON(http.StatusForbidden, gin.H{"error": "namespace mismatch"})
+		return
 	}
 
-	// Load session again to read userContext (we need the full object)
+	// Load session and verify SA matches annotation
 	gvr := GetAgenticSessionV1Alpha1Resource()
 	obj, err := DynamicClient.Resource(gvr).Namespace(project).Get(c.Request.Context(), sessionName, v1.GetOptions{})
 	if err != nil {
-		log.Printf("Failed to reload session %s/%s for userContext: %v", project, sessionName, err)
+		if errors.IsNotFound(err) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "session not found"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read session"})
+		return
+	}
+	meta, _ := obj.Object["metadata"].(map[string]interface{})
+	anns, _ := meta["annotations"].(map[string]interface{})
+	expectedSA := ""
+	if anns != nil {
+		if v, ok := anns["ambient-code.io/runner-sa"].(string); ok {
+			expectedSA = strings.TrimSpace(v)
+		}
+	}
+	if expectedSA == "" || expectedSA != saFromToken {
+		c.JSON(http.StatusForbidden, gin.H{"error": "service account not authorized for session"})
 		return
 	}
 
 	// Read authoritative userId from spec.userContext.userId
-	userID, _, _ := unstructured.NestedString(obj.Object, "spec", "userContext", "userId")
-	userID = strings.TrimSpace(userID)
+	spec, _ := obj.Object["spec"].(map[string]interface{})
+	userID := ""
+	if spec != nil {
+		if uc, ok := spec["userContext"].(map[string]interface{}); ok {
+			if v, ok := uc["userId"].(string); ok {
+				userID = strings.TrimSpace(v)
+			}
+		}
+	}
 	if userID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "session missing user context"})
 		return
@@ -875,66 +843,6 @@ func MintSessionGitHubToken(c *gin.Context) {
 	// Note: PATs don't have expiration, so we omit expiresAt for simplicity
 	// Runners should treat all tokens as short-lived and request new ones as needed
 	c.JSON(http.StatusOK, gin.H{"token": tokenStr})
-}
-
-// MintSessionVertexCredentials validates the token via TokenReview, ensures SA matches CR annotation, and returns Vertex AI credentials.
-// POST /api/projects/:projectName/agentic-sessions/:sessionName/vertex/credentials
-// Auth: Authorization: Bearer <BOT_TOKEN> (K8s SA token with audience "ambient-backend")
-func MintSessionVertexCredentials(c *gin.Context) {
-	project := c.Param("projectName")
-	sessionName := c.Param("sessionName")
-
-	// Extract and validate Authorization header
-	rawAuth := strings.TrimSpace(c.GetHeader("Authorization"))
-	if rawAuth == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "missing Authorization header"})
-		return
-	}
-	parts := strings.SplitN(rawAuth, " ", 2)
-	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid Authorization header"})
-		return
-	}
-	token := strings.TrimSpace(parts[1])
-	if token == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "empty token"})
-		return
-	}
-
-	// Validate runner token and verify SA matches session annotation
-	if validateRunnerToken(c, project, sessionName, token) == "" {
-		return // validateRunnerToken already sent error response
-	}
-
-	// Load Vertex credentials from ambient-vertex secret in the backend namespace
-	// Backend reads from its own namespace and serves to authorized runners
-	const vertexSecretName = "ambient-vertex"
-	backendNamespace := Namespace
-	vertexSecret, err := K8sClient.CoreV1().Secrets(backendNamespace).Get(c.Request.Context(), vertexSecretName, v1.GetOptions{})
-	if err != nil {
-		if errors.IsNotFound(err) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Vertex credentials not configured for this project"})
-			return
-		}
-		log.Printf("Failed to load Vertex secret from backend namespace %s: %v", backendNamespace, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load Vertex credentials"})
-		return
-	}
-
-	// Extract the GCP service account JSON from the secret
-	credJSON, ok := vertexSecret.Data["ambient-code-key.json"]
-	if !ok {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Vertex credentials missing ambient-code-key.json"})
-		return
-	}
-
-	// Return the credentials as JSON
-	// Runner will write this to a temp file and set GOOGLE_APPLICATION_CREDENTIALS
-	c.JSON(http.StatusOK, gin.H{
-		"credentials": string(credJSON),
-		"projectId":   string(vertexSecret.Data["project-id"]),
-		"region":      string(vertexSecret.Data["region"]),
-	})
 }
 
 func PatchSession(c *gin.Context) {

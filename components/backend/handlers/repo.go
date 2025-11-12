@@ -20,7 +20,7 @@ import (
 // Dependencies injected from main package
 var (
 	GetK8sClientsForRequestRepo func(*gin.Context) (*kubernetes.Clientset, dynamic.Interface)
-	GetGitHubTokenRepo          func(context.Context, kubernetes.Interface, dynamic.Interface, string, string) (string, error)
+	GetGitHubTokenRepo          func(context.Context, *kubernetes.Clientset, dynamic.Interface, string, string) (string, error)
 )
 
 // ===== Helper Functions =====

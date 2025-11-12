@@ -48,6 +48,7 @@ rules:
 - apiGroups: ["rbac.authorization.k8s.io"]
   resources: ["rolebindings"]
   verbs: ["get", "create"]
+# Secrets (for copying ambient-vertex to job namespaces) Without this we cannot copy secrets to the session namespaces
 - apiGroups: [""]
   resources: ["secrets"]
-  verbs: ["get"]
+  verbs: ["get", "create", "delete"]

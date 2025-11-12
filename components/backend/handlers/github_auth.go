@@ -24,7 +24,7 @@ import (
 
 // Package-level variables for GitHub auth (set from main package)
 var (
-	K8sClient          kubernetes.Interface
+	K8sClient          *kubernetes.Clientset
 	Namespace          string
 	GithubTokenManager GithubTokenManagerInterface
 )

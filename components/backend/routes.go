@@ -32,12 +32,7 @@ func registerRoutes(r *gin.Engine) {
 		// Public endpoints (no auth required)
 		api.GET("/workflows/ootb", handlers.ListOOTBWorkflows)
 
-		// Runner credential endpoints - use BOT_TOKEN (ServiceAccount token) instead of user token
-		// These endpoints perform their own authentication via TokenReview and validate the
-		// ServiceAccount matches the session's runner-sa annotation. They intentionally bypass
-		// ValidateProjectContext() middleware because runners use different auth than users.
 		api.POST("/projects/:projectName/agentic-sessions/:sessionName/github/token", handlers.MintSessionGitHubToken)
-		api.POST("/projects/:projectName/agentic-sessions/:sessionName/vertex/credentials", handlers.MintSessionVertexCredentials)
 
 		projectGroup := api.Group("/projects/:projectName", handlers.ValidateProjectContext())
 		{

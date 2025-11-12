@@ -21,6 +21,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	intstr "k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/watch"
+	"k8s.io/client-go/util/retry"
 )
 
 // WatchAgenticSessions watches for AgenticSession custom resources and creates jobs
@@ -171,8 +172,13 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 			log.Printf("Job %s not found, already cleaned up", jobName)
 		}
 
-		// Note: ambient-vertex secret is not copied to project namespace, so no cleanup needed
-		// Backend serves credentials directly from its own namespace
+		// Also cleanup ambient-vertex secret when session is stopped
+		deleteCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := deleteAmbientVertexSecret(deleteCtx, sessionNamespace); err != nil {
+			log.Printf("Warning: Failed to cleanup %s secret from %s: %v", types.AmbientVertexSecretName, sessionNamespace, err)
+			// Continue - session cleanup is still successful
+		}
 
 		return nil
 	}
@@ -255,10 +261,33 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 	// Load config for this session
 	appConfig := config.LoadConfig()
 
-	// Check if Vertex is enabled (backend will fetch credentials directly from its namespace)
+	// Check for ambient-vertex secret in the operator's namespace and copy it if Vertex is enabled
+	// This will be used to conditionally mount the secret as a volume
+	ambientVertexSecretCopied := false
+	operatorNamespace := appConfig.BackendNamespace // Assuming operator runs in same namespace as backend
 	vertexEnabled := os.Getenv("CLAUDE_CODE_USE_VERTEX") == "1"
+
+	// Only attempt to copy the secret if Vertex AI is enabled
 	if vertexEnabled {
-		log.Printf("Vertex AI enabled - runner will fetch credentials from backend API")
+		if ambientVertexSecret, err := config.K8sClient.CoreV1().Secrets(operatorNamespace).Get(context.TODO(), types.AmbientVertexSecretName, v1.GetOptions{}); err == nil {
+			// Secret exists in operator namespace, copy it to the session namespace
+			log.Printf("Found %s secret in %s, copying to %s", types.AmbientVertexSecretName, operatorNamespace, sessionNamespace)
+			// Create context with timeout for secret copy operation
+			copyCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			if err := copySecretToNamespace(copyCtx, ambientVertexSecret, sessionNamespace, currentObj); err != nil {
+				return fmt.Errorf("failed to copy %s secret from %s to %s (CLAUDE_CODE_USE_VERTEX=1): %w", types.AmbientVertexSecretName, operatorNamespace, sessionNamespace, err)
+			}
+			ambientVertexSecretCopied = true
+			log.Printf("Successfully copied %s secret to %s", types.AmbientVertexSecretName, sessionNamespace)
+		} else if !errors.IsNotFound(err) {
+			return fmt.Errorf("failed to check for %s secret in %s (CLAUDE_CODE_USE_VERTEX=1): %w", types.AmbientVertexSecretName, operatorNamespace, err)
+		} else {
+			// Vertex enabled but secret not found - fail fast
+			return fmt.Errorf("CLAUDE_CODE_USE_VERTEX=1 but %s secret not found in namespace %s", types.AmbientVertexSecretName, operatorNamespace)
+		}
+	} else {
+		log.Printf("Vertex AI disabled (CLAUDE_CODE_USE_VERTEX=0), skipping %s secret copy", types.AmbientVertexSecretName)
 	}
 
 	// Create a Kubernetes Job for this AgenticSession
@@ -453,10 +482,14 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 									// S3 disabled; backend persists messages
 								}
 
-								// Add Vertex AI configuration flag only if enabled
-								// Runner will fetch actual credentials from backend API using BOT_TOKEN
+								// Add Vertex AI configuration only if enabled
 								if vertexEnabled {
-									base = append(base, corev1.EnvVar{Name: "CLAUDE_CODE_USE_VERTEX", Value: "1"})
+									base = append(base,
+										corev1.EnvVar{Name: "CLAUDE_CODE_USE_VERTEX", Value: "1"},
+										corev1.EnvVar{Name: "CLOUD_ML_REGION", Value: os.Getenv("CLOUD_ML_REGION")},
+										corev1.EnvVar{Name: "ANTHROPIC_VERTEX_PROJECT_ID", Value: os.Getenv("ANTHROPIC_VERTEX_PROJECT_ID")},
+										corev1.EnvVar{Name: "GOOGLE_APPLICATION_CREDENTIALS", Value: os.Getenv("GOOGLE_APPLICATION_CREDENTIALS")},
+									)
 								} else {
 									// Explicitly set to 0 when Vertex is disabled
 									base = append(base, corev1.EnvVar{Name: "CLAUDE_CODE_USE_VERTEX", Value: "0"})
@@ -596,10 +629,25 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 	// Note: No volume mounts needed for runner/integration secrets
 	// All keys are injected as environment variables via EnvFrom above
 
-	// Note: Vertex credentials (if enabled) are fetched by runner from backend API on-demand.
-	// Runner uses BOT_TOKEN authentication to call backend endpoint.
-	// Backend reads ambient-vertex secret from its own namespace.
-	// This prevents filesystem-based credential exposure to user scripts.
+	// If ambient-vertex secret was successfully copied, mount it as a volume
+	if ambientVertexSecretCopied {
+		job.Spec.Template.Spec.Volumes = append(job.Spec.Template.Spec.Volumes, corev1.Volume{
+			Name:         "vertex",
+			VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: types.AmbientVertexSecretName}},
+		})
+		// Mount to the ambient-code-runner container by name
+		for i := range job.Spec.Template.Spec.Containers {
+			if job.Spec.Template.Spec.Containers[i].Name == "ambient-code-runner" {
+				job.Spec.Template.Spec.Containers[i].VolumeMounts = append(job.Spec.Template.Spec.Containers[i].VolumeMounts, corev1.VolumeMount{
+					Name:      "vertex",
+					MountPath: "/app/vertex",
+					ReadOnly:  true,
+				})
+				log.Printf("Mounted %s secret to /app/vertex in runner container for session %s", types.AmbientVertexSecretName, name)
+				break
+			}
+		}
+	}
 
 	// Do not mount runner Secret volume; runner fetches tokens on demand
 
@@ -1033,8 +1081,13 @@ func deleteJobAndPerJobService(namespace, jobName, sessionName string) error {
 		log.Printf("Failed to list pods for job %s/%s: %v", namespace, jobName, err)
 	}
 
-	// Note: ambient-vertex secret is not copied to project namespace, so no cleanup needed
-	// Backend serves credentials directly from its own namespace
+	// Delete the ambient-vertex secret if it was copied by the operator
+	deleteCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := deleteAmbientVertexSecret(deleteCtx, namespace); err != nil {
+		log.Printf("Failed to delete %s secret from %s: %v", types.AmbientVertexSecretName, namespace, err)
+		// Don't return error - this is a non-critical cleanup step
+	}
 
 	// NOTE: PVC is kept for all sessions and only deleted via garbage collection
 	// when the session CR is deleted. This allows sessions to be restarted.
@@ -1177,6 +1230,107 @@ func CleanupExpiredTempContentPods() {
 			}
 		}
 	}
+}
+
+// copySecretToNamespace copies a secret to a target namespace with owner references
+func copySecretToNamespace(ctx context.Context, sourceSecret *corev1.Secret, targetNamespace string, ownerObj *unstructured.Unstructured) error {
+	// Create a new secret in the target namespace
+	newSecret := &corev1.Secret{
+		ObjectMeta: v1.ObjectMeta{
+			Name:      sourceSecret.Name,
+			Namespace: targetNamespace,
+			Labels:    sourceSecret.Labels,
+			Annotations: map[string]string{
+				types.CopiedFromAnnotation: fmt.Sprintf("%s/%s", sourceSecret.Namespace, sourceSecret.Name),
+			},
+			OwnerReferences: []v1.OwnerReference{
+				{
+					APIVersion: ownerObj.GetAPIVersion(),
+					Kind:       ownerObj.GetKind(),
+					Name:       ownerObj.GetName(),
+					UID:        ownerObj.GetUID(),
+					Controller: boolPtr(true),
+				},
+			},
+		},
+		Type: sourceSecret.Type,
+		Data: sourceSecret.Data,
+	}
+
+	// Check if secret already exists in target namespace
+	if existingSecret, err := config.K8sClient.CoreV1().Secrets(targetNamespace).Get(ctx, sourceSecret.Name, v1.GetOptions{}); err == nil {
+		// Secret already exists, check if it needs to be updated
+		log.Printf("Secret %s already exists in namespace %s, checking if update needed", sourceSecret.Name, targetNamespace)
+
+		// Check if the existing secret has the correct owner reference
+		hasOwnerRef := false
+		for _, ownerRef := range existingSecret.OwnerReferences {
+			if ownerRef.UID == ownerObj.GetUID() {
+				hasOwnerRef = true
+				break
+			}
+		}
+
+		if hasOwnerRef {
+			log.Printf("Secret %s already has correct owner reference, skipping", sourceSecret.Name)
+			return nil
+		}
+
+		// Update the secret with owner reference using retry logic to handle race conditions
+		return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+			// Re-fetch the secret to get the latest version
+			currentSecret, err := config.K8sClient.CoreV1().Secrets(targetNamespace).Get(ctx, sourceSecret.Name, v1.GetOptions{})
+			if err != nil {
+				return err
+			}
+
+			// Apply updates
+			// Create a new slice to avoid mutating shared/cached data
+			currentSecret.OwnerReferences = append([]v1.OwnerReference{}, currentSecret.OwnerReferences...)
+			currentSecret.OwnerReferences = append(currentSecret.OwnerReferences, newSecret.OwnerReferences[0])
+			currentSecret.Data = sourceSecret.Data
+			if currentSecret.Annotations == nil {
+				currentSecret.Annotations = make(map[string]string)
+			}
+			currentSecret.Annotations[types.CopiedFromAnnotation] = fmt.Sprintf("%s/%s", sourceSecret.Namespace, sourceSecret.Name)
+
+			// Attempt update
+			_, err = config.K8sClient.CoreV1().Secrets(targetNamespace).Update(ctx, currentSecret, v1.UpdateOptions{})
+			return err
+		})
+	} else if !errors.IsNotFound(err) {
+		return fmt.Errorf("error checking for existing secret: %w", err)
+	}
+
+	// Create the secret
+	_, err := config.K8sClient.CoreV1().Secrets(targetNamespace).Create(ctx, newSecret, v1.CreateOptions{})
+	return err
+}
+
+// deleteAmbientVertexSecret deletes the ambient-vertex secret from a namespace if it was copied
+func deleteAmbientVertexSecret(ctx context.Context, namespace string) error {
+	secret, err := config.K8sClient.CoreV1().Secrets(namespace).Get(ctx, types.AmbientVertexSecretName, v1.GetOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			// Secret doesn't exist, nothing to do
+			return nil
+		}
+		return fmt.Errorf("error checking for %s secret: %w", types.AmbientVertexSecretName, err)
+	}
+
+	// Check if this was a copied secret (has the annotation)
+	if _, ok := secret.Annotations[types.CopiedFromAnnotation]; !ok {
+		log.Printf("%s secret in namespace %s was not copied by operator, not deleting", types.AmbientVertexSecretName, namespace)
+		return nil
+	}
+
+	log.Printf("Deleting copied %s secret from namespace %s", types.AmbientVertexSecretName, namespace)
+	err = config.K8sClient.CoreV1().Secrets(namespace).Delete(ctx, types.AmbientVertexSecretName, v1.DeleteOptions{})
+	if err != nil && !errors.IsNotFound(err) {
+		return fmt.Errorf("failed to delete %s secret: %w", types.AmbientVertexSecretName, err)
+	}
+
+	return nil
 }
 
 // Helper functions

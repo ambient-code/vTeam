@@ -7,5 +7,7 @@ metadata:
     deployment-type: e2e
 data:
   # Vertex AI Configuration - Disabled for e2e testing
-  # Note: Operator only needs the flag - runner fetches credentials from backend API
   CLAUDE_CODE_USE_VERTEX: "0"
+  CLOUD_ML_REGION: ""
+  ANTHROPIC_VERTEX_PROJECT_ID: ""
+  GOOGLE_APPLICATION_CREDENTIALS: ""

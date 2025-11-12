@@ -45,7 +45,7 @@ type DiffSummary struct {
 }
 
 // GetGitHubToken tries to get a GitHub token from GitHub App first, then falls back to project runner secret
-func GetGitHubToken(ctx context.Context, k8sClient kubernetes.Interface, dynClient dynamic.Interface, project, userID string) (string, error) {
+func GetGitHubToken(ctx context.Context, k8sClient *kubernetes.Clientset, dynClient dynamic.Interface, project, userID string) (string, error) {
 	// Try GitHub App first if available
 	if GetGitHubInstallation != nil && GitHubTokenManager != nil {
 		installation, err := GetGitHubInstallation(ctx, userID)
