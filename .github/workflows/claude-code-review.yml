@@ -52,16 +52,12 @@ jobs:
           fi
           
           # Minimize each comment with error handling
+          # Use process substitution to avoid subshell variable scoping issues
           COUNT=0
           ERRORS=0
-          echo "$COMMENT_IDS" | while read -r id; do
+          while read -r id; do
             if [ -n "$id" ]; then
-              if gh api graphql -f query='
-                mutation($id: ID!) {
-                  minimizeComment(input: {subjectId: $id, classifier: OUTDATED}) {
-                    minimizedComment { isMinimized }
-                  }
-                }' -f id="$id" 2>&1; then
+              if gh api graphql -f query='mutation($id: ID!) { minimizeComment(input: {subjectId: $id, classifier: OUTDATED}) { minimizedComment { isMinimized } } }' -f id="$id" 2>&1; then
                 echo "✓ Minimized $id"
                 ((COUNT++))
               else
@@ -69,7 +65,7 @@ jobs:
                 ((ERRORS++))
               fi
             fi
-          done
+          done <<< "$COMMENT_IDS"
           
           echo "Minimized $COUNT comment(s), $ERRORS error(s)"
       - name: Run Claude Code Review
