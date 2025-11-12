@@ -1,15 +1,11 @@
 
-# Claude Code Review with Claude GitHub App
+# Claude Code Review with Fork Support
 #
-# Uses the Claude GitHub App for authentication (comments appear from claude[bot])
-# Automatically minimizes old review comments to keep PRs clean
+# Uses default workflow token for GitHub operations (comments appear from github-actions[bot])
+# Supports fork PRs and automatically minimizes old review comments
 #
-# Required:
-# - Claude GitHub App must be installed on the repository
-# - GitHub Secret: CLAUDE_CODE_OAUTH_TOKEN (OAuth token for Claude Code)
-#
-# Note: This does NOT support fork PRs. For fork support, you must provide github_token
-# and use allowed_non_write_users, which makes comments appear from github-actions[bot].
+# Required GitHub Secret:
+# - CLAUDE_CODE_OAUTH_TOKEN: OAuth token for Claude Code
 
 name: Claude Code Review
 
@@ -43,14 +39,14 @@ jobs:
           REPO="${{ github.repository }}"
           PR_NUMBER="${{ github.event.pull_request.number }}"
 
-          echo "Finding Claude review comments to minimize..."
+          echo "Finding previous Claude Code Review comments to minimize..."
           
-          # Get all comment IDs from claude[bot]
+          # Get all comment IDs from github-actions[bot] with "Claude Code Review" title
           COMMENT_IDS=$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" \
-            --jq '.[] | select(.user.login == "claude[bot]") | .node_id')
+            --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | contains("# Claude Code Review"))) | .node_id')
           
           if [ -z "$COMMENT_IDS" ]; then
-            echo "No old comments to minimize"
+            echo "No old Claude Code Review comments found"
             exit 0
           fi
           
@@ -68,16 +64,38 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          allowed_non_write_users: '*'
           claude_args: |
             --allowed-tools "Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*)"
           prompt: |
-            Please review this pull request and provide feedback on:
-            - Code quality and best practices
-            - Potential bugs or issues
-            - Performance considerations
-            - Security concerns
-            - Test coverage
-
-            Use the repository's CLAUDE.md for guidance on style and conventions. Be constructive and helpful in your feedback.
-
-            Use `gh pr comment` with your Bash tool to leave your review as a comment on the PR.
+            Review this pull request and provide feedback.
+            
+            Use the repository's CLAUDE.md for guidance on style and conventions.
+            
+            IMPORTANT: Post your review using `gh pr comment` with this EXACT format:
+            
+            # Claude Code Review
+            
+            ## Summary
+            [Brief overview of the changes and overall assessment]
+            
+            ## Issues by Severity
+            
+            ### 🚫 Blocker Issues
+            [Critical problems that MUST be fixed before merge - security vulnerabilities, data loss risks, breaking changes]
+            
+            ### 🔴 Critical Issues
+            [Serious problems that should be fixed before merge - major bugs, performance issues, significant security concerns]
+            
+            ### 🟡 Major Issues
+            [Important problems that should be addressed - code quality issues, maintainability concerns, test coverage gaps]
+            
+            ### 🔵 Minor Issues
+            [Nice-to-have improvements - style inconsistencies, minor optimizations, documentation suggestions]
+            
+            ## Positive Highlights
+            [Things done well - good patterns, clever solutions, excellent test coverage, etc.]
+            
+            ## Recommendations
+            [Prioritized action items for the author]
