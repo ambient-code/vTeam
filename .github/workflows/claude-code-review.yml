@@ -41,24 +41,37 @@ jobs:
 
           echo "Finding previous Claude Code Review comments to minimize..."
           
-          # Get all comment IDs from github-actions[bot] with "Claude Code Review" title
+          # Get all comment IDs from github-actions[bot] with "Claude Code Review" at the start
+          # Using startswith() to avoid matching code blocks or inline mentions
           COMMENT_IDS=$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" \
-            --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | contains("# Claude Code Review"))) | .node_id')
+            --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | startswith("# Claude Code Review"))) | .node_id')
           
           if [ -z "$COMMENT_IDS" ]; then
             echo "No old Claude Code Review comments found"
             exit 0
           fi
           
-          # Minimize each comment
+          # Minimize each comment with error handling
+          COUNT=0
+          ERRORS=0
           echo "$COMMENT_IDS" | while read -r id; do
-            [ -n "$id" ] && gh api graphql -f query='
-              mutation($id: ID!) {
-                minimizeComment(input: {subjectId: $id, classifier: OUTDATED}) {
-                  minimizedComment { isMinimized }
-                }
-              }' -f id="$id" && echo "✓ Minimized $id"
+            if [ -n "$id" ]; then
+              if gh api graphql -f query='
+                mutation($id: ID!) {
+                  minimizeComment(input: {subjectId: $id, classifier: OUTDATED}) {
+                    minimizedComment { isMinimized }
+                  }
+                }' -f id="$id" 2>&1; then
+                echo "✓ Minimized $id"
+                ((COUNT++))
+              else
+                echo "✗ Failed to minimize $id" >&2
+                ((ERRORS++))
+              fi
+            fi
           done
+          
+          echo "Minimized $COUNT comment(s), $ERRORS error(s)"
       - name: Run Claude Code Review
         id: claude-review
         uses: anthropics/claude-code-action@v1
@@ -67,35 +80,83 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           allowed_non_write_users: '*'
           claude_args: |
-            --allowed-tools "Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*)"
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh issue list:*)"
           prompt: |
-            Review this pull request and provide feedback.
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
             
-            Use the repository's CLAUDE.md for guidance on style and conventions.
+            Perform a comprehensive code review with the following focus areas:
             
-            IMPORTANT: Post your review using `gh pr comment` with this EXACT format:
+            1. **Code Quality & Best Practices**
+               - Follow repository's CLAUDE.md guidelines
+               - Clean code principles and design patterns
+               - Proper error handling and edge cases
+               - Code readability and maintainability
+               - TypeScript/Go best practices (see CLAUDE.md)
+            
+            2. **Security**
+               - Potential security vulnerabilities
+               - Input validation and sanitization
+               - Authentication/authorization logic
+               - Sensitive data handling
+               - API security concerns
+            
+            3. **Performance**
+               - Performance bottlenecks
+               - Database query efficiency
+               - Memory leaks or resource issues
+               - React rendering optimizations
+               - API response times
+            
+            4. **Testing**
+               - Test coverage adequacy
+               - Test quality and edge cases
+               - Missing test scenarios
+               - Integration test needs
+            
+            5. **Architecture & Design**
+               - Component structure and organization
+               - API design and contracts
+               - State management patterns
+               - Separation of concerns
+            
+            6. **Documentation**
+               - Code comments and clarity
+               - README updates for new features
+               - API documentation accuracy
+               - Type definitions completeness
+            
+            ---
+            
+            **Review Instructions:**
+            
+            - Use **inline comments** (create_inline_comment tool) for specific code issues - be precise about location and provide actionable suggestions
+            - Use a **top-level comment** (gh pr comment) for the summary with this format:
             
             # Claude Code Review
             
             ## Summary
-            [Brief overview of the changes and overall assessment]
+            [Brief overview and overall assessment]
             
             ## Issues by Severity
+            Categorize findings by severity (omit empty sections):
             
             ### 🚫 Blocker Issues
-            [Critical problems that MUST be fixed before merge - security vulnerabilities, data loss risks, breaking changes]
+            [Must fix before merge - security vulnerabilities, breaking changes, data loss risks]
             
-            ### 🔴 Critical Issues
-            [Serious problems that should be fixed before merge - major bugs, performance issues, significant security concerns]
+            ### 🔴 Critical Issues  
+            [Should fix before merge - major bugs, performance issues, significant security concerns]
             
             ### 🟡 Major Issues
-            [Important problems that should be addressed - code quality issues, maintainability concerns, test coverage gaps]
+            [Important to address - code quality, maintainability, test coverage gaps]
             
             ### 🔵 Minor Issues
-            [Nice-to-have improvements - style inconsistencies, minor optimizations, documentation suggestions]
+            [Nice-to-have - style, minor optimizations, documentation]
             
             ## Positive Highlights
-            [Things done well - good patterns, clever solutions, excellent test coverage, etc.]
+            [Things done well]
             
             ## Recommendations
-            [Prioritized action items for the author]
+            [Prioritized action items]
+            
+            Focus on substance. Be constructive and specific.
