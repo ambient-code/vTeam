@@ -82,6 +82,9 @@ export default function ProjectSessionDetailPage({
   const [openTabs, setOpenTabs] = useState<Array<{id: string; name: string; path: string; content: string}>>([{id: 'chat', name: 'Chat', path: '', content: ''}]);
   const [activeTab, setActiveTab] = useState<string>('chat');
   
+  // Maximum number of open tabs to prevent memory issues
+  const MAX_TABS = 10;
+  
   // Directory browser state (unified for artifacts, repos, and workflow)
   const [selectedDirectory, setSelectedDirectory] = useState<DirectoryOption>({
     type: 'artifacts',
@@ -318,32 +321,48 @@ export default function ProjectSessionDetailPage({
     initializedFromSessionRef.current = true;
   }, [session, ootbWorkflows, workflowManagement]);
 
+  // Memoize results by path for efficient lookup
+  const resultsByPath = useMemo(() => {
+    if (!workflowResults?.results) return new Map<string, string>();
+    const map = new Map<string, string>();
+    workflowResults.results.forEach(r => {
+      if (r.exists && r.content) {
+        map.set(r.path, r.content);
+      }
+    });
+    return map;
+  }, [workflowResults?.results]);
+
   // Sync open tabs with latest workflow results (auto-refresh tab content)
+  // Only updates when content actually changes, not on every poll
   useEffect(() => {
-    if (!workflowResults?.results) return;
+    if (resultsByPath.size === 0) return;
     
     setOpenTabs(prevTabs => {
-      return prevTabs.map(tab => {
+      let hasChanges = false;
+      const updatedTabs = prevTabs.map(tab => {
         // Don't update chat tab
         if (tab.id === 'chat') return tab;
         
-        // Find matching result by path
-        const matchingResult = workflowResults.results.find(r => 
-          r.exists && r.path === tab.path
-        );
+        // Get latest content for this path
+        const latestContent = resultsByPath.get(tab.path);
         
-        // Update tab content if we found newer data
-        if (matchingResult?.content && matchingResult.content !== tab.content) {
+        // Only update if content actually changed
+        if (latestContent && latestContent !== tab.content) {
+          hasChanges = true;
           return {
             ...tab,
-            content: matchingResult.content
+            content: latestContent
           };
         }
         
         return tab;
       });
+      
+      // Only trigger state update if something actually changed
+      return hasChanges ? updatedTabs : prevTabs;
     });
-  }, [workflowResults]);
+  }, [resultsByPath]);
 
   // Compute directory options
   const directoryOptions = useMemo<DirectoryOption[]>(() => {
@@ -1029,15 +1048,47 @@ export default function ProjectSessionDetailPage({
                                   )}
                                   onClick={() => {
                                     if (result.exists && result.content) {
-                                      const tabId = `result-${idx}`;
-                                      if (!openTabs.find(t => t.id === tabId)) {
-                                        setOpenTabs([...openTabs, {
+                                      // Use path-based stable ID instead of array index
+                                      const tabId = `result-${result.path}`;
+                                      
+                                      // Check if tab already exists
+                                      const existingTab = openTabs.find(t => t.id === tabId);
+                                      if (existingTab) {
+                                        // Tab exists, just switch to it
+                                        setActiveTab(tabId);
+                                        return;
+                                      }
+                                      
+                                      // Enforce tab limit - remove oldest non-chat tab if at limit
+                                      setOpenTabs(prevTabs => {
+                                        const nonChatTabs = prevTabs.filter(t => t.id !== 'chat');
+                                        
+                                        let newTabs = [...prevTabs];
+                                        
+                                        // If at limit, remove oldest non-chat tab
+                                        if (nonChatTabs.length >= MAX_TABS - 1) {
+                                          // Remove first non-chat tab (oldest)
+                                          const oldestTabId = nonChatTabs[0]?.id;
+                                          if (oldestTabId) {
+                                            newTabs = newTabs.filter(t => t.id !== oldestTabId);
+                                            // If we removed the active tab, switch to chat
+                                            if (activeTab === oldestTabId) {
+                                              setActiveTab('chat');
+                                            }
+                                          }
+                                        }
+                                        
+                                        // Add new tab
+                                        newTabs.push({
                                           id: tabId,
                                           name: result.displayName,
                                           path: result.path,
-                                          content: result.content
-                                        }]);
-                                      }
+                                          content: result.content || ''
+                                        });
+                                        
+                                        return newTabs;
+                                      });
+                                      
                                       setActiveTab(tabId);
                                     }
                                   }}
@@ -1228,15 +1279,15 @@ export default function ProjectSessionDetailPage({
           </div>
 
                                         {isMarkdown ? (
-                                          <article className="prose prose-slate prose-headings:text-gray-900 prose-h1:text-4xl prose-h1:font-bold prose-h2:text-2xl prose-h2:font-semibold prose-h3:text-xl prose-h3:font-semibold prose-p:text-gray-700 prose-li:text-gray-700 prose-strong:text-gray-900 prose-a:text-blue-600 hover:prose-a:text-blue-800 prose-code:text-pink-600 prose-code:bg-gray-100 prose-code:px-1 prose-code:py-0.5 prose-code:rounded max-w-none">
+                                          <article className="prose prose-slate dark:prose-invert max-w-none">
                                             <ReactMarkdown 
                                               remarkPlugins={[remarkGfm]}
                                               components={{
-                                                h1: ({children}) => <h1 className="text-3xl font-bold mt-8 mb-4 text-gray-900 border-b pb-2">{children}</h1>,
-                                                h2: ({children}) => <h2 className="text-2xl font-semibold mt-6 mb-3 text-gray-900">{children}</h2>,
-                                                h3: ({children}) => <h3 className="text-xl font-semibold mt-4 mb-2 text-gray-800">{children}</h3>,
-                                                h4: ({children}) => <h4 className="text-lg font-semibold mt-3 mb-2 text-gray-800">{children}</h4>,
-                                                p: ({children}) => <p className="mb-4 text-gray-700 leading-7">{children}</p>,
+                                                h1: ({children}) => <h1 className="text-3xl font-bold mt-8 mb-4 text-gray-900 dark:text-gray-100 border-b pb-2">{children}</h1>,
+                                                h2: ({children}) => <h2 className="text-2xl font-semibold mt-6 mb-3 text-gray-900 dark:text-gray-100">{children}</h2>,
+                                                h3: ({children}) => <h3 className="text-xl font-semibold mt-4 mb-2 text-gray-800 dark:text-gray-200">{children}</h3>,
+                                                h4: ({children}) => <h4 className="text-lg font-semibold mt-3 mb-2 text-gray-800 dark:text-gray-200">{children}</h4>,
+                                                p: ({children}) => <p className="mb-4 text-gray-700 dark:text-gray-300 leading-7">{children}</p>,
                                                 a: ({href, children}) => <a href={href} className="text-blue-600 hover:text-blue-800 underline" target="_blank" rel="noopener noreferrer">{children}</a>,
                                                 ul: ({children, className}) => {
                                                   const isTaskList = className?.includes('contains-task-list');

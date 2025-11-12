@@ -27,6 +27,9 @@ var StateBaseDir string
 // MaxResultFileSize is the maximum size for result files to prevent memory issues
 const MaxResultFileSize = 10 * 1024 * 1024 // 10MB
 
+// MaxGlobMatches limits the number of files that can be matched to prevent resource exhaustion
+const MaxGlobMatches = 100
+
 // Git operation functions - set by main package during initialization
 // These are set to the actual implementations from git package
 var (
@@ -688,7 +691,17 @@ func ContentWorkflowResults(c *gin.Context) {
 
 	for _, displayName := range displayNames {
 		pattern := ambientConfig.Results[displayName]
-		matches := findMatchingFiles(workspaceBase, pattern)
+		matches, err := findMatchingFiles(workspaceBase, pattern)
+
+		if err != nil {
+			results = append(results, ResultFile{
+				DisplayName: displayName,
+				Path:        pattern,
+				Exists:      false,
+				Error:       fmt.Sprintf("Pattern error: %v", err),
+			})
+			continue
+		}
 
 		if len(matches) == 0 {
 			results = append(results, ResultFile{
@@ -740,22 +753,63 @@ func ContentWorkflowResults(c *gin.Context) {
 }
 
 // findMatchingFiles finds files matching a glob pattern with ** support for recursive matching
-func findMatchingFiles(baseDir, pattern string) []string {
+// Returns matched files and an error if validation fails or too many matches found
+func findMatchingFiles(baseDir, pattern string) ([]string, error) {
+	// Validate baseDir is absolute and exists
+	if !filepath.IsAbs(baseDir) {
+		return nil, fmt.Errorf("baseDir must be absolute path")
+	}
+	
+	baseInfo, err := os.Stat(baseDir)
+	if err != nil {
+		return nil, fmt.Errorf("baseDir does not exist: %w", err)
+	}
+	if !baseInfo.IsDir() {
+		return nil, fmt.Errorf("baseDir is not a directory")
+	}
+
 	// Use doublestar for glob matching with ** support
 	fsys := os.DirFS(baseDir)
 	matches, err := doublestar.Glob(fsys, pattern)
 	if err != nil {
-		log.Printf("findMatchingFiles: glob error for pattern %q: %v", pattern, err)
-		return []string{}
+		return nil, fmt.Errorf("glob pattern error: %w", err)
 	}
 
-	// Convert relative paths to absolute paths
+	// Enforce match limit to prevent resource exhaustion
+	if len(matches) > MaxGlobMatches {
+		log.Printf("findMatchingFiles: pattern %q matched %d files, limiting to %d", pattern, len(matches), MaxGlobMatches)
+		matches = matches[:MaxGlobMatches]
+	}
+
+	// Convert relative paths to absolute paths and validate they stay within baseDir
 	var absolutePaths []string
-	for _, match := range matches {
-		absolutePaths = append(absolutePaths, filepath.Join(baseDir, match))
+	baseDirAbs, err := filepath.Abs(baseDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve baseDir: %w", err)
 	}
 
-	return absolutePaths
+	for _, match := range matches {
+		// Join and clean the path
+		absPath := filepath.Join(baseDirAbs, match)
+		absPath = filepath.Clean(absPath)
+
+		// Security: Ensure resolved path stays within baseDir (prevent directory traversal)
+		relPath, err := filepath.Rel(baseDirAbs, absPath)
+		if err != nil {
+			log.Printf("findMatchingFiles: failed to compute relative path for %q: %v", absPath, err)
+			continue
+		}
+
+		// Check for directory traversal attempts (paths like "../" or starting with "../")
+		if strings.HasPrefix(relPath, "..") {
+			log.Printf("findMatchingFiles: rejected path traversal attempt: %q", absPath)
+			continue
+		}
+
+		absolutePaths = append(absolutePaths, absPath)
+	}
+
+	return absolutePaths, nil
 }
 
 // findActiveWorkflowDir finds the active workflow directory for a session
