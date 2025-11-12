@@ -1,10 +1,6 @@
 # Fork PR Support: This workflow now supports pull requests from forked repositories
 # See: https://github.com/anthropics/claude-code-action/issues/339
-# 
-# Three fixes applied:
-# 1. Checkout fork repository (head.repo.full_name)
-# 2. Add github_token to bypass OIDC authentication issues
-# 3. Add allowed_non_write_users to permit fork contributors
+
 
 name: Claude Code Review
 
