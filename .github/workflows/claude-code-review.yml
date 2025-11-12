@@ -2,7 +2,7 @@ name: Claude Code Review
 
 on:
   pull_request_target:
-    types: [opened, synchronize]
+    types: [opened, synchronize, ready_for_review, reopened]
 
 jobs:
   claude-review:
@@ -36,7 +36,8 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ secrets.GITHUB_TOKEN }}  # Fix for OIDC authentication issues with forks
           allowed_non_write_users: '*'  # Allow fork contributors to trigger reviews (safe for read-only review workflows)
-          use_sticky_comment: 'true'  # Update single comment instead of creating new ones on each commit
+          use_sticky_comment: true
+          track_progress: true
           prompt: |
             Please review this pull request and provide feedback on:
             - Code quality and best practices
