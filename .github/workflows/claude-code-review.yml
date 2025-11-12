@@ -1,4 +1,16 @@
 
+# Claude Code Review with Claude GitHub App
+#
+# Uses the Claude GitHub App for authentication (comments appear from claude[bot])
+# Automatically minimizes old review comments to keep PRs clean
+#
+# Required:
+# - Claude GitHub App must be installed on the repository
+# - GitHub Secret: CLAUDE_CODE_OAUTH_TOKEN (OAuth token for Claude Code)
+#
+# Note: This does NOT support fork PRs. For fork support, you must provide github_token
+# and use allowed_non_write_users, which makes comments appear from github-actions[bot].
+
 name: Claude Code Review
 
 on:
@@ -9,7 +21,7 @@ jobs:
   claude-review:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       pull-requests: write
       issues: write
       id-token: write
@@ -23,30 +35,33 @@ jobs:
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
 
-      - name: Dismiss old Claude Code Review comments
+      - name: Minimize old Claude review comments
         continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Get PR comments from github-actions[bot] and hide them as outdated
           REPO="${{ github.repository }}"
           PR_NUMBER="${{ github.event.pull_request.number }}"
 
-          echo "Finding previous issue comments from github-actions[bot]..."
-
-          # Get issue comments (regular PR comments)
-          gh api "repos/$REPO/issues/$PR_NUMBER/comments" --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | contains("Please review this pull request") or contains("Claude Code Review"))) | .node_id' | while read -r comment_node_id; do
-            if [ -n "$comment_node_id" ]; then
-              echo "Minimizing issue comment: $comment_node_id"
-              gh api graphql -f query='
-                mutation($id: ID!) {
-                  minimizeComment(input: {subjectId: $id, classifier: OUTDATED}) {
-                    minimizedComment {
-                      isMinimized
-                    }
-                  }
-                }' -f id="$comment_node_id" || echo "Failed to minimize $comment_node_id"
-            fi
+          echo "Finding Claude review comments to minimize..."
+          
+          # Get all comment IDs from claude[bot]
+          COMMENT_IDS=$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" \
+            --jq '.[] | select(.user.login == "claude[bot]") | .node_id')
+          
+          if [ -z "$COMMENT_IDS" ]; then
+            echo "No old comments to minimize"
+            exit 0
+          fi
+          
+          # Minimize each comment
+          echo "$COMMENT_IDS" | while read -r id; do
+            [ -n "$id" ] && gh api graphql -f query='
+              mutation($id: ID!) {
+                minimizeComment(input: {subjectId: $id, classifier: OUTDATED}) {
+                  minimizedComment { isMinimized }
+                }
+              }' -f id="$id" && echo "✓ Minimized $id"
           done
       - name: Run Claude Code Review
         id: claude-review
