@@ -111,7 +111,7 @@ k8s-setup: ## Setup local Kubernetes for testing (requires kubectl and kind)
 	kind create cluster --name ambient-test || true
 	kubectl config use-context kind-ambient-test
 	@echo "Installing test CRDs..."
-	kubectl apply -f ../manifests/crds/ || echo "Warning: Could not install CRDs"
+	kubectl apply -f ../manifests/base/crds/ || echo "Warning: Could not install CRDs"
 
 k8s-teardown: ## Teardown local Kubernetes test cluster
 	@echo "Tearing down test cluster..."
