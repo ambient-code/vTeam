@@ -51,4 +51,4 @@ rules:
 # Secrets (for copying ambient-vertex to job namespaces) Without this we cannot copy secrets to the session namespaces
 - apiGroups: [""]
   resources: ["secrets"]
-  verbs: ["get", "create", "delete"]
+  verbs: ["get", "create", "delete", "update"]
