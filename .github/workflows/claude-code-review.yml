@@ -52,7 +52,7 @@ jobs:
           fi
           
           # Minimize each comment with error handling
-          # Use process substitution to avoid subshell variable scoping issues
+          # Use here-string to avoid subshell variable scoping issues with pipe
           COUNT=0
           ERRORS=0
           while read -r id; do
