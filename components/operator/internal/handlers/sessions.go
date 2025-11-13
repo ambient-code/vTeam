@@ -1319,15 +1319,9 @@ func copySecretToNamespace(ctx context.Context, sourceSecret *corev1.Secret, tar
 
 			// Create a fresh owner reference based on current state
 			// If there's already a controller, don't set Controller: true for the new reference
-			ownerRefToAdd := v1.OwnerReference{
-				APIVersion: ownerObj.GetAPIVersion(),
-				Kind:       ownerObj.GetKind(),
-				Name:       ownerObj.GetName(),
-				UID:        ownerObj.GetUID(),
-			}
-			// Only set Controller: true if there's no existing controller
-			if !hasController {
-				ownerRefToAdd.Controller = boolPtr(true)
+			ownerRefToAdd := newOwnerRef
+			if hasController {
+				ownerRefToAdd.Controller = nil
 			}
 
 			// Apply updates
