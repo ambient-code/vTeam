@@ -1234,6 +1234,39 @@ func CleanupExpiredTempContentPods() {
 
 // copySecretToNamespace copies a secret to a target namespace with owner references
 func copySecretToNamespace(ctx context.Context, sourceSecret *corev1.Secret, targetNamespace string, ownerObj *unstructured.Unstructured) error {
+	// Check if secret already exists in target namespace
+	existingSecret, err := config.K8sClient.CoreV1().Secrets(targetNamespace).Get(ctx, sourceSecret.Name, v1.GetOptions{})
+	secretExists := err == nil
+	if err != nil && !errors.IsNotFound(err) {
+		return fmt.Errorf("error checking for existing secret: %w", err)
+	}
+
+	// Determine if we should set Controller: true
+	// For shared secrets (like ambient-vertex), don't set Controller: true if secret already exists
+	// to avoid conflicts when multiple sessions use the same secret
+	shouldSetController := true
+	if secretExists {
+		// Check if existing secret already has a controller reference
+		for _, ownerRef := range existingSecret.OwnerReferences {
+			if ownerRef.Controller != nil && *ownerRef.Controller {
+				shouldSetController = false
+				log.Printf("Secret %s already has a controller reference, adding non-controller reference instead", sourceSecret.Name)
+				break
+			}
+		}
+	}
+
+	// Create owner reference
+	newOwnerRef := v1.OwnerReference{
+		APIVersion: ownerObj.GetAPIVersion(),
+		Kind:       ownerObj.GetKind(),
+		Name:       ownerObj.GetName(),
+		UID:        ownerObj.GetUID(),
+	}
+	if shouldSetController {
+		newOwnerRef.Controller = boolPtr(true)
+	}
+
 	// Create a new secret in the target namespace
 	newSecret := &corev1.Secret{
 		ObjectMeta: v1.ObjectMeta{
@@ -1243,22 +1276,13 @@ func copySecretToNamespace(ctx context.Context, sourceSecret *corev1.Secret, tar
 			Annotations: map[string]string{
 				types.CopiedFromAnnotation: fmt.Sprintf("%s/%s", sourceSecret.Namespace, sourceSecret.Name),
 			},
-			OwnerReferences: []v1.OwnerReference{
-				{
-					APIVersion: ownerObj.GetAPIVersion(),
-					Kind:       ownerObj.GetKind(),
-					Name:       ownerObj.GetName(),
-					UID:        ownerObj.GetUID(),
-					Controller: boolPtr(true),
-				},
-			},
+			OwnerReferences: []v1.OwnerReference{newOwnerRef},
 		},
 		Type: sourceSecret.Type,
 		Data: sourceSecret.Data,
 	}
 
-	// Check if secret already exists in target namespace
-	if existingSecret, err := config.K8sClient.CoreV1().Secrets(targetNamespace).Get(ctx, sourceSecret.Name, v1.GetOptions{}); err == nil {
+	if secretExists {
 		// Secret already exists, check if it needs to be updated
 		log.Printf("Secret %s already exists in namespace %s, checking if update needed", sourceSecret.Name, targetNamespace)
 
@@ -1284,10 +1308,25 @@ func copySecretToNamespace(ctx context.Context, sourceSecret *corev1.Secret, tar
 				return err
 			}
 
+			// Check again if there's already a controller reference (may have changed since last check)
+			hasController := false
+			for _, ownerRef := range currentSecret.OwnerReferences {
+				if ownerRef.Controller != nil && *ownerRef.Controller {
+					hasController = true
+					break
+				}
+			}
+
+			// If there's already a controller, don't set Controller: true for the new reference
+			ownerRefToAdd := newOwnerRef
+			if hasController {
+				ownerRefToAdd.Controller = nil
+			}
+
 			// Apply updates
 			// Create a new slice to avoid mutating shared/cached data
 			currentSecret.OwnerReferences = append([]v1.OwnerReference{}, currentSecret.OwnerReferences...)
-			currentSecret.OwnerReferences = append(currentSecret.OwnerReferences, newSecret.OwnerReferences[0])
+			currentSecret.OwnerReferences = append(currentSecret.OwnerReferences, ownerRefToAdd)
 			currentSecret.Data = sourceSecret.Data
 			if currentSecret.Annotations == nil {
 				currentSecret.Annotations = make(map[string]string)
@@ -1298,12 +1337,10 @@ func copySecretToNamespace(ctx context.Context, sourceSecret *corev1.Secret, tar
 			_, err = config.K8sClient.CoreV1().Secrets(targetNamespace).Update(ctx, currentSecret, v1.UpdateOptions{})
 			return err
 		})
-	} else if !errors.IsNotFound(err) {
-		return fmt.Errorf("error checking for existing secret: %w", err)
 	}
 
 	// Create the secret
-	_, err := config.K8sClient.CoreV1().Secrets(targetNamespace).Create(ctx, newSecret, v1.CreateOptions{})
+	_, err = config.K8sClient.CoreV1().Secrets(targetNamespace).Create(ctx, newSecret, v1.CreateOptions{})
 	return err
 }
 

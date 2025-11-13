@@ -348,6 +348,103 @@ func TestCopySecretToNamespace_MultipleOwnerReferences(t *testing.T) {
 	}
 }
 
+// TestCopySecretToNamespace_ExistingController tests adding owner ref when secret already has a controller
+func TestCopySecretToNamespace_ExistingController(t *testing.T) {
+	existingSecret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "ambient-vertex",
+			Namespace: "target-ns",
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion: "vteam.ambient-code/v1alpha1",
+					Kind:       "AgenticSession",
+					Name:       "existing-session",
+					UID:        k8stypes.UID("existing-uid-111"),
+					Controller: boolPtr(true), // Already has a controller
+				},
+			},
+		},
+		Type: corev1.SecretTypeOpaque,
+		Data: map[string][]byte{
+			"key": []byte("value"),
+		},
+	}
+
+	setupTestClient(existingSecret)
+
+	sourceSecret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "ambient-vertex",
+			Namespace: "source-ns",
+		},
+		Type: corev1.SecretTypeOpaque,
+		Data: map[string][]byte{
+			"key": []byte("updated-value"),
+		},
+	}
+
+	ownerObj := &unstructured.Unstructured{}
+	ownerObj.SetAPIVersion("vteam.ambient-code/v1alpha1")
+	ownerObj.SetKind("AgenticSession")
+	ownerObj.SetName("new-session")
+	ownerObj.SetUID(k8stypes.UID("new-uid-222"))
+
+	ctx := context.Background()
+	err := copySecretToNamespace(ctx, sourceSecret, "target-ns", ownerObj)
+	if err != nil {
+		t.Fatalf("copySecretToNamespace failed: %v", err)
+	}
+
+	// Verify secret has both owner references
+	result, err := config.K8sClient.CoreV1().Secrets("target-ns").Get(ctx, "ambient-vertex", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("Failed to get secret: %v", err)
+	}
+
+	if len(result.OwnerReferences) != 2 {
+		t.Fatalf("Expected 2 owner references, got %d", len(result.OwnerReferences))
+	}
+
+	// Verify only one controller reference exists
+	controllerCount := 0
+	foundExisting := false
+	foundNew := false
+	for _, ref := range result.OwnerReferences {
+		if ref.Controller != nil && *ref.Controller {
+			controllerCount++
+		}
+		if ref.UID == k8stypes.UID("existing-uid-111") {
+			foundExisting = true
+			// Original controller should still be true
+			if ref.Controller == nil || !*ref.Controller {
+				t.Error("Existing controller reference should still have Controller: true")
+			}
+		}
+		if ref.UID == k8stypes.UID("new-uid-222") {
+			foundNew = true
+			// New reference should NOT have Controller: true
+			if ref.Controller != nil && *ref.Controller {
+				t.Error("New owner reference should NOT have Controller: true when secret already has a controller")
+			}
+		}
+	}
+
+	if controllerCount != 1 {
+		t.Errorf("Expected exactly 1 controller reference, got %d", controllerCount)
+	}
+	if !foundExisting {
+		t.Error("Existing owner reference was lost")
+	}
+	if !foundNew {
+		t.Error("New owner reference was not added")
+	}
+
+	// Verify data was updated
+	if string(result.Data["key"]) != "updated-value" {
+		t.Errorf("Expected data 'updated-value', got '%s'", string(result.Data["key"]))
+	}
+}
+
 // TestCopySecretToNamespace_NilAnnotations tests updating secret with nil annotations
 func TestCopySecretToNamespace_NilAnnotations(t *testing.T) {
 	existingSecret := &corev1.Secret{
