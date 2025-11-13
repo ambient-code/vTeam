@@ -1,7 +1,22 @@
 <!--
 Sync Impact Report - Constitution Update
-Version: 0.1.0 (DRAFT)
-Last Updated: 2025-11-05
+Version: 1.0.0
+Last Updated: 2025-11-13
+
+Changelog (v1.0.0):
+  - RATIFIED: Constitution officially ratified and adopted
+  - Version bump: v0.2.0 (DRAFT) → v1.0.0 (RATIFIED)
+  - Ratification Date: 2025-11-13
+  - All 10 core principles now in force
+  - Development standards and governance policies active
+
+Changelog (v0.2.0):
+  - Added Development Standards: Naming & Legacy Migration subsection
+    * Safe vs. breaking change guidance for vTeam → ACP transition
+    * Incremental migration approach (documentation first, then UI, then code)
+    * DO NOT update list: API groups, CRDs, container names, K8s resources
+    * Safe to update: docs, comments, logs, UI text, new variable names
+    * Rationale: Gradual migration improves clarity while preserving backward compatibility
 
 Changelog (v0.1.0):
   - Added Principle X: Commit Discipline & Code Review
@@ -33,9 +48,10 @@ Follow-up TODOs:
   - Design RAG pipeline architecture
   - Add commit size validation tooling (pre-commit hook or CI check)
   - Update PR template to include commit discipline checklist
+  - Continue vTeam → ACP migration incrementally (docs → UI → code)
 -->
 
-# ACP Constitution (DRAFT)
+# ACP Constitution
 
 ## Core Principles
 
@@ -292,6 +308,40 @@ Each commit MUST be atomic, reviewable, and independently testable:
 - Use `isort` with black profile
 - Run linters before committing
 
+### Naming & Legacy Migration
+
+**vTeam → ACP Transition**:
+
+Replace usage of "vTeam" with "ACP" (Ambient Code Platform) where it is safe and unobtrusive to do so:
+
+**Safe to Update** (non-breaking changes):
+
+- User-facing documentation and README files
+- Code comments and inline documentation
+- Log messages and error messages
+- UI text and labels
+- Variable names in new code
+
+**DO NOT Update** (breaking changes - maintain for backward compatibility):
+
+- Kubernetes API group: `vteam.ambient-code`
+- Custom Resource Definitions (CRD kinds)
+- Container image names: `vteam_frontend`, `vteam_backend`, etc.
+- Kubernetes resource names: deployments, services, routes
+- Environment variables referenced in deployment configs
+- File paths in scripts that reference namespaces/resources
+- Git repository name and URLs
+
+**Incremental Approach**:
+
+- Update documentation first (README, CLAUDE.md, docs/)
+- Update UI text in new features
+- Use ACP naming in new code modules
+- Do NOT perform mass renames - update organically during feature work
+- Document remaining vTeam references in "Legacy vTeam References" section
+
+**Rationale**: The project rebranded from vTeam to Ambient Code Platform, but technical artifacts retain "vteam" for backward compatibility. Gradual, safe migration improves clarity while avoiding breaking changes for existing deployments.
+
 ## Deployment & Operations
 
 ### Pre-Deployment Validation
@@ -363,4 +413,4 @@ Runtime development guidance is maintained in:
 - Component-specific README files
 - MkDocs documentation in `/docs`
 
-**Version**: 0.1.0 (DRAFT) | **Status**: Draft | **Created**: 2025-11-05
+**Version**: 1.0.0 | **Status**: Ratified | **Ratified**: 2025-11-13 | **Last Amended**: 2025-11-13
