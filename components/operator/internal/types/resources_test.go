@@ -185,4 +185,3 @@ func BenchmarkGetProjectSettingsResource(b *testing.B) {
 		GetProjectSettingsResource()
 	}
 }
-

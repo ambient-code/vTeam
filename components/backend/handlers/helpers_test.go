@@ -168,10 +168,10 @@ func TestGroupVersionResource(t *testing.T) {
 // Mock test for schema validation
 func TestSchemaGroupVersionResource(t *testing.T) {
 	gvr := GetProjectSettingsResource()
-	
+
 	// Verify the type
 	var _ schema.GroupVersionResource = gvr
-	
+
 	// Verify the individual components instead of string format
 	if gvr.Group != "vteam.ambient-code" {
 		t.Errorf("Expected group 'vteam.ambient-code', got '%s'", gvr.Group)
@@ -183,4 +183,3 @@ func TestSchemaGroupVersionResource(t *testing.T) {
 		t.Errorf("Expected resource 'projectsettings', got '%s'", gvr.Resource)
 	}
 }
-
