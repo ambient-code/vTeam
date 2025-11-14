@@ -223,6 +223,7 @@ class ClaudeCodeAdapter:
             # Initialize OpenTelemetry for distributed tracing if configured
             otel_tracer = None
             otel_span = None
+            otel_provider = None
             if OTEL_AVAILABLE:
                 otel_endpoint = os.getenv('OTEL_EXPORTER_OTLP_ENDPOINT', '').strip()
                 # Use dynamic service name: claude-<session-id> or fallback to env var
@@ -236,17 +237,17 @@ class ClaudeCodeAdapter:
                             SERVICE_NAME: otel_service_name
                         })
 
-                        # Create tracer provider
-                        provider = TracerProvider(resource=resource)
+                        # Create tracer provider (store for later flush)
+                        otel_provider = TracerProvider(resource=resource)
 
                         # Create OTLP exporter
                         otlp_exporter = OTLPSpanExporter(endpoint=otel_endpoint)
 
                         # Add span processor
-                        provider.add_span_processor(BatchSpanProcessor(otlp_exporter))
+                        otel_provider.add_span_processor(BatchSpanProcessor(otlp_exporter))
 
                         # Set as global tracer provider
-                        trace.set_tracer_provider(provider)
+                        trace.set_tracer_provider(otel_provider)
 
                         # Get tracer
                         otel_tracer = trace.get_tracer(__name__)
@@ -798,6 +799,14 @@ class ClaudeCodeAdapter:
                     logging.info("OpenTelemetry span completed with final metrics")
                 except Exception as e:
                     logging.warning(f"Failed to complete OTEL span: {e}")
+
+            # Force flush to ensure spans are sent before pod exits
+            if otel_provider:
+                try:
+                    otel_provider.force_flush(timeout_millis=5000)
+                    logging.info("OpenTelemetry spans flushed to collector")
+                except Exception as e:
+                    logging.warning(f"Failed to flush OTEL spans: {e}")
 
             # Return success - result_payload may be None if SDK didn't send ResultMessage
             # (which can happen legitimately for some operations like git push)
