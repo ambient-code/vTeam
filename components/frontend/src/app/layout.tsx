@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { Navigation } from "@/components/navigation";
 import { QueryProvider } from "@/components/providers/query-provider";
+import { ThemeProvider } from "@/components/providers/theme-provider";
 import { Toaster } from "@/components/ui/toaster";
 import { env } from "@/lib/env";
 
@@ -24,14 +25,29 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
+        <script dangerouslySetInnerHTML={{
+          __html: `
+            (function() {
+              try {
+                const theme = localStorage.getItem('theme');
+                const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                if (theme === 'dark' || (!theme && systemPrefersDark)) {
+                  document.documentElement.classList.add('dark');
+                }
+              } catch (e) {}
+            })()
+          `
+        }} />
         <meta name="backend-ws-base" content={wsBase} />
       </head>
       <body className={`${inter.className} min-h-screen flex flex-col`} suppressHydrationWarning>
-        <QueryProvider>
-          <Navigation feedbackUrl={feedbackUrl} />
-          <main className="flex-1 bg-background overflow-auto">{children}</main>
-          <Toaster />
-        </QueryProvider>
+        <ThemeProvider>
+          <QueryProvider>
+            <Navigation feedbackUrl={feedbackUrl} />
+            <main className="flex-1 bg-background overflow-auto">{children}</main>
+            <Toaster />
+          </QueryProvider>
+        </ThemeProvider>
       </body>
     </html>
   );
