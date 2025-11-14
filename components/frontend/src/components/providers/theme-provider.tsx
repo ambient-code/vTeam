@@ -19,10 +19,22 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   // Read theme on mount (client-side only)
   useEffect(() => {
     setMounted(true);
-    const stored = localStorage.getItem('theme') as Theme | null;
-    if (stored) {
+    const stored = localStorage.getItem('theme');
+
+    // Security: Validate that stored value is exactly 'light' or 'dark'
+    // to prevent XSS or DOM manipulation via localStorage poisoning
+    if (stored === 'light' || stored === 'dark') {
       setTheme(stored);
     } else {
+      // If invalid or missing, fall back to system preference
+      if (stored !== null) {
+        // Clear invalid value from localStorage
+        try {
+          localStorage.removeItem('theme');
+        } catch (e) {
+          console.warn('Failed to remove invalid theme value:', e);
+        }
+      }
       const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
       setTheme(systemPrefersDark ? 'dark' : 'light');
     }
@@ -46,12 +58,22 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     }
   }, [theme, mounted]);
 
+  // Wrapper for setTheme with validation (defense-in-depth)
+  const setThemeValidated = (newTheme: Theme) => {
+    // Security: Validate input to ensure only valid theme values are accepted
+    if (newTheme !== 'light' && newTheme !== 'dark') {
+      console.warn('Invalid theme value rejected:', newTheme);
+      return;
+    }
+    setTheme(newTheme);
+  };
+
   const toggleTheme = () => {
     setTheme((prev) => (prev === 'light' ? 'dark' : 'light'));
   };
 
   return (
-    <ThemeContext.Provider value={{ theme, setTheme, toggleTheme }}>
+    <ThemeContext.Provider value={{ theme, setTheme: setThemeValidated, toggleTheme }}>
       {children}
     </ThemeContext.Provider>
   );
