@@ -203,6 +203,7 @@ class ClaudeCodeAdapter:
                             host=os.getenv('LANGFUSE_HOST')
                         )
                         # Start a span for this session (Langfuse SDK 3.x)
+                        # Note: user_id is not a valid parameter for start_as_current_span
                         langfuse_session_span = langfuse_client.start_as_current_span(
                             name="claude_agent_session",
                             input={"prompt": prompt},
@@ -210,7 +211,6 @@ class ClaudeCodeAdapter:
                                 "session_id": self.context.session_id,
                                 "namespace": self.context.get_env('AGENTIC_SESSION_NAMESPACE', 'unknown'),
                             },
-                            user_id=self.context.session_id,
                         )
                         logging.info(f"Langfuse tracing enabled for session")
                     except Exception as e:
