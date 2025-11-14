@@ -1,0 +1,38 @@
+coverage:
+  status:
+    project:
+      default:
+        target: 70%
+        threshold: 5%
+        informational: true  # Don't block PRs
+    patch:
+      default:
+        target: 70%
+        informational: true
+
+flag_management:
+  default_rules:
+    statuses:
+      - type: project
+        target: 70%
+        informational: true
+
+flags:
+  backend:
+    paths:
+      - components/backend/
+  operator:
+    paths:
+      - components/operator/
+  frontend:
+    paths:
+      - components/frontend/
+  python-runner:
+    paths:
+      - components/runners/claude-code-runner/
+
+comment:
+  layout: "reach,diff,flags,tree"
+  behavior: default
+  require_changes: false
+
