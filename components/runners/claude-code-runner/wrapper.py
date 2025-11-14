@@ -180,7 +180,7 @@ class ClaudeCodeAdapter:
         try:
             # Initialize Langfuse for observability if configured
             langfuse_client = None
-            langfuse_trace = None
+            langfuse_trace_id = None
             if LANGFUSE_AVAILABLE:
                 langfuse_enabled = os.getenv('LANGFUSE_ENABLED', '').strip().lower() in ('1', 'true', 'yes')
                 if langfuse_enabled:
@@ -190,8 +190,9 @@ class ClaudeCodeAdapter:
                             secret_key=os.getenv('LANGFUSE_SECRET_KEY'),
                             host=os.getenv('LANGFUSE_HOST')
                         )
-                        # Create a trace for this session
-                        langfuse_trace = langfuse_client.trace(
+                        # Create a trace for this session (Langfuse SDK 3.x API)
+                        langfuse_trace_id = langfuse_client.create_trace_id(seed=self.context.session_id)
+                        langfuse_client.update_current_trace(
                             name="claude_agent_session",
                             user_id=self.context.session_id,
                             metadata={
@@ -200,11 +201,13 @@ class ClaudeCodeAdapter:
                                 "prompt": prompt[:200] + "..." if len(prompt) > 200 else prompt
                             }
                         )
-                        logging.info("Langfuse tracing enabled for session")
+                        logging.info(f"Langfuse tracing enabled for session (trace_id: {langfuse_trace_id})")
                     except Exception as e:
                         logging.warning(f"Failed to initialize Langfuse: {e}")
+                        import traceback
+                        logging.warning(traceback.format_exc())
                         langfuse_client = None
-                        langfuse_trace = None
+                        langfuse_trace_id = None
 
             # Check for authentication method: API key or service account
             # IMPORTANT: Must check and set env vars BEFORE importing SDK
@@ -626,9 +629,9 @@ class ClaudeCodeAdapter:
             await self._check_pr_intent("")
 
             # Update Langfuse trace with final results
-            if langfuse_trace and result_payload:
+            if langfuse_trace_id and langfuse_client and result_payload:
                 try:
-                    langfuse_trace.update(
+                    langfuse_client.update_current_trace(
                         output=result_payload,
                         metadata={
                             "num_turns": result_payload.get("num_turns", 0),
@@ -638,8 +641,7 @@ class ClaudeCodeAdapter:
                         }
                     )
                     # Flush to ensure data is sent before pod exits
-                    if langfuse_client:
-                        langfuse_client.flush()
+                    langfuse_client.flush()
                     logging.info("Langfuse trace updated with final results")
                 except Exception as e:
                     logging.warning(f"Failed to update Langfuse trace: {e}")
@@ -656,14 +658,13 @@ class ClaudeCodeAdapter:
         except Exception as e:
             logging.error(f"Failed to run Claude Code SDK: {e}")
             # Update Langfuse trace with error if available
-            if 'langfuse_trace' in locals() and langfuse_trace:
+            if 'langfuse_trace_id' in locals() and langfuse_trace_id and 'langfuse_client' in locals() and langfuse_client:
                 try:
-                    langfuse_trace.update(
+                    langfuse_client.update_current_trace(
                         level="ERROR",
                         status_message=str(e)
                     )
-                    if 'langfuse_client' in locals() and langfuse_client:
-                        langfuse_client.flush()
+                    langfuse_client.flush()
                 except Exception:
                     pass
             return {
