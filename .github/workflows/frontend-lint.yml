@@ -59,6 +59,7 @@ jobs:
       - name: Run TypeScript type check
         run: |
           cd components/frontend
+          rm -rf .next
           npx tsc --noEmit
 
       - name: Build check

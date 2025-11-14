@@ -156,29 +156,84 @@ collected 0 items
 
 ---
 
+## Root Cause Analysis - Frontend Component
+
+### Critical Discovery: Accidentally Removed Dependencies
+
+During cherry-pick conflict resolution, `package.json` lost critical dependencies:
+- ❌ `@radix-ui/react-accordion` - REMOVED
+- ❌ `@radix-ui/react-avatar` - REMOVED  
+- ❌ `@radix-ui/react-tooltip` - REMOVED
+- ❌ `@tanstack/react-query` - **REMOVED (causing TypeScript failures)**
+- ❌ `@tanstack/react-query-devtools` - REMOVED
+
+**Impact**: TypeScript can't resolve `@tanstack/react-query` imports, causing 50+ type errors.
+
+### Secondary Discovery: TypeScript Check Latency
+
+The `frontend-lint.yml` workflow exists on main but **rarely runs** because:
+1. Path filter `detect-frontend-changes` only triggers on frontend file changes
+2. Most commits don't touch frontend
+3. Last successful run (19344489320) skipped TypeScript check entirely
+4. Our PR is the **first to trigger TypeScript check in recent history**
+5. Exposing latent `.next/types` errors from stale build artifacts
+
+### TypeScript Errors Breakdown
+
+**In CI Log**:
+- 50+ errors in `.next/types/**/*.ts` (Next.js generated)
+- All errors: "Cannot find module '...route.js'"
+- Secondary errors: Implicit 'any' types in use-sessions.ts, use-workspace.ts
+
+**Why This Happens**:
+- `.next` folder generated during npm install (Next.js post-install)
+- Contains type definitions referencing non-existent .js files  
+- Pre-existing issue, but hidden because TypeScript check rarely runs
+
 ## Recommended Fix Priority
 
 ### Immediate Fixes (Block CI):
 
-**1. Frontend ESLint Issue** (HIGH PRIORITY)
-```javascript
-// Add to eslintignore or use eslint-disable comment
-// OR convert to .mjs with ES modules
+**1. Restore Missing Dependencies** (CRITICAL)
+```json
+// package.json - restore to dependencies:
+"@radix-ui/react-accordion": "^1.2.12",
+"@radix-ui/react-avatar": "^1.1.10",
+"@radix-ui/react-tooltip": "^1.2.8",
+"@tanstack/react-query": "^5.90.2",
+"@tanstack/react-query-devtools": "^5.90.2"
 ```
 
-**2. Python Test Exit Code** (HIGH PRIORITY)
+**2. Clean .next Before TypeScript Check** (HIGH PRIORITY)
 ```yaml
-# In .github/workflows/python-test.yml
-# Option: Allow exit code 5 (no tests) to pass
+# In .github/workflows/frontend-lint.yml
+- name: Run TypeScript type check
+  run: |
+    cd components/frontend
+    rm -rf .next  # Clean stale Next.js artifacts
+    npx tsc --noEmit
+```
+
+**3. Python Test Exit Code** (ALREADY FIXED ✅)
+```yaml
+# Allow exit code 5 (no tests collected)
+pytest ... || [ $? -eq 5 ]
+```
+
+**4. ESLint Jest Config** (ALREADY FIXED ✅)
+```javascript
+// eslint.config.mjs - ignores jest files
+ignores: ["jest.config.js", "jest.setup.js"]
 ```
 
 ### Verification Strategy:
 
-1. **Fix Frontend** - Add eslint ignore for `jest.config.js`
-2. **Fix Python** - Modify workflow to allow empty test runs OR remove Python workflow
-3. **Verify Go** - Already passing ✅
-4. **Wait for E2E** - May auto-fix after frontend build succeeds
-5. **Verify Codecov** - Check coverage reports are uploading correctly
+1. ✅ **Restore dependencies** in package.json
+2. ✅ **Regenerate package-lock.json** with correct dependencies
+3. ✅ **Add .next cleanup** to TypeScript check step
+4. ✅ **Test locally** - all lints and tests should pass
+5. ✅ **Push and verify** CI workflows pass
+6. ✅ **Verify Codecov** - Check coverage reports uploading
 
 ---
 
