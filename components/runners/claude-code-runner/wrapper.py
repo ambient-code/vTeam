@@ -22,6 +22,14 @@ from runner_shell.core.shell import RunnerShell
 from runner_shell.core.protocol import MessageType, SessionStatus, PartialInfo
 from runner_shell.core.context import RunnerContext
 
+# Langfuse for LLM observability (optional)
+try:
+    from langfuse import Langfuse
+    LANGFUSE_AVAILABLE = True
+except ImportError:
+    LANGFUSE_AVAILABLE = False
+    logging.debug("Langfuse not available - continuing without observability")
+
 
 class ClaudeCodeAdapter:
     """Adapter that wraps the existing Claude Code CLI for runner-shell."""
@@ -170,6 +178,34 @@ class ClaudeCodeAdapter:
     async def _run_claude_agent_sdk(self, prompt: str):
         """Execute the Claude Code SDK with the given prompt."""
         try:
+            # Initialize Langfuse for observability if configured
+            langfuse_client = None
+            langfuse_trace = None
+            if LANGFUSE_AVAILABLE:
+                langfuse_enabled = os.getenv('LANGFUSE_ENABLED', '').strip().lower() in ('1', 'true', 'yes')
+                if langfuse_enabled:
+                    try:
+                        langfuse_client = Langfuse(
+                            public_key=os.getenv('LANGFUSE_PUBLIC_KEY'),
+                            secret_key=os.getenv('LANGFUSE_SECRET_KEY'),
+                            host=os.getenv('LANGFUSE_HOST')
+                        )
+                        # Create a trace for this session
+                        langfuse_trace = langfuse_client.trace(
+                            name="claude_agent_session",
+                            user_id=self.context.session_id,
+                            metadata={
+                                "session_id": self.context.session_id,
+                                "namespace": self.context.get_env('AGENTIC_SESSION_NAMESPACE', 'unknown'),
+                                "prompt": prompt[:200] + "..." if len(prompt) > 200 else prompt
+                            }
+                        )
+                        logging.info("Langfuse tracing enabled for session")
+                    except Exception as e:
+                        logging.warning(f"Failed to initialize Langfuse: {e}")
+                        langfuse_client = None
+                        langfuse_trace = None
+
             # Check for authentication method: API key or service account
             # IMPORTANT: Must check and set env vars BEFORE importing SDK
             api_key = self.context.get_env('ANTHROPIC_API_KEY', '')
@@ -589,6 +625,25 @@ class ClaudeCodeAdapter:
             # Note: All output is streamed via WebSocket, not collected here
             await self._check_pr_intent("")
 
+            # Update Langfuse trace with final results
+            if langfuse_trace and result_payload:
+                try:
+                    langfuse_trace.update(
+                        output=result_payload,
+                        metadata={
+                            "num_turns": result_payload.get("num_turns", 0),
+                            "total_cost_usd": result_payload.get("total_cost_usd"),
+                            "duration_ms": result_payload.get("duration_ms"),
+                            "subtype": result_payload.get("subtype")
+                        }
+                    )
+                    # Flush to ensure data is sent before pod exits
+                    if langfuse_client:
+                        langfuse_client.flush()
+                    logging.info("Langfuse trace updated with final results")
+                except Exception as e:
+                    logging.warning(f"Failed to update Langfuse trace: {e}")
+
             # Return success - result_payload may be None if SDK didn't send ResultMessage
             # (which can happen legitimately for some operations like git push)
             return {
@@ -600,6 +655,17 @@ class ClaudeCodeAdapter:
             }
         except Exception as e:
             logging.error(f"Failed to run Claude Code SDK: {e}")
+            # Update Langfuse trace with error if available
+            if 'langfuse_trace' in locals() and langfuse_trace:
+                try:
+                    langfuse_trace.update(
+                        level="ERROR",
+                        status_message=str(e)
+                    )
+                    if 'langfuse_client' in locals() and langfuse_client:
+                        langfuse_client.flush()
+                except Exception:
+                    pass
             return {
                 "success": False,
                 "error": str(e)
