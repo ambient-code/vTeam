@@ -58,7 +58,11 @@ fi
 echo ""
 echo "Creating kind cluster with ingress support..."
 
+# Unset any existing HTTP_PORT/HTTPS_PORT from environment to avoid conflicts
+unset HTTP_PORT HTTPS_PORT
+
 # Use higher ports for Podman rootless compatibility (ports >= 1024)
+# These port numbers are used as hostPort in the kind cluster config
 if [ "$CONTAINER_ENGINE" = "podman" ]; then
   HTTP_PORT=8080
   HTTPS_PORT=8443
@@ -66,9 +70,45 @@ if [ "$CONTAINER_ENGINE" = "podman" ]; then
 else
   HTTP_PORT=80
   HTTPS_PORT=443
+  echo "   ℹ️  Using ports 80/443 (Docker with root access)"
 fi
 
-cat <<EOF | kind create cluster --name vteam-e2e --config=-
+echo "   Creating cluster with port mappings: ${HTTP_PORT}->80, ${HTTPS_PORT}->443"
+
+# Check if ports are already in use
+echo "   Checking if ports are available..."
+if [ "$CONTAINER_ENGINE" = "podman" ]; then
+  # Check with podman
+  if podman ps --format '{{.Ports}}' 2>/dev/null | grep -q "${HTTP_PORT}"; then
+    echo "❌ Error: Port ${HTTP_PORT} is already in use by another container"
+    echo "   Check with: podman ps"
+    echo "   You may need to run: ./scripts/cleanup.sh"
+    exit 1
+  fi
+elif command -v lsof &> /dev/null; then
+  # Check with lsof if available (works for both Docker and other services)
+  if lsof -i :"${HTTP_PORT}" &> /dev/null; then
+    echo "❌ Error: Port ${HTTP_PORT} is already in use"
+    echo "   Check with: lsof -i :${HTTP_PORT}"
+    echo "   You may need to run: ./scripts/cleanup.sh"
+    exit 1
+  fi
+elif command -v netstat &> /dev/null; then
+  # Fallback to netstat
+  if netstat -tln 2>/dev/null | grep -q ":${HTTP_PORT} "; then
+    echo "❌ Error: Port ${HTTP_PORT} is already in use"
+    echo "   Check with: netstat -tln | grep ${HTTP_PORT}"
+    echo "   You may need to run: ./scripts/cleanup.sh"
+    exit 1
+  fi
+fi
+
+# Create kind config file with dynamic ports
+# Note: containerPort is what nginx-ingress listens on inside the kind node (always 80/443)
+#       hostPort is what we expose on the host machine (80/443 for Docker, 8080/8443 for Podman)
+
+# Generate the config first to verify variable expansion
+KIND_CONFIG=$(cat <<EOF
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 nodes:
@@ -87,6 +127,16 @@ nodes:
     hostPort: ${HTTPS_PORT}
     protocol: TCP
 EOF
+)
+
+# Debug: Show the actual configuration if DEBUG is set
+if [ "${DEBUG:-}" = "1" ]; then
+  echo "   DEBUG: Generated kind config:"
+  echo "$KIND_CONFIG" | sed 's/^/     /'
+fi
+
+# Create the cluster
+echo "$KIND_CONFIG" | kind create cluster --name vteam-e2e --config=-
 
 echo ""
 echo "Installing nginx-ingress controller..."
