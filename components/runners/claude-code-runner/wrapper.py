@@ -192,7 +192,7 @@ class ClaudeCodeAdapter:
         try:
             # Initialize Langfuse for observability if configured
             langfuse_client = None
-            langfuse_trace_id = None
+            langfuse_session_span = None
             if LANGFUSE_AVAILABLE:
                 langfuse_enabled = os.getenv('LANGFUSE_ENABLED', '').strip().lower() in ('1', 'true', 'yes')
                 if langfuse_enabled:
@@ -202,24 +202,23 @@ class ClaudeCodeAdapter:
                             secret_key=os.getenv('LANGFUSE_SECRET_KEY'),
                             host=os.getenv('LANGFUSE_HOST')
                         )
-                        # Create a trace for this session (Langfuse SDK 3.x API)
-                        langfuse_trace_id = langfuse_client.create_trace_id(seed=self.context.session_id)
-                        langfuse_client.update_current_trace(
+                        # Start a span for this session (Langfuse SDK 3.x)
+                        langfuse_session_span = langfuse_client.start_as_current_span(
                             name="claude_agent_session",
-                            user_id=self.context.session_id,
+                            input={"prompt": prompt},
                             metadata={
                                 "session_id": self.context.session_id,
                                 "namespace": self.context.get_env('AGENTIC_SESSION_NAMESPACE', 'unknown'),
-                                "prompt": prompt[:200] + "..." if len(prompt) > 200 else prompt
-                            }
+                            },
+                            user_id=self.context.session_id,
                         )
-                        logging.info(f"Langfuse tracing enabled for session (trace_id: {langfuse_trace_id})")
+                        logging.info(f"Langfuse tracing enabled for session")
                     except Exception as e:
                         logging.warning(f"Failed to initialize Langfuse: {e}")
                         import traceback
                         logging.warning(traceback.format_exc())
                         langfuse_client = None
-                        langfuse_trace_id = None
+                        langfuse_session_span = None
 
             # Initialize OpenTelemetry for distributed tracing if configured
             otel_tracer = None
@@ -547,6 +546,27 @@ class ClaudeCodeAdapter:
                                 logging.warning(f"Failed to store SDK session ID in CR annotations: {e}")
 
                     if isinstance(message, (AssistantMessage, UserMessage)):
+                        # Create Langfuse generation for assistant messages
+                        if isinstance(message, AssistantMessage) and langfuse_client and langfuse_session_span:
+                            try:
+                                # Extract text content for generation
+                                text_content = []
+                                for blk in getattr(message, 'content', []) or []:
+                                    if isinstance(blk, TextBlock):
+                                        text_content.append(getattr(blk, 'text', ''))
+
+                                if text_content:
+                                    generation = langfuse_client.start_generation(
+                                        name="claude_response",
+                                        input={"turn": self._turn_count},
+                                        output={"text": "\n".join(text_content)[:1000]},  # Limit size
+                                        model="claude-3-5-sonnet",  # TODO: get from options
+                                        metadata={"turn": self._turn_count}
+                                    )
+                                    generation.end()
+                            except Exception as e:
+                                logging.debug(f"Failed to create Langfuse generation: {e}")
+
                         for block in getattr(message, 'content', []) or []:
                             if isinstance(block, TextBlock):
                                 text_piece = getattr(block, 'text', None)
@@ -574,6 +594,25 @@ class ClaudeCodeAdapter:
                                             "tool.id": tool_id,
                                         }
                                     )
+
+                                # Add Langfuse span for tool decision
+                                if langfuse_client and langfuse_session_span:
+                                    try:
+                                        tool_span = langfuse_client.start_span(
+                                            name=f"tool_{tool_name}",
+                                            input=tool_input,
+                                            metadata={
+                                                "tool_id": tool_id,
+                                                "tool_name": tool_name,
+                                                "turn": self._turn_count,
+                                            }
+                                        )
+                                        # Store tool span to update with result later
+                                        if not hasattr(self, '_langfuse_tool_spans'):
+                                            self._langfuse_tool_spans = {}
+                                        self._langfuse_tool_spans[tool_id] = tool_span
+                                    except Exception as e:
+                                        logging.debug(f"Failed to create Langfuse tool span: {e}")
                             elif isinstance(block, ToolResultBlock):
                                 tool_use_id = getattr(block, 'tool_use_id', None)
                                 content = getattr(block, 'content', None)
@@ -600,6 +639,20 @@ class ClaudeCodeAdapter:
                                             "tool.is_error": is_error or False,
                                         }
                                     )
+
+                                # Update Langfuse tool span with result
+                                if hasattr(self, '_langfuse_tool_spans') and tool_use_id in self._langfuse_tool_spans:
+                                    try:
+                                        tool_span = self._langfuse_tool_spans[tool_use_id]
+                                        result_text = content if content is not None else result_text
+                                        tool_span.end(
+                                            output={"result": str(result_text)[:500] if result_text else "No output"},  # Limit output size
+                                            level="ERROR" if is_error else "DEFAULT",
+                                            metadata={"is_error": is_error or False}
+                                        )
+                                        del self._langfuse_tool_spans[tool_use_id]
+                                    except Exception as e:
+                                        logging.debug(f"Failed to update Langfuse tool span: {e}")
                                 if interactive:
                                     await self.shell._send_message(MessageType.WAITING_FOR_INPUT, {})
                                 self._turn_count += 1
@@ -709,10 +762,10 @@ class ClaudeCodeAdapter:
             # Note: All output is streamed via WebSocket, not collected here
             await self._check_pr_intent("")
 
-            # Update Langfuse trace with final results
-            if langfuse_trace_id and langfuse_client and result_payload:
+            # Complete Langfuse session span with final results
+            if langfuse_session_span and langfuse_client and result_payload:
                 try:
-                    langfuse_client.update_current_trace(
+                    langfuse_session_span.end(
                         output=result_payload,
                         metadata={
                             "num_turns": result_payload.get("num_turns", 0),
@@ -723,9 +776,9 @@ class ClaudeCodeAdapter:
                     )
                     # Flush to ensure data is sent before pod exits
                     langfuse_client.flush()
-                    logging.info("Langfuse trace updated with final results")
+                    logging.info("Langfuse session span completed with final results")
                 except Exception as e:
-                    logging.warning(f"Failed to update Langfuse trace: {e}")
+                    logging.warning(f"Failed to complete Langfuse session span: {e}")
 
             # Complete OTEL span with final metrics
             if otel_span and result_payload:
@@ -757,10 +810,10 @@ class ClaudeCodeAdapter:
             }
         except Exception as e:
             logging.error(f"Failed to run Claude Code SDK: {e}")
-            # Update Langfuse trace with error if available
-            if 'langfuse_trace_id' in locals() and langfuse_trace_id and 'langfuse_client' in locals() and langfuse_client:
+            # End Langfuse session span with error if available
+            if 'langfuse_session_span' in locals() and langfuse_session_span and 'langfuse_client' in locals() and langfuse_client:
                 try:
-                    langfuse_client.update_current_trace(
+                    langfuse_session_span.end(
                         level="ERROR",
                         status_message=str(e)
                     )
