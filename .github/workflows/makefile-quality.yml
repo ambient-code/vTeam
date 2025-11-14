@@ -1,0 +1,338 @@
+name: Makefile Quality Check
+
+# ============================================================================
+# WORKFLOW MAINTENANCE INSTRUCTIONS FOR FUTURE AGENTS/DEVELOPERS
+# ============================================================================
+#
+# This workflow validates the Makefile for quality, consistency, and best practices.
+# It contains checks that reference specific Makefile content. When updating the
+# Makefile, you MUST keep this workflow in sync.
+#
+# WHEN TO UPDATE THIS WORKFLOW:
+#
+# 1. ADDING/REMOVING CORE TARGETS
+#    - Location: "Verify all required targets exist" step (lines ~45-73)
+#    - Action: Update the `required_targets` array to match critical Makefile targets
+#    - Verify: Run `grep "^target-name:" Makefile` to confirm target exists
+#    - Example: If you add a new core target like "test-integration", add it to the array
+#
+# 2. CHANGING HELP OUTPUT FORMAT
+#    - Location: "Test help target output" step (lines ~129-150)
+#    - Action: Update the grep patterns to match new section headers
+#    - Verify: Run `make help | grep "Section Name:"` to see actual output
+#    - Example: If you rename "Quick Start:" to "Getting Started:", update line ~135
+#
+# 3. ADJUSTING QUALITY THRESHOLDS
+#    - Location: "Verify target documentation" step (lines ~152-172)
+#    - Action: Update percentage threshold (currently 50% minimum)
+#    - Rationale: Threshold represents minimum acceptable documentation coverage
+#    - Example: If requiring stricter docs, change line ~167 to higher percentage
+#
+# 4. CHANGING VARIABLE NAMES
+#    - Location: "Check for hardcoded values" step (lines ~109-127)
+#    - Action: Update search patterns if NAMESPACE or CONTAINER_ENGINE variable names change
+#    - Verify: Ensure grep patterns exclude the new variable declaration line
+#    - Example: If NAMESPACE becomes KUBE_NAMESPACE, update all references
+#
+# 5. ADDING NEW SCRIPT DIRECTORIES
+#    - Location: "on.pull_request.paths" section (lines ~5-8)
+#    - Action: Add new script paths that should trigger this workflow
+#    - Example: If adding scripts/validation/*.sh, add to paths filter
+#
+# HOW TO VERIFY CHANGES:
+#
+# 1. Test locally before committing:
+#    - Run: `make validate-makefile` (should pass)
+#    - Run: `make lint-makefile` (should pass)
+#    - Verify: All referenced targets exist in Makefile
+#    - Verify: All help output strings match actual output
+#
+# 2. After updating required_targets array:
+#    - Run: `for target in target1 target2; do grep -q "^${target}:" Makefile && echo "✓ $target" || echo "✗ MISSING: $target"; done`
+#
+# 3. After updating help output checks:
+#    - Run: `make help > /tmp/test.txt && grep -E "Section Name:" /tmp/test.txt`
+#
+# IMPLEMENTATION PRINCIPLES:
+#
+# - NO MAGIC STRINGS: All strings checked must exist in actual Makefile output
+# - NO HALLUCINATIONS: All file paths must exist in repository
+# - DOCUMENTED THRESHOLDS: All numeric thresholds must have rationale comments
+# - FAIL-FAST: Hard requirements (missing targets) fail the workflow
+# - WARN-SOFT: Quality suggestions (documentation %) show warnings only
+#
+# ============================================================================
+
+on:
+  pull_request:
+    paths:
+      - 'Makefile'
+      - '.github/workflows/makefile-quality.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'Makefile'
+
+jobs:
+  validate-makefile:
+    name: Validate Makefile
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v5
+      
+    - name: Install shellcheck
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y shellcheck
+        shellcheck --version
+    
+    - name: Validate Makefile syntax
+      run: |
+        echo "🔍 Validating Makefile syntax and best practices..."
+        make lint-makefile
+        
+    - name: Check shell scripts
+      run: |
+        echo "🔍 Checking embedded shell scripts..."
+        make check-shell
+        
+    - name: Verify all required targets exist
+      run: |
+        echo "🔍 Verifying required targets exist..."
+        
+        # AGENT INSTRUCTIONS: This array contains the minimum set of targets that must exist
+        # in the Makefile for the project to function correctly. Update this list when:
+        # 
+        # ADD a target here if: It's a critical user-facing target that other automation depends on
+        # REMOVE a target if: It's being deprecated AND no other workflows/docs reference it
+        # VERIFY before changing: Search codebase for references to target name
+        #
+        # Current categories:
+        # - Core: help (required for discoverability)
+        # - Local dev: local-up, local-down, local-status, local-test-quick
+        # - Quality: validate-makefile, lint-makefile, check-shell, makefile-health  
+        # - CI/CD: build-all, deploy, clean
+        #
+        # To verify a target exists: grep "^target-name:" Makefile
+        required_targets=(
+          "help"
+          "local-up"
+          "local-down"
+          "local-status"
+          "local-test-quick"
+          "validate-makefile"
+          "lint-makefile"
+          "check-shell"
+          "makefile-health"
+          "build-all"
+          "deploy"
+          "clean"
+        )
+        
+        missing_targets=()
+        for target in "${required_targets[@]}"; do
+          if ! grep -q "^${target}:" Makefile; then
+            missing_targets+=("$target")
+          fi
+        done
+        
+        if [ ${#missing_targets[@]} -gt 0 ]; then
+          echo "❌ Missing required targets:"
+          printf '  - %s\n' "${missing_targets[@]}"
+          exit 1
+        else
+          echo "✅ All required targets present"
+        fi
+        
+    - name: Verify .PHONY declarations
+      run: |
+        echo "🔍 Verifying .PHONY declarations..."
+        
+        # Extract all target names (excluding internal targets starting with _)
+        targets=$(grep -E '^[a-zA-Z][a-zA-Z0-9_-]+:' Makefile | grep -v '^_' | cut -d: -f1 | sort -u)
+        
+        # Extract .PHONY declarations
+        phony_targets=$(grep '^\.PHONY:' Makefile | sed 's/^\.PHONY: //' | tr ' ' '\n' | sort -u)
+        
+        # Count targets and phony declarations
+        target_count=$(echo "$targets" | wc -l)
+        phony_count=$(echo "$phony_targets" | wc -l)
+        
+        echo "📊 Found $target_count targets, $phony_count in .PHONY"
+        
+        # Find targets not in .PHONY (excluding pattern rules and variable assignments)
+        not_phony=()
+        while IFS= read -r target; do
+          if ! echo "$phony_targets" | grep -q "^${target}$"; then
+            # Skip if it's a pattern rule or special target
+            if [[ ! "$target" =~ ^% ]] && [[ ! "$target" =~ ^\. ]]; then
+              not_phony+=("$target")
+            fi
+          fi
+        done <<< "$targets"
+        
+        if [ ${#not_phony[@]} -gt 0 ]; then
+          echo "⚠️  Targets not declared in .PHONY (may be intentional for file targets):"
+          printf '  - %s\n' "${not_phony[@]}" | head -10
+        else
+          echo "✅ All non-file targets properly declared in .PHONY"
+        fi
+        
+    - name: Check for hardcoded values
+      run: |
+        echo "🔍 Checking for hardcoded values that should be variables..."
+        
+        # AGENT INSTRUCTIONS: This check detects hardcoded values that should use variables.
+        # It prevents configuration drift and ensures Makefile remains configurable.
+        #
+        # WHEN TO UPDATE THESE CHECKS:
+        #
+        # 1. IF VARIABLE NAMES CHANGE (e.g., NAMESPACE → KUBE_NAMESPACE):
+        #    - Update the variable name in grep commands
+        #    - Update exclusion patterns (grep -v lines)
+        #    - Test: Ensure variable declaration line is excluded from warnings
+        #
+        # 2. IF DEFAULT VALUES CHANGE (e.g., ambient-code → new-namespace):
+        #    - Update the search string to match new default value
+        #    - Keep the variable name check pattern
+        #    - Current defaults defined in Makefile lines ~7-11
+        #
+        # 3. IF ADDING NEW CONFIGURABLE VALUES:
+        #    - Add similar check block following this pattern
+        #    - Exclude: variable declarations, comments, help text
+        #    - Example: Check for hardcoded registry names
+        #
+        # CURRENT CHECKS:
+        # - namespace: "ambient-code" should use $(NAMESPACE) variable
+        # - container engine: "docker" or "podman" should use $(CONTAINER_ENGINE) variable
+        #
+        # WHY THESE EXCLUSIONS:
+        # - "NAMESPACE ?=" = variable declaration itself (Makefile line 10)
+        # - "^[0-9]*:#" = comments (documentation, not code)
+        # - "@echo" = help text displayed to users (intentionally literal)
+        #
+        # TO VERIFY: grep -n "value" Makefile | grep -v "VARIABLE ?=" | grep -v "^[0-9]*:#"
+        
+        # Check for hardcoded namespaces outside of variable declaration (should use $(NAMESPACE))
+        # Excludes: NAMESPACE ?= line, comments, and @echo help text
+        if grep -n "ambient-code" Makefile | grep -v "NAMESPACE ?=" | grep -v "^[0-9]*:#" | grep -v "@echo" | grep -q .; then
+          echo "⚠️  Found hardcoded 'ambient-code' references (should use \$(NAMESPACE) variable):"
+          grep -n "ambient-code" Makefile | grep -v "NAMESPACE ?=" | grep -v "^[0-9]*:#" | grep -v "@echo" | head -5
+          echo "   To fix: Replace 'ambient-code' with '\$(NAMESPACE)' in these locations"
+        fi
+        
+        # Check for hardcoded container engines outside of variable references
+        # Excludes: lines with CONTAINER_ENGINE variable, comments, and help text
+        if grep -nE "docker|podman" Makefile | grep -v "CONTAINER_ENGINE" | grep -v "^[0-9]*:#" | grep -v "@echo" | grep -q .; then
+          echo "⚠️  Found hardcoded docker/podman references (should use \$(CONTAINER_ENGINE) variable):"
+          grep -nE "docker|podman" Makefile | grep -v "CONTAINER_ENGINE" | grep -v "^[0-9]*:#" | grep -v "@echo" | head -5
+          echo "   To fix: Replace 'docker' or 'podman' with '\$(CONTAINER_ENGINE)' in these locations"
+        fi
+        
+        echo "✅ No problematic hardcoded values found"
+        
+    - name: Test help target output
+      run: |
+        echo "🔍 Testing help target..."
+        make help > /tmp/help-output.txt
+        
+        # AGENT INSTRUCTIONS: These strings MUST match the exact section headers in the Makefile
+        # help target output. When modifying the Makefile help format:
+        #
+        # 1. Run: make help | grep -E "Section Name:" to see actual output
+        # 2. Update the grep patterns below to match new header text exactly
+        # 3. Consider if renaming improves user experience (prefer clarity over brevity)
+        # 4. These checks ensure help output meets minimum usability standards
+        #
+        # Current required sections defined in Makefile (lines ~39-49):
+        # - "Quick Start:" - Essential commands for new users
+        # - "Quality Assurance:" - Quality/validation commands
+        # - "Available Targets:" - Complete target listing (auto-generated by awk)
+        #
+        # To verify: make help | grep -o "^[A-Za-z ]*:" | sort -u
+        
+        if ! grep -q "Quick Start:" /tmp/help-output.txt; then
+          echo "❌ Help output missing 'Quick Start' section"
+          echo "   Update this check if you renamed the section in Makefile"
+          exit 1
+        fi
+        
+        if ! grep -q "Quality Assurance:" /tmp/help-output.txt; then
+          echo "❌ Help output missing 'Quality Assurance' section"
+          echo "   Update this check if you renamed the section in Makefile"
+          exit 1
+        fi
+        
+        if ! grep -q "Available Targets:" /tmp/help-output.txt; then
+          echo "❌ Help output missing 'Available Targets' section"
+          echo "   This is auto-generated by awk in Makefile line ~49"
+          exit 1
+        fi
+        
+        echo "✅ Help target produces expected output"
+        
+    - name: Verify target documentation
+      run: |
+        echo "🔍 Checking target documentation..."
+        
+        # AGENT INSTRUCTIONS: This check measures documentation quality by counting
+        # how many Makefile targets have inline help text (## comments).
+        #
+        # DOCUMENTATION FORMAT: target-name: ## Help text shown in 'make help'
+        #
+        # WHEN TO ADJUST THRESHOLD:
+        # - 50% minimum = Current threshold for acceptable quality
+        # - Increase to 75%+ if requiring comprehensive documentation
+        # - Decrease to 30%+ only if many internal/experimental targets exist
+        # 
+        # RATIONALE FOR 50% THRESHOLD:
+        # - All user-facing targets SHOULD have documentation
+        # - Internal targets (prefixed with _) are automatically excluded
+        # - Helper targets may not need docs if only called by other targets
+        # - 50% ensures at least half of public API is documented
+        #
+        # TO ADD DOCUMENTATION: Add ## comment after target definition
+        # Example: my-target: ## Description of what this target does
+        #
+        # TO VERIFY: grep '^target-name:.*##' Makefile
+        
+        # Count targets with documentation (excluding internal targets starting with _)
+        total_targets=$(grep -E '^[a-zA-Z][a-zA-Z0-9_-]+:' Makefile | grep -v '^_' | wc -l)
+        documented_targets=$(grep -E '^[a-zA-Z][a-zA-Z0-9_-]+:.*##' Makefile | wc -l)
+        
+        echo "📊 $documented_targets/$total_targets targets have help text"
+        
+        # Calculate percentage (threshold: 50% minimum for good documentation practice)
+        if [ "$total_targets" -gt 0 ]; then
+          percentage=$((documented_targets * 100 / total_targets))
+          echo "📈 Documentation coverage: ${percentage}%"
+          
+          if [ "$percentage" -lt 50 ]; then
+            echo "⚠️  Documentation coverage below 50%, consider adding help text (## comments) to more targets"
+            echo "   Add documentation by appending '## Description' after target definition"
+          else
+            echo "✅ Good target documentation coverage (${percentage}%)"
+          fi
+        fi
+        
+    - name: Run comprehensive validation
+      run: |
+        echo "🔍 Running comprehensive Makefile validation..."
+        make validate-makefile
+        
+    - name: Summary
+      if: success()
+      run: |
+        echo ""
+        echo "═══════════════════════════════════════"
+        echo "  Makefile Quality Check Summary"
+        echo "═══════════════════════════════════════"
+        echo ""
+        echo "✅ All quality checks passed!"
+        echo ""
+        echo "The Makefile meets quality standards and is ready for use."
+

@@ -1,0 +1,146 @@
+---
+# ServiceAccount for mock local development user
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: local-dev-user
+  namespace: ambient-code
+  labels:
+    app: ambient-local-dev
+---
+# ServiceAccount for backend-api
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: backend-api
+  namespace: ambient-code
+  labels:
+    app: backend-api
+---
+# ServiceAccount for frontend
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: frontend
+  namespace: ambient-code
+  labels:
+    app: frontend
+---
+# ServiceAccount for agentic-operator
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: agentic-operator
+  namespace: ambient-code
+  labels:
+    app: agentic-operator
+---
+# Role with necessary permissions for local development
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: local-dev-user
+  namespace: ambient-code
+rules:
+# ProjectSettings CRD access
+- apiGroups: ["vteam.ambient-code"]
+  resources: ["projectsettings"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+# AgenticSessions CRD access
+- apiGroups: ["vteam.ambient-code"]
+  resources: ["agenticsessions"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+# AgenticSessions status subresource
+- apiGroups: ["vteam.ambient-code"]
+  resources: ["agenticsessions/status"]
+  verbs: ["get", "update", "patch"]
+
+# Core resources
+- apiGroups: [""]
+  resources: ["namespaces", "pods", "services", "secrets", "serviceaccounts", "configmaps"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+# Jobs
+- apiGroups: ["batch"]
+  resources: ["jobs"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+# RoleBinding for local dev user
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: local-dev-user
+  namespace: ambient-code
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: local-dev-user
+subjects:
+- kind: ServiceAccount
+  name: local-dev-user
+  namespace: ambient-code
+---
+# Note: local-dev-user intentionally has NO ClusterRole bindings
+# For local dev, we only need namespace-scoped permissions
+# Cross-namespace viewing should be done via backend SA, not local-dev-user
+---
+# ClusterRole for backend-api (needs broad permissions for local dev)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: local-dev-backend-api
+rules:
+- apiGroups: ["*"]
+  resources: ["*"]
+  verbs: ["*"]
+---
+# ClusterRoleBinding for backend-api
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: local-dev-backend-api
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: local-dev-backend-api
+subjects:
+- kind: ServiceAccount
+  name: backend-api
+  namespace: ambient-code
+---
+# ClusterRole for agentic-operator (needs to watch and manage CRDs)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: local-dev-agentic-operator
+rules:
+- apiGroups: ["*"]
+  resources: ["*"]
+  verbs: ["*"]
+---
+# ClusterRoleBinding for agentic-operator
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: local-dev-agentic-operator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: local-dev-agentic-operator
+subjects:
+- kind: ServiceAccount
+  name: agentic-operator
+  namespace: ambient-code
+
+
+
+
+
+
+
+
+
+
+

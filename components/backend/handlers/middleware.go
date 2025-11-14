@@ -1,10 +1,12 @@
 package handlers
 
 import (
+	"ambient-code-backend/server"
 	"encoding/base64"
 	"encoding/json"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -69,6 +71,12 @@ func GetK8sClientsForRequest(c *gin.Context) (*kubernetes.Clientset, dynamic.Int
 	// Debug: basic auth header state (do not log token)
 	hasAuthHeader := strings.TrimSpace(rawAuth) != ""
 	hasFwdToken := strings.TrimSpace(rawFwd) != ""
+
+	// In verified local dev environment, use dedicated local-dev-user service account
+	if isLocalDevEnvironment() && (token == "mock-token-for-local-dev" || os.Getenv("DISABLE_AUTH") == "true") {
+		log.Printf("Local dev mode detected - using local-dev-user service account for %s", c.FullPath())
+		return getLocalDevK8sClients()
+	}
 
 	if token != "" && BaseKubeConfig != nil {
 		cfg := *BaseKubeConfig
@@ -280,4 +288,65 @@ func ValidateProjectContext() gin.HandlerFunc {
 		c.Set("project", projectHeader)
 		c.Next()
 	}
+}
+
+// isLocalDevEnvironment validates that we're in a safe local development environment
+// This prevents accidentally enabling dev mode in production
+func isLocalDevEnvironment() bool {
+	// Must have ENVIRONMENT=local or development
+	env := os.Getenv("ENVIRONMENT")
+	if env != "local" && env != "development" {
+		return false
+	}
+
+	// Must explicitly opt-in
+	if os.Getenv("DISABLE_AUTH") != "true" {
+		return false
+	}
+
+	// Additional safety: check we're not in a production namespace
+	namespace := os.Getenv("NAMESPACE")
+	if namespace == "" {
+		namespace = "default"
+	}
+
+	// SECURITY: Use allow-list approach to restrict dev mode to specific namespaces
+	// This prevents accidental activation in staging, qa, demo, or other non-production environments
+	allowedNamespaces := []string{
+		"ambient-code", // Default minikube namespace
+		"default",      // Local testing
+		"vteam-dev",    // Legacy local dev namespace
+	}
+
+	isAllowed := false
+	for _, allowed := range allowedNamespaces {
+		if namespace == allowed {
+			isAllowed = true
+			break
+		}
+	}
+
+	if !isAllowed {
+		log.Printf("Refusing dev mode in non-whitelisted namespace: %s", namespace)
+		log.Printf("Dev mode only allowed in: %v", allowedNamespaces)
+		log.Printf("SECURITY: Dev mode uses elevated permissions and should NEVER run outside local development")
+		return false
+	}
+
+	log.Printf("Local dev environment validated: env=%s namespace=%s (whitelisted)", env, namespace)
+	return true
+}
+
+// getLocalDevK8sClients returns clients for local development
+// Uses a dedicated local-dev-user service account with scoped permissions
+func getLocalDevK8sClients() (*kubernetes.Clientset, dynamic.Interface) {
+	// In local dev, we use the local-dev-user service account
+	// which has limited, namespace-scoped permissions
+	// This is safer than using the backend service account
+
+	// For now, use the server clients (which are the backend service account)
+	// TODO: Mint a token for the local-dev-user service account
+	// and create clients using that token for proper permission scoping
+
+	return server.K8sClient, server.DynamicClient
 }

@@ -36,7 +36,7 @@ make dev-start
 ```
 
 **Prerequisites:**
-- OpenShift Local (CRC): `brew install crc`
+- Minikube: `brew install minikube`
 - Red Hat pull secret: Get free from [console.redhat.com](https://console.redhat.com/openshift/create/local)
 
 **What you get:**
