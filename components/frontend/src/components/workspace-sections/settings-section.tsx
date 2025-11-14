@@ -38,7 +38,16 @@ export function SettingsSection({ projectName }: SettingsSectionProps) {
   const [anthropicExpanded, setAnthropicExpanded] = useState<boolean>(false);
   const [githubExpanded, setGithubExpanded] = useState<boolean>(false);
   const [jiraExpanded, setJiraExpanded] = useState<boolean>(false);
-  const FIXED_KEYS = useMemo(() => ["ANTHROPIC_API_KEY","GIT_USER_NAME","GIT_USER_EMAIL","GITHUB_TOKEN","JIRA_URL","JIRA_PROJECT","JIRA_EMAIL","JIRA_API_TOKEN"] as const, []);
+  const [observabilityExpanded, setObservabilityExpanded] = useState<boolean>(false);
+  const [langfuseEnabled, setLangfuseEnabled] = useState<string>("true");
+  const [langfuseHost, setLangfuseHost] = useState<string>("http://langfuse-web.langfuse.svc.cluster.local:3000");
+  const [langfusePublicKey, setLangfusePublicKey] = useState<string>("");
+  const [langfuseSecretKey, setLangfuseSecretKey] = useState<string>("");
+  const [showLangfuseSecretKey, setShowLangfuseSecretKey] = useState<boolean>(false);
+  const [otelEndpoint, setOtelEndpoint] = useState<string>("http://otel-collector-collector.observability-hub.svc.cluster.local:4317");
+  const [otelServiceName, setOtelServiceName] = useState<string>("claude-code-runner");
+  const [otelProtocol, setOtelProtocol] = useState<string>("grpc");
+  const FIXED_KEYS = useMemo(() => ["ANTHROPIC_API_KEY","GIT_USER_NAME","GIT_USER_EMAIL","GITHUB_TOKEN","JIRA_URL","JIRA_PROJECT","JIRA_EMAIL","JIRA_API_TOKEN","LANGFUSE_ENABLED","LANGFUSE_HOST","LANGFUSE_PUBLIC_KEY","LANGFUSE_SECRET_KEY","OTEL_EXPORTER_OTLP_ENDPOINT","OTEL_SERVICE_NAME","OTEL_EXPORTER_OTLP_PROTOCOL"] as const, []);
 
   // React Query hooks
   const { data: project, isLoading: projectLoading } = useProject(projectName);
@@ -69,6 +78,14 @@ export function SettingsSection({ projectName }: SettingsSectionProps) {
       setJiraProject(byKey["JIRA_PROJECT"] || "");
       setJiraEmail(byKey["JIRA_EMAIL"] || "");
       setJiraToken(byKey["JIRA_API_TOKEN"] || "");
+      // Sync observability keys (preserve defaults if not set)
+      if (byKey["LANGFUSE_ENABLED"]) setLangfuseEnabled(byKey["LANGFUSE_ENABLED"]);
+      if (byKey["LANGFUSE_HOST"]) setLangfuseHost(byKey["LANGFUSE_HOST"]);
+      if (byKey["LANGFUSE_PUBLIC_KEY"]) setLangfusePublicKey(byKey["LANGFUSE_PUBLIC_KEY"]);
+      if (byKey["LANGFUSE_SECRET_KEY"]) setLangfuseSecretKey(byKey["LANGFUSE_SECRET_KEY"]);
+      if (byKey["OTEL_EXPORTER_OTLP_ENDPOINT"]) setOtelEndpoint(byKey["OTEL_EXPORTER_OTLP_ENDPOINT"]);
+      if (byKey["OTEL_SERVICE_NAME"]) setOtelServiceName(byKey["OTEL_SERVICE_NAME"]);
+      if (byKey["OTEL_EXPORTER_OTLP_PROTOCOL"]) setOtelProtocol(byKey["OTEL_EXPORTER_OTLP_PROTOCOL"]);
       setSecrets(allSecrets.filter(s => !FIXED_KEYS.includes(s.key as typeof FIXED_KEYS[number])));
     }
   }, [runnerSecrets, integrationSecrets, FIXED_KEYS]);
@@ -139,6 +156,14 @@ export function SettingsSection({ projectName }: SettingsSectionProps) {
     if (jiraProject) integrationData["JIRA_PROJECT"] = jiraProject;
     if (jiraEmail) integrationData["JIRA_EMAIL"] = jiraEmail;
     if (jiraToken) integrationData["JIRA_API_TOKEN"] = jiraToken;
+    // Observability keys (always include with defaults)
+    integrationData["LANGFUSE_ENABLED"] = langfuseEnabled;
+    integrationData["LANGFUSE_HOST"] = langfuseHost;
+    if (langfusePublicKey) integrationData["LANGFUSE_PUBLIC_KEY"] = langfusePublicKey;
+    if (langfuseSecretKey) integrationData["LANGFUSE_SECRET_KEY"] = langfuseSecretKey;
+    integrationData["OTEL_EXPORTER_OTLP_ENDPOINT"] = otelEndpoint;
+    integrationData["OTEL_SERVICE_NAME"] = otelServiceName;
+    integrationData["OTEL_EXPORTER_OTLP_PROTOCOL"] = otelProtocol;
     for (const { key, value } of secrets) {
       if (!key) continue;
       if (FIXED_KEYS.includes(key as typeof FIXED_KEYS[number])) continue;
@@ -405,6 +430,85 @@ export function SettingsSection({ projectName }: SettingsSectionProps) {
                       <Button type="button" variant="ghost" size="sm" onClick={() => setShowJiraToken((v) => !v)} aria-label={showJiraToken ? "Hide token" : "Show token"}>
                         {showJiraToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                       </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Observability Section */}
+          <div className="border rounded-lg">
+            <button
+              type="button"
+              onClick={() => setObservabilityExpanded(!observabilityExpanded)}
+              className="w-full flex items-center justify-between p-3 hover:bg-muted/50 transition-colors rounded-lg"
+            >
+              <div className="flex items-center gap-2">
+                {observabilityExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                <span className="font-semibold">Observability (Langfuse + OpenTelemetry)</span>
+                <span className="text-xs text-muted-foreground">(configured with defaults)</span>
+              </div>
+            </button>
+            {observabilityExpanded && (
+              <div className="px-3 pb-3 space-y-4 border-t pt-3">
+                <Alert>
+                  <Info className="h-4 w-4" />
+                  <AlertDescription>
+                    Pre-configured with cluster defaults. Update Langfuse keys and adjust endpoints as needed. Service name is automatically set to claude-SESSION_ID.
+                  </AlertDescription>
+                </Alert>
+
+                {/* Langfuse Section */}
+                <div className="space-y-3 pt-2 border-t">
+                  <Label className="text-sm font-semibold">Langfuse (LLM Observability)</Label>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label htmlFor="langfuseEnabled">LANGFUSE_ENABLED</Label>
+                      <Input id="langfuseEnabled" value={langfuseEnabled} onChange={(e) => setLangfuseEnabled(e.target.value)} />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="langfuseHost">LANGFUSE_HOST</Label>
+                      <Input id="langfuseHost" placeholder="http://langfuse..." value={langfuseHost} onChange={(e) => setLangfuseHost(e.target.value)} />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="langfusePublicKey">LANGFUSE_PUBLIC_KEY</Label>
+                      <Input id="langfusePublicKey" placeholder="pk-lf-..." value={langfusePublicKey} onChange={(e) => setLangfusePublicKey(e.target.value)} />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="langfuseSecretKey">LANGFUSE_SECRET_KEY</Label>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          id="langfuseSecretKey"
+                          type={showLangfuseSecretKey ? "text" : "password"}
+                          placeholder="sk-lf-..."
+                          value={langfuseSecretKey}
+                          onChange={(e) => setLangfuseSecretKey(e.target.value)}
+                        />
+                        <Button type="button" variant="ghost" size="sm" onClick={() => setShowLangfuseSecretKey((v) => !v)}>
+                          {showLangfuseSecretKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* OpenTelemetry Section */}
+                <div className="space-y-3 pt-2 border-t">
+                  <Label className="text-sm font-semibold">OpenTelemetry (Distributed Tracing)</Label>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="space-y-1 md:col-span-2">
+                      <Label htmlFor="otelEndpoint">OTEL_EXPORTER_OTLP_ENDPOINT</Label>
+                      <Input id="otelEndpoint" placeholder="http://otel-collector..." value={otelEndpoint} onChange={(e) => setOtelEndpoint(e.target.value)} />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="otelServiceName">OTEL_SERVICE_NAME</Label>
+                      <Input id="otelServiceName" placeholder="claude-code-runner" value={otelServiceName} onChange={(e) => setOtelServiceName(e.target.value)} />
+                      <div className="text-xs text-muted-foreground">Overridden to claude-SESSION_ID at runtime</div>
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="otelProtocol">OTEL_EXPORTER_OTLP_PROTOCOL</Label>
+                      <Input id="otelProtocol" placeholder="grpc" value={otelProtocol} onChange={(e) => setOtelProtocol(e.target.value)} />
                     </div>
                   </div>
                 </div>

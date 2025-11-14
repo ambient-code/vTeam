@@ -30,6 +30,18 @@ except ImportError:
     LANGFUSE_AVAILABLE = False
     logging.debug("Langfuse not available - continuing without observability")
 
+# OpenTelemetry for distributed tracing (optional)
+try:
+    from opentelemetry import trace
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import BatchSpanProcessor
+    from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+    from opentelemetry.sdk.resources import Resource, SERVICE_NAME
+    OTEL_AVAILABLE = True
+except ImportError:
+    OTEL_AVAILABLE = False
+    logging.debug("OpenTelemetry not available - continuing without distributed tracing")
+
 
 class ClaudeCodeAdapter:
     """Adapter that wraps the existing Claude Code CLI for runner-shell."""
@@ -208,6 +220,55 @@ class ClaudeCodeAdapter:
                         logging.warning(traceback.format_exc())
                         langfuse_client = None
                         langfuse_trace_id = None
+
+            # Initialize OpenTelemetry for distributed tracing if configured
+            otel_tracer = None
+            otel_span = None
+            if OTEL_AVAILABLE:
+                otel_endpoint = os.getenv('OTEL_EXPORTER_OTLP_ENDPOINT', '').strip()
+                # Use dynamic service name: claude-<session-id> or fallback to env var
+                base_service_name = os.getenv('OTEL_SERVICE_NAME', 'claude-code-runner').strip()
+                # Override with session-specific name for better trace isolation
+                otel_service_name = f"claude-{self.context.session_id}" if self.context.session_id else base_service_name
+                if otel_endpoint:
+                    try:
+                        # Create resource with service name
+                        resource = Resource(attributes={
+                            SERVICE_NAME: otel_service_name
+                        })
+
+                        # Create tracer provider
+                        provider = TracerProvider(resource=resource)
+
+                        # Create OTLP exporter
+                        otlp_exporter = OTLPSpanExporter(endpoint=otel_endpoint)
+
+                        # Add span processor
+                        provider.add_span_processor(BatchSpanProcessor(otlp_exporter))
+
+                        # Set as global tracer provider
+                        trace.set_tracer_provider(provider)
+
+                        # Get tracer
+                        otel_tracer = trace.get_tracer(__name__)
+
+                        # Start session span
+                        otel_span = otel_tracer.start_span(
+                            "claude_agent_session",
+                            attributes={
+                                "session.id": self.context.session_id,
+                                "namespace": self.context.get_env('AGENTIC_SESSION_NAMESPACE', 'unknown'),
+                                "prompt.length": len(prompt),
+                            }
+                        )
+
+                        logging.info(f"OpenTelemetry tracing enabled (endpoint: {otel_endpoint})")
+                    except Exception as e:
+                        logging.warning(f"Failed to initialize OpenTelemetry: {e}")
+                        import traceback
+                        logging.warning(traceback.format_exc())
+                        otel_tracer = None
+                        otel_span = None
 
             # Check for authentication method: API key or service account
             # IMPORTANT: Must check and set env vars BEFORE importing SDK
@@ -503,6 +564,16 @@ class ClaudeCodeAdapter:
                                     {"tool": tool_name, "input": tool_input, "id": tool_id},
                                 )
                                 self._turn_count += 1
+
+                                # Add OTEL event for tool decision
+                                if otel_span:
+                                    otel_span.add_event(
+                                        "claude_code.tool_decision",
+                                        attributes={
+                                            "tool.name": tool_name,
+                                            "tool.id": tool_id,
+                                        }
+                                    )
                             elif isinstance(block, ToolResultBlock):
                                 tool_use_id = getattr(block, 'tool_use_id', None)
                                 content = getattr(block, 'content', None)
@@ -519,6 +590,16 @@ class ClaudeCodeAdapter:
                                         }
                                     },
                                 )
+
+                                # Add OTEL event for tool result
+                                if otel_span:
+                                    otel_span.add_event(
+                                        "claude_code.tool_result",
+                                        attributes={
+                                            "tool.use_id": tool_use_id,
+                                            "tool.is_error": is_error or False,
+                                        }
+                                    )
                                 if interactive:
                                     await self.shell._send_message(MessageType.WAITING_FOR_INPUT, {})
                                 self._turn_count += 1
@@ -645,6 +726,25 @@ class ClaudeCodeAdapter:
                     logging.info("Langfuse trace updated with final results")
                 except Exception as e:
                     logging.warning(f"Failed to update Langfuse trace: {e}")
+
+            # Complete OTEL span with final metrics
+            if otel_span and result_payload:
+                try:
+                    # Add final attributes matching Claude Code monitoring format
+                    usage = result_payload.get("usage", {}) or {}
+                    otel_span.set_attributes({
+                        "claude_code.cost.usage": result_payload.get("total_cost_usd", 0.0),
+                        "claude_code.token.usage": usage.get("total_tokens", 0),
+                        "claude_code.session.turns": result_payload.get("num_turns", 0),
+                        "claude_code.session.duration_ms": result_payload.get("duration_ms", 0),
+                        "claude_code.session.subtype": result_payload.get("subtype", "unknown"),
+                    })
+
+                    # End the span
+                    otel_span.end()
+                    logging.info("OpenTelemetry span completed with final metrics")
+                except Exception as e:
+                    logging.warning(f"Failed to complete OTEL span: {e}")
 
             # Return success - result_payload may be None if SDK didn't send ResultMessage
             # (which can happen legitimately for some operations like git push)
