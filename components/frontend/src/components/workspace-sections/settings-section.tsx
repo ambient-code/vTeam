@@ -157,13 +157,13 @@ export function SettingsSection({ projectName }: SettingsSectionProps) {
     if (jiraEmail) integrationData["JIRA_EMAIL"] = jiraEmail;
     if (jiraToken) integrationData["JIRA_API_TOKEN"] = jiraToken;
     // Observability keys (always include with defaults)
-    integrationData["LANGFUSE_ENABLED"] = langfuseEnabled;
-    integrationData["LANGFUSE_HOST"] = langfuseHost;
+    integrationData["LANGFUSE_ENABLED"] = langfuseEnabled || "true";
+    integrationData["LANGFUSE_HOST"] = langfuseHost || "http://langfuse-web.langfuse.svc.cluster.local:3000";
     if (langfusePublicKey) integrationData["LANGFUSE_PUBLIC_KEY"] = langfusePublicKey;
     if (langfuseSecretKey) integrationData["LANGFUSE_SECRET_KEY"] = langfuseSecretKey;
-    integrationData["OTEL_EXPORTER_OTLP_ENDPOINT"] = otelEndpoint;
-    integrationData["OTEL_SERVICE_NAME"] = otelServiceName;
-    integrationData["OTEL_EXPORTER_OTLP_PROTOCOL"] = otelProtocol;
+    integrationData["OTEL_EXPORTER_OTLP_ENDPOINT"] = otelEndpoint || "http://otel-collector-collector.observability-hub.svc.cluster.local:4317";
+    integrationData["OTEL_SERVICE_NAME"] = otelServiceName || "claude-code-runner";
+    integrationData["OTEL_EXPORTER_OTLP_PROTOCOL"] = otelProtocol || "grpc";
     for (const { key, value } of secrets) {
       if (!key) continue;
       if (FIXED_KEYS.includes(key as typeof FIXED_KEYS[number])) continue;
