@@ -9,8 +9,19 @@ echo "======================================"
 CONTAINER_ENGINE="${CONTAINER_ENGINE:-}"
 
 if [ -z "$CONTAINER_ENGINE" ]; then
-  if command -v docker &> /dev/null && docker ps &> /dev/null 2>&1; then
-    CONTAINER_ENGINE="docker"
+  # Check if KIND_EXPERIMENTAL_PROVIDER is already set (kind will use this)
+  if [ -n "${KIND_EXPERIMENTAL_PROVIDER:-}" ]; then
+    CONTAINER_ENGINE="$KIND_EXPERIMENTAL_PROVIDER"
+    echo "   ℹ️  Detected KIND_EXPERIMENTAL_PROVIDER=$KIND_EXPERIMENTAL_PROVIDER"
+  # Check for real Docker (not podman-docker alias)
+  elif command -v docker &> /dev/null && docker ps &> /dev/null 2>&1; then
+    # Verify it's actual Docker, not Podman masquerading as Docker
+    if docker version 2>/dev/null | grep -q "Server.*Podman"; then
+      echo "   ℹ️  Detected podman-docker compatibility package"
+      CONTAINER_ENGINE="podman"
+    else
+      CONTAINER_ENGINE="docker"
+    fi
   elif command -v podman &> /dev/null; then
     CONTAINER_ENGINE="podman"
   else
