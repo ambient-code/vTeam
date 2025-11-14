@@ -1,0 +1,49 @@
+coverage:
+  status:
+    project:
+      default:
+        target: 50%
+        threshold: 5%
+        informational: true  # Don't block PRs
+    patch:
+      default:
+        target: 50%
+        informational: true
+
+flag_management:
+  default_rules:
+    statuses:
+      - type: project
+        target: 50%
+        informational: true
+
+flags:
+  backend:
+    paths:
+      - components/backend/
+    target: 60%
+    carryforward: true
+  operator:
+    paths:
+      - components/operator/
+    target: 70%
+    carryforward: true
+  frontend:
+    paths:
+      - components/frontend/
+    target: 50%
+    carryforward: true
+  python-runner:
+    paths:
+      - components/runners/claude-code-runner/
+    target: 60%
+    carryforward: true
+
+comment:
+  layout: "reach,diff,flags,tree"
+  behavior: default
+  require_changes: false
+  require_base: false
+  require_head: false
+  after_n_builds: 0
+
