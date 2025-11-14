@@ -1,6 +1,6 @@
 # Langfuse Configuration for Ambient Code
 
-This directory contains configuration files for integrating Langfuse (LLM observability platform) with the Ambient Code platform.
+This directory contains scripts and documentation for integrating Langfuse (LLM observability platform) with the Ambient Code platform.
 
 ## Overview
 
@@ -24,158 +24,170 @@ Langfuse provides observability for AI applications by tracking:
 
 ## Quick Start
 
-### 1. Create `.env.langfuse-keys` file
+### Using WorkspaceSettings UI (Recommended)
+
+**All observability configuration is now managed via the WorkspaceSettings UI in the frontend.**
+
+1. **Access WorkspaceSettings** for your project:
+   - Navigate to your workspace
+   - Go to Settings tab
+   - Expand "Observability (Langfuse + OpenTelemetry)" section
+
+2. **Configure Langfuse** (pre-populated with defaults):
+   - `LANGFUSE_ENABLED`: `true` (already set)
+   - `LANGFUSE_HOST`: `http://langfuse-web.langfuse.svc.cluster.local:3000` (already set)
+   - `LANGFUSE_PUBLIC_KEY`: Add your `pk-lf-...` key
+   - `LANGFUSE_SECRET_KEY`: Add your `sk-lf-...` key
+
+3. **Save Integration Secrets** - Saves all observability keys to `ambient-non-vertex-integrations` secret
+
+### Using Scripts (Legacy)
+
+The `configure-ambient-code.sh` script still works but creates separate secrets that require manual namespace management:
 
 ```bash
-cd e2e/langfuse
+# Create .env.langfuse-keys file
 cat > .env.langfuse-keys <<EOF
 LANGFUSE_PUBLIC_KEY=pk-lf-your-public-key-here
 LANGFUSE_SECRET_KEY=sk-lf-your-secret-key-here
 EOF
-```
 
-**Important**: This file is `.gitignore`d and should NEVER be committed.
-
-### 2. Run the configuration script
-
-```bash
+# Run configuration script
 ./configure-ambient-code.sh
 ```
 
-This will:
-- Validate your API keys
-- Create Secret `langfuse-keys` in `ambient-code` namespace
-- Create ConfigMap `langfuse-config` in `ambient-code` namespace
-
-### 3. Verify configuration
-
-```bash
-oc get secret langfuse-keys -n ambient-code
-oc get configmap langfuse-config -n ambient-code
-```
-
-## Files in this Directory
-
-| File | Description | Safe to Commit? |
-|------|-------------|----------------|
-| `secret-template.yaml` | Template for Secret with placeholder variables | ✅ Yes |
-| `configmap.yaml` | ConfigMap with Langfuse host URL | ✅ Yes |
-| `configure-ambient-code.sh` | Script to create resources from templates | ✅ Yes |
-| `.env.langfuse-keys` | Your actual API keys (created by you) | ❌ **NO** |
-| `README.md` | This file | ✅ Yes |
-
-## Configuration Details
-
-### Secret: `langfuse-keys`
-
-Contains sensitive API credentials:
-```yaml
-LANGFUSE_PUBLIC_KEY: "pk-lf-..."
-LANGFUSE_SECRET_KEY: "sk-lf-..."
-```
-
-### ConfigMap: `langfuse-config`
-
-Contains non-sensitive configuration:
-```yaml
-LANGFUSE_HOST: "http://langfuse-web.langfuse.svc.cluster.local:3000"
-LANGFUSE_ENABLED: "true"
-```
-
-**Note**: We use the internal cluster URL because runner pods connect from inside the cluster.
+**Recommendation**: Use WorkspaceSettings UI instead for better multi-project support.
 
 ## How It Works
 
 ```
 ┌─────────────────────────────────────────┐
-│  ambient-code namespace                 │
+│  Project Namespace (e.g., ambient-code) │
 ├─────────────────────────────────────────┤
-│  • langfuse-keys (Secret)               │
-│  • langfuse-config (ConfigMap)          │
+│  WorkspaceSettings UI                   │
+│       ↓ creates/updates                 │
+│  • ambient-non-vertex-integrations      │
+│       (Secret with observability keys)  │
 │                                         │
 │  • vteam-operator                       │
-│       ↓ spawns                          │
+│       ↓ injects into spawned jobs       │
 │  • claude-runner-job-xyz                │
-│       ↓ reads (via EnvFrom)             │
+│       ↓ uses env vars                   │
 │       • LANGFUSE_PUBLIC_KEY             │
 │       • LANGFUSE_SECRET_KEY             │
 │       • LANGFUSE_HOST                   │
 │       • LANGFUSE_ENABLED                │
-│       ↓ uses                            │
-│  • Langfuse SDK sends traces ──────────┼──→ Langfuse
+│       ↓ Langfuse SDK                    │
+│  • Traces sent to Langfuse ────────────┼──→ Langfuse
 └─────────────────────────────────────────┘
 ```
 
-The operator will inject these environment variables into Claude Code runner Job pods using `EnvFrom`.
+The operator automatically injects all keys from `ambient-non-vertex-integrations` into runner pods using `EnvFrom`.
 
-## Next Steps
+## Configuration Details
 
-After running the configuration script:
+All observability environment variables are stored in the `ambient-non-vertex-integrations` secret:
 
-1. **Update the operator** to inject Langfuse config into Job pods
-   - Edit: `components/operator/internal/handlers/sessions.go`
-   - Add `EnvFrom` for Secret and ConfigMap
+### Langfuse Keys (Required for Traces)
 
-2. **Update Claude Code runner** to use Langfuse SDK
-   - Add dependency: `langfuse>=2.0.0` to `requirements.txt`
-   - Instrument: Add Langfuse tracing in `main.py`
+```yaml
+LANGFUSE_PUBLIC_KEY: "pk-lf-..."
+LANGFUSE_SECRET_KEY: "sk-lf-..."
+```
 
-3. **Rebuild and redeploy** ambient-code components
-   - Build: `make build-operator build-runner`
-   - Deploy: `make deploy`
+### Langfuse Configuration (Pre-configured)
 
-4. **Test** by creating an AgenticSession and viewing traces in Langfuse UI
+```yaml
+LANGFUSE_ENABLED: "true"
+LANGFUSE_HOST: "http://langfuse-web.langfuse.svc.cluster.local:3000"
+```
+
+**Note**: The internal cluster URL is used because runner pods connect from inside the cluster.
+
+## Trace Hierarchy
+
+The runner creates rich Langfuse traces with:
+
+1. **Session Span** - Main span for the entire Claude session
+   - Input: Original prompt
+   - Output: Final results with cost/token metrics
+   - Metadata: session ID, namespace, timestamp
+
+2. **Tool Spans** - Child spans for each tool execution (Read, Write, Bash, etc.)
+   - Input: Tool parameters
+   - Output: Tool results (truncated to 500 chars)
+   - Metadata: tool name, tool ID, turn number
+
+3. **Generation Spans** - Claude's text responses
+   - Input: Turn number
+   - Output: Claude's text (truncated to 1000 chars)
+   - Metadata: Model name, turn number
+
+## Viewing Traces
+
+1. Open Langfuse UI: https://langfuse-langfuse.apps.<your-cluster>
+2. Navigate to your project
+3. View traces by session ID
+4. Drill down into spans to see tool calls and generations
 
 ## Updating API Keys
 
-If you need to update your API keys:
+To update your Langfuse API keys:
 
-1. Update `.env.langfuse-keys` with new keys
-2. Run `./configure-ambient-code.sh` again
-3. Restart any running Job pods (they'll pick up new secrets)
+1. Go to WorkspaceSettings → Settings → Observability
+2. Update `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY`
+3. Click "Save Integration Secrets"
+4. New sessions will use the updated keys immediately
 
 ## Troubleshooting
 
-### Script fails with "envsubst not found"
+### No traces appearing in Langfuse
 
-Install gettext:
-```bash
-brew install gettext
-brew link --force gettext
-```
+1. **Check API keys are set**:
+   ```bash
+   oc get secret ambient-non-vertex-integrations -n ambient-code -o yaml | grep LANGFUSE
+   ```
 
-### Script fails with "Not logged into OpenShift"
+2. **Verify runner pod has env vars**:
+   ```bash
+   oc get pod <runner-pod> -n ambient-code -o yaml | grep -A 5 envFrom
+   ```
 
-Log in to your cluster:
-```bash
-oc login https://api.your-cluster.com:6443
-```
+   Should show:
+   ```yaml
+   envFrom:
+   - secretRef:
+       name: ambient-non-vertex-integrations
+   ```
 
-### Secrets not being picked up by pods
+3. **Check runner logs for Langfuse initialization**:
+   ```bash
+   oc logs <runner-pod> -c ambient-code-runner | grep -i langfuse
+   ```
 
-Check that the operator is configured to inject them:
-```bash
-oc get job <job-name> -n ambient-code -o yaml | grep -A 10 envFrom
-```
+   Should see: `Langfuse tracing enabled for session`
 
-You should see references to `langfuse-keys` and `langfuse-config`.
+### Traces show errors
+
+Check that `LANGFUSE_HOST` points to the correct service:
+- Internal URL (from pods): `http://langfuse-web.langfuse.svc.cluster.local:3000`
+- External URL (from browser): `https://langfuse-langfuse.apps.<your-cluster>`
+
+Runner pods should use the **internal** URL.
 
 ## Security Notes
 
-- **Never commit** `.env.langfuse-keys` to version control
+- **Never commit** API keys to version control
 - API keys have **full access** to your Langfuse project
-- For production, consider using **per-project API keys** (Phase 3)
 - Kubernetes Secrets are **base64 encoded** (not encrypted at rest by default)
+- For production, consider using **Sealed Secrets** or **External Secrets Operator**
 
-## Multi-Tenant Setup (Future)
+## Multi-Project Setup
 
-For Phase 3 multi-tenancy:
-- Each project namespace gets its own `langfuse-keys` Secret
-- Operator injects from the namespace where the Job runs
-- Enables per-project isolation and cost tracking
+Each project namespace can have its own `ambient-non-vertex-integrations` secret with different Langfuse keys for per-project isolation and cost tracking.
 
 ## References
 
 - Langfuse Documentation: https://langfuse.com/docs
 - Langfuse Python SDK: https://langfuse.com/docs/sdk/python
-- Ambient Code Docs: `../../docs/deployment/langfuse-phase2-context.md`
+- Ambient Code Observability: See `components/runners/claude-code-runner/wrapper.py`

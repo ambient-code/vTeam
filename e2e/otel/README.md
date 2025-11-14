@@ -1,94 +1,114 @@
 # OpenTelemetry Configuration for Ambient Code
 
-This directory contains configuration for enabling Claude Code's built-in OpenTelemetry instrumentation.
+This directory contains documentation for enabling OpenTelemetry instrumentation in the Claude Code runner.
 
 ## Overview
 
-Claude Code CLI has built-in OTEL instrumentation that captures:
-- **Tool executions** (Read, Write, Bash, Glob, Grep, Edit, etc.)
-- **SDK lifecycle events** (session start/end, errors)
-- **Tool performance** (latency per tool call)
-- **File operations** and git commands
-- **Error propagation** through the SDK stack
+The Claude Code runner has custom OpenTelemetry instrumentation that captures:
+- **Session lifecycle** (start, end, duration)
+- **Tool executions** (Read, Write, Bash, Glob, Grep, Edit, etc.) with timing
+- **Tool results** and error states
+- **Cost and token metrics** (via final span attributes)
 
-This complements Langfuse (which captures LLM-specific observability).
+This complements Langfuse (which captures LLM-specific observability like prompts, responses, and generations).
 
 ## Prerequisites
 
 1. **OTEL Collector** deployed in your cluster
    - Tempo, Jaeger, or other OTLP-compatible backend
-   - Accepting traces on port 4318 (OTLP/HTTP)
+   - Accepting traces on port 4317 (gRPC) or 4318 (HTTP)
 
 2. **OpenShift CLI** (`oc`) installed and logged in
 
 ## Quick Start
 
-### 1. Update the ConfigMap with your collector endpoint
+### Using WorkspaceSettings UI (Recommended)
 
-Edit `configmap.yaml` and update `OTEL_EXPORTER_OTLP_ENDPOINT`:
+**All observability configuration is now managed via the WorkspaceSettings UI in the frontend.**
 
-```yaml
-data:
-  OTEL_EXPORTER_OTLP_ENDPOINT: "http://your-otel-collector.your-namespace.svc.cluster.local:4318"
-```
+1. **Access WorkspaceSettings** for your project:
+   - Navigate to your workspace
+   - Go to Settings tab
+   - Expand "Observability (Langfuse + OpenTelemetry)" section
 
-### 2. Apply the ConfigMap
+2. **Configure OpenTelemetry** (pre-populated with defaults):
+   - `OTEL_EXPORTER_OTLP_ENDPOINT`: `http://otel-collector-collector.observability-hub.svc.cluster.local:4317` (already set)
+   - `OTEL_SERVICE_NAME`: `claude-code-runner` (overridden to `claude-{session-id}` at runtime)
+   - `OTEL_EXPORTER_OTLP_PROTOCOL`: `grpc` (already set)
 
-```bash
-cd e2e/otel
-oc apply -f configmap.yaml
-```
+3. **Save Integration Secrets** - Saves all observability keys to `ambient-non-vertex-integrations` secret
 
-### 3. Verify configuration
-
-```bash
-oc get configmap otel-config -n ambient-code
-```
-
-That's it! The operator will automatically inject OTEL configuration into runner pods when this ConfigMap exists.
-
-## Configuration Options
-
-The ConfigMap supports standard OpenTelemetry environment variables:
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | URL of your OTEL collector | **Required** |
-| `OTEL_SERVICE_NAME` | Service name for traces | `claude-code-runner` |
-| `OTEL_TRACES_EXPORTER` | Export protocol | `otlp` |
-| `OTEL_RESOURCE_ATTRIBUTES` | Additional resource attributes | See configmap.yaml |
-| `OTEL_TRACES_SAMPLER` | Sampling strategy | `always_on` (default) |
-| `OTEL_TRACES_SAMPLER_ARG` | Sampler argument (e.g., "0.1" for 10%) | N/A |
-
-### Example: Reduce sampling to 10%
-
-```yaml
-data:
-  OTEL_TRACES_SAMPLER: "parentbased_traceidratio"
-  OTEL_TRACES_SAMPLER_ARG: "0.1"
-```
+**Note**: The service name is automatically set to `claude-{session-id}` at runtime for better trace isolation.
 
 ## How It Works
 
 ```
 ┌─────────────────────────────────────────┐
-│  ambient-code namespace                 │
+│  Project Namespace (e.g., ambient-code) │
 ├─────────────────────────────────────────┤
-│  • otel-config (ConfigMap)              │
+│  WorkspaceSettings UI                   │
+│       ↓ creates/updates                 │
+│  • ambient-non-vertex-integrations      │
+│       (Secret with observability keys)  │
 │                                         │
 │  • vteam-operator                       │
-│       ↓ spawns                          │
+│       ↓ injects into spawned jobs       │
 │  • claude-runner-job-xyz                │
-│       ↓ reads (via EnvFrom)             │
+│       ↓ uses env vars                   │
 │       • OTEL_EXPORTER_OTLP_ENDPOINT     │
-│       • OTEL_SERVICE_NAME               │
-│       • OTEL_TRACES_EXPORTER            │
-│       ↓ Claude Code SDK detects         │
-│  • Built-in OTEL instrumentation ──────┼──→ OTEL Collector
+│       • OTEL_SERVICE_NAME (overridden)  │
+│       • OTEL_EXPORTER_OTLP_PROTOCOL     │
+│       ↓ OpenTelemetry SDK               │
+│  • Traces sent to collector ───────────┼──→ OTEL Collector → Tempo/Jaeger
 └─────────────────────────────────────────┘
 ```
 
-The operator injects this ConfigMap when it exists - no code changes needed!
+The operator automatically injects all keys from `ambient-non-vertex-integrations` into runner pods using `EnvFrom`.
+
+## Configuration Details
+
+All observability environment variables are stored in the `ambient-non-vertex-integrations` secret:
+
+### OpenTelemetry Configuration (Pre-configured)
+
+```yaml
+OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector-collector.observability-hub.svc.cluster.local:4317"
+OTEL_SERVICE_NAME: "claude-code-runner"  # Runtime override: claude-{session-id}
+OTEL_EXPORTER_OTLP_PROTOCOL: "grpc"
+```
+
+### Protocol Options
+
+- **gRPC** (port 4317): Default, more efficient
+- **HTTP** (port 4318): Alternative, use if gRPC unavailable
+
+Update the endpoint port in WorkspaceSettings based on your collector configuration.
+
+## Span Structure
+
+The runner creates OpenTelemetry spans with:
+
+1. **Session Span** - Main span for the entire Claude session
+   - Attributes:
+     - `session.id`: AgenticSession name
+     - `namespace`: Kubernetes namespace
+     - `prompt.length`: Length of initial prompt
+   - Final attributes (on completion):
+     - `claude_code.cost.usage`: Total cost in USD
+     - `claude_code.token.usage`: Total tokens used
+     - `claude_code.session.turns`: Number of turns
+     - `claude_code.session.duration_ms`: Session duration
+     - `claude_code.session.subtype`: Success/error type
+
+2. **Tool Decision Events** - Events added to session span for each tool use
+   - Attributes:
+     - `tool.name`: Tool being used (Read, Write, Bash, etc.)
+     - `tool.id`: Unique tool use ID
+
+3. **Tool Result Events** - Events added for each tool result
+   - Attributes:
+     - `tool.use_id`: Matching tool use ID
+     - `tool.is_error`: Whether tool execution failed
 
 ## Viewing Traces
 
@@ -97,100 +117,122 @@ The operator injects this ConfigMap when it exists - no code changes needed!
 1. Open Grafana
 2. Navigate to Explore
 3. Select Tempo data source
-4. Query: `{service.name="claude-code-runner"}`
+4. Query: `{service.name=~"claude-.*"}`  (finds all Claude sessions)
+   - Or specific session: `{service.name="claude-langfuse-test"}`
 
 ### Jaeger
 
 1. Open Jaeger UI
-2. Select service: `claude-code-runner`
+2. Service dropdown will show: `claude-{session-id}`
 3. Find traces by session ID
 
-### Trace Attributes
+### Example Trace Attributes
 
-Each trace includes these attributes:
-- `service.name`: `claude-code-runner`
-- `service.namespace`: `ambient-code`
-- `session.id`: AgenticSession name
-- `namespace`: Kubernetes namespace
+```
+service.name: claude-langfuse-test
+session.id: langfuse-test
+namespace: ambient-code
+prompt.length: 82
+claude_code.cost.usage: 0.00045
+claude_code.token.usage: 1234
+claude_code.session.turns: 15
+claude_code.session.duration_ms: 42301
+claude_code.session.subtype: success
+```
 
 ## OTEL vs Langfuse
 
 | Observability Type | Use OTEL | Use Langfuse |
 |--------------------|----------|--------------|
-| Tool call performance | ✅ | ❌ |
-| File operation traces | ✅ | ❌ |
-| Git command latency | ✅ | ❌ |
-| SDK error details | ✅ | ❌ |
-| Anthropic API calls | ❌ | ✅ |
-| Token counts & costs | ❌ | ✅ |
+| Session lifecycle & timing | ✅ | ✅ |
+| Cost & token metrics | ✅ | ✅ |
+| Tool decision events | ✅ | ❌ |
+| Distributed trace correlation | ✅ | ❌ |
+| Tool spans with I/O | ❌ | ✅ |
 | Prompt/response content | ❌ | ✅ |
+| Generation spans | ❌ | ✅ |
 | Model parameters | ❌ | ✅ |
 
 **Recommendation**: Use **both** for complete observability.
+- **OTEL**: Session-level metrics, distributed tracing across services
+- **Langfuse**: Detailed LLM observability with full context
 
 ## Troubleshooting
 
 ### Traces not appearing
 
-1. **Check ConfigMap exists**:
+1. **Check OTEL keys are set**:
    ```bash
-   oc get configmap otel-config -n ambient-code
+   oc get secret ambient-non-vertex-integrations -n ambient-code -o yaml | grep OTEL
    ```
 
-2. **Verify endpoint is reachable**:
+2. **Verify runner pod has env vars**:
    ```bash
-   oc run -it --rm debug --image=curlimages/curl --restart=Never -- \
-     curl -v http://your-otel-collector:4318/v1/traces
-   ```
-
-3. **Check runner pod env vars**:
-   ```bash
-   oc get pod <runner-pod> -o yaml | grep -A 5 envFrom
+   oc get pod <runner-pod> -n ambient-code -o yaml | grep -A 5 envFrom
    ```
 
    Should show:
    ```yaml
    envFrom:
-   - configMapRef:
-       name: otel-config
+   - secretRef:
+       name: ambient-non-vertex-integrations
    ```
 
-4. **View runner logs**:
+3. **Check runner logs for OTEL initialization**:
    ```bash
    oc logs <runner-pod> -c ambient-code-runner | grep -i otel
    ```
 
-### High trace volume
+   Should see: `OpenTelemetry tracing enabled (endpoint: ...)`
 
-Reduce sampling:
+4. **Verify endpoint is reachable from pods**:
+   ```bash
+   oc run -it --rm debug --image=curlimages/curl --restart=Never -- \
+     curl -v http://otel-collector-collector.observability-hub.svc.cluster.local:4317
+   ```
 
-```yaml
-data:
-  OTEL_TRACES_SAMPLER: "parentbased_traceidratio"
-  OTEL_TRACES_SAMPLER_ARG: "0.1"  # 10% sampling
-```
+### Service name not showing as claude-{session-id}
 
-## Disabling OTEL
-
-To disable OTEL instrumentation:
-
+Check runner logs for dynamic service name override:
 ```bash
-oc delete configmap otel-config -n ambient-code
+oc logs <runner-pod> | grep "service.name"
 ```
 
-New runner pods will no longer export traces.
+Should see service name set to `claude-{session-id}`.
+
+### gRPC connection errors
+
+If seeing gRPC errors, try switching to HTTP protocol:
+
+1. Go to WorkspaceSettings → Settings → Observability
+2. Change `OTEL_EXPORTER_OTLP_ENDPOINT` port from `4317` to `4318`
+3. Change `OTEL_EXPORTER_OTLP_PROTOCOL` from `grpc` to `http`
+4. Save Integration Secrets
+
+## Updating Configuration
+
+To update OpenTelemetry settings:
+
+1. Go to WorkspaceSettings → Settings → Observability
+2. Update OTEL environment variables as needed
+3. Click "Save Integration Secrets"
+4. New sessions will use the updated configuration immediately
 
 ## Security Notes
 
-- OTEL traces may contain **file paths** and **command arguments**
+- OTEL traces may contain **session IDs** and **namespace names**
 - Ensure your OTEL collector has appropriate **access controls**
 - Consider **data retention policies** for trace storage
-- Use **sampling** to reduce storage costs in production
+- Use Tempo's **tenant isolation** for multi-project security
+
+## Multi-Project Setup
+
+Each project namespace can have its own `ambient-non-vertex-integrations` secret with different OTEL endpoints for per-project trace isolation.
 
 ## References
 
-- Claude Code Monitoring: https://code.claude.com/docs/en/monitoring-usage
 - OpenTelemetry Spec: https://opentelemetry.io/docs/specs/otel/
 - OTLP Protocol: https://opentelemetry.io/docs/specs/otlp/
 - Tempo Documentation: https://grafana.com/docs/tempo/
 - Jaeger Documentation: https://www.jaegertracing.io/docs/
+- Ambient Code Observability: See `components/runners/claude-code-runner/wrapper.py`

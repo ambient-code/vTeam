@@ -313,53 +313,17 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 
 	// Hardcoded secret names (convention over configuration)
 	const runnerSecretsName = "ambient-runner-secrets"               // ANTHROPIC_API_KEY only (ignored when Vertex enabled)
-	const integrationSecretsName = "ambient-non-vertex-integrations" // GIT_*, JIRA_*, custom keys (optional)
-	const langfuseKeysSecretName = "langfuse-keys"                   // Langfuse API keys (optional)
-	const langfuseConfigMapName = "langfuse-config"                  // Langfuse host configuration (optional)
-	const otelConfigMapName = "otel-config"                          // OpenTelemetry configuration (optional)
+	const integrationSecretsName = "ambient-non-vertex-integrations" // GIT_*, JIRA_*, LANGFUSE_*, OTEL_*, custom keys (optional)
 
-	// Check if integration secrets exist (optional)
+	// Check if integration secrets exist (includes observability keys: LANGFUSE_*, OTEL_*)
 	integrationSecretsExist := false
 	if _, err := config.K8sClient.CoreV1().Secrets(sessionNamespace).Get(context.TODO(), integrationSecretsName, v1.GetOptions{}); err == nil {
 		integrationSecretsExist = true
-		log.Printf("Found %s secret in %s, will inject as env vars", integrationSecretsName, sessionNamespace)
+		log.Printf("Found %s secret in %s, will inject as env vars (includes observability keys)", integrationSecretsName, sessionNamespace)
 	} else if !errors.IsNotFound(err) {
 		log.Printf("Error checking for %s secret in %s: %v", integrationSecretsName, sessionNamespace, err)
 	} else {
 		log.Printf("No %s secret found in %s (optional, skipping)", integrationSecretsName, sessionNamespace)
-	}
-
-	// Check if Langfuse secrets exist (optional)
-	langfuseSecretsExist := false
-	if _, err := config.K8sClient.CoreV1().Secrets(sessionNamespace).Get(context.TODO(), langfuseKeysSecretName, v1.GetOptions{}); err == nil {
-		langfuseSecretsExist = true
-		log.Printf("Found %s secret in %s, will inject as env vars", langfuseKeysSecretName, sessionNamespace)
-	} else if !errors.IsNotFound(err) {
-		log.Printf("Error checking for %s secret in %s: %v", langfuseKeysSecretName, sessionNamespace, err)
-	} else {
-		log.Printf("No %s secret found in %s (optional, skipping)", langfuseKeysSecretName, sessionNamespace)
-	}
-
-	// Check if Langfuse ConfigMap exists (optional)
-	langfuseConfigMapExist := false
-	if _, err := config.K8sClient.CoreV1().ConfigMaps(sessionNamespace).Get(context.TODO(), langfuseConfigMapName, v1.GetOptions{}); err == nil {
-		langfuseConfigMapExist = true
-		log.Printf("Found %s ConfigMap in %s, will inject as env vars", langfuseConfigMapName, sessionNamespace)
-	} else if !errors.IsNotFound(err) {
-		log.Printf("Error checking for %s ConfigMap in %s: %v", langfuseConfigMapName, sessionNamespace, err)
-	} else {
-		log.Printf("No %s ConfigMap found in %s (optional, skipping)", langfuseConfigMapName, sessionNamespace)
-	}
-
-	// Check if OTEL ConfigMap exists (optional)
-	otelConfigMapExist := false
-	if _, err := config.K8sClient.CoreV1().ConfigMaps(sessionNamespace).Get(context.TODO(), otelConfigMapName, v1.GetOptions{}); err == nil {
-		otelConfigMapExist = true
-		log.Printf("Found %s ConfigMap in %s, will inject as env vars", otelConfigMapName, sessionNamespace)
-	} else if !errors.IsNotFound(err) {
-		log.Printf("Error checking for %s ConfigMap in %s: %v", otelConfigMapName, sessionNamespace, err)
-	} else {
-		log.Printf("No %s ConfigMap found in %s (optional, skipping)", otelConfigMapName, sessionNamespace)
 	}
 
 	// Extract input/output git configuration (support flat and nested forms)
@@ -654,41 +618,8 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 									log.Printf("Skipping runner secrets '%s' for session %s (Vertex enabled)", runnerSecretsName, name)
 								}
 
-								// Inject Langfuse secrets if they exist (optional)
-								if langfuseSecretsExist {
-									sources = append(sources, corev1.EnvFromSource{
-										SecretRef: &corev1.SecretEnvSource{
-											LocalObjectReference: corev1.LocalObjectReference{Name: langfuseKeysSecretName},
-										},
-									})
-									log.Printf("Injecting Langfuse secrets from '%s' for session %s", langfuseKeysSecretName, name)
-								} else {
-									log.Printf("Skipping Langfuse secrets '%s' for session %s (not found)", langfuseKeysSecretName, name)
-								}
-
-								// Inject Langfuse ConfigMap if it exists (optional)
-								if langfuseConfigMapExist {
-									sources = append(sources, corev1.EnvFromSource{
-										ConfigMapRef: &corev1.ConfigMapEnvSource{
-											LocalObjectReference: corev1.LocalObjectReference{Name: langfuseConfigMapName},
-										},
-									})
-									log.Printf("Injecting Langfuse config from '%s' for session %s", langfuseConfigMapName, name)
-								} else {
-									log.Printf("Skipping Langfuse config '%s' for session %s (not found)", langfuseConfigMapName, name)
-								}
-
-								// Inject OTEL ConfigMap if it exists (optional)
-								if otelConfigMapExist {
-									sources = append(sources, corev1.EnvFromSource{
-										ConfigMapRef: &corev1.ConfigMapEnvSource{
-											LocalObjectReference: corev1.LocalObjectReference{Name: otelConfigMapName},
-										},
-									})
-									log.Printf("Injecting OTEL config from '%s' for session %s", otelConfigMapName, name)
-								} else {
-									log.Printf("Skipping OTEL config '%s' for session %s (not found)", otelConfigMapName, name)
-								}
+								// Note: Observability keys (LANGFUSE_*, OTEL_*) are now in ambient-non-vertex-integrations
+								// No separate secrets/configmaps needed
 
 								return sources
 							}(),

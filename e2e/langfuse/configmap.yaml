@@ -1,8 +1,0 @@
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: langfuse-config
-  namespace: ambient-code
-data:
-  LANGFUSE_HOST: "http://langfuse-web.langfuse.svc.cluster.local:3000"
-  LANGFUSE_ENABLED: "true"
