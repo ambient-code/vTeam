@@ -78,8 +78,7 @@ done
 HTTP_PORT=80
 if kind get clusters 2>/dev/null | grep -q "^vteam-e2e$"; then
   # Check if we're using non-standard ports (Podman)
-  if docker ps --filter "name=vteam-e2e-control-plane" --format "{{.Ports}}" 2>/dev/null | grep -q "8080" || \
-     podman ps --filter "name=vteam-e2e-control-plane" --format "{{.Ports}}" 2>/dev/null | grep -q "8080"; then
+  if ${CONTAINER_ENGINE:-docker} ps --filter "name=vteam-e2e-control-plane" --format "{{.Ports}}" 2>/dev/null | grep -q "8080"; then
     HTTP_PORT=8080
   fi
 fi
