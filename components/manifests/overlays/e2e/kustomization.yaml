@@ -9,7 +9,7 @@ resources:
 - secrets.yaml
 - test-user.yaml
 - frontend-ingress.yaml
-- backend-ingress.yaml
+# backend-ingress.yaml removed - frontend handles all routing and proxies to backend internally
 - operator-config.yaml
 
 # Patches for e2e environment
