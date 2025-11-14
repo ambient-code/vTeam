@@ -2,10 +2,9 @@
 Pytest configuration for Claude Code Runner tests.
 
 These tests require the container environment with runner_shell dependency.
-Mark all tests to skip if running outside container.
+Tests are skipped when runner_shell module is not available (CI environment).
 """
 import sys
-import pytest
 
 # Check if we're in the container environment
 try:
@@ -17,10 +16,7 @@ except (ImportError, ModuleNotFoundError):
     IN_CONTAINER = False
 
 # Skip all tests if not in container environment
+# collect_ignore_glob prevents pytest from collecting test files entirely
 if not IN_CONTAINER:
     collect_ignore_glob = ["test_*.py"]
-    
-    @pytest.fixture(scope="session", autouse=True)
-    def skip_all_tests():
-        pytest.skip("Tests require container environment with runner_shell dependency", allow_module_level=True)
 

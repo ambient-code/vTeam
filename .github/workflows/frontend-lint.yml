@@ -59,6 +59,8 @@ jobs:
       - name: Run TypeScript type check
         run: |
           cd components/frontend
+          # Clean .next to avoid stale type definitions from previous builds
+          # Next.js post-install generates types that may reference non-existent files
           rm -rf .next
           npx tsc --noEmit
 

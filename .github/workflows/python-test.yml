@@ -53,9 +53,19 @@ jobs:
         run: |
           cd components/runners/claude-code-runner
           # Allow exit code 5 (no tests collected) - tests require container environment
-          pytest --cov=. --cov-report=xml --cov-report=term || [ $? -eq 5 ]
+          pytest --cov=. --cov-report=xml --cov-report=term || EXIT_CODE=$?
+          if [ "${EXIT_CODE:-0}" -eq 5 ]; then
+            echo "No tests collected (requires container environment) - this is expected"
+            echo "Generating empty coverage report for Codecov"
+            echo '<?xml version="1.0" ?><coverage version="1.0"><packages></packages></coverage>' > coverage.xml
+            exit 0
+          elif [ "${EXIT_CODE:-0}" -ne 0 ]; then
+            echo "Tests failed with exit code $EXIT_CODE"
+            exit $EXIT_CODE
+          fi
 
       - name: Upload coverage to Codecov
+        if: always()
         uses: codecov/codecov-action@v4
         with:
           token: ${{ secrets.CODECOV_TOKEN }}

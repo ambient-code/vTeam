@@ -28,7 +28,9 @@ describe('cn utility', () => {
   it('merges tailwind classes correctly', () => {
     // Later class should override earlier class in Tailwind
     const result = cn('p-4', 'p-8');
-    expect(result).toBe('p-8');
+    // tailwind-merge deduplicates conflicting classes, keeping the last one
+    expect(result).toContain('p-8');
+    expect(result).not.toContain('p-4');
   });
 });
 

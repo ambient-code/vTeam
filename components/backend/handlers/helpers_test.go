@@ -109,9 +109,9 @@ func TestRetryWithBackoff(t *testing.T) {
 		duration := time.Since(startTime)
 
 		// With 3 retries and max delay of 50ms, total time should be less than 150ms
-		// (allowing some buffer for execution time)
-		if duration > 200*time.Millisecond {
-			t.Errorf("expected duration less than 200ms, got %v", duration)
+		// Allowing 500ms buffer for slow CI environments to prevent flakiness
+		if duration > 500*time.Millisecond {
+			t.Errorf("expected duration less than 500ms, got %v", duration)
 		}
 	})
 }

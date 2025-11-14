@@ -21,15 +21,23 @@ flags:
   backend:
     paths:
       - components/backend/
+    target: 60%
+    carryforward: true
   operator:
     paths:
       - components/operator/
+    target: 70%
+    carryforward: true
   frontend:
     paths:
       - components/frontend/
+    target: 50%
+    carryforward: true
   python-runner:
     paths:
       - components/runners/claude-code-runner/
+    target: 60%
+    carryforward: true
 
 comment:
   layout: "reach,diff,flags,tree"
