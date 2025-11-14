@@ -3,7 +3,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { MessageSquare, Loader2, Settings, Sparkles, Users, Terminal } from "lucide-react";
+import { MessageSquare, Loader2, Settings, Terminal, Users } from "lucide-react";
 import { StreamMessage } from "@/components/ui/stream-message";
 import {
   DropdownMenu,
@@ -12,8 +12,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
 import type { AgenticSession, MessageObject, ToolUseMessages } from "@/types/agentic-session";
 import type { WorkflowMetadata } from "@/app/projects/[name]/sessions/[sessionName]/lib/types";
 
@@ -27,16 +25,12 @@ export type MessagesTabProps = {
   onEndSession: () => Promise<void>;
   onGoToResults?: () => void;
   onContinue: () => void;
-  selectedAgents?: string[];
-  autoSelectAgents?: boolean;
   workflowMetadata?: WorkflowMetadata;
-  onSetSelectedAgents?: (agents: string[]) => void;
-  onSetAutoSelectAgents?: (auto: boolean) => void;
   onCommandClick?: (slashCommand: string) => void;
 };
 
 
-const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chatInput, setChatInput, onSendChat, onInterrupt, onEndSession, onGoToResults, onContinue, selectedAgents = [], autoSelectAgents = false, workflowMetadata, onSetSelectedAgents, onSetAutoSelectAgents, onCommandClick }) => {
+const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chatInput, setChatInput, onSendChat, onInterrupt, onEndSession, onGoToResults, onContinue, workflowMetadata, onCommandClick }) => {
   const [sendingChat, setSendingChat] = useState(false);
   const [interrupting, setInterrupting] = useState(false);
   const [ending, setEnding] = useState(false);
@@ -460,7 +454,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chat
                       </DropdownMenuCheckboxItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
-                  
+
                   {/* Agents Button with Popover */}
                   {workflowMetadata?.agents && workflowMetadata.agents.length > 0 && (
                     <Popover open={agentsPopoverOpen} onOpenChange={setAgentsPopoverOpen}>
@@ -469,68 +463,34 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chat
                           <Users className="h-3.5 w-3.5" />
                           Agents
                           <Badge variant="secondary" className="ml-0.5 h-4 px-1.5 text-[10px] font-medium">
-                            {autoSelectAgents ? "auto" : selectedAgents.length}
+                            {workflowMetadata.agents.length}
                           </Badge>
                         </Button>
                       </PopoverTrigger>
-                      <PopoverContent 
-                        align="start" 
-                        side="top" 
+                      <PopoverContent
+                        align="start"
+                        side="top"
                         className="w-[500px]"
                       >
                         <div className="space-y-3">
                           <div className="space-y-2">
-                            <h4 className="font-medium text-sm">Agent Selection</h4>
+                            <h4 className="font-medium text-sm">Available Agents</h4>
                             <p className="text-xs text-muted-foreground">
-                              Select agents to collaborate with or enable automatic selection
+                              Mention agents in your message to collaborate with them
                             </p>
                           </div>
 
-                          {/* Auto-select checkbox */}
-                          <div className="flex items-center space-x-2 pb-2 border-b">
-                            <Checkbox
-                              id="popover-auto-select-agents"
-                              checked={autoSelectAgents}
-                              onCheckedChange={(checked) => {
-                                if (onSetAutoSelectAgents) {
-                                  onSetAutoSelectAgents(!!checked);
-                                  if (checked && onSetSelectedAgents) {
-                                    onSetSelectedAgents([]);
-                                  }
-                                }
-                              }}
-                            />
-                            <Sparkles className="h-3.5 w-3.5 text-purple-500" />
-                            <Label htmlFor="popover-auto-select-agents" className="text-sm font-normal cursor-pointer">
-                              Automatically select agents
-                            </Label>
-                          </div>
-                          
                           {/* Agents list */}
-                          <div 
+                          <div
                             className="max-h-[400px] overflow-y-scroll space-y-2 pr-2 scrollbar-thin"
                           >
                             {workflowMetadata.agents.map((agent) => {
                               const agentNameShort = agent.name.split(' - ')[0];
-                              const isSelected = selectedAgents.includes(agent.id);
-                              
+
                               return (
                                 <div
                                   key={agent.id}
-                                  className={`p-3 rounded-md border cursor-pointer transition-colors ${
-                                    isSelected 
-                                      ? 'bg-blue-50 border-blue-300 hover:bg-blue-100' 
-                                      : 'bg-muted/30 hover:bg-muted/50'
-                                  } ${autoSelectAgents ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                  onClick={() => {
-                                    if (!autoSelectAgents && onSetSelectedAgents) {
-                                      if (isSelected) {
-                                        onSetSelectedAgents(selectedAgents.filter(id => id !== agent.id));
-                                      } else {
-                                        onSetSelectedAgents([...selectedAgents, agent.id]);
-                                      }
-                                    }
-                                  }}
+                                  className="p-3 rounded-md border bg-muted/30"
                                 >
                                   <div className="flex items-center justify-between mb-1">
                                     <h3 className="text-sm font-bold">
