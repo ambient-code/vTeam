@@ -1,14 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { Play, Loader2, Workflow, ChevronDown, ChevronRight, Sparkles, Info, AlertCircle } from "lucide-react";
+import { Play, Loader2, Workflow, ChevronDown, ChevronRight, Info, AlertCircle } from "lucide-react";
 import { AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { WorkflowConfig } from "../../lib/types";
 
@@ -25,14 +23,10 @@ type WorkflowsAccordionProps = {
   workflowActivating: boolean;
   workflowMetadata?: WorkflowMetadata;
   ootbWorkflows: WorkflowConfig[];
-  selectedAgents: string[];
-  autoSelectAgents: boolean;
   isExpanded: boolean;
   onWorkflowChange: (value: string) => void;
   onActivateWorkflow: () => void;
   onCommandClick: (slashCommand: string) => void;
-  onSetSelectedAgents: (agents: string[]) => void;
-  onSetAutoSelectAgents: (auto: boolean) => void;
   onResume?: () => void;
 };
 
@@ -44,14 +38,10 @@ export function WorkflowsAccordion({
   workflowActivating,
   workflowMetadata,
   ootbWorkflows,
-  selectedAgents,
-  autoSelectAgents,
   isExpanded,
   onWorkflowChange,
   onActivateWorkflow,
   onCommandClick,
-  onSetSelectedAgents,
-  onSetAutoSelectAgents,
   onResume,
 }: WorkflowsAccordionProps) {
   const [showCommandsList, setShowCommandsList] = useState(false);
@@ -282,28 +272,12 @@ export function WorkflowsAccordion({
 
                       {showAgentsList && (
                         <div className="mt-2 pt-2 mx-3 space-y-2">
-                          {/* Auto-select checkbox */}
-                          <div className="flex items-center space-x-2 pb-2">
-                            <Checkbox
-                              id="auto-select-agents"
-                              checked={autoSelectAgents}
-                              onCheckedChange={(checked) => {
-                                onSetAutoSelectAgents(!!checked);
-                                if (checked) onSetSelectedAgents([]);
-                              }}
-                            />
-                            <Sparkles className="h-3 w-3 text-purple-500" />
-                            <Label htmlFor="auto-select-agents" className="text-sm font-normal cursor-pointer">
-                              Automatically select recommended agents for each task
-                            </Label>
-                          </div>
-                          
                           {/* Scrollable agents list */}
                           <div className="relative">
                             {agentsScrollTop && (
                               <div className="absolute top-0 left-0 right-0 h-8 bg-gradient-to-b from-white to-transparent pointer-events-none z-10" />
                             )}
-                            <div 
+                            <div
                               className="max-h-48 overflow-y-auto space-y-1 pr-1"
                               onScroll={(e) => {
                                 const target = e.currentTarget;
@@ -316,24 +290,9 @@ export function WorkflowsAccordion({
                               <div className="space-y-1 space-x-6">
                                 {workflowMetadata.agents.map((agent) => (
                                   <div key={agent.id} className="flex items-center gap-2 group">
-                                    <Checkbox
-                                      id={`agent-${agent.id}`}
-                                      checked={selectedAgents.includes(agent.id)}
-                                      disabled={autoSelectAgents}
-                                      onCheckedChange={(checked) => {
-                                        if (checked) {
-                                          onSetSelectedAgents([...selectedAgents, agent.id]);
-                                        } else {
-                                          onSetSelectedAgents(selectedAgents.filter(id => id !== agent.id));
-                                        }
-                                      }}
-                                    />
-                                    <Label
-                                      htmlFor={`agent-${agent.id}`}
-                                      className="text-sm font-normal cursor-pointer"
-                                    >
+                                    <span className="text-sm font-normal">
                                       {agent.name}
-                                    </Label>
+                                    </span>
                                     <Popover>
                                       <PopoverTrigger asChild>
                                         <button
