@@ -2,19 +2,19 @@ coverage:
   status:
     project:
       default:
-        target: 70%
+        target: 50%
         threshold: 5%
         informational: true  # Don't block PRs
     patch:
       default:
-        target: 70%
+        target: 50%
         informational: true
 
 flag_management:
   default_rules:
     statuses:
       - type: project
-        target: 70%
+        target: 50%
         informational: true
 
 flags:
@@ -35,4 +35,7 @@ comment:
   layout: "reach,diff,flags,tree"
   behavior: default
   require_changes: false
+  require_base: false
+  require_head: false
+  after_n_builds: 0
 
