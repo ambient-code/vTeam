@@ -220,16 +220,30 @@ class ClaudeCodeAdapter:
                         langfuse_client = None
                         langfuse_session_span = None
 
-            # Initialize OpenTelemetry for distributed tracing if configured
+            # Initialize OpenTelemetry for distributed tracing
+            # Can send to Langfuse OTLP endpoint OR separate OTEL Collector
             otel_tracer = None
             otel_span = None
             otel_provider = None
             if OTEL_AVAILABLE:
+                # Determine OTLP endpoint (prefer explicit, fallback to Langfuse)
                 otel_endpoint = os.getenv('OTEL_EXPORTER_OTLP_ENDPOINT', '').strip()
+                use_langfuse_otlp = False
+
+                if not otel_endpoint and langfuse_enabled:
+                    # Derive Langfuse OTLP endpoint from LANGFUSE_HOST
+                    langfuse_host = os.getenv('LANGFUSE_HOST', '').strip()
+                    if langfuse_host:
+                        # Langfuse OTLP endpoint: <host>/api/public/otel/v1/traces
+                        otel_endpoint = f"{langfuse_host.rstrip('/')}/api/public/otel/v1/traces"
+                        use_langfuse_otlp = True
+                        logging.info(f"Using Langfuse OTLP endpoint (unified observability): {otel_endpoint}")
+
                 # Use dynamic service name: claude-<session-id> or fallback to env var
                 base_service_name = os.getenv('OTEL_SERVICE_NAME', 'claude-code-runner').strip()
                 # Override with session-specific name for better trace isolation
                 otel_service_name = f"claude-{self.context.session_id}" if self.context.session_id else base_service_name
+
                 if otel_endpoint:
                     try:
                         # Create resource with service name
@@ -240,8 +254,22 @@ class ClaudeCodeAdapter:
                         # Create tracer provider (store for later flush)
                         otel_provider = TracerProvider(resource=resource)
 
-                        # Create OTLP exporter
-                        otlp_exporter = OTLPSpanExporter(endpoint=otel_endpoint)
+                        # Create OTLP exporter with optional auth for Langfuse
+                        exporter_kwargs = {"endpoint": otel_endpoint}
+
+                        if use_langfuse_otlp:
+                            # Add Basic Auth header for Langfuse
+                            import base64
+                            public_key = os.getenv('LANGFUSE_PUBLIC_KEY', '').strip()
+                            secret_key = os.getenv('LANGFUSE_SECRET_KEY', '').strip()
+                            if public_key and secret_key:
+                                # Base64 encode "public_key:secret_key"
+                                auth_string = f"{public_key}:{secret_key}"
+                                encoded = base64.b64encode(auth_string.encode()).decode()
+                                exporter_kwargs["headers"] = {"Authorization": f"Basic {encoded}"}
+                                logging.info("Added Langfuse Basic Auth to OTLP exporter")
+
+                        otlp_exporter = OTLPSpanExporter(**exporter_kwargs)
 
                         # Add span processor
                         otel_provider.add_span_processor(BatchSpanProcessor(otlp_exporter))

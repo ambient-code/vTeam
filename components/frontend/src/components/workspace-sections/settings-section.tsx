@@ -44,10 +44,9 @@ export function SettingsSection({ projectName }: SettingsSectionProps) {
   const [langfusePublicKey, setLangfusePublicKey] = useState<string>("");
   const [langfuseSecretKey, setLangfuseSecretKey] = useState<string>("");
   const [showLangfuseSecretKey, setShowLangfuseSecretKey] = useState<boolean>(false);
-  const [otelEndpoint, setOtelEndpoint] = useState<string>("http://otel-collector-collector.observability-hub.svc.cluster.local:4317");
+  const [otelEndpoint, setOtelEndpoint] = useState<string>("");  // Empty = use Langfuse OTLP endpoint
   const [otelServiceName, setOtelServiceName] = useState<string>("claude-code-runner");
-  const [otelProtocol, setOtelProtocol] = useState<string>("grpc");
-  const FIXED_KEYS = useMemo(() => ["ANTHROPIC_API_KEY","GIT_USER_NAME","GIT_USER_EMAIL","GITHUB_TOKEN","JIRA_URL","JIRA_PROJECT","JIRA_EMAIL","JIRA_API_TOKEN","LANGFUSE_ENABLED","LANGFUSE_HOST","LANGFUSE_PUBLIC_KEY","LANGFUSE_SECRET_KEY","OTEL_EXPORTER_OTLP_ENDPOINT","OTEL_SERVICE_NAME","OTEL_EXPORTER_OTLP_PROTOCOL"] as const, []);
+  const FIXED_KEYS = useMemo(() => ["ANTHROPIC_API_KEY","GIT_USER_NAME","GIT_USER_EMAIL","GITHUB_TOKEN","JIRA_URL","JIRA_PROJECT","JIRA_EMAIL","JIRA_API_TOKEN","LANGFUSE_ENABLED","LANGFUSE_HOST","LANGFUSE_PUBLIC_KEY","LANGFUSE_SECRET_KEY","OTEL_EXPORTER_OTLP_ENDPOINT","OTEL_SERVICE_NAME"] as const, []);
 
   // React Query hooks
   const { data: project, isLoading: projectLoading } = useProject(projectName);
@@ -85,7 +84,6 @@ export function SettingsSection({ projectName }: SettingsSectionProps) {
       if (byKey["LANGFUSE_SECRET_KEY"]) setLangfuseSecretKey(byKey["LANGFUSE_SECRET_KEY"]);
       if (byKey["OTEL_EXPORTER_OTLP_ENDPOINT"]) setOtelEndpoint(byKey["OTEL_EXPORTER_OTLP_ENDPOINT"]);
       if (byKey["OTEL_SERVICE_NAME"]) setOtelServiceName(byKey["OTEL_SERVICE_NAME"]);
-      if (byKey["OTEL_EXPORTER_OTLP_PROTOCOL"]) setOtelProtocol(byKey["OTEL_EXPORTER_OTLP_PROTOCOL"]);
       setSecrets(allSecrets.filter(s => !FIXED_KEYS.includes(s.key as typeof FIXED_KEYS[number])));
     }
   }, [runnerSecrets, integrationSecrets, FIXED_KEYS]);
@@ -161,9 +159,9 @@ export function SettingsSection({ projectName }: SettingsSectionProps) {
     integrationData["LANGFUSE_HOST"] = langfuseHost || "http://langfuse-web.langfuse.svc.cluster.local:3000";
     if (langfusePublicKey) integrationData["LANGFUSE_PUBLIC_KEY"] = langfusePublicKey;
     if (langfuseSecretKey) integrationData["LANGFUSE_SECRET_KEY"] = langfuseSecretKey;
-    integrationData["OTEL_EXPORTER_OTLP_ENDPOINT"] = otelEndpoint || "http://otel-collector-collector.observability-hub.svc.cluster.local:4317";
+    // OTEL endpoint is optional - if empty, runner will derive from LANGFUSE_HOST
+    if (otelEndpoint) integrationData["OTEL_EXPORTER_OTLP_ENDPOINT"] = otelEndpoint;
     integrationData["OTEL_SERVICE_NAME"] = otelServiceName || "claude-code-runner";
-    integrationData["OTEL_EXPORTER_OTLP_PROTOCOL"] = otelProtocol || "grpc";
     for (const { key, value } of secrets) {
       if (!key) continue;
       if (FIXED_KEYS.includes(key as typeof FIXED_KEYS[number])) continue;
@@ -455,13 +453,14 @@ export function SettingsSection({ projectName }: SettingsSectionProps) {
                 <Alert>
                   <Info className="h-4 w-4" />
                   <AlertDescription>
-                    Pre-configured with cluster defaults. Update Langfuse keys and adjust endpoints as needed. Service name is automatically set to claude-SESSION_ID.
+                    <strong>Unified Observability:</strong> OpenTelemetry traces are automatically sent to Langfuse alongside Langfuse SDK spans.
+                    Only Langfuse keys are required. Leave OTEL endpoint empty to use Langfuse (recommended).
                   </AlertDescription>
                 </Alert>
 
                 {/* Langfuse Section */}
                 <div className="space-y-3 pt-2 border-t">
-                  <Label className="text-sm font-semibold">Langfuse (LLM Observability)</Label>
+                  <Label className="text-sm font-semibold">Langfuse (Unified LLM + System Observability)</Label>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div className="space-y-1">
                       <Label htmlFor="langfuseEnabled">LANGFUSE_ENABLED</Label>
@@ -495,20 +494,25 @@ export function SettingsSection({ projectName }: SettingsSectionProps) {
 
                 {/* OpenTelemetry Section */}
                 <div className="space-y-3 pt-2 border-t">
-                  <Label className="text-sm font-semibold">OpenTelemetry (Distributed Tracing)</Label>
+                  <Label className="text-sm font-semibold">OpenTelemetry (Advanced - Optional)</Label>
+                  <div className="text-xs text-muted-foreground mb-2">
+                    Leave empty to send OTEL traces to Langfuse (recommended). Only configure if using separate OTEL Collector.
+                  </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div className="space-y-1 md:col-span-2">
-                      <Label htmlFor="otelEndpoint">OTEL_EXPORTER_OTLP_ENDPOINT</Label>
-                      <Input id="otelEndpoint" placeholder="http://otel-collector..." value={otelEndpoint} onChange={(e) => setOtelEndpoint(e.target.value)} />
+                      <Label htmlFor="otelEndpoint">OTEL_EXPORTER_OTLP_ENDPOINT (Optional)</Label>
+                      <Input
+                        id="otelEndpoint"
+                        placeholder="Leave empty for Langfuse"
+                        value={otelEndpoint}
+                        onChange={(e) => setOtelEndpoint(e.target.value)}
+                      />
+                      <div className="text-xs text-muted-foreground">If empty, traces are sent to Langfuse OTLP endpoint automatically</div>
                     </div>
                     <div className="space-y-1">
                       <Label htmlFor="otelServiceName">OTEL_SERVICE_NAME</Label>
                       <Input id="otelServiceName" placeholder="claude-code-runner" value={otelServiceName} onChange={(e) => setOtelServiceName(e.target.value)} />
-                      <div className="text-xs text-muted-foreground">Overridden to claude-SESSION_ID at runtime</div>
-                    </div>
-                    <div className="space-y-1">
-                      <Label htmlFor="otelProtocol">OTEL_EXPORTER_OTLP_PROTOCOL</Label>
-                      <Input id="otelProtocol" placeholder="grpc" value={otelProtocol} onChange={(e) => setOtelProtocol(e.target.value)} />
+                      <div className="text-xs text-muted-foreground">Dynamically set to claude-{"{session-id}"} at runtime</div>
                     </div>
                   </div>
                 </div>
