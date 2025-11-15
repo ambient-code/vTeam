@@ -29,7 +29,6 @@ import { ManageRemoteDialog } from "./components/modals/manage-remote-dialog";
 import { CommitChangesDialog } from "./components/modals/commit-changes-dialog";
 import { WorkflowsAccordion } from "./components/accordions/workflows-accordion";
 import { RepositoriesAccordion } from "./components/accordions/repositories-accordion";
-import { ArtifactsAccordion } from "./components/accordions/artifacts-accordion";
 
 // Extracted hooks and utilities
 import { useGitOperations } from "./hooks/use-git-operations";
@@ -256,20 +255,6 @@ export default function ProjectSessionDetailPage({
     sessionName,
     fileOps.currentSubPath ? `${selectedDirectory.path}/${fileOps.currentSubPath}` : selectedDirectory.path,
     { enabled: openAccordionItems.includes("directories") }
-  );
-  
-  // Artifacts file operations
-  const artifactsOps = useFileOperations({
-    projectName,
-    sessionName,
-    basePath: 'artifacts',
-  });
-  
-  const { data: artifactsFiles = [], refetch: refetchArtifactsFiles } = useWorkspaceList(
-    projectName,
-    sessionName,
-    artifactsOps.currentSubPath ? `artifacts/${artifactsOps.currentSubPath}` : 'artifacts',
-    { enabled: openAccordionItems.includes("artifacts") }
   );
   
   // Track if we've already initialized from session
@@ -725,17 +710,6 @@ export default function ProjectSessionDetailPage({
                       repositories={session?.spec?.repos || []}
                       onAddRepository={() => setContextModalOpen(true)}
                       onRemoveRepository={(repoName) => removeRepoMutation.mutate(repoName)}
-                    />
-
-                    <ArtifactsAccordion
-                      files={artifactsFiles}
-                      currentSubPath={artifactsOps.currentSubPath}
-                      viewingFile={artifactsOps.viewingFile}
-                      isLoadingFile={artifactsOps.loadingFile}
-                      onFileOrFolderSelect={artifactsOps.handleFileOrFolderSelect}
-                      onRefresh={refetchArtifactsFiles}
-                      onDownloadFile={artifactsOps.handleDownloadFile}
-                      onNavigateBack={artifactsOps.navigateBack}
                     />
 
                     {/* Experimental - File Explorer */}
