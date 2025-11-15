@@ -115,7 +115,7 @@ export default function ProjectSessionDetailPage({
   
   // Repo management mutations
   const addRepoMutation = useMutation({
-    mutationFn: async (repo: { url: string; branch: string; output?: { url: string; branch: string } }) => {
+    mutationFn: async (repo: { url: string; branch: string }) => {
       setRepoChanging(true);
       const response = await fetch(
         `/api/projects/${projectName}/agentic-sessions/${sessionName}/repos`,
@@ -311,7 +311,7 @@ export default function ProjectSessionDetailPage({
     
     if (session?.spec?.repos) {
       session.spec.repos.forEach((repo, idx) => {
-        const repoName = repo.input.url.split('/').pop()?.replace('.git', '') || `repo-${idx}`;
+        const repoName = repo.url.split('/').pop()?.replace('.git', '') || `repo-${idx}`;
         options.push({
           type: 'repo',
           name: repoName,
@@ -511,11 +511,8 @@ export default function ProjectSessionDetailPage({
     }
   };
 
-  const durationMs = useMemo(() => {
-    const start = session?.status?.startTime ? new Date(session.status.startTime).getTime() : undefined;
-    const end = session?.status?.completionTime ? new Date(session.status.completionTime).getTime() : Date.now();
-    return start ? Math.max(0, end - start) : undefined;
-  }, [session?.status?.startTime, session?.status?.completionTime]);
+  // Duration calculation removed - startTime/completionTime no longer in status
+  const durationMs = undefined;
 
   // Loading state
   if (isLoading || !projectName || !sessionName) {

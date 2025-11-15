@@ -32,7 +32,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import type { CreateAgenticSessionRequest } from "@/types/agentic-session";
 import { useCreateSession } from "@/services/queries/use-sessions";
@@ -49,8 +48,6 @@ const formSchema = z.object({
   temperature: z.number().min(0).max(2),
   maxTokens: z.number().min(100).max(8000),
   timeout: z.number().min(60).max(1800),
-  anthropicApiKey: z.string().optional(),
-  saveApiKeyForFuture: z.boolean(),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -77,8 +74,6 @@ export function CreateSessionDialog({
       temperature: 0.7,
       maxTokens: 4000,
       timeout: 300,
-      anthropicApiKey: "",
-      saveApiKeyForFuture: false,
     },
   });
 
@@ -95,9 +90,6 @@ export function CreateSessionDialog({
       },
       timeout: values.timeout,
     };
-
-    // Note: anthropicApiKey and saveApiKeyForFuture are form fields but not currently used by the backend
-    // TODO: Add support for these fields if needed in the future
 
     createSessionMutation.mutate(
       { projectName, data: request },
@@ -243,49 +235,6 @@ export function CreateSessionDialog({
                         )}
                       />
 
-                      {/* Bring Your Own Key Section */}
-                      <div className="pt-4 border-t">
-                        <FormField
-                          control={form.control}
-                          name="anthropicApiKey"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Bring Your Own Key</FormLabel>
-                              <FormControl>
-                                <Input
-                                  type="password"
-                                  placeholder="sk-ant-api03-..."
-                                  {...field}
-                                />
-                              </FormControl>
-                              <FormDescription>
-                                Optional: Use your own Anthropic API key for this session
-                              </FormDescription>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-
-                        <FormField
-                          control={form.control}
-                          name="saveApiKeyForFuture"
-                          render={({ field }) => (
-                            <FormItem className="flex flex-row items-start space-x-3 space-y-0 mt-3">
-                              <FormControl>
-                                <Checkbox
-                                  checked={field.value}
-                                  onCheckedChange={field.onChange}
-                                />
-                              </FormControl>
-                              <div className="space-y-1 leading-none">
-                                <FormLabel className="text-sm font-normal">
-                                  Save key for future sessions (encrypted)
-                                </FormLabel>
-                              </div>
-                            </FormItem>
-                          )}
-                        />
-                      </div>
                     </div>
                   </AccordionContent>
                 </AccordionItem>

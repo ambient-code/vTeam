@@ -12,19 +12,10 @@ export type GitRepository = {
     branch?: string;
 };
 
-// Unified multi-repo session mapping
-export type SessionRepoInput = {
-    url: string;
-    branch?: string;
-};
-export type SessionRepoOutput = {
-    url: string;
-    branch?: string;
-};
+// Simplified multi-repo session mapping
 export type SessionRepo = {
-    input: SessionRepoInput;
-    output?: SessionRepoOutput;
-    status?: "pushed" | "abandoned";
+    url: string;
+    branch?: string;
 };
 
 export type AgenticSessionSpec = {
@@ -36,7 +27,6 @@ export type AgenticSessionSpec = {
 	interactive?: boolean;
 	// Multi-repo support
 	repos?: SessionRepo[];
-	mainRepoIndex?: number;
 	// Active workflow for dynamic workflow switching
 	activeWorkflow?: {
 		gitUrl: string;
@@ -131,19 +121,7 @@ export type MessageObject = Message;
 export type AgenticSessionStatus = {
 	phase: AgenticSessionPhase;
 	message?: string;
-	startTime?: string;
-	completionTime?: string;
-	jobName?: string;
-  	// Storage & counts (align with CRD)
-  	stateDir?: string;
-	// Runner result summary fields
-	subtype?: string;
 	is_error?: boolean;
-	num_turns?: number;
-	session_id?: string;
-	total_cost_usd?: number | null;
-	usage?: Record<string, unknown> | null;
-	result?: string | null;
 };
 
 export type AgenticSession = {
@@ -168,10 +146,8 @@ export type CreateAgenticSessionRequest = {
 	parent_session_id?: string;
   	environmentVariables?: Record<string, string>;
 	interactive?: boolean;
-	workspacePath?: string;
 	// Multi-repo support
 	repos?: SessionRepo[];
-	mainRepoIndex?: number;
 	autoPushOnComplete?: boolean;
 	labels?: Record<string, string>;
 	annotations?: Record<string, string>;

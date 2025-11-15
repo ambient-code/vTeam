@@ -107,73 +107,26 @@ func parseSpec(spec map[string]interface{}) types.AgenticSessionSpec {
 		result.UserContext = uc
 	}
 
-	if botAccount, ok := spec["botAccount"].(map[string]interface{}); ok {
-		ba := &types.BotAccountRef{}
-		if name, ok := botAccount["name"].(string); ok {
-			ba.Name = name
-		}
-		result.BotAccount = ba
-	}
-
-	if resourceOverrides, ok := spec["resourceOverrides"].(map[string]interface{}); ok {
-		ro := &types.ResourceOverrides{}
-		if cpu, ok := resourceOverrides["cpu"].(string); ok {
-			ro.CPU = cpu
-		}
-		if memory, ok := resourceOverrides["memory"].(string); ok {
-			ro.Memory = memory
-		}
-		if storageClass, ok := resourceOverrides["storageClass"].(string); ok {
-			ro.StorageClass = storageClass
-		}
-		if priorityClass, ok := resourceOverrides["priorityClass"].(string); ok {
-			ro.PriorityClass = priorityClass
-		}
-		result.ResourceOverrides = ro
-	}
-
-	// Multi-repo parsing (unified repos)
+	// Multi-repo parsing (simplified format)
 	if arr, ok := spec["repos"].([]interface{}); ok {
-		repos := make([]types.SessionRepoMapping, 0, len(arr))
+		repos := make([]types.SimpleRepo, 0, len(arr))
 		for _, it := range arr {
 			m, ok := it.(map[string]interface{})
 			if !ok {
 				continue
 			}
-			r := types.SessionRepoMapping{}
-			if in, ok := m["input"].(map[string]interface{}); ok {
-				ng := types.NamedGitRepo{}
-				if s, ok := in["url"].(string); ok {
-					ng.URL = s
-				}
-				if s, ok := in["branch"].(string); ok && strings.TrimSpace(s) != "" {
-					ng.Branch = types.StringPtr(s)
-				}
-				r.Input = ng
+			r := types.SimpleRepo{}
+			if url, ok := m["url"].(string); ok {
+				r.URL = url
 			}
-			if out, ok := m["output"].(map[string]interface{}); ok {
-				og := &types.OutputNamedGitRepo{}
-				if s, ok := out["url"].(string); ok {
-					og.URL = s
-				}
-				if s, ok := out["branch"].(string); ok && strings.TrimSpace(s) != "" {
-					og.Branch = types.StringPtr(s)
-				}
-				r.Output = og
+			if branch, ok := m["branch"].(string); ok && strings.TrimSpace(branch) != "" {
+				r.Branch = types.StringPtr(branch)
 			}
-			// Include per-repo status if present
-			if st, ok := m["status"].(string); ok {
-				r.Status = types.StringPtr(st)
-			}
-			if strings.TrimSpace(r.Input.URL) != "" {
+			if strings.TrimSpace(r.URL) != "" {
 				repos = append(repos, r)
 			}
 		}
 		result.Repos = repos
-	}
-	if idx, ok := spec["mainRepoIndex"].(float64); ok {
-		idxInt := int(idx)
-		result.MainRepoIndex = &idxInt
 	}
 
 	// Parse activeWorkflow
@@ -194,7 +147,7 @@ func parseSpec(spec map[string]interface{}) types.AgenticSessionSpec {
 	return result
 }
 
-// parseStatus parses AgenticSessionStatus with v1alpha1 fields
+// parseStatus parses AgenticSessionStatus (simplified to phase, message, is_error)
 func parseStatus(status map[string]interface{}) *types.AgenticSessionStatus {
 	result := &types.AgenticSessionStatus{}
 
@@ -206,44 +159,8 @@ func parseStatus(status map[string]interface{}) *types.AgenticSessionStatus {
 		result.Message = message
 	}
 
-	if startTime, ok := status["startTime"].(string); ok {
-		result.StartTime = &startTime
-	}
-
-	if completionTime, ok := status["completionTime"].(string); ok {
-		result.CompletionTime = &completionTime
-	}
-
-	if jobName, ok := status["jobName"].(string); ok {
-		result.JobName = jobName
-	}
-
-	// New: result summary fields (top-level in status)
-	if st, ok := status["subtype"].(string); ok {
-		result.Subtype = st
-	}
-
 	if ie, ok := status["is_error"].(bool); ok {
 		result.IsError = ie
-	}
-	if nt, ok := status["num_turns"].(float64); ok {
-		result.NumTurns = int(nt)
-	}
-	if sid, ok := status["session_id"].(string); ok {
-		result.SessionID = sid
-	}
-	if tcu, ok := status["total_cost_usd"].(float64); ok {
-		result.TotalCostUSD = &tcu
-	}
-	if usage, ok := status["usage"].(map[string]interface{}); ok {
-		result.Usage = usage
-	}
-	if res, ok := status["result"].(string); ok {
-		result.Result = &res
-	}
-
-	if stateDir, ok := status["stateDir"].(string); ok {
-		result.StateDir = stateDir
 	}
 
 	return result
@@ -417,34 +334,19 @@ func CreateSession(c *gin.Context) {
 		session["spec"].(map[string]interface{})["autoPushOnComplete"] = *req.AutoPushOnComplete
 	}
 
-	// Set multi-repo configuration on spec
+	// Set multi-repo configuration on spec (simplified format)
 	{
 		spec := session["spec"].(map[string]interface{})
-		// Multi-repo pass-through (unified repos)
 		if len(req.Repos) > 0 {
 			arr := make([]map[string]interface{}, 0, len(req.Repos))
 			for _, r := range req.Repos {
-				m := map[string]interface{}{}
-				in := map[string]interface{}{"url": r.Input.URL}
-				if r.Input.Branch != nil {
-					in["branch"] = *r.Input.Branch
+				m := map[string]interface{}{"url": r.URL}
+				if r.Branch != nil {
+					m["branch"] = *r.Branch
 				}
-				m["input"] = in
-				if r.Output != nil {
-					out := map[string]interface{}{"url": r.Output.URL}
-					if r.Output.Branch != nil {
-						out["branch"] = *r.Output.Branch
-					}
-					m["output"] = out
-				}
-				// Remove default repo status; status will be set explicitly when pushed/abandoned
-				// m["status"] intentionally unset at creation time
 				arr = append(arr, m)
 			}
 			spec["repos"] = arr
-		}
-		if req.MainRepoIndex != nil {
-			spec["mainRepoIndex"] = *req.MainRepoIndex
 		}
 	}
 
@@ -478,33 +380,6 @@ func CreateSession(c *gin.Context) {
 				"displayName": displayName,
 				"groups":      groups,
 			}
-		}
-	}
-
-	// Add botAccount if provided
-	if req.BotAccount != nil {
-		session["spec"].(map[string]interface{})["botAccount"] = map[string]interface{}{
-			"name": req.BotAccount.Name,
-		}
-	}
-
-	// Add resourceOverrides if provided
-	if req.ResourceOverrides != nil {
-		resourceOverrides := make(map[string]interface{})
-		if req.ResourceOverrides.CPU != "" {
-			resourceOverrides["cpu"] = req.ResourceOverrides.CPU
-		}
-		if req.ResourceOverrides.Memory != "" {
-			resourceOverrides["memory"] = req.ResourceOverrides.Memory
-		}
-		if req.ResourceOverrides.StorageClass != "" {
-			resourceOverrides["storageClass"] = req.ResourceOverrides.StorageClass
-		}
-		if req.ResourceOverrides.PriorityClass != "" {
-			resourceOverrides["priorityClass"] = req.ResourceOverrides.PriorityClass
-		}
-		if len(resourceOverrides) > 0 {
-			session["spec"].(map[string]interface{})["resourceOverrides"] = resourceOverrides
 		}
 	}
 
@@ -1129,10 +1004,6 @@ func AddRepo(c *gin.Context) {
 	var req struct {
 		URL    string `json:"url" binding:"required"`
 		Branch string `json:"branch"`
-		Output *struct {
-			URL    string `json:"url"`
-			Branch string `json:"branch"`
-		} `json:"output,omitempty"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -1168,16 +1039,8 @@ func AddRepo(c *gin.Context) {
 	}
 
 	newRepo := map[string]interface{}{
-		"input": map[string]interface{}{
-			"url":    req.URL,
-			"branch": req.Branch,
-		},
-	}
-	if req.Output != nil {
-		newRepo["output"] = map[string]interface{}{
-			"url":    req.Output.URL,
-			"branch": req.Output.Branch,
-		}
+		"url":    req.URL,
+		"branch": req.Branch,
 	}
 	repos = append(repos, newRepo)
 	spec["repos"] = repos
@@ -1236,8 +1099,7 @@ func RemoveRepo(c *gin.Context) {
 	found := false
 	for _, r := range repos {
 		rm, _ := r.(map[string]interface{})
-		input, _ := rm["input"].(map[string]interface{})
-		url, _ := input["url"].(string)
+		url, _ := rm["url"].(string)
 		if DeriveRepoFolderFromURL(url) != repoName {
 			filteredRepos = append(filteredRepos, r)
 		} else {
@@ -2052,11 +1914,9 @@ func UpdateSessionStatus(c *gin.Context) {
 	}
 	status := item.Object["status"].(map[string]interface{})
 
-	// Accept standard fields and result summary fields from runner
+	// Accept only phase, message, is_error (simplified status)
 	allowed := map[string]struct{}{
-		"phase": {}, "completionTime": {}, "cost": {}, "message": {},
-		"subtype": {}, "duration_ms": {}, "duration_api_ms": {}, "is_error": {},
-		"num_turns": {}, "session_id": {}, "total_cost_usd": {}, "usage": {}, "result": {},
+		"phase": {}, "message": {}, "is_error": {},
 	}
 	for k := range statusUpdate {
 		if _, ok := allowed[k]; !ok {
@@ -2490,80 +2350,7 @@ func GetSessionK8sResources(c *gin.Context) {
 	c.JSON(http.StatusOK, result)
 }
 
-// setRepoStatus updates status.repos[idx] with status and diff info
-func setRepoStatus(dyn dynamic.Interface, project, sessionName string, repoIndex int, newStatus string) error {
-	gvr := GetAgenticSessionV1Alpha1Resource()
-	item, err := dyn.Resource(gvr).Namespace(project).Get(context.TODO(), sessionName, v1.GetOptions{})
-	if err != nil {
-		return err
-	}
-
-	// Get repo name from spec.repos[repoIndex]
-	spec, _ := item.Object["spec"].(map[string]interface{})
-	specRepos, _ := spec["repos"].([]interface{})
-	if repoIndex < 0 || repoIndex >= len(specRepos) {
-		return fmt.Errorf("repo index out of range")
-	}
-	specRepo, _ := specRepos[repoIndex].(map[string]interface{})
-	repoName := ""
-	if name, ok := specRepo["name"].(string); ok {
-		repoName = name
-	} else if input, ok := specRepo["input"].(map[string]interface{}); ok {
-		if url, ok := input["url"].(string); ok {
-			repoName = DeriveRepoFolderFromURL(url)
-		}
-	}
-	if repoName == "" {
-		repoName = fmt.Sprintf("repo-%d", repoIndex)
-	}
-
-	// Ensure status.repos exists
-	if item.Object["status"] == nil {
-		item.Object["status"] = make(map[string]interface{})
-	}
-	status := item.Object["status"].(map[string]interface{})
-	statusRepos, _ := status["repos"].([]interface{})
-	if statusRepos == nil {
-		statusRepos = []interface{}{}
-	}
-
-	// Find or create status entry for this repo
-	repoStatus := map[string]interface{}{
-		"name":         repoName,
-		"status":       newStatus,
-		"last_updated": time.Now().Format(time.RFC3339),
-	}
-
-	// Update existing or append new
-	found := false
-	for i, r := range statusRepos {
-		if rm, ok := r.(map[string]interface{}); ok {
-			if n, ok := rm["name"].(string); ok && n == repoName {
-				rm["status"] = newStatus
-				rm["last_updated"] = time.Now().Format(time.RFC3339)
-				statusRepos[i] = rm
-				found = true
-				break
-			}
-		}
-	}
-	if !found {
-		statusRepos = append(statusRepos, repoStatus)
-	}
-
-	status["repos"] = statusRepos
-	item.Object["status"] = status
-
-	updated, err := dyn.Resource(gvr).Namespace(project).UpdateStatus(context.TODO(), item, v1.UpdateOptions{})
-	if err != nil {
-		log.Printf("setRepoStatus: update failed project=%s session=%s repoIndex=%d status=%s err=%v", project, sessionName, repoIndex, newStatus, err)
-		return err
-	}
-	if updated != nil {
-		log.Printf("setRepoStatus: update ok project=%s session=%s repo=%s status=%s", project, sessionName, repoName, newStatus)
-	}
-	return nil
-}
+// setRepoStatus removed - status.repos no longer in CRD (status simplified to phase, message, is_error)
 
 // ListSessionWorkspace proxies to per-job content service for directory listing.
 func ListSessionWorkspace(c *gin.Context) {
@@ -2893,14 +2680,7 @@ func PushSessionRepo(c *gin.Context) {
 		c.Data(resp.StatusCode, "application/json", bodyBytes)
 		return
 	}
-	if DynamicClient != nil {
-		log.Printf("pushSessionRepo: setting repo status to 'pushed' for repoIndex=%d", body.RepoIndex)
-		if err := setRepoStatus(DynamicClient, project, session, body.RepoIndex, "pushed"); err != nil {
-			log.Printf("pushSessionRepo: setRepoStatus failed project=%s session=%s repoIndex=%d err=%v", project, session, body.RepoIndex, err)
-		}
-	} else {
-		log.Printf("pushSessionRepo: backend SA not available; cannot set repo status project=%s session=%s", project, session)
-	}
+	// Note: status.repos removed from CRD - no longer tracking per-repo status
 	log.Printf("pushSessionRepo: content push succeeded status=%d body.len=%d", resp.StatusCode, len(bodyBytes))
 	c.Data(http.StatusOK, "application/json", bodyBytes)
 }
@@ -2963,13 +2743,7 @@ func AbandonSessionRepo(c *gin.Context) {
 		c.Data(resp.StatusCode, "application/json", bodyBytes)
 		return
 	}
-	if DynamicClient != nil {
-		if err := setRepoStatus(DynamicClient, project, session, body.RepoIndex, "abandoned"); err != nil {
-			log.Printf("abandonSessionRepo: setRepoStatus failed project=%s session=%s repoIndex=%d err=%v", project, session, body.RepoIndex, err)
-		}
-	} else {
-		log.Printf("abandonSessionRepo: backend SA not available; cannot set repo status project=%s session=%s", project, session)
-	}
+	// Note: status.repos removed from CRD - no longer tracking per-repo status
 	c.Data(http.StatusOK, "application/json", bodyBytes)
 }
 

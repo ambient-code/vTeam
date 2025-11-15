@@ -35,22 +35,9 @@ export type LLMSettings = {
   maxTokens: number;
 };
 
-export type SessionRepoInput = {
-  url: string;
-  branch?: string;
-};
-
-export type SessionRepoOutput = {
-  url: string;
-  branch?: string;
-};
-
-export type SessionRepoStatus = 'pushed' | 'abandoned';
-
 export type SessionRepo = {
-  input: SessionRepoInput;
-  output?: SessionRepoOutput;
-  status?: SessionRepoStatus;
+  url: string;
+  branch?: string;
 };
 
 export type AgenticSessionSpec = {
@@ -72,17 +59,7 @@ export type AgenticSessionSpec = {
 export type AgenticSessionStatus = {
   phase: AgenticSessionPhase;
   message?: string;
-  startTime?: string;
-  completionTime?: string;
-  jobName?: string;
-  stateDir?: string;
-  subtype?: string;
   is_error?: boolean;
-  num_turns?: number;
-  session_id?: string;
-  total_cost_usd?: number | null;
-  usage?: Record<string, unknown> | null;
-  result?: string | null;
 };
 
 export type AgenticSession = {
@@ -107,13 +84,9 @@ export type CreateAgenticSessionRequest = {
   parent_session_id?: string;
   environmentVariables?: Record<string, string>;
   interactive?: boolean;
-  workspacePath?: string;
   repos?: SessionRepo[];
-  mainRepoIndex?: number;
   autoPushOnComplete?: boolean;
   userContext?: UserContext;
-  botAccount?: BotAccountRef;
-  resourceOverrides?: ResourceOverrides;
   labels?: Record<string, string>;
   annotations?: Record<string, string>;
 };

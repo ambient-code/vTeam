@@ -1,6 +1,5 @@
 "use client";
 
-import { format } from 'date-fns';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import type { AgenticSession } from '@/types/agentic-session';
@@ -74,12 +73,7 @@ export function SessionDetailsModal({
               <span className="text-gray-900">{session.spec?.interactive ? "Interactive" : "Headless"}</span>
             </div>
             
-            {session.status?.startTime && (
-              <div className="flex items-start gap-3">
-                <span className="font-semibold text-gray-700 min-w-[100px]">Started:</span>
-                <span className="text-gray-900">{format(new Date(session.status.startTime), "PPp")}</span>
-              </div>
-            )}
+            {/* startTime removed from simplified status */}
             
             <div className="flex items-start gap-3">
               <span className="font-semibold text-gray-700 min-w-[100px]">Duration:</span>
@@ -100,12 +94,7 @@ export function SessionDetailsModal({
               </div>
             )}
             
-            {session.status?.jobName && (
-              <div className="flex items-start gap-3">
-                <span className="font-semibold text-gray-700 min-w-[100px]">K8s Job:</span>
-                <span className="text-gray-900 font-mono break-all">{session.status.jobName}</span>
-              </div>
-            )}
+            {/* jobName removed from simplified status */}
             
             <div className="flex items-start gap-3">
               <span className="font-semibold text-gray-700 min-w-[100px]">Messages:</span>

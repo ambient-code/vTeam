@@ -20,46 +20,22 @@ type AgenticSessionSpec struct {
 	ResourceOverrides    *ResourceOverrides `json:"resourceOverrides,omitempty"`
 	EnvironmentVariables map[string]string  `json:"environmentVariables,omitempty"`
 	Project              string             `json:"project,omitempty"`
-	// Multi-repo support (unified mapping)
-	Repos         []SessionRepoMapping `json:"repos,omitempty"`
-	MainRepoIndex *int                 `json:"mainRepoIndex,omitempty"`
+	// Multi-repo support
+	Repos []SimpleRepo `json:"repos,omitempty"`
 	// Active workflow for dynamic workflow switching
 	ActiveWorkflow *WorkflowSelection `json:"activeWorkflow,omitempty"`
 }
 
-// NamedGitRepo represents named repository types for multi-repo session support.
-type NamedGitRepo struct {
+// SimpleRepo represents a simplified repository configuration
+type SimpleRepo struct {
 	URL    string  `json:"url"`
 	Branch *string `json:"branch,omitempty"`
-}
-
-type OutputNamedGitRepo struct {
-	URL    string  `json:"url"`
-	Branch *string `json:"branch,omitempty"`
-}
-
-// SessionRepoMapping is a unified session repo mapping.
-type SessionRepoMapping struct {
-	Input  NamedGitRepo        `json:"input"`
-	Output *OutputNamedGitRepo `json:"output,omitempty"`
-	Status *string             `json:"status,omitempty"`
 }
 
 type AgenticSessionStatus struct {
-	Phase          string  `json:"phase,omitempty"`
-	Message        string  `json:"message,omitempty"`
-	StartTime      *string `json:"startTime,omitempty"`
-	CompletionTime *string `json:"completionTime,omitempty"`
-	JobName        string  `json:"jobName,omitempty"`
-	StateDir       string  `json:"stateDir,omitempty"`
-	// Result summary fields from runner
-	Subtype      string                 `json:"subtype,omitempty"`
-	IsError      bool                   `json:"is_error,omitempty"`
-	NumTurns     int                    `json:"num_turns,omitempty"`
-	SessionID    string                 `json:"session_id,omitempty"`
-	TotalCostUSD *float64               `json:"total_cost_usd,omitempty"`
-	Usage        map[string]interface{} `json:"usage,omitempty"`
-	Result       *string                `json:"result,omitempty"`
+	Phase    string `json:"phase,omitempty"`
+	Message  string `json:"message,omitempty"`
+	IsError  bool   `json:"is_error,omitempty"`
 }
 
 type CreateAgenticSessionRequest struct {
@@ -68,15 +44,11 @@ type CreateAgenticSessionRequest struct {
 	LLMSettings     *LLMSettings `json:"llmSettings,omitempty"`
 	Timeout         *int         `json:"timeout,omitempty"`
 	Interactive     *bool        `json:"interactive,omitempty"`
-	WorkspacePath   string       `json:"workspacePath,omitempty"`
 	ParentSessionID string       `json:"parent_session_id,omitempty"`
-	// Multi-repo support (unified mapping)
-	Repos                []SessionRepoMapping `json:"repos,omitempty"`
-	MainRepoIndex        *int                 `json:"mainRepoIndex,omitempty"`
-	AutoPushOnComplete   *bool                `json:"autoPushOnComplete,omitempty"`
+	// Multi-repo support
+	Repos              []SimpleRepo `json:"repos,omitempty"`
+	AutoPushOnComplete *bool        `json:"autoPushOnComplete,omitempty"`
 	UserContext          *UserContext         `json:"userContext,omitempty"`
-	BotAccount           *BotAccountRef       `json:"botAccount,omitempty"`
-	ResourceOverrides    *ResourceOverrides   `json:"resourceOverrides,omitempty"`
 	EnvironmentVariables map[string]string    `json:"environmentVariables,omitempty"`
 	Labels               map[string]string    `json:"labels,omitempty"`
 	Annotations          map[string]string    `json:"annotations,omitempty"`

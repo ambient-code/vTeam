@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from 'react';
-import { formatDistanceToNow, format } from 'date-fns';
+import { formatDistanceToNow } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { RefreshCw, Octagon, Trash2, Copy, MoreVertical, Info, Play } from 'lucide-react';
@@ -46,9 +46,8 @@ export function SessionHeader({
   const canResume = phase === "Stopped";
   const canDelete = phase === "Completed" || phase === "Failed" || phase === "Stopped" || phase === "Error";
 
-  const started = session.status?.startTime 
-    ? format(new Date(session.status.startTime), "PPp")
-    : null;
+  // startTime removed from simplified status
+  const started = null;
 
   return (
     <>

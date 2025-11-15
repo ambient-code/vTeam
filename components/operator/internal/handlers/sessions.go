@@ -326,22 +326,61 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 		log.Printf("No %s secret found in %s (optional, skipping)", integrationSecretsName, sessionNamespace)
 	}
 
-	// Extract input/output git configuration (support flat and nested forms)
-	inputRepo, _, _ := unstructured.NestedString(spec, "inputRepo")
-	inputBranch, _, _ := unstructured.NestedString(spec, "inputBranch")
-	outputRepo, _, _ := unstructured.NestedString(spec, "outputRepo")
-	outputBranch, _, _ := unstructured.NestedString(spec, "outputBranch")
-	if v, found, _ := unstructured.NestedString(spec, "input", "repo"); found && strings.TrimSpace(v) != "" {
-		inputRepo = v
+	// Extract repos configuration (simplified format: url and branch)
+	type RepoConfig struct {
+		URL    string
+		Branch string
 	}
-	if v, found, _ := unstructured.NestedString(spec, "input", "branch"); found && strings.TrimSpace(v) != "" {
-		inputBranch = v
+	
+	var repos []RepoConfig
+	
+	// Read simplified repos[] array format
+	if reposArr, found, _ := unstructured.NestedSlice(spec, "repos"); found && len(reposArr) > 0 {
+		repos = make([]RepoConfig, 0, len(reposArr))
+		for _, repoItem := range reposArr {
+			if repoMap, ok := repoItem.(map[string]interface{}); ok {
+				repo := RepoConfig{}
+				if url, ok := repoMap["url"].(string); ok {
+					repo.URL = url
+				}
+				if branch, ok := repoMap["branch"].(string); ok {
+					repo.Branch = branch
+				} else {
+					repo.Branch = "main"
+				}
+				if repo.URL != "" {
+					repos = append(repos, repo)
+				}
+			}
+		}
+	} else {
+		// Fallback to old format for backward compatibility (input/output structure)
+		inputRepo, _, _ := unstructured.NestedString(spec, "inputRepo")
+		inputBranch, _, _ := unstructured.NestedString(spec, "inputBranch")
+		if v, found, _ := unstructured.NestedString(spec, "input", "repo"); found && strings.TrimSpace(v) != "" {
+			inputRepo = v
+		}
+		if v, found, _ := unstructured.NestedString(spec, "input", "branch"); found && strings.TrimSpace(v) != "" {
+			inputBranch = v
+		}
+		if inputRepo != "" {
+			if inputBranch == "" {
+				inputBranch = "main"
+			}
+			repos = []RepoConfig{{
+				URL:    inputRepo,
+				Branch: inputBranch,
+			}}
+		}
 	}
-	if v, found, _ := unstructured.NestedString(spec, "output", "repo"); found && strings.TrimSpace(v) != "" {
-		outputRepo = v
-	}
-	if v, found, _ := unstructured.NestedString(spec, "output", "branch"); found && strings.TrimSpace(v) != "" {
-		outputBranch = v
+	
+	// Get first repo for backward compatibility env vars (first repo is always main repo)
+	var inputRepo, inputBranch, outputRepo, outputBranch string
+	if len(repos) > 0 {
+		inputRepo = repos[0].URL
+		inputBranch = repos[0].Branch
+		outputRepo = repos[0].URL  // Output same as input in simplified format
+		outputBranch = repos[0].Branch
 	}
 
 	// Read autoPushOnComplete flag
@@ -465,22 +504,33 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 									{Name: "SESSION_ID", Value: name},
 									{Name: "WORKSPACE_PATH", Value: fmt.Sprintf("/workspace/sessions/%s/workspace", name)},
 									{Name: "ARTIFACTS_DIR", Value: "_artifacts"},
-									// Provide git input/output parameters to the runner
-									{Name: "INPUT_REPO_URL", Value: inputRepo},
-									{Name: "INPUT_BRANCH", Value: inputBranch},
-									{Name: "OUTPUT_REPO_URL", Value: outputRepo},
-									{Name: "OUTPUT_BRANCH", Value: outputBranch},
-									{Name: "PROMPT", Value: prompt},
-									{Name: "LLM_MODEL", Value: model},
-									{Name: "LLM_TEMPERATURE", Value: fmt.Sprintf("%.2f", temperature)},
-									{Name: "LLM_MAX_TOKENS", Value: fmt.Sprintf("%d", maxTokens)},
-									{Name: "TIMEOUT", Value: fmt.Sprintf("%d", timeout)},
-									{Name: "AUTO_PUSH_ON_COMPLETE", Value: fmt.Sprintf("%t", autoPushOnComplete)},
-									{Name: "BACKEND_API_URL", Value: fmt.Sprintf("http://backend-service.%s.svc.cluster.local:8080/api", appConfig.BackendNamespace)},
-									// WebSocket URL used by runner-shell to connect back to backend
-									{Name: "WEBSOCKET_URL", Value: fmt.Sprintf("ws://backend-service.%s.svc.cluster.local:8080/api/projects/%s/sessions/%s/ws", appConfig.BackendNamespace, sessionNamespace, name)},
-									// S3 disabled; backend persists messages
 								}
+								
+								// Add per-repo environment variables (simplified format)
+								for i, repo := range repos {
+									base = append(base,
+										corev1.EnvVar{Name: fmt.Sprintf("REPO_%d_URL", i), Value: repo.URL},
+										corev1.EnvVar{Name: fmt.Sprintf("REPO_%d_BRANCH", i), Value: repo.Branch},
+									)
+								}
+								
+								// Backward compatibility: set INPUT_REPO_URL/OUTPUT_REPO_URL from main repo
+								base = append(base,
+									corev1.EnvVar{Name: "INPUT_REPO_URL", Value: inputRepo},
+									corev1.EnvVar{Name: "INPUT_BRANCH", Value: inputBranch},
+									corev1.EnvVar{Name: "OUTPUT_REPO_URL", Value: outputRepo},
+									corev1.EnvVar{Name: "OUTPUT_BRANCH", Value: outputBranch},
+									corev1.EnvVar{Name: "PROMPT", Value: prompt},
+									corev1.EnvVar{Name: "LLM_MODEL", Value: model},
+									corev1.EnvVar{Name: "LLM_TEMPERATURE", Value: fmt.Sprintf("%.2f", temperature)},
+									corev1.EnvVar{Name: "LLM_MAX_TOKENS", Value: fmt.Sprintf("%d", maxTokens)},
+									corev1.EnvVar{Name: "TIMEOUT", Value: fmt.Sprintf("%d", timeout)},
+									corev1.EnvVar{Name: "AUTO_PUSH_ON_COMPLETE", Value: fmt.Sprintf("%t", autoPushOnComplete)},
+									corev1.EnvVar{Name: "BACKEND_API_URL", Value: fmt.Sprintf("http://backend-service.%s.svc.cluster.local:8080/api", appConfig.BackendNamespace)},
+									// WebSocket URL used by runner-shell to connect back to backend
+									corev1.EnvVar{Name: "WEBSOCKET_URL", Value: fmt.Sprintf("ws://backend-service.%s.svc.cluster.local:8080/api/projects/%s/sessions/%s/ws", appConfig.BackendNamespace, sessionNamespace, name)},
+									// S3 disabled; backend persists messages
+								)
 
 								// Add Vertex AI configuration only if enabled
 								if vertexEnabled {
@@ -681,10 +731,8 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 
 	// Update AgenticSession status to Running
 	if err := updateAgenticSessionStatus(sessionNamespace, name, map[string]interface{}{
-		"phase":     "Creating",
-		"message":   "Job is being set up",
-		"startTime": time.Now().Format(time.RFC3339),
-		"jobName":   jobName,
+		"phase":   "Creating",
+		"message": "Job is being set up",
 	}); err != nil {
 		log.Printf("Failed to update AgenticSession status to Creating: %v", err)
 		// Don't return error here - the job was created successfully
@@ -796,9 +844,9 @@ func monitorJob(jobName, sessionName, sessionNamespace string) {
 			if currentPhase != "Failed" && currentPhase != "Completed" && currentPhase != "Stopped" {
 				log.Printf("Job %s marked succeeded by Kubernetes, setting to Completed", jobName)
 				_ = updateAgenticSessionStatus(sessionNamespace, sessionName, map[string]interface{}{
-					"phase":          "Completed",
-					"message":        "Job completed successfully",
-					"completionTime": time.Now().Format(time.RFC3339),
+					"phase":   "Completed",
+					"message": "Job completed successfully",
+					"is_error": false,
 				})
 				// Ensure session is interactive so it can be restarted
 				_ = ensureSessionIsInteractive(sessionNamespace, sessionName)
@@ -833,9 +881,9 @@ func monitorJob(jobName, sessionName, sessionNamespace string) {
 				}
 				if currentPhase != "Failed" && currentPhase != "Completed" && currentPhase != "Stopped" {
 					_ = updateAgenticSessionStatus(sessionNamespace, sessionName, map[string]interface{}{
-						"phase":          "Failed",
-						"message":        failureMsg,
-						"completionTime": time.Now().Format(time.RFC3339),
+						"phase":    "Failed",
+						"message":  failureMsg,
+						"is_error": true,
 					})
 					// Ensure session is interactive so it can be restarted
 					_ = ensureSessionIsInteractive(sessionNamespace, sessionName)
@@ -898,9 +946,9 @@ func monitorJob(jobName, sessionName, sessionNamespace string) {
 					failureMsg := fmt.Sprintf("Pod failed: %s - %s", pod.Status.Reason, pod.Status.Message)
 					log.Printf("Job %s pod in Failed phase, updating session to Failed: %s", jobName, failureMsg)
 					_ = updateAgenticSessionStatus(sessionNamespace, sessionName, map[string]interface{}{
-						"phase":          "Failed",
-						"message":        failureMsg,
-						"completionTime": time.Now().Format(time.RFC3339),
+						"phase":    "Failed",
+						"message":  failureMsg,
+						"is_error": true,
 					})
 					_ = deleteJobAndPerJobService(sessionNamespace, jobName, sessionName)
 					return
@@ -1012,9 +1060,9 @@ func monitorJob(jobName, sessionName, sessionNamespace string) {
 			// Runner exit code 0 = success (fallback if wrapper didn't set status)
 			if term.ExitCode == 0 {
 				_ = updateAgenticSessionStatus(sessionNamespace, sessionName, map[string]interface{}{
-					"phase":          "Completed",
-					"message":        "Runner completed successfully",
-					"completionTime": time.Now().Format(time.RFC3339),
+					"phase":    "Completed",
+					"message":  "Runner completed successfully",
+					"is_error": false,
 				})
 				// Ensure session is interactive so it can be restarted
 				_ = ensureSessionIsInteractive(sessionNamespace, sessionName)
@@ -1029,8 +1077,9 @@ func monitorJob(jobName, sessionName, sessionNamespace string) {
 				msg = fmt.Sprintf("Runner container exited with code %d", term.ExitCode)
 			}
 			_ = updateAgenticSessionStatus(sessionNamespace, sessionName, map[string]interface{}{
-				"phase":   "Failed",
-				"message": msg,
+				"phase":    "Failed",
+				"message":  msg,
+				"is_error": true,
 			})
 			// Ensure session is interactive so it can be restarted
 			_ = ensureSessionIsInteractive(sessionNamespace, sessionName)
