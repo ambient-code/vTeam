@@ -68,8 +68,6 @@ export default function ProjectSessionDetailPage({
   const [contentPodSpawning, setContentPodSpawning] = useState(false);
   const [contentPodReady, setContentPodReady] = useState(false);
   const [contentPodError, setContentPodError] = useState<string | null>(null);
-  const [selectedAgents, setSelectedAgents] = useState<string[]>([]);
-  const [autoSelectAgents, setAutoSelectAgents] = useState(true);
   const [openAccordionItems, setOpenAccordionItems] = useState<string[]>(["workflows"]);
   const [contextModalOpen, setContextModalOpen] = useState(false);
   const [repoChanging, setRepoChanging] = useState(false);
@@ -389,28 +387,15 @@ export default function ProjectSessionDetailPage({
   };
 
   const sendChat = () => {
-    if (!chatInput.trim() && !selectedAgents.length && !autoSelectAgents) return;
+    if (!chatInput.trim()) return;
 
-    let finalMessage = chatInput.trim();
-
-    if (autoSelectAgents) {
-      finalMessage = "You MUST use relevant sub-agents when needed based on the task at hand. " + finalMessage;
-    } else if (selectedAgents.length > 0) {
-      const agentNames = selectedAgents
-        .map(id => workflowMetadata?.agents?.find(a => a.id === id))
-        .filter(Boolean)
-        .map(agent => agent!.name)
-        .join(', ');
-
-      finalMessage = `You MUST collaborate with these agents: ${agentNames}. ` + finalMessage;
-    }
+    const finalMessage = chatInput.trim();
 
     sendChatMutation.mutate(
       { projectName, sessionName, content: finalMessage },
       {
         onSuccess: () => {
           setChatInput("");
-          setSelectedAgents([]);
         },
         onError: (err) => errorToast(err instanceof Error ? err.message : "Failed to send message"),
       }
@@ -418,26 +403,13 @@ export default function ProjectSessionDetailPage({
   };
 
   const handleCommandClick = (slashCommand: string) => {
-    let finalMessage = slashCommand;
-
-    if (autoSelectAgents) {
-      finalMessage = "You MUST use relevant sub-agents when needed based on the task at hand. " + finalMessage;
-    } else if (selectedAgents.length > 0) {
-      const agentNamesStr = selectedAgents
-        .map(id => workflowMetadata?.agents?.find(a => a.id === id))
-        .filter(Boolean)
-        .map(agent => agent!.name)
-        .join(', ');
-
-      finalMessage = `You MUST collaborate with these agents: ${agentNamesStr}. ` + finalMessage;
-    }
+    const finalMessage = slashCommand;
 
     sendChatMutation.mutate(
       { projectName, sessionName, content: finalMessage },
       {
         onSuccess: () => {
           successToast(`Command ${slashCommand} sent`);
-          setSelectedAgents([]);
         },
         onError: (err) => errorToast(err instanceof Error ? err.message : "Failed to send command"),
       }
@@ -651,14 +623,10 @@ export default function ProjectSessionDetailPage({
                       workflowActivating={workflowManagement.workflowActivating}
                       workflowMetadata={workflowMetadata}
                       ootbWorkflows={ootbWorkflows}
-                      selectedAgents={selectedAgents}
-                      autoSelectAgents={autoSelectAgents}
                       isExpanded={openAccordionItems.includes("workflows")}
                       onWorkflowChange={handleWorkflowChange}
                       onActivateWorkflow={workflowManagement.activateWorkflow}
                       onCommandClick={handleCommandClick}
-                      onSetSelectedAgents={setSelectedAgents}
-                      onSetAutoSelectAgents={setAutoSelectAgents}
                       onResume={handleContinue}
                     />
 
@@ -1019,11 +987,7 @@ export default function ProjectSessionDetailPage({
                         onEndSession={() => Promise.resolve(handleEndSession())}
                         onGoToResults={() => {}}
                         onContinue={handleContinue}
-                        selectedAgents={selectedAgents}
-                        autoSelectAgents={autoSelectAgents}
                         workflowMetadata={workflowMetadata}
-                        onSetSelectedAgents={setSelectedAgents}
-                        onSetAutoSelectAgents={setAutoSelectAgents}
                         onCommandClick={handleCommandClick}
                       />
                     </div>

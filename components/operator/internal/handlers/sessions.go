@@ -313,13 +313,13 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 
 	// Hardcoded secret names (convention over configuration)
 	const runnerSecretsName = "ambient-runner-secrets"               // ANTHROPIC_API_KEY only (ignored when Vertex enabled)
-	const integrationSecretsName = "ambient-non-vertex-integrations" // GIT_*, JIRA_*, custom keys (optional)
+	const integrationSecretsName = "ambient-non-vertex-integrations" // GIT_*, JIRA_*, LANGFUSE_*, OTEL_*, custom keys (optional)
 
-	// Check if integration secrets exist (optional)
+	// Check if integration secrets exist (includes observability keys: LANGFUSE_*, OTEL_*)
 	integrationSecretsExist := false
 	if _, err := config.K8sClient.CoreV1().Secrets(sessionNamespace).Get(context.TODO(), integrationSecretsName, v1.GetOptions{}); err == nil {
 		integrationSecretsExist = true
-		log.Printf("Found %s secret in %s, will inject as env vars", integrationSecretsName, sessionNamespace)
+		log.Printf("Found %s secret in %s, will inject as env vars (includes observability keys)", integrationSecretsName, sessionNamespace)
 	} else if !errors.IsNotFound(err) {
 		log.Printf("Error checking for %s secret in %s: %v", integrationSecretsName, sessionNamespace, err)
 	} else {
@@ -588,6 +588,9 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 							// Import secrets as environment variables
 							// - integrationSecretsName: Only if exists (GIT_TOKEN, JIRA_*, custom keys)
 							// - runnerSecretsName: Only when Vertex disabled (ANTHROPIC_API_KEY)
+							// - langfuseKeysSecretName: Only if exists (LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY)
+							// - langfuseConfigMapName: Only if exists (LANGFUSE_HOST, LANGFUSE_ENABLED)
+							// - otelConfigMapName: Only if exists (OTEL_EXPORTER_OTLP_ENDPOINT, OTEL_SERVICE_NAME, etc.)
 							EnvFrom: func() []corev1.EnvFromSource {
 								sources := []corev1.EnvFromSource{}
 
@@ -614,6 +617,9 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 								} else if vertexEnabled && runnerSecretsName != "" {
 									log.Printf("Skipping runner secrets '%s' for session %s (Vertex enabled)", runnerSecretsName, name)
 								}
+
+								// Note: Observability keys (LANGFUSE_*, OTEL_*) are now in ambient-non-vertex-integrations
+								// No separate secrets/configmaps needed
 
 								return sources
 							}(),
