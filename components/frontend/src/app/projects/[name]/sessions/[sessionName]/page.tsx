@@ -1,8 +1,10 @@
 "use client";
 
 import { useState, useEffect, useMemo, useRef } from "react";
-import { Loader2, FolderTree, GitBranch, Edit, RefreshCw, Folder, Sparkles, X, CloudUpload, CloudDownload, MoreVertical, Cloud, FolderSync, Download, LibraryBig, MessageSquare } from "lucide-react";
+import { Loader2, FolderTree, AlertCircle, GitBranch, Edit, RefreshCw, Folder, Sparkles, X, CloudUpload, CloudDownload, MoreVertical, Cloud, FolderSync, Download, FileCheck, CheckCircle2, Clock, LibraryBig, MessageSquare } from "lucide-react";
 import { useRouter } from "next/navigation";
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 // Custom components
 import MessagesTab from "@/components/session/MessagesTab";
@@ -27,7 +29,6 @@ import { ManageRemoteDialog } from "./components/modals/manage-remote-dialog";
 import { CommitChangesDialog } from "./components/modals/commit-changes-dialog";
 import { WorkflowsAccordion } from "./components/accordions/workflows-accordion";
 import { RepositoriesAccordion } from "./components/accordions/repositories-accordion";
-import { ArtifactsAccordion } from "./components/accordions/artifacts-accordion";
 
 // Extracted hooks and utilities
 import { useGitOperations } from "./hooks/use-git-operations";
@@ -52,7 +53,8 @@ import {
 } from "@/services/queries";
 import { useWorkspaceList, useGitMergeStatus, useGitListBranches } from "@/services/queries/use-workspace";
 import { successToast, errorToast } from "@/hooks/use-toast";
-import { useOOTBWorkflows, useWorkflowMetadata } from "@/services/queries/use-workflows";
+import { useOOTBWorkflows, useWorkflowMetadata, useWorkflowResults } from "@/services/queries/use-workflows";
+import { cn } from "@/lib/utils";
 import { useMutation } from "@tanstack/react-query";
 
 export default function ProjectSessionDetailPage({
@@ -74,6 +76,13 @@ export default function ProjectSessionDetailPage({
   const [contextModalOpen, setContextModalOpen] = useState(false);
   const [repoChanging, setRepoChanging] = useState(false);
   const [firstMessageLoaded, setFirstMessageLoaded] = useState(false);
+  
+  // Tabbed interface state
+  const [openTabs, setOpenTabs] = useState<Array<{id: string; name: string; path: string; content: string}>>([{id: 'chat', name: 'Chat', path: '', content: ''}]);
+  const [activeTab, setActiveTab] = useState<string>('chat');
+  
+  // Maximum number of open tabs to prevent memory issues
+  const MAX_TABS = 10;
   
   // Directory browser state (unified for artifacts, repos, and workflow)
   const [selectedDirectory, setSelectedDirectory] = useState<DirectoryOption>({
@@ -204,6 +213,12 @@ export default function ProjectSessionDetailPage({
     !!workflowManagement.activeWorkflow && !workflowManagement.workflowActivating
   );
   
+  // Fetch workflow results
+  const { data: workflowResults } = useWorkflowResults(
+    projectName,
+    sessionName
+  );
+  
   // Git operations for selected directory
   const currentRemote = directoryRemotes[selectedDirectory.path];
   const { data: mergeStatus, refetch: refetchMergeStatus } = useGitMergeStatus(
@@ -240,20 +255,6 @@ export default function ProjectSessionDetailPage({
     sessionName,
     fileOps.currentSubPath ? `${selectedDirectory.path}/${fileOps.currentSubPath}` : selectedDirectory.path,
     { enabled: openAccordionItems.includes("directories") }
-  );
-  
-  // Artifacts file operations
-  const artifactsOps = useFileOperations({
-    projectName,
-    sessionName,
-    basePath: 'artifacts',
-  });
-  
-  const { data: artifactsFiles = [], refetch: refetchArtifactsFiles } = useWorkspaceList(
-    projectName,
-    sessionName,
-    artifactsOps.currentSubPath ? `artifacts/${artifactsOps.currentSubPath}` : 'artifacts',
-    { enabled: openAccordionItems.includes("artifacts") }
   );
   
   // Track if we've already initialized from session
@@ -304,6 +305,49 @@ export default function ProjectSessionDetailPage({
     setDirectoryRemotes(remotes);
     initializedFromSessionRef.current = true;
   }, [session, ootbWorkflows, workflowManagement]);
+
+  // Memoize results by path for efficient lookup
+  const resultsByPath = useMemo(() => {
+    if (!workflowResults?.results) return new Map<string, string>();
+    const map = new Map<string, string>();
+    workflowResults.results.forEach(r => {
+      if (r.exists && r.content) {
+        map.set(r.path, r.content);
+      }
+    });
+    return map;
+  }, [workflowResults?.results]);
+
+  // Sync open tabs with latest workflow results (auto-refresh tab content)
+  // Only updates when content actually changes, not on every poll
+  useEffect(() => {
+    if (resultsByPath.size === 0) return;
+    
+    setOpenTabs(prevTabs => {
+      let hasChanges = false;
+      const updatedTabs = prevTabs.map(tab => {
+        // Don't update chat tab
+        if (tab.id === 'chat') return tab;
+        
+        // Get latest content for this path
+        const latestContent = resultsByPath.get(tab.path);
+        
+        // Only update if content actually changed
+        if (latestContent && latestContent !== tab.content) {
+          hasChanges = true;
+          return {
+            ...tab,
+            content: latestContent
+          };
+        }
+        
+        return tab;
+      });
+      
+      // Only trigger state update if something actually changed
+      return hasChanges ? updatedTabs : prevTabs;
+    });
+  }, [resultsByPath]);
 
   // Compute directory options
   const directoryOptions = useMemo<DirectoryOption[]>(() => {
@@ -550,8 +594,8 @@ export default function ProjectSessionDetailPage({
     return (
       <div className="absolute inset-0 top-16 overflow-hidden bg-[#f8fafc] flex items-center justify-center">
         <div className="flex items-center">
-          <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
-          <span className="ml-2">Loading session...</span>
+            <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
+            <span className="ml-2">Loading session...</span>
         </div>
       </div>
     );
@@ -592,54 +636,54 @@ export default function ProjectSessionDetailPage({
       <div className="absolute inset-0 top-16 overflow-hidden bg-[#f8fafc] flex flex-col">
         {/* Fixed header */}
         <div className="flex-shrink-0 bg-white border-b">
-          <div className="container mx-auto px-6 py-4">
-            <Breadcrumbs
-              items={[
-                { label: 'Workspaces', href: '/projects' },
-                { label: projectName, href: `/projects/${projectName}` },
-                { label: 'Sessions', href: `/projects/${projectName}/sessions` },
-                { label: session.spec.displayName || session.metadata.name },
-              ]}
-              className="mb-4"
-            />
-            <SessionHeader
-              session={session}
-              projectName={projectName}
-              actionLoading={
-                stopMutation.isPending ? "stopping" :
-                deleteMutation.isPending ? "deleting" :
+        <div className="container mx-auto px-6 py-4">
+          <Breadcrumbs
+            items={[
+              { label: 'Workspaces', href: '/projects' },
+              { label: projectName, href: `/projects/${projectName}` },
+              { label: 'Sessions', href: `/projects/${projectName}/sessions` },
+              { label: session.spec.displayName || session.metadata.name },
+            ]}
+            className="mb-4"
+          />
+          <SessionHeader
+                      session={session}
+            projectName={projectName}
+            actionLoading={
+              stopMutation.isPending ? "stopping" :
+              deleteMutation.isPending ? "deleting" :
                 continueMutation.isPending ? "resuming" :
-                null
-              }
-              onRefresh={refetchSession}
-              onStop={handleStop}
+              null
+            }
+            onRefresh={refetchSession}
+            onStop={handleStop}
               onContinue={handleContinue}
-              onDelete={handleDelete}
-              durationMs={durationMs}
-              k8sResources={k8sResources}
-              messageCount={messages.length}
-            />
-          </div>
+            onDelete={handleDelete}
+            durationMs={durationMs}
+            k8sResources={k8sResources}
+            messageCount={messages.length}
+          />
         </div>
+      </div>
 
         {/* Main content area */}
         <div className="flex-grow overflow-hidden">
           <div className="h-full container mx-auto px-6 py-6">
             <div className="h-full flex gap-6">
-              {/* Left Column - Accordions */}
+          {/* Left Column - Accordions */}
               <div className="w-2/5 flex flex-col min-w-0 relative">
                 {/* Blocking overlay when first message hasn't loaded and session is pending */}
                 {!firstMessageLoaded && session?.status?.phase === 'Pending' && (
                   <div className="absolute inset-0 bg-white/60 backdrop-blur-sm rounded-lg z-20 flex items-center justify-center">
                     <div className="flex flex-col items-center justify-center text-center text-muted-foreground">
                       <LibraryBig className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                      <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2">
                         <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
                         <p className="text-sm">No context yet</p>
-                      </div>
-                      <p className="text-xs mt-1">Context will appear once the session starts...</p>
-                    </div>
                   </div>
+                      <p className="text-xs mt-1">Context will appear once the session starts...</p>
+                                </div>
+                                  </div>
                 )}
                 <div className={`overflow-y-auto flex-grow pb-6 ${!firstMessageLoaded && session?.status?.phase === 'Pending' ? 'pointer-events-none opacity-50' : ''}`}>
                   <Accordion type="multiple" value={openAccordionItems} onValueChange={setOpenAccordionItems} className="w-full space-y-3">
@@ -668,289 +712,278 @@ export default function ProjectSessionDetailPage({
                       onRemoveRepository={(repoName) => removeRepoMutation.mutate(repoName)}
                     />
 
-                    <ArtifactsAccordion
-                      files={artifactsFiles}
-                      currentSubPath={artifactsOps.currentSubPath}
-                      viewingFile={artifactsOps.viewingFile}
-                      isLoadingFile={artifactsOps.loadingFile}
-                      onFileOrFolderSelect={artifactsOps.handleFileOrFolderSelect}
-                      onRefresh={refetchArtifactsFiles}
-                      onDownloadFile={artifactsOps.handleDownloadFile}
-                      onNavigateBack={artifactsOps.navigateBack}
-                    />
-
                     {/* Experimental - File Explorer */}
                     <AccordionItem value="experimental" className="border rounded-lg px-3 bg-white">
-                      <AccordionTrigger className="text-base font-semibold hover:no-underline py-3">
-                        <div className="flex items-center gap-2">
+                <AccordionTrigger className="text-base font-semibold hover:no-underline py-3">
+                  <div className="flex items-center gap-2">
                           <Sparkles className="h-4 w-4" />
                           <span>Experimental</span>
-                        </div>
-                      </AccordionTrigger>
-                      <AccordionContent className="pt-2 pb-3">
-                        <div className="space-y-3">
+                  </div>
+                </AccordionTrigger>
+                <AccordionContent className="pt-2 pb-3">
+                    <div className="space-y-3">
                           <Accordion 
                             type="multiple" 
                             value={openAccordionItems} 
                             onValueChange={setOpenAccordionItems}
                           >
                             <AccordionItem value="directories" className="border rounded-lg px-3 bg-muted/10">
-                              <AccordionTrigger className="text-base font-semibold hover:no-underline py-3">
-                                <div className="flex items-center gap-2 w-full">
-                                  <Folder className="h-4 w-4" />
-                                  <span>File Explorer</span>
+                <AccordionTrigger className="text-base font-semibold hover:no-underline py-3">
+                  <div className="flex items-center gap-2 w-full">
+                    <Folder className="h-4 w-4" />
+                    <span>File Explorer</span>
                                   {gitOps.gitStatus?.hasChanges && (
-                                    <div className="flex gap-1 ml-auto mr-2">
+                      <div className="flex gap-1 ml-auto mr-2">
                                       {(gitOps.gitStatus?.totalAdded ?? 0) > 0 && (
-                                        <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                          <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
                                           +{gitOps.gitStatus.totalAdded}
-                                        </Badge>
-                                      )}
+                          </Badge>
+                        )}
                                       {(gitOps.gitStatus?.totalRemoved ?? 0) > 0 && (
-                                        <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
+                          <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
                                           -{gitOps.gitStatus.totalRemoved}
-                                        </Badge>
-                                      )}
-                                    </div>
-                                  )}
-                                </div>
-                              </AccordionTrigger>
-                              <AccordionContent className="pt-2 pb-3">
-                                <div className="space-y-3">
-                                  <p className="text-sm text-muted-foreground">
-                                    Browse, view, and manage files in your workspace directories. Track changes and sync with Git for version control.
-                                  </p>
-                                  
-                                  {/* Directory Selector */}
-                                  <div className="flex items-center justify-between gap-2">
-                                    <Label className="text-xs text-muted-foreground">Directory:</Label>
-                                    <Select
-                                      value={`${selectedDirectory.type}:${selectedDirectory.path}`}
-                                      onValueChange={(value) => {
-                                        const [type, ...pathParts] = value.split(':');
-                                        const path = pathParts.join(':');
-                                        const option = directoryOptions.find(
-                                          opt => opt.type === type && opt.path === path
-                                        );
-                                        if (option) setSelectedDirectory(option);
-                                      }}
-                                    >
-                                      <SelectTrigger className="w-[250px] h-8">
-                                        <SelectValue />
-                                      </SelectTrigger>
-                                      <SelectContent>
-                                        {directoryOptions.map(opt => (
-                                          <SelectItem key={`${opt.type}:${opt.path}`} value={`${opt.type}:${opt.path}`}>
-                                            <div className="flex items-center gap-2">
-                                              {opt.type === 'artifacts' && <Folder className="h-3 w-3" />}
-                                              {opt.type === 'repo' && <GitBranch className="h-3 w-3" />}
-                                              {opt.type === 'workflow' && <Sparkles className="h-3 w-3" />}
-                                              <span className="text-xs">{opt.name}</span>
-                                            </div>
-                                          </SelectItem>
-                                        ))}
-                                      </SelectContent>
-                                    </Select>
-                                  </div>
-                                  
+                      </Badge>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </AccordionTrigger>
+                <AccordionContent className="pt-2 pb-3">
+                  <div className="space-y-3">
+                    <p className="text-sm text-muted-foreground">
+                      Browse, view, and manage files in your workspace directories. Track changes and sync with Git for version control.
+                    </p>
+                    
+                    {/* Directory Selector */}
+                    <div className="flex items-center justify-between gap-2">
+                      <Label className="text-xs text-muted-foreground">Directory:</Label>
+                      <Select
+                        value={`${selectedDirectory.type}:${selectedDirectory.path}`}
+                        onValueChange={(value) => {
+                          const [type, ...pathParts] = value.split(':');
+                          const path = pathParts.join(':');
+                          const option = directoryOptions.find(
+                            opt => opt.type === type && opt.path === path
+                          );
+                          if (option) setSelectedDirectory(option);
+                        }}
+                      >
+                        <SelectTrigger className="w-[250px] h-8">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {directoryOptions.map(opt => (
+                            <SelectItem key={`${opt.type}:${opt.path}`} value={`${opt.type}:${opt.path}`}>
+                              <div className="flex items-center gap-2">
+                                {opt.type === 'artifacts' && <Folder className="h-3 w-3" />}
+                                {opt.type === 'repo' && <GitBranch className="h-3 w-3" />}
+                                {opt.type === 'workflow' && <Sparkles className="h-3 w-3" />}
+                                <span className="text-xs">{opt.name}</span>
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    
                                   {/* File Browser */}
-                                  <div className="border rounded-lg overflow-hidden">
-                                    <div className="px-2 py-1.5 border-b flex items-center justify-between bg-muted/30">
-                                      <div className="flex items-center gap-1 text-xs text-muted-foreground min-w-0 flex-1">
+                    <div className="border rounded-lg overflow-hidden">
+                      <div className="px-2 py-1.5 border-b flex items-center justify-between bg-muted/30">
+                        <div className="flex items-center gap-1 text-xs text-muted-foreground min-w-0 flex-1">
                                         {(fileOps.currentSubPath || fileOps.viewingFile) && (
-                                          <Button 
-                                            variant="ghost" 
-                                            size="sm" 
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
                                             onClick={fileOps.navigateBack}
-                                            className="h-6 px-1.5 mr-1"
-                                          >
-                                            ← Back
-                                          </Button>
-                                        )}
-                                        
-                                        <Folder className="inline h-3 w-3 mr-1 flex-shrink-0" />
-                                        <code className="bg-muted px-1 py-0.5 rounded text-xs truncate">
-                                          {selectedDirectory.path}
+                              className="h-6 px-1.5 mr-1"
+                            >
+                              ← Back
+                            </Button>
+                          )}
+                          
+                          <Folder className="inline h-3 w-3 mr-1 flex-shrink-0" />
+                          <code className="bg-muted px-1 py-0.5 rounded text-xs truncate">
+                            {selectedDirectory.path}
                                           {fileOps.currentSubPath && `/${fileOps.currentSubPath}`}
                                           {fileOps.viewingFile && `/${fileOps.viewingFile.path}`}
-                                        </code>
-                                      </div>
+                          </code>
+                        </div>
 
                                       {fileOps.viewingFile ? (
-                                        <div className="flex items-center gap-1">
-                                          <Button
-                                            variant="ghost"
-                                            size="sm"
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
                                             onClick={fileOps.handleDownloadFile}
-                                            className="h-6 px-2 flex-shrink-0"
-                                            title="Download file"
-                                          >
-                                            <Download className="h-3 w-3" />
-                                          </Button>
-                                          <DropdownMenu>
-                                            <DropdownMenuTrigger asChild>
-                                              <Button variant="ghost" size="sm" className="h-6 px-2 flex-shrink-0">
-                                                <MoreVertical className="h-3 w-3" />
-                                              </Button>
-                                            </DropdownMenuTrigger>
-                                            <DropdownMenuContent align="end">
-                                              <DropdownMenuItem disabled className="text-xs text-muted-foreground">
-                                                Sync to Jira - Coming soon
-                                              </DropdownMenuItem>
-                                              <DropdownMenuItem disabled className="text-xs text-muted-foreground">
-                                                Sync to GDrive - Coming soon
-                                              </DropdownMenuItem>
-                                            </DropdownMenuContent>
-                                          </DropdownMenu>
-                                        </div>
-                                      ) : (
-                                        <Button variant="ghost" size="sm" onClick={() => refetchDirectoryFiles()} className="h-6 px-2 flex-shrink-0">
-                                          <FolderSync className="h-3 w-3" />
-                                        </Button>
-                                      )}
-                                    </div>
-                                    
-                                    <div className="p-2 max-h-64 overflow-y-auto">
+                              className="h-6 px-2 flex-shrink-0"
+                              title="Download file"
+                            >
+                              <Download className="h-3 w-3" />
+                            </Button>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="sm" className="h-6 px-2 flex-shrink-0">
+                                  <MoreVertical className="h-3 w-3" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem disabled className="text-xs text-muted-foreground">
+                                  Sync to Jira - Coming soon
+                                </DropdownMenuItem>
+                                <DropdownMenuItem disabled className="text-xs text-muted-foreground">
+                                  Sync to GDrive - Coming soon
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+                        ) : (
+                          <Button variant="ghost" size="sm" onClick={() => refetchDirectoryFiles()} className="h-6 px-2 flex-shrink-0">
+                            <FolderSync className="h-3 w-3" />
+                        </Button>
+                        )}
+                      </div>
+                      
+                      <div className="p-2 max-h-64 overflow-y-auto">
                                       {fileOps.loadingFile ? (
-                                        <div className="flex items-center justify-center py-8">
-                                          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                                        </div>
+                          <div className="flex items-center justify-center py-8">
+                            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                          </div>
                                       ) : fileOps.viewingFile ? (
-                                        <div className="text-xs">
-                                          <pre className="bg-muted/50 p-2 rounded overflow-x-auto">
+                          <div className="text-xs">
+                            <pre className="bg-muted/50 p-2 rounded overflow-x-auto">
                                             <code>{fileOps.viewingFile.content}</code>
-                                          </pre>
-                                        </div>
-                                      ) : directoryFiles.length === 0 ? (
-                                        <div className="text-center py-4 text-sm text-muted-foreground">
-                                          <FolderTree className="h-8 w-8 mx-auto mb-2 opacity-30" />
-                                          <p>No files yet</p>
-                                          <p className="text-xs mt-1">Files will appear here</p>
-                                        </div>
-                                      ) : (
-                                        <FileTree 
-                                          nodes={directoryFiles.map((item): FileTreeNode => ({
-                                            name: item.name,
-                                            path: item.path,
-                                            type: item.isDir ? 'folder' : 'file',
-                                            sizeKb: item.size ? item.size / 1024 : undefined,
-                                          }))}
+                            </pre>
+                          </div>
+                        ) : directoryFiles.length === 0 ? (
+                          <div className="text-center py-4 text-sm text-muted-foreground">
+                            <FolderTree className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                            <p>No files yet</p>
+                            <p className="text-xs mt-1">Files will appear here</p>
+                          </div>
+                        ) : (
+                          <FileTree 
+                            nodes={directoryFiles.map((item): FileTreeNode => ({
+                              name: item.name,
+                              path: item.path,
+                              type: item.isDir ? 'folder' : 'file',
+                              sizeKb: item.size ? item.size / 1024 : undefined,
+                            }))}
                                           onSelect={fileOps.handleFileOrFolderSelect}
-                                        />
-                                      )}
-                                    </div>
-                                  </div>
-                                  
+                          />
+                        )}
+                      </div>
+                    </div>
+                    
                                   {/* Remote Configuration */}
-                                  {!currentRemote ? (
-                                    <div className="border border-blue-200 bg-blue-50 rounded-md px-3 py-2 flex items-center justify-between">
-                                      <span className="text-sm text-blue-800">Set up Git remote for version control</span>
+                    {!currentRemote ? (
+                      <div className="border border-blue-200 bg-blue-50 rounded-md px-3 py-2 flex items-center justify-between">
+                        <span className="text-sm text-blue-800">Set up Git remote for version control</span>
                                       <Button onClick={() => setRemoteDialogOpen(true)} size="sm" variant="outline">
-                                        <GitBranch className="mr-2 h-3 w-3" />
-                                        Configure
-                                      </Button>
-                                    </div>
-                                  ) : (
-                                    <div className="border rounded-md px-2 py-1.5">
-                                      <div className="flex items-center gap-2 text-xs">
-                                        <div className="flex items-center gap-1.5 text-muted-foreground">
-                                          <Cloud className="h-3 w-3" />
-                                          <span className="truncate max-w-[200px]">
-                                            {currentRemote?.url?.split('/').slice(-2).join('/').replace('.git', '') || ''}/{currentRemote?.branch || 'main'}
-                                          </span>
-                                        </div>
-                                        
-                                        <div className="flex-1" />
-                                        
-                                        {mergeStatus && !mergeStatus.canMergeClean ? (
-                                          <div className="flex items-center gap-1 text-red-600">
-                                            <X className="h-3 w-3" />
-                                            <span className="font-medium">conflict</span>
-                                          </div>
+                          <GitBranch className="mr-2 h-3 w-3" />
+                          Configure
+                          </Button>
+                      </div>
+                    ) : (
+                      <div className="border rounded-md px-2 py-1.5">
+                        <div className="flex items-center gap-2 text-xs">
+                          <div className="flex items-center gap-1.5 text-muted-foreground">
+                            <Cloud className="h-3 w-3" />
+                            <span className="truncate max-w-[200px]">
+                              {currentRemote?.url?.split('/').slice(-2).join('/').replace('.git', '') || ''}/{currentRemote?.branch || 'main'}
+                            </span>
+                          </div>
+                          
+                          <div className="flex-1" />
+                          
+                          {mergeStatus && !mergeStatus.canMergeClean ? (
+                            <div className="flex items-center gap-1 text-red-600">
+                              <X className="h-3 w-3" />
+                              <span className="font-medium">conflict</span>
+                            </div>
                                         ) : (gitOps.gitStatus?.hasChanges || mergeStatus?.remoteCommitsAhead) ? (
-                                          <div className="flex items-center gap-1.5 text-muted-foreground text-xs">
-                                            {mergeStatus?.remoteCommitsAhead ? (
-                                              <span>↓{mergeStatus.remoteCommitsAhead}</span>
-                                            ) : null}
+                            <div className="flex items-center gap-1.5 text-muted-foreground text-xs">
+                              {mergeStatus?.remoteCommitsAhead ? (
+                                <span>↓{mergeStatus.remoteCommitsAhead}</span>
+                              ) : null}
                                             {gitOps.gitStatus?.hasChanges ? (
                                               <span className="font-normal">{gitOps.gitStatus?.uncommittedFiles ?? 0} uncommitted</span>
-                                            ) : null}
-                                          </div>
-                                        ) : null}
-                                        
-                                        <TooltipProvider>
-                                          <Tooltip>
-                                            <TooltipTrigger asChild>
-                                              <Button 
-                                                size="sm"
-                                                variant="ghost"
+                              ) : null}
+                            </div>
+                          ) : null}
+                          
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                              <Button 
+                                size="sm"
+                                  variant="ghost"
                                                 onClick={() => gitOps.handleGitSynchronize(refetchMergeStatus)}
                                                 disabled={!mergeStatus?.canMergeClean || gitOps.synchronizing || gitOps.gitStatus?.hasChanges}
-                                                className="h-6 w-6 p-0"
-                                              >
+                                  className="h-6 w-6 p-0"
+                                >
                                                 {gitOps.synchronizing ? (
-                                                  <Loader2 className="h-3 w-3 animate-spin" />
-                                                ) : (
-                                                  <RefreshCw className="h-3 w-3" />
-                                                )}
-                                              </Button>
-                                            </TooltipTrigger>
-                                            <TooltipContent>
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : (
+                                    <RefreshCw className="h-3 w-3" />
+                                )}
+                              </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>
                                               <p>{gitOps.gitStatus?.hasChanges ? 'Commit changes first' : `Sync with origin/${currentRemote?.branch || 'main'}`}</p>
-                                            </TooltipContent>
-                                          </Tooltip>
-                                        </TooltipProvider>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
 
-                                        <DropdownMenu>
-                                          <DropdownMenuTrigger asChild>
-                                            <Button size="sm" variant="ghost" className="h-6 w-6 p-0">
-                                              <MoreVertical className="h-3 w-3" />
-                                            </Button>
-                                          </DropdownMenuTrigger>
-                                          <DropdownMenuContent align="end">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button size="sm" variant="ghost" className="h-6 w-6 p-0">
+                                <MoreVertical className="h-3 w-3" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
                                             <DropdownMenuItem onClick={() => setRemoteDialogOpen(true)}>
-                                              <Edit className="mr-2 h-3 w-3" />
-                                              Manage Remote
-                                            </DropdownMenuItem>
-                                            <DropdownMenuSeparator />
-                                            <DropdownMenuItem
+                                <Edit className="mr-2 h-3 w-3" />
+                                Manage Remote
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
                                               onClick={() => setCommitModalOpen(true)}
                                               disabled={!gitOps.gitStatus?.hasChanges}
-                                            >
-                                              <Edit className="mr-2 h-3 w-3" />
-                                              Commit Changes
-                                            </DropdownMenuItem>
-                                            <DropdownMenuItem
+                              >
+                                <Edit className="mr-2 h-3 w-3" />
+                                Commit Changes
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
                                               onClick={() => gitOps.handleGitPull(refetchMergeStatus)}
                                               disabled={!mergeStatus?.canMergeClean || gitOps.isPulling}
-                                            >
-                                              <CloudDownload className="mr-2 h-3 w-3" />
-                                              Pull
-                                            </DropdownMenuItem>
-                                            <DropdownMenuItem
+                              >
+                                <CloudDownload className="mr-2 h-3 w-3" />
+                                Pull
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
                                               onClick={() => gitOps.handleGitPush(refetchMergeStatus)}
                                               disabled={!mergeStatus?.canMergeClean || gitOps.isPushing || gitOps.gitStatus?.hasChanges}
-                                            >
-                                              <CloudUpload className="mr-2 h-3 w-3" />
-                                              Push
-                                            </DropdownMenuItem>
-                                            <DropdownMenuSeparator />
-                                            <DropdownMenuItem
-                                              onClick={() => {
-                                                const newRemotes = {...directoryRemotes};
-                                                delete newRemotes[selectedDirectory.path];
-                                                setDirectoryRemotes(newRemotes);
-                                                successToast("Git remote disconnected");
-                                              }}
-                                            >
-                                              <X className="mr-2 h-3 w-3 text-red-600" />
-                                              Disconnect
-                                            </DropdownMenuItem>
-                                          </DropdownMenuContent>
-                                        </DropdownMenu>
-                                      </div>
-                                    </div>
-                                  )}
+                              >
+                                <CloudUpload className="mr-2 h-3 w-3" />
+                                Push
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  const newRemotes = {...directoryRemotes};
+                                  delete newRemotes[selectedDirectory.path];
+                                  setDirectoryRemotes(newRemotes);
+                                  successToast("Git remote disconnected");
+                                }}
+                              >
+                                <X className="mr-2 h-3 w-3 text-red-600" />
+                                Disconnect
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      </div>
+                    )}
                                 </div>
                               </AccordionContent>
                             </AccordionItem>
@@ -958,42 +991,145 @@ export default function ProjectSessionDetailPage({
                         </div>
                       </AccordionContent>
                     </AccordionItem>
-                  </Accordion>
+
+                    {/* Results - Workflow Output Files */}
+                    {workflowResults?.results && workflowResults.results.length > 0 && (
+                      <AccordionItem value="results" className="border rounded-lg px-3 bg-white">
+                        <AccordionTrigger className="text-base font-semibold hover:no-underline py-3">
+                          <div className="flex items-center gap-2">
+                            <FileCheck className="h-4 w-4" />
+                            <span>Results</span>
+                            {workflowResults.results.filter(r => r.exists).length > 0 && (
+                              <Badge variant="secondary" className="ml-auto mr-2">
+                                {workflowResults.results.filter(r => r.exists).length}
+                              </Badge>
+                            )}
+                          </div>
+                        </AccordionTrigger>
+                        <AccordionContent className="pt-2 pb-3">
+                          <div className="space-y-3">
+                            <p className="text-sm text-muted-foreground">
+                              View workflow output files
+                            </p>
+
+                            <div className="space-y-2">
+                              {workflowResults.results.map((result, idx) => (
+                                <div
+                                  key={idx}
+                                  className={cn(
+                                    "rounded-lg border p-3",
+                                    result.exists ? "bg-white hover:bg-gray-50 cursor-pointer" : "bg-gray-50"
+                                  )}
+                                  onClick={() => {
+                                    if (result.exists && result.content) {
+                                      // Use path-based stable ID instead of array index
+                                      const tabId = `result-${result.path}`;
+                                      
+                                      // Check if tab already exists
+                                      const existingTab = openTabs.find(t => t.id === tabId);
+                                      if (existingTab) {
+                                        // Tab exists, just switch to it
+                                        setActiveTab(tabId);
+                                        return;
+                                      }
+                                      
+                                      // Enforce tab limit - remove oldest non-chat tab if at limit
+                                      setOpenTabs(prevTabs => {
+                                        const nonChatTabs = prevTabs.filter(t => t.id !== 'chat');
+                                        
+                                        let newTabs = [...prevTabs];
+                                        
+                                        // If at limit, remove oldest non-chat tab
+                                        if (nonChatTabs.length >= MAX_TABS - 1) {
+                                          // Remove first non-chat tab (oldest)
+                                          const oldestTabId = nonChatTabs[0]?.id;
+                                          if (oldestTabId) {
+                                            newTabs = newTabs.filter(t => t.id !== oldestTabId);
+                                            // If we removed the active tab, switch to chat
+                                            if (activeTab === oldestTabId) {
+                                              setActiveTab('chat');
+                                            }
+                                          }
+                                        }
+                                        
+                                        // Add new tab
+                                        newTabs.push({
+                                          id: tabId,
+                                          name: result.displayName,
+                                          path: result.path,
+                                          content: result.content || ''
+                                        });
+                                        
+                                        return newTabs;
+                                      });
+                                      
+                                      setActiveTab(tabId);
+                                    }
+                                  }}
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                      {result.exists ? (
+                                        <CheckCircle2 className="h-4 w-4 text-green-600" />
+                                      ) : (
+                                        <Clock className="h-4 w-4 text-gray-400" />
+                                      )}
+                                      <div>
+                                        <span className="text-sm font-medium">{result.displayName}</span>
+                                        <p className="text-xs text-muted-foreground">{result.path}</p>
+                                      </div>
+                                    </div>
+                                    {result.error && (
+                                      <AlertCircle className="h-4 w-4 text-red-600" />
+                                    )}
+                                  </div>
+
+                                  {result.error && (
+                                    <p className="text-xs text-red-600 mt-2">{result.error}</p>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+                    )}
+            </Accordion>
                 </div>
-              </div>
+          </div>
 
               {/* Right Column - Messages */}
               <div className="flex-1 flex flex-col min-w-0">
                 <Card className="relative flex-1 flex flex-col overflow-hidden py-4">
                   <CardContent className="px-3 pt-3 pb-0 flex-1 flex flex-col overflow-hidden">
-                    {/* Workflow activation overlay */}
+                {/* Workflow activation overlay */}
                     {workflowManagement.workflowActivating && (
-                      <div className="absolute inset-0 bg-white/90 backdrop-blur-sm z-10 flex items-center justify-center rounded-lg">
-                        <Alert className="max-w-md mx-4">
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                          <AlertTitle>Activating Workflow...</AlertTitle>
-                          <AlertDescription>
+                  <div className="absolute inset-0 bg-white/90 backdrop-blur-sm z-10 flex items-center justify-center rounded-lg">
+                    <Alert className="max-w-md mx-4">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <AlertTitle>Activating Workflow...</AlertTitle>
+                      <AlertDescription>
                             <p>The new workflow is being loaded. Please wait...</p>
-                          </AlertDescription>
-                        </Alert>
-                      </div>
-                    )}
-                    
-                    {/* Repository change overlay */}
-                    {repoChanging && (
-                      <div className="absolute inset-0 bg-white/90 backdrop-blur-sm z-10 flex items-center justify-center rounded-lg">
-                        <Alert className="max-w-md mx-4">
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                          <AlertTitle>Updating Repositories...</AlertTitle>
-                          <AlertDescription>
-                            <div className="space-y-2">
+                      </AlertDescription>
+                    </Alert>
+                  </div>
+                )}
+                
+                {/* Repository change overlay */}
+                {repoChanging && (
+                  <div className="absolute inset-0 bg-white/90 backdrop-blur-sm z-10 flex items-center justify-center rounded-lg">
+                    <Alert className="max-w-md mx-4">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <AlertTitle>Updating Repositories...</AlertTitle>
+                      <AlertDescription>
+                        <div className="space-y-2">
                               <p>Please wait while repositories are being updated. This may take 10-20 seconds...</p>
-                            </div>
-                          </AlertDescription>
-                        </Alert>
-                      </div>
-                    )}
-                    
+                        </div>
+                      </AlertDescription>
+                    </Alert>
+                  </div>
+                )}
+                
                     {/* Session starting overlay */}
                     {!firstMessageLoaded && session?.status?.phase === 'Pending' && (
                       <div className="absolute inset-0 bg-white/60 backdrop-blur-sm rounded-lg z-20 flex items-center justify-center">
@@ -1008,24 +1144,182 @@ export default function ProjectSessionDetailPage({
                       </div>
                     )}
                     
+                    {/* Tabbed Interface */}
                     <div className={`flex flex-col flex-1 overflow-hidden ${!firstMessageLoaded && session?.status?.phase === 'Pending' ? 'pointer-events-none opacity-50' : ''}`}>
-                      <MessagesTab
-                        session={session}
-                        streamMessages={streamMessages}
-                        chatInput={chatInput}
-                        setChatInput={setChatInput}
-                        onSendChat={() => Promise.resolve(sendChat())}
-                        onInterrupt={() => Promise.resolve(handleInterrupt())}
-                        onEndSession={() => Promise.resolve(handleEndSession())}
-                        onGoToResults={() => {}}
-                        onContinue={handleContinue}
-                        selectedAgents={selectedAgents}
-                        autoSelectAgents={autoSelectAgents}
-                        workflowMetadata={workflowMetadata}
-                        onSetSelectedAgents={setSelectedAgents}
-                        onSetAutoSelectAgents={setAutoSelectAgents}
-                        onCommandClick={handleCommandClick}
-                      />
+                      {(() => {
+                        const fileTabs = openTabs.filter(t => t.id !== 'chat');
+                        
+                        // If no file tabs, show chat directly without tabs
+                        if (fileTabs.length === 0) {
+                          return (
+                <MessagesTab
+                  session={session}
+                  streamMessages={streamMessages}
+                  chatInput={chatInput}
+                  setChatInput={setChatInput}
+                  onSendChat={() => Promise.resolve(sendChat())}
+                  onInterrupt={() => Promise.resolve(handleInterrupt())}
+                  onEndSession={() => Promise.resolve(handleEndSession())}
+                  onGoToResults={() => {}}
+                  onContinue={handleContinue}
+                  selectedAgents={selectedAgents}
+                  autoSelectAgents={autoSelectAgents}
+                              workflowMetadata={workflowMetadata}
+                              onSetSelectedAgents={setSelectedAgents}
+                              onSetAutoSelectAgents={setAutoSelectAgents}
+                              onCommandClick={handleCommandClick}
+                            />
+                          );
+                        }
+                        
+                        // Show tabs when there are files
+                        return (
+                          <>
+                            {/* Tab Headers */}
+                            <div className="flex items-center gap-1 border-b bg-gray-50 px-2">
+                              {openTabs.map(tab => (
+                                <div
+                                  key={tab.id}
+                                  className={cn(
+                                    "flex items-center gap-2 px-3 py-2 cursor-pointer border-b-2 transition-colors",
+                                    activeTab === tab.id
+                                      ? "border-blue-500 bg-white"
+                                      : "border-transparent hover:bg-gray-100"
+                                  )}
+                                  onClick={() => setActiveTab(tab.id)}
+                                >
+                                  <span className="text-sm font-medium">{tab.name}</span>
+                                  {tab.id !== 'chat' && (
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        const remainingTabs = openTabs.filter(t => t.id !== tab.id);
+                                        setOpenTabs(remainingTabs);
+                                        
+                                        // If closing the active tab, switch to another tab
+                                        if (activeTab === tab.id) {
+                                          const remainingFileTabs = remainingTabs.filter(t => t.id !== 'chat');
+                                          if (remainingFileTabs.length > 0) {
+                                            // Switch to first file tab
+                                            setActiveTab(remainingFileTabs[0].id);
+                                          } else {
+                                            // No more file tabs, switch to chat
+                                            setActiveTab('chat');
+                                          }
+                                        }
+                                      }}
+                                      className="hover:bg-gray-200 rounded p-0.5"
+                                    >
+                                      <X className="h-3 w-3" />
+                                    </button>
+                                  )}
+          </div>
+                              ))}
+          </div>
+
+                            {/* Tab Content */}
+                            <div className="flex-1 overflow-auto">
+                              {activeTab === 'chat' ? (
+                                <MessagesTab
+                                  session={session}
+                                  streamMessages={streamMessages}
+                                  chatInput={chatInput}
+                                  setChatInput={setChatInput}
+                                  onSendChat={() => Promise.resolve(sendChat())}
+                                  onInterrupt={() => Promise.resolve(handleInterrupt())}
+                                  onEndSession={() => Promise.resolve(handleEndSession())}
+                                  onGoToResults={() => {}}
+                                  onContinue={handleContinue}
+                                  selectedAgents={selectedAgents}
+                                  autoSelectAgents={autoSelectAgents}
+                                  workflowMetadata={workflowMetadata}
+                                  onSetSelectedAgents={setSelectedAgents}
+                                  onSetAutoSelectAgents={setAutoSelectAgents}
+                                  onCommandClick={handleCommandClick}
+                                />
+                              ) : (
+                                <div className="p-6">
+                                  {(() => {
+                                    const tab = openTabs.find(t => t.id === activeTab);
+                                    if (!tab) return null;
+
+                                    const isMarkdown = tab.path.endsWith('.md');
+
+                                    return (
+                                      <div className="max-w-4xl mx-auto">
+                                        <div className="mb-4 pb-4 border-b">
+                                          <h2 className="text-xl font-semibold">{tab.name}</h2>
+                                          <p className="text-sm text-muted-foreground">{tab.path}</p>
+          </div>
+
+                                        {isMarkdown ? (
+                                          <article className="prose prose-slate dark:prose-invert max-w-none">
+                                            <ReactMarkdown 
+                                              remarkPlugins={[remarkGfm]}
+                                              components={{
+                                                h1: ({children}) => <h1 className="text-3xl font-bold mt-8 mb-4 text-gray-900 dark:text-gray-100 border-b pb-2">{children}</h1>,
+                                                h2: ({children}) => <h2 className="text-2xl font-semibold mt-6 mb-3 text-gray-900 dark:text-gray-100">{children}</h2>,
+                                                h3: ({children}) => <h3 className="text-xl font-semibold mt-4 mb-2 text-gray-800 dark:text-gray-200">{children}</h3>,
+                                                h4: ({children}) => <h4 className="text-lg font-semibold mt-3 mb-2 text-gray-800 dark:text-gray-200">{children}</h4>,
+                                                p: ({children}) => <p className="mb-4 text-gray-700 dark:text-gray-300 leading-7">{children}</p>,
+                                                a: ({href, children}) => <a href={href} className="text-blue-600 hover:text-blue-800 underline" target="_blank" rel="noopener noreferrer">{children}</a>,
+                                                ul: ({children, className}) => {
+                                                  const isTaskList = className?.includes('contains-task-list');
+                                                  return isTaskList ? 
+                                                    <ul className="mb-4 space-y-2 list-none">{children}</ul> :
+                                                    <ul className="list-disc list-inside mb-4 space-y-2">{children}</ul>;
+                                                },
+                                                ol: ({children}) => <ol className="list-decimal list-inside mb-4 space-y-2">{children}</ol>,
+                                                li: ({children, className}) => {
+                                                  const isTaskItem = className?.includes('task-list-item');
+                                                  return isTaskItem ?
+                                                    <li className="flex items-center gap-2 text-gray-700">{children}</li> :
+                                                    <li className="text-gray-700 ml-4">{children}</li>;
+                                                },
+                                                input: ({type, checked}) => 
+                                                  type === 'checkbox' ? 
+                                                    <input 
+                                                      type="checkbox" 
+                                                      checked={checked} 
+                                                      disabled 
+                                                      className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 bg-white"
+                                                    /> : 
+                                                    null,
+                                                blockquote: ({children}) => <blockquote className="border-l-4 border-gray-300 pl-4 py-2 my-4 italic text-gray-600 bg-gray-50">{children}</blockquote>,
+                                                code: ({inline, children}: {inline?: boolean; children?: React.ReactNode}) => 
+                                                  inline ? 
+                                                    <code className="bg-gray-100 text-pink-600 px-1.5 py-0.5 rounded text-sm font-mono">{children}</code> : 
+                                                    <code className="block bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto text-sm font-mono my-4">{children}</code>,
+                                                pre: ({children}) => <pre className="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto my-4">{children}</pre>,
+                                                table: ({children}) => <table className="min-w-full divide-y divide-gray-200 my-4 border">{children}</table>,
+                                                thead: ({children}) => <thead className="bg-gray-50">{children}</thead>,
+                                                tbody: ({children}) => <tbody className="bg-white divide-y divide-gray-200">{children}</tbody>,
+                                                tr: ({children}) => <tr>{children}</tr>,
+                                                th: ({children}) => <th className="px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase tracking-wider border">{children}</th>,
+                                                td: ({children}) => <td className="px-4 py-2 text-sm text-gray-700 border">{children}</td>,
+                                                hr: () => <hr className="my-8 border-t border-gray-300" />,
+                                                strong: ({children}) => <strong className="font-semibold text-gray-900">{children}</strong>,
+                                                em: ({children}) => <em className="italic text-gray-700">{children}</em>,
+                                                del: ({children}) => <del className="line-through text-gray-500">{children}</del>,
+                                              }}
+                                            >
+                                              {tab.content}
+                                            </ReactMarkdown>
+                                          </article>
+                                        ) : (
+                                          <pre className="bg-gray-50 p-4 rounded-lg overflow-x-auto text-sm">
+                                            <code>{tab.content}</code>
+                                          </pre>
+                                        )}
+          </div>
+                                    );
+                                  })()}
+            </div>
+              )}
+            </div>
+                          </>
+                        );
+                      })()}
                     </div>
                   </CardContent>
                 </Card>
@@ -1033,7 +1327,7 @@ export default function ProjectSessionDetailPage({
             </div>
           </div>
         </div>
-      </div>
+        </div>
 
       {/* Modals */}
       <AddContextModal
@@ -1083,7 +1377,7 @@ export default function ProjectSessionDetailPage({
         onCommit={async (message) => {
           const success = await gitOps.handleCommit(message);
           if (success) {
-            setCommitModalOpen(false);
+              setCommitModalOpen(false);
             refetchMergeStatus();
           }
         }}

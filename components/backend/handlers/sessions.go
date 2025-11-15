@@ -1329,6 +1329,132 @@ func GetWorkflowMetadata(c *gin.Context) {
 	c.Data(resp.StatusCode, "application/json", b)
 }
 
+// deriveWorkflowNameFromURL derives the workflow directory name from a git URL
+// This matches the logic used by the runner (wrapper.py)
+func deriveWorkflowNameFromURL(gitURL string) string {
+	if gitURL == "" {
+		return ""
+	}
+
+	// Try to parse as URL first
+	parsedURL, err := url.Parse(gitURL)
+	if err == nil && parsedURL.Host != "" {
+		// Extract repo name from path (e.g., /owner/repo.git -> repo)
+		path := strings.TrimPrefix(parsedURL.Path, "/")
+		parts := strings.FieldsFunc(path, func(r rune) bool {
+			return r == '/'
+		})
+		if len(parts) > 0 {
+			repoName := parts[len(parts)-1]
+			repoName = strings.TrimSuffix(repoName, ".git")
+			repoName = strings.TrimSpace(repoName)
+			if repoName != "" {
+				return repoName
+			}
+		}
+	}
+
+	// Fallback: extract from path-like string
+	parts := strings.FieldsFunc(gitURL, func(r rune) bool {
+		return r == '/' || r == ':'
+	})
+	if len(parts) > 0 {
+		repoName := parts[len(parts)-1]
+		repoName = strings.TrimSuffix(repoName, ".git")
+		repoName = strings.TrimSpace(repoName)
+		if repoName != "" {
+			return repoName
+		}
+	}
+
+	return ""
+}
+
+// GetWorkflowResults retrieves workflow result files from the active workflow
+// GET /api/projects/:projectName/agentic-sessions/:sessionName/workflow/results
+func GetWorkflowResults(c *gin.Context) {
+	project := c.GetString("project")
+	if project == "" {
+		project = c.Param("projectName")
+	}
+	sessionName := c.Param("sessionName")
+
+	if project == "" {
+		log.Printf("GetWorkflowResults: project is empty, session=%s", sessionName)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Project namespace required"})
+		return
+	}
+
+	// Get authorization token
+	token := c.GetHeader("Authorization")
+	if strings.TrimSpace(token) == "" {
+		token = c.GetHeader("X-Forwarded-Access-Token")
+	}
+
+	// Read AgenticSession CR to get activeWorkflow
+	var workflowName string
+	_, reqDyn := GetK8sClientsForRequest(c)
+	if reqDyn != nil {
+		gvr := GetAgenticSessionV1Alpha1Resource()
+		item, err := reqDyn.Resource(gvr).Namespace(project).Get(c.Request.Context(), sessionName, v1.GetOptions{})
+		if err == nil {
+			// Extract activeWorkflow from spec
+			if spec, ok := item.Object["spec"].(map[string]interface{}); ok {
+				if workflow, ok := spec["activeWorkflow"].(map[string]interface{}); ok {
+					if gitURL, ok := workflow["gitUrl"].(string); ok && gitURL != "" {
+						// Derive workflow name from git URL (matches runner logic)
+						workflowName = deriveWorkflowNameFromURL(gitURL)
+						if workflowName != "" {
+							log.Printf("GetWorkflowResults: derived workflow name %q from gitUrl %q", workflowName, gitURL)
+						}
+					}
+				}
+			}
+		} else {
+			log.Printf("GetWorkflowResults: failed to get session CR (non-fatal): %v", err)
+		}
+	}
+
+	// Try temp service first (for completed sessions), then regular service
+	serviceName := fmt.Sprintf("temp-content-%s", sessionName)
+	reqK8s, _ := GetK8sClientsForRequest(c)
+	if reqK8s != nil {
+		if _, err := reqK8s.CoreV1().Services(project).Get(c.Request.Context(), serviceName, v1.GetOptions{}); err != nil {
+			// Temp service doesn't exist, use regular service
+			serviceName = fmt.Sprintf("ambient-content-%s", sessionName)
+		}
+	} else {
+		serviceName = fmt.Sprintf("ambient-content-%s", sessionName)
+	}
+
+	// Build URL to content service with workflow parameter if available
+	endpoint := fmt.Sprintf("http://%s.%s.svc:8080", serviceName, project)
+	u := fmt.Sprintf("%s/content/workflow-results?session=%s", endpoint, sessionName)
+	if workflowName != "" {
+		u = fmt.Sprintf("%s&workflow=%s", u, workflowName)
+	}
+
+	log.Printf("GetWorkflowResults: project=%s session=%s endpoint=%s workflow=%s", project, sessionName, endpoint, workflowName)
+
+	// Create and send request to content pod
+	req, _ := http.NewRequestWithContext(c.Request.Context(), http.MethodGet, u, nil)
+	if strings.TrimSpace(token) != "" {
+		req.Header.Set("Authorization", token)
+	}
+	client := &http.Client{Timeout: 4 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("GetWorkflowResults: content service request failed: %v", err)
+		// Return empty results on error
+		c.JSON(http.StatusOK, gin.H{"results": []interface{}{}})
+		return
+	}
+	defer resp.Body.Close()
+
+	b, _ := io.ReadAll(resp.Body)
+	c.Data(resp.StatusCode, "application/json", b)
+}
+
 // fetchGitHubFileContent fetches a file from GitHub via API
 // token is optional - works for public repos without authentication (but has rate limits)
 func fetchGitHubFileContent(ctx context.Context, owner, repo, ref, path, token string) ([]byte, error) {

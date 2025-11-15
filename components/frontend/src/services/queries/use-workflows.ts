@@ -6,6 +6,8 @@ export const workflowKeys = {
   ootb: (projectName?: string) => [...workflowKeys.all, "ootb", projectName] as const,
   metadata: (projectName: string, sessionName: string) =>
     [...workflowKeys.all, "metadata", projectName, sessionName] as const,
+  results: (projectName: string, sessionName: string) =>
+    [...workflowKeys.all, "results", projectName, sessionName] as const,
 };
 
 export function useOOTBWorkflows(projectName?: string) {
@@ -27,6 +29,18 @@ export function useWorkflowMetadata(
     queryFn: () => workflowsApi.getWorkflowMetadata(projectName, sessionName),
     enabled: enabled && !!projectName && !!sessionName,
     staleTime: 60 * 1000, // 1 minute
+  });
+}
+
+export function useWorkflowResults(
+  projectName: string,
+  sessionName: string
+) {
+  return useQuery({
+    queryKey: workflowKeys.results(projectName, sessionName),
+    queryFn: () => workflowsApi.getWorkflowResults(projectName, sessionName),
+    enabled: !!projectName && !!sessionName,
+    refetchInterval: 5000, // Poll every 5 seconds
   });
 }
 

@@ -4,22 +4,31 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
 	"ambient-code-backend/git"
 
+	"github.com/bmatcuk/doublestar/v4"
 	"github.com/gin-gonic/gin"
 )
 
 // StateBaseDir is the base directory for content storage
 // Set by main during initialization
 var StateBaseDir string
+
+// MaxResultFileSize is the maximum size for result files to prevent memory issues
+const MaxResultFileSize = 10 * 1024 * 1024 // 10MB
+
+// MaxGlobMatches limits the number of files that can be matched to prevent resource exhaustion
+const MaxGlobMatches = 100
 
 // Git operation functions - set by main package during initialization
 // These are set to the actual implementations from git package
@@ -472,8 +481,8 @@ func ContentWorkflowMetadata(c *gin.Context) {
 
 	log.Printf("ContentWorkflowMetadata: session=%q", sessionName)
 
-	// Find active workflow directory
-	workflowDir := findActiveWorkflowDir(sessionName)
+	// Find active workflow directory (no workflow name provided, will search)
+	workflowDir := findActiveWorkflowDir(sessionName, "")
 	if workflowDir == "" {
 		log.Printf("ContentWorkflowMetadata: no active workflow found for session=%q", sessionName)
 		c.JSON(http.StatusOK, gin.H{
@@ -601,10 +610,11 @@ func parseFrontmatter(filePath string) map[string]string {
 
 // AmbientConfig represents the ambient.json configuration
 type AmbientConfig struct {
-	Name         string `json:"name"`
-	Description  string `json:"description"`
-	SystemPrompt string `json:"systemPrompt"`
-	ArtifactsDir string `json:"artifactsDir"`
+	Name         string            `json:"name"`
+	Description  string            `json:"description"`
+	SystemPrompt string            `json:"systemPrompt"`
+	ArtifactsDir string            `json:"artifactsDir"`
+	Results      map[string]string `json:"results,omitempty"` // displayName -> glob pattern
 }
 
 // parseAmbientConfig reads and parses ambient.json from workflow directory
@@ -640,24 +650,293 @@ func parseAmbientConfig(workflowDir string) *AmbientConfig {
 	return &config
 }
 
+// ResultFile represents a workflow result file
+type ResultFile struct {
+	DisplayName string `json:"displayName"`
+	Path        string `json:"path"` // Relative path from workspace
+	Exists      bool   `json:"exists"`
+	Content     string `json:"content,omitempty"`
+	Error       string `json:"error,omitempty"`
+}
+
+// listArtifactsFiles lists all files in the artifacts directory
+func listArtifactsFiles(artifactsDir string) []ResultFile {
+	results := []ResultFile{}
+
+	// Check if artifacts directory exists
+	if _, err := os.Stat(artifactsDir); os.IsNotExist(err) {
+		log.Printf("listArtifactsFiles: artifacts directory %q does not exist", artifactsDir)
+		return results
+	}
+
+	// Walk the artifacts directory recursively
+	err := filepath.Walk(artifactsDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			log.Printf("listArtifactsFiles: error accessing %q: %v", path, err)
+			return nil // Continue walking
+		}
+
+		// Skip directories
+		if info.IsDir() {
+			return nil
+		}
+
+		// Get relative path from artifacts directory
+		relPath, err := filepath.Rel(artifactsDir, path)
+		if err != nil {
+			log.Printf("listArtifactsFiles: failed to get relative path for %q: %v", path, err)
+			return nil
+		}
+
+		// Use filename as display name
+		displayName := filepath.Base(relPath)
+
+		result := ResultFile{
+			DisplayName: displayName,
+			Path:        relPath,
+			Exists:      true,
+		}
+
+		// Check file size before reading
+		if info.Size() > MaxResultFileSize {
+			result.Error = fmt.Sprintf("File too large (%d bytes, max %d)", info.Size(), MaxResultFileSize)
+			results = append(results, result)
+			return nil
+		}
+
+		// Read file content
+		content, readErr := os.ReadFile(path)
+		if readErr != nil {
+			result.Error = fmt.Sprintf("Failed to read: %v", readErr)
+		} else {
+			result.Content = string(content)
+		}
+
+		results = append(results, result)
+		return nil
+	})
+
+	if err != nil {
+		log.Printf("listArtifactsFiles: error walking artifacts directory %q: %v", artifactsDir, err)
+	}
+
+	// Sort results by path for consistent order
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].Path < results[j].Path
+	})
+
+	return results
+}
+
+// ContentWorkflowResults handles GET /content/workflow-results?session=&workflow=
+func ContentWorkflowResults(c *gin.Context) {
+	sessionName := c.Query("session")
+	if sessionName == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "missing session parameter"})
+		return
+	}
+
+	// Get workflow name from query parameter (if provided from CR)
+	workflowName := c.Query("workflow")
+	workflowDir := findActiveWorkflowDir(sessionName, workflowName)
+	if workflowDir == "" {
+		// No workflow found - return files from artifacts folder at root
+		workspaceBase := filepath.Join(StateBaseDir, "sessions", sessionName, "workspace")
+		artifactsDir := filepath.Join(workspaceBase, "artifacts")
+		log.Printf("ContentWorkflowResults: no workflow found, listing artifacts from %q", artifactsDir)
+		results := listArtifactsFiles(artifactsDir)
+		c.JSON(http.StatusOK, gin.H{"results": results})
+		return
+	}
+
+	ambientConfig := parseAmbientConfig(workflowDir)
+	if len(ambientConfig.Results) == 0 {
+		c.JSON(http.StatusOK, gin.H{"results": []ResultFile{}})
+		return
+	}
+
+	workspaceBase := filepath.Join(StateBaseDir, "sessions", sessionName, "workspace")
+	results := []ResultFile{}
+
+	// Sort keys to ensure consistent order (maps are unordered in Go)
+	displayNames := make([]string, 0, len(ambientConfig.Results))
+	for displayName := range ambientConfig.Results {
+		displayNames = append(displayNames, displayName)
+	}
+	sort.Strings(displayNames)
+
+	for _, displayName := range displayNames {
+		pattern := ambientConfig.Results[displayName]
+		matches, err := findMatchingFiles(workspaceBase, pattern)
+
+		if err != nil {
+			results = append(results, ResultFile{
+				DisplayName: displayName,
+				Path:        pattern,
+				Exists:      false,
+				Error:       fmt.Sprintf("Pattern error: %v", err),
+			})
+			continue
+		}
+
+		if len(matches) == 0 {
+			results = append(results, ResultFile{
+				DisplayName: displayName,
+				Path:        pattern,
+				Exists:      false,
+			})
+		} else {
+			// Sort matches for consistent order
+			sort.Strings(matches)
+
+			for _, matchedPath := range matches {
+				relPath, _ := filepath.Rel(workspaceBase, matchedPath)
+
+				result := ResultFile{
+					DisplayName: displayName,
+					Path:        relPath,
+					Exists:      true,
+				}
+
+				// Check file size before reading
+				fileInfo, statErr := os.Stat(matchedPath)
+				if statErr != nil {
+					result.Error = fmt.Sprintf("Failed to stat file: %v", statErr)
+					results = append(results, result)
+					continue
+				}
+
+				if fileInfo.Size() > MaxResultFileSize {
+					result.Error = fmt.Sprintf("File too large (%d bytes, max %d)", fileInfo.Size(), MaxResultFileSize)
+					results = append(results, result)
+					continue
+				}
+
+				// Read file content
+				content, readErr := os.ReadFile(matchedPath)
+				if readErr != nil {
+					result.Error = fmt.Sprintf("Failed to read: %v", readErr)
+				} else {
+					result.Content = string(content)
+				}
+
+				results = append(results, result)
+			}
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{"results": results})
+}
+
+// findMatchingFiles finds files matching a glob pattern with ** support for recursive matching
+// Returns matched files and an error if validation fails or too many matches found
+func findMatchingFiles(baseDir, pattern string) ([]string, error) {
+	// Validate baseDir is absolute and exists
+	if !filepath.IsAbs(baseDir) {
+		return nil, fmt.Errorf("baseDir must be absolute path")
+	}
+
+	baseInfo, err := os.Stat(baseDir)
+	if err != nil {
+		return nil, fmt.Errorf("baseDir does not exist: %w", err)
+	}
+	if !baseInfo.IsDir() {
+		return nil, fmt.Errorf("baseDir is not a directory")
+	}
+
+	// Use doublestar for glob matching with ** support
+	fsys := os.DirFS(baseDir)
+	matches, err := doublestar.Glob(fsys, pattern)
+	if err != nil {
+		return nil, fmt.Errorf("glob pattern error: %w", err)
+	}
+
+	// Enforce match limit to prevent resource exhaustion
+	if len(matches) > MaxGlobMatches {
+		log.Printf("findMatchingFiles: pattern %q matched %d files, limiting to %d", pattern, len(matches), MaxGlobMatches)
+		matches = matches[:MaxGlobMatches]
+	}
+
+	// Convert relative paths to absolute paths and validate they stay within baseDir
+	var absolutePaths []string
+	baseDirAbs, err := filepath.Abs(baseDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve baseDir: %w", err)
+	}
+
+	for _, match := range matches {
+		// Join and clean the path
+		absPath := filepath.Join(baseDirAbs, match)
+		absPath = filepath.Clean(absPath)
+
+		// Security: Ensure resolved path stays within baseDir (prevent directory traversal)
+		relPath, err := filepath.Rel(baseDirAbs, absPath)
+		if err != nil {
+			log.Printf("findMatchingFiles: failed to compute relative path for %q: %v", absPath, err)
+			continue
+		}
+
+		// Check for directory traversal attempts (paths like "../" or starting with "../")
+		if strings.HasPrefix(relPath, "..") {
+			log.Printf("findMatchingFiles: rejected path traversal attempt: %q", absPath)
+			continue
+		}
+
+		absolutePaths = append(absolutePaths, absPath)
+	}
+
+	return absolutePaths, nil
+}
+
 // findActiveWorkflowDir finds the active workflow directory for a session
-func findActiveWorkflowDir(sessionName string) string {
+// If workflowName is provided, it uses that directly; otherwise searches for it
+func findActiveWorkflowDir(sessionName, workflowName string) string {
 	// Workflows are stored at {StateBaseDir}/sessions/{session-name}/workspace/workflows/{workflow-name}
 	// The runner creates this nested structure
 	workflowsBase := filepath.Join(StateBaseDir, "sessions", sessionName, "workspace", "workflows")
 
+	// If workflow name is provided, use it directly
+	if workflowName != "" {
+		workflowPath := filepath.Join(workflowsBase, workflowName)
+		// Verify it exists and has either .claude or .ambient/ambient.json
+		claudeDir := filepath.Join(workflowPath, ".claude")
+		ambientConfig := filepath.Join(workflowPath, ".ambient", "ambient.json")
+
+		if stat, err := os.Stat(claudeDir); err == nil && stat.IsDir() {
+			return workflowPath
+		}
+		if stat, err := os.Stat(ambientConfig); err == nil && !stat.IsDir() {
+			log.Printf("findActiveWorkflowDir: found workflow via ambient.json: %q", workflowPath)
+			return workflowPath
+		}
+		// If direct path doesn't work, fall through to search
+		log.Printf("findActiveWorkflowDir: workflow %q not found at expected path, searching...", workflowName)
+	}
+
+	// Search for workflow directory (fallback when workflowName not provided)
 	entries, err := os.ReadDir(workflowsBase)
 	if err != nil {
 		log.Printf("findActiveWorkflowDir: failed to read workflows directory %q: %v", workflowsBase, err)
 		return ""
 	}
 
-	// Find first directory that has .claude subdirectory (excluding temp clones)
+	// Find first directory that has .claude subdirectory OR .ambient/ambient.json (excluding temp clones)
+	// Check for .ambient/ambient.json as fallback for temp content pods when main runner isn't running
 	for _, entry := range entries {
 		if entry.IsDir() && entry.Name() != "default" && !strings.HasSuffix(entry.Name(), "-clone-temp") {
-			claudeDir := filepath.Join(workflowsBase, entry.Name(), ".claude")
+			workflowPath := filepath.Join(workflowsBase, entry.Name())
+
+			// Check for .claude subdirectory (preferred, indicates active runner)
+			claudeDir := filepath.Join(workflowPath, ".claude")
 			if stat, err := os.Stat(claudeDir); err == nil && stat.IsDir() {
-				return filepath.Join(workflowsBase, entry.Name())
+				return workflowPath
+			}
+
+			// Fallback: check for .ambient/ambient.json (works from temp content pod)
+			ambientConfig := filepath.Join(workflowPath, ".ambient", "ambient.json")
+			if stat, err := os.Stat(ambientConfig); err == nil && !stat.IsDir() {
+				log.Printf("findActiveWorkflowDir: found workflow via ambient.json: %q", workflowPath)
+				return workflowPath
 			}
 		}
 	}

@@ -18,6 +18,7 @@ func registerContentRoutes(r *gin.Engine) {
 	r.POST("/content/git-configure-remote", handlers.ContentGitConfigureRemote)
 	r.POST("/content/git-sync", handlers.ContentGitSync)
 	r.GET("/content/workflow-metadata", handlers.ContentWorkflowMetadata)
+	r.GET("/content/workflow-results", handlers.ContentWorkflowResults)
 	r.GET("/content/git-merge-status", handlers.ContentGitMergeStatus)
 	r.POST("/content/git-pull", handlers.ContentGitPull)
 	r.POST("/content/git-push", handlers.ContentGitPushToBranch)
@@ -74,6 +75,7 @@ func registerRoutes(r *gin.Engine) {
 			projectGroup.DELETE("/agentic-sessions/:sessionName/content-pod", handlers.DeleteContentPod)
 			projectGroup.POST("/agentic-sessions/:sessionName/workflow", handlers.SelectWorkflow)
 			projectGroup.GET("/agentic-sessions/:sessionName/workflow/metadata", handlers.GetWorkflowMetadata)
+			projectGroup.GET("/agentic-sessions/:sessionName/workflow/results", handlers.GetWorkflowResults)
 			projectGroup.POST("/agentic-sessions/:sessionName/repos", handlers.AddRepo)
 			projectGroup.DELETE("/agentic-sessions/:sessionName/repos/:repoName", handlers.RemoveRepo)
 
