@@ -2,10 +2,13 @@
 package handlers
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -183,6 +186,78 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 		return nil
 	}
 
+	// Handle Running phase - check for generation changes (spec updates)
+	if phase == "Running" {
+		log.Printf("[Reconcile] Session %s/%s is Running, checking for spec changes", sessionNamespace, name)
+
+		currentGeneration := currentObj.GetGeneration()
+		observedGeneration := int64(0)
+		if stMap != nil {
+			if og, ok := stMap["observedGeneration"].(int64); ok {
+				observedGeneration = og
+			} else if og, ok := stMap["observedGeneration"].(float64); ok {
+				observedGeneration = int64(og)
+			}
+		}
+
+		if currentGeneration > observedGeneration {
+			log.Printf("[Reconcile] Session %s/%s: detected spec change (generation %d > observed %d), reconciling repos and workflow",
+				sessionNamespace, name, currentGeneration, observedGeneration)
+
+			spec, _, _ := unstructured.NestedMap(currentObj.Object, "spec")
+			reposErr := reconcileSpecRepos(sessionNamespace, name, spec, currentObj)
+			if reposErr != nil {
+				log.Printf("[Reconcile] Failed to reconcile repos for %s/%s: %v", sessionNamespace, name, reposErr)
+				// Condition already set by reconcileSpecRepos
+				// Don't update observedGeneration - will retry on next watch event
+				// Set general reconciliation error condition for visibility
+				_ = mutateAgenticSessionStatus(sessionNamespace, name, func(status map[string]interface{}) {
+					setCondition(status, conditionUpdate{
+						Type:    "Reconciled",
+						Status:  "False",
+						Reason:  "RepoReconciliationFailed",
+						Message: fmt.Sprintf("Failed to reconcile repos: %v", reposErr),
+					})
+				})
+				return fmt.Errorf("repo reconciliation failed: %w", reposErr)
+			}
+
+			workflowErr := reconcileActiveWorkflow(sessionNamespace, name, spec, currentObj)
+			if workflowErr != nil {
+				log.Printf("[Reconcile] Failed to reconcile workflow for %s/%s: %v", sessionNamespace, name, workflowErr)
+				// Condition already set by reconcileActiveWorkflow
+				// Don't update observedGeneration - will retry on next watch event
+				// Set general reconciliation error condition for visibility
+				_ = mutateAgenticSessionStatus(sessionNamespace, name, func(status map[string]interface{}) {
+					setCondition(status, conditionUpdate{
+						Type:    "Reconciled",
+						Status:  "False",
+						Reason:  "WorkflowReconciliationFailed",
+						Message: fmt.Sprintf("Failed to reconcile workflow: %v", workflowErr),
+					})
+				})
+				return fmt.Errorf("workflow reconciliation failed: %w", workflowErr)
+			}
+
+			// Update observedGeneration only if reconciliation succeeded
+			_ = mutateAgenticSessionStatus(sessionNamespace, name, func(status map[string]interface{}) {
+				status["observedGeneration"] = currentGeneration
+				// Set success condition
+				setCondition(status, conditionUpdate{
+					Type:    "Reconciled",
+					Status:  "True",
+					Reason:  "SpecApplied",
+					Message: fmt.Sprintf("Successfully reconciled generation %d", currentGeneration),
+				})
+			})
+			log.Printf("[Reconcile] Session %s/%s: updated observedGeneration to %d after successful reconciliation", sessionNamespace, name, currentGeneration)
+		} else {
+			log.Printf("[Reconcile] Session %s/%s: no spec changes detected (generation %d == observed %d)", sessionNamespace, name, currentGeneration, observedGeneration)
+		}
+
+		return nil
+	}
+
 	// Only process if status is Pending
 	if phase != "Pending" {
 		return nil
@@ -354,8 +429,8 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 
 	// Extract spec information from the fresh object
 	spec, _, _ := unstructured.NestedMap(currentObj.Object, "spec")
-	reconcileSpecRepos(sessionNamespace, name, spec)
-	reconcileActiveWorkflow(sessionNamespace, name, spec)
+	_ = reconcileSpecRepos(sessionNamespace, name, spec, currentObj)
+	_ = reconcileActiveWorkflow(sessionNamespace, name, spec, currentObj)
 	prompt, _, _ := unstructured.NestedString(spec, "initialPrompt")
 	timeout, _, _ := unstructured.NestedInt64(spec, "timeout")
 	interactive, _, _ := unstructured.NestedBool(spec, "interactive")
@@ -857,9 +932,10 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 	return nil
 }
 
-func reconcileSpecRepos(sessionNamespace, sessionName string, spec map[string]interface{}) {
+func reconcileSpecRepos(sessionNamespace, sessionName string, spec map[string]interface{}, session *unstructured.Unstructured) error {
 	repoSlice, found, _ := unstructured.NestedSlice(spec, "repos")
 	if !found {
+		log.Printf("[Reconcile] Session %s/%s: no repos defined in spec", sessionNamespace, sessionName)
 		_ = mutateAgenticSessionStatus(sessionNamespace, sessionName, func(status map[string]interface{}) {
 			delete(status, "reconciledRepos")
 			setCondition(status, conditionUpdate{
@@ -869,10 +945,11 @@ func reconcileSpecRepos(sessionNamespace, sessionName string, spec map[string]in
 				Message: "No repositories defined",
 			})
 		})
-		return
+		return nil
 	}
 
-	reconciled := make([]map[string]interface{}, 0, len(repoSlice))
+	// Parse spec repos
+	specRepos := make([]map[string]string, 0, len(repoSlice))
 	for _, entry := range repoSlice {
 		if repoMap, ok := entry.(map[string]interface{}); ok {
 			url, _ := repoMap["url"].(string)
@@ -883,13 +960,125 @@ func reconcileSpecRepos(sessionNamespace, sessionName string, spec map[string]in
 			if b, ok := repoMap["branch"].(string); ok && strings.TrimSpace(b) != "" {
 				branch = b
 			}
-			reconciled = append(reconciled, map[string]interface{}{
-				"url":      url,
-				"branch":   branch,
-				"status":   "Ready",
-				"clonedAt": time.Now().UTC().Format(time.RFC3339),
+			specRepos = append(specRepos, map[string]string{
+				"url":    url,
+				"branch": branch,
 			})
 		}
+	}
+
+	// Get current reconciled repos from status
+	status, _, _ := unstructured.NestedMap(session.Object, "status")
+	reconciledReposRaw, _, _ := unstructured.NestedSlice(status, "reconciledRepos")
+	reconciledRepos := make([]map[string]string, 0, len(reconciledReposRaw))
+	for _, entry := range reconciledReposRaw {
+		if repoMap, ok := entry.(map[string]interface{}); ok {
+			url, _ := repoMap["url"].(string)
+			branch, _ := repoMap["branch"].(string)
+			if url != "" {
+				reconciledRepos = append(reconciledRepos, map[string]string{
+					"url":    url,
+					"branch": branch,
+				})
+			}
+		}
+	}
+
+	// Detect drift: repos added or removed
+	toAdd := []map[string]string{}
+	toRemove := []map[string]string{}
+
+	// Find repos in spec but not in reconciled (need to add)
+	for _, specRepo := range specRepos {
+		found := false
+		for _, reconciledRepo := range reconciledRepos {
+			if specRepo["url"] == reconciledRepo["url"] {
+				found = true
+				break
+			}
+		}
+		if !found {
+			toAdd = append(toAdd, specRepo)
+		}
+	}
+
+	// Find repos in reconciled but not in spec (need to remove)
+	for _, reconciledRepo := range reconciledRepos {
+		found := false
+		for _, specRepo := range specRepos {
+			if reconciledRepo["url"] == specRepo["url"] {
+				found = true
+				break
+			}
+		}
+		if !found {
+			toRemove = append(toRemove, reconciledRepo)
+		}
+	}
+
+	if len(toAdd) == 0 && len(toRemove) == 0 {
+		log.Printf("[Reconcile] Session %s/%s: repos already reconciled (%d repos)", sessionNamespace, sessionName, len(specRepos))
+		return nil
+	}
+
+	log.Printf("[Reconcile] Session %s/%s: detected repo drift - adding %d, removing %d", sessionNamespace, sessionName, len(toAdd), len(toRemove))
+
+	// Send WebSocket messages via backend to trigger runner actions
+	backendURL := getBackendAPIURL(sessionNamespace)
+
+	// Add repos
+	for _, repo := range toAdd {
+		repoName := deriveRepoNameFromURL(repo["url"])
+		log.Printf("[Reconcile] Session %s/%s: sending repo_added message for %s (%s@%s)", sessionNamespace, sessionName, repoName, repo["url"], repo["branch"])
+		if err := sendWebSocketMessageViaBackend(sessionNamespace, sessionName, backendURL, map[string]interface{}{
+			"type":   "repo_added",
+			"url":    repo["url"],
+			"branch": repo["branch"],
+			"name":   repoName,
+		}); err != nil {
+			log.Printf("[Reconcile] Failed to send repo_added message: %v", err)
+			_ = mutateAgenticSessionStatus(sessionNamespace, sessionName, func(status map[string]interface{}) {
+				setCondition(status, conditionUpdate{
+					Type:    conditionReposReconciled,
+					Status:  "False",
+					Reason:  "MessageFailed",
+					Message: fmt.Sprintf("Failed to notify runner: %v", err),
+				})
+			})
+			return fmt.Errorf("failed to send repo_added message: %w", err)
+		}
+	}
+
+	// Remove repos
+	for _, repo := range toRemove {
+		repoName := deriveRepoNameFromURL(repo["url"])
+		log.Printf("[Reconcile] Session %s/%s: sending repo_removed message for %s", sessionNamespace, sessionName, repoName)
+		if err := sendWebSocketMessageViaBackend(sessionNamespace, sessionName, backendURL, map[string]interface{}{
+			"type": "repo_removed",
+			"name": repoName,
+		}); err != nil {
+			log.Printf("[Reconcile] Failed to send repo_removed message: %v", err)
+			_ = mutateAgenticSessionStatus(sessionNamespace, sessionName, func(status map[string]interface{}) {
+				setCondition(status, conditionUpdate{
+					Type:    conditionReposReconciled,
+					Status:  "False",
+					Reason:  "MessageFailed",
+					Message: fmt.Sprintf("Failed to notify runner: %v", err),
+				})
+			})
+			return fmt.Errorf("failed to send repo_removed message: %w", err)
+		}
+	}
+
+	// Update status to reflect the reconciled state
+	reconciled := make([]map[string]interface{}, 0, len(specRepos))
+	for _, repo := range specRepos {
+		reconciled = append(reconciled, map[string]interface{}{
+			"url":      repo["url"],
+			"branch":   repo["branch"],
+			"status":   "Ready",
+			"clonedAt": time.Now().UTC().Format(time.RFC3339),
+		})
 	}
 
 	_ = mutateAgenticSessionStatus(sessionNamespace, sessionName, func(status map[string]interface{}) {
@@ -897,15 +1086,19 @@ func reconcileSpecRepos(sessionNamespace, sessionName string, spec map[string]in
 		setCondition(status, conditionUpdate{
 			Type:    conditionReposReconciled,
 			Status:  "True",
-			Reason:  "SpecApplied",
-			Message: fmt.Sprintf("%d repos tracked", len(reconciled)),
+			Reason:  "Reconciled",
+			Message: fmt.Sprintf("Reconciled %d repos (added: %d, removed: %d)", len(specRepos), len(toAdd), len(toRemove)),
 		})
 	})
+
+	log.Printf("[Reconcile] Session %s/%s: successfully reconciled repos", sessionNamespace, sessionName)
+	return nil
 }
 
-func reconcileActiveWorkflow(sessionNamespace, sessionName string, spec map[string]interface{}) {
+func reconcileActiveWorkflow(sessionNamespace, sessionName string, spec map[string]interface{}, session *unstructured.Unstructured) error {
 	workflow, found, _ := unstructured.NestedMap(spec, "activeWorkflow")
 	if !found || len(workflow) == 0 {
+		log.Printf("[Reconcile] Session %s/%s: no workflow defined in spec", sessionNamespace, sessionName)
 		_ = mutateAgenticSessionStatus(sessionNamespace, sessionName, func(status map[string]interface{}) {
 			delete(status, "reconciledWorkflow")
 			setCondition(status, conditionUpdate{
@@ -915,7 +1108,7 @@ func reconcileActiveWorkflow(sessionNamespace, sessionName string, spec map[stri
 				Message: "No workflow selected",
 			})
 		})
-		return
+		return nil
 	}
 
 	gitURL, _ := workflow["gitUrl"].(string)
@@ -923,21 +1116,69 @@ func reconcileActiveWorkflow(sessionNamespace, sessionName string, spec map[stri
 	if b, ok := workflow["branch"].(string); ok && strings.TrimSpace(b) != "" {
 		branch = b
 	}
+	path, _ := workflow["path"].(string)
 
+	if strings.TrimSpace(gitURL) == "" {
+		log.Printf("[Reconcile] Session %s/%s: workflow gitUrl is empty", sessionNamespace, sessionName)
+		return nil
+	}
+
+	// Get current reconciled workflow from status
+	status, _, _ := unstructured.NestedMap(session.Object, "status")
+	reconciledWorkflowRaw, _, _ := unstructured.NestedMap(status, "reconciledWorkflow")
+	reconciledGitURL, _ := reconciledWorkflowRaw["gitUrl"].(string)
+	reconciledBranch, _ := reconciledWorkflowRaw["branch"].(string)
+
+	// Detect drift: workflow changed
+	if reconciledGitURL == gitURL && reconciledBranch == branch {
+		log.Printf("[Reconcile] Session %s/%s: workflow already reconciled (%s@%s)", sessionNamespace, sessionName, gitURL, branch)
+		return nil
+	}
+
+	log.Printf("[Reconcile] Session %s/%s: detected workflow drift - switching from %s@%s to %s@%s",
+		sessionNamespace, sessionName, reconciledGitURL, reconciledBranch, gitURL, branch)
+
+	// Send WebSocket message via backend to trigger runner workflow switch
+	backendURL := getBackendAPIURL(sessionNamespace)
+	log.Printf("[Reconcile] Session %s/%s: sending workflow_change message for %s@%s (path: %s)", sessionNamespace, sessionName, gitURL, branch, path)
+
+	if err := sendWebSocketMessageViaBackend(sessionNamespace, sessionName, backendURL, map[string]interface{}{
+		"type":   "workflow_change",
+		"gitUrl": gitURL,
+		"branch": branch,
+		"path":   path,
+	}); err != nil {
+		log.Printf("[Reconcile] Failed to send workflow_change message: %v", err)
+		_ = mutateAgenticSessionStatus(sessionNamespace, sessionName, func(status map[string]interface{}) {
+			setCondition(status, conditionUpdate{
+				Type:    conditionWorkflowReconciled,
+				Status:  "False",
+				Reason:  "MessageFailed",
+				Message: fmt.Sprintf("Failed to notify runner: %v", err),
+			})
+		})
+		return fmt.Errorf("failed to send workflow_selected message: %w", err)
+	}
+
+	// Update status to reflect the reconciled state
 	_ = mutateAgenticSessionStatus(sessionNamespace, sessionName, func(status map[string]interface{}) {
 		status["reconciledWorkflow"] = map[string]interface{}{
 			"gitUrl":    gitURL,
 			"branch":    branch,
+			"path":      path,
 			"status":    "Active",
 			"appliedAt": time.Now().UTC().Format(time.RFC3339),
 		}
 		setCondition(status, conditionUpdate{
 			Type:    conditionWorkflowReconciled,
 			Status:  "True",
-			Reason:  "SpecApplied",
-			Message: fmt.Sprintf("Workflow %s@%s", gitURL, branch),
+			Reason:  "Reconciled",
+			Message: fmt.Sprintf("Switched to workflow %s@%s", gitURL, branch),
 		})
 	})
+
+	log.Printf("[Reconcile] Session %s/%s: successfully reconciled workflow", sessionNamespace, sessionName)
+	return nil
 }
 
 func monitorJob(jobName, sessionName, sessionNamespace string) {
@@ -1360,6 +1601,73 @@ func deleteAmbientVertexSecret(ctx context.Context, namespace string) error {
 	}
 
 	return nil
+}
+
+// getBackendAPIURL returns the backend API URL for the given namespace
+func getBackendAPIURL(namespace string) string {
+	appConfig := config.LoadConfig()
+	return fmt.Sprintf("http://backend-service.%s.svc.cluster.local:8080/api", appConfig.BackendNamespace)
+}
+
+// sendWebSocketMessageViaBackend sends a WebSocket message to the runner via the backend's message endpoint
+func sendWebSocketMessageViaBackend(namespace, sessionName, backendURL string, message map[string]interface{}) error {
+	// The backend exposes POST /api/projects/:project/sessions/:sessionName/messages
+	// Format: { "type": "repo_added", "payload": {...}, ...other fields }
+	// Backend will extract "type" and wrap remaining fields under "payload" if needed
+	url := fmt.Sprintf("%s/projects/%s/sessions/%s/messages", backendURL, namespace, sessionName)
+
+	payload, err := json.Marshal(message)
+	if err != nil {
+		return fmt.Errorf("failed to marshal message: %w", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(payload))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	// Use operator's service account token for authentication
+	// The backend accepts internal calls from the operator namespace
+	// Get the operator's SA token from the mounted service account
+	tokenBytes, err := os.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/token")
+	if err == nil && len(tokenBytes) > 0 {
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", string(tokenBytes)))
+	} else {
+		log.Printf("[WebSocket] Warning: could not read operator SA token, request may fail: %v", err)
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("backend returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	log.Printf("[WebSocket] Successfully sent message type=%s to session %s/%s via backend", message["type"], namespace, sessionName)
+	return nil
+}
+
+// deriveRepoNameFromURL extracts the repository name from a git URL
+func deriveRepoNameFromURL(repoURL string) string {
+	// Remove .git suffix
+	repoURL = strings.TrimSuffix(repoURL, ".git")
+
+	// Extract last path component
+	parts := strings.Split(strings.TrimRight(repoURL, "/"), "/")
+	if len(parts) > 0 {
+		return parts[len(parts)-1]
+	}
+
+	return "repo"
 }
 
 // Helper functions
