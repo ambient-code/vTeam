@@ -13,6 +13,9 @@ exclude_docs: |
 
 theme:
   name: material
+  font:
+    text: IBM Plex Sans
+    code: IBM Plex Mono
   palette:
     - scheme: default
       primary: red
@@ -21,7 +24,7 @@ theme:
         icon: material/brightness-7
         name: Switch to dark mode
     - scheme: slate
-      primary: red  
+      primary: red
       accent: red
       toggle:
         icon: material/brightness-4
