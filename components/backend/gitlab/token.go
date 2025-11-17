@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/url"
 	"time"
 
 	"ambient-code-backend/types"
@@ -182,15 +183,8 @@ func ExtractHost(urlStr string) string {
 func EncodeProjectPath(projectPath string) string {
 	// GitLab API accepts URL-encoded project paths
 	// e.g., "namespace/project" becomes "namespace%2Fproject"
-	encoded := ""
-	for _, ch := range projectPath {
-		if ch == '/' {
-			encoded += "%2F"
-		} else {
-			encoded += string(ch)
-		}
-	}
-	return encoded
+	// Use url.PathEscape for safe, standards-compliant encoding
+	return url.PathEscape(projectPath)
 }
 
 // TokenInfo contains metadata about a GitLab token

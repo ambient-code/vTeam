@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"time"
 
 	"ambient-code-backend/types"
@@ -351,17 +352,8 @@ type GitLabFileContent struct {
 
 // GetFileContents retrieves the contents of a file from a GitLab repository
 func (c *Client) GetFileContents(ctx context.Context, projectID, filePath, ref string) (*GitLabFileContent, error) {
-	// URL encode the file path
-	encodedPath := ""
-	for _, ch := range filePath {
-		if ch == '/' {
-			encodedPath += "%2F"
-		} else if ch == '.' {
-			encodedPath += "%2E"
-		} else {
-			encodedPath += string(ch)
-		}
-	}
+	// URL encode the file path using url.PathEscape for safe encoding
+	encodedPath := url.PathEscape(filePath)
 
 	path := fmt.Sprintf("/projects/%s/repository/files/%s?ref=%s", projectID, encodedPath, ref)
 
@@ -390,17 +382,8 @@ func (c *Client) GetFileContents(ctx context.Context, projectID, filePath, ref s
 
 // GetRawFileContents retrieves the raw contents of a file (without base64 encoding)
 func (c *Client) GetRawFileContents(ctx context.Context, projectID, filePath, ref string) ([]byte, error) {
-	// URL encode the file path
-	encodedPath := ""
-	for _, ch := range filePath {
-		if ch == '/' {
-			encodedPath += "%2F"
-		} else if ch == '.' {
-			encodedPath += "%2E"
-		} else {
-			encodedPath += string(ch)
-		}
-	}
+	// URL encode the file path using url.PathEscape for safe encoding
+	encodedPath := url.PathEscape(filePath)
 
 	path := fmt.Sprintf("/projects/%s/repository/files/%s/raw?ref=%s", projectID, encodedPath, ref)
 

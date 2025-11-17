@@ -3,8 +3,8 @@ package gitlab
 import (
 	"fmt"
 	"log"
+	"net/url"
 	"regexp"
-	"strings"
 )
 
 // TokenRedactionPlaceholder is used to replace sensitive tokens in logs
@@ -57,20 +57,22 @@ func LogError(format string, args ...interface{}) {
 }
 
 // RedactURL removes sensitive information from a Git URL
+// Handles both GitLab (oauth2:token@) and GitHub (x-access-token:token@) formats
 func RedactURL(gitURL string) string {
-	// Remove credentials from URLs like https://oauth2:token@gitlab.com/...
-	if strings.Contains(gitURL, "@") {
-		parts := strings.Split(gitURL, "@")
-		if len(parts) == 2 {
-			// Keep the protocol and domain, redact credentials
-			protocolParts := strings.Split(parts[0], "://")
-			if len(protocolParts) == 2 {
-				return fmt.Sprintf("%s://%s@%s", protocolParts[0], TokenRedactionPlaceholder, parts[1])
-			}
-		}
+	// Parse the URL properly instead of string splitting
+	parsedURL, err := url.Parse(gitURL)
+	if err != nil {
+		// If parsing fails, fall back to regex-based redaction
+		return RedactToken(gitURL)
 	}
 
-	return gitURL
+	// Check if URL contains user info (credentials)
+	if parsedURL.User != nil {
+		// Redact the entire userinfo part (handles oauth2:token, x-access-token:token, etc.)
+		parsedURL.User = url.User(TokenRedactionPlaceholder)
+	}
+
+	return parsedURL.String()
 }
 
 // SanitizeErrorMessage removes sensitive information from error messages

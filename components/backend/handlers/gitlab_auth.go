@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"context"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -82,7 +81,7 @@ func (h *GitLabAuthHandler) ConnectGitLab(c *gin.Context) {
 	}
 
 	// Store GitLab connection
-	ctx := context.Background()
+	ctx := c.Request.Context()
 	connection, err := h.connectionManager.StoreGitLabConnection(ctx, userIDStr, req.PersonalAccessToken, req.InstanceURL)
 	if err != nil {
 		gitlab.LogError("Failed to store GitLab connection for user %s: %v", userIDStr, err)
@@ -125,7 +124,7 @@ func (h *GitLabAuthHandler) GetGitLabStatus(c *gin.Context) {
 	}
 
 	// Get connection status
-	ctx := context.Background()
+	ctx := c.Request.Context()
 	status, err := h.connectionManager.GetConnectionStatus(ctx, userIDStr)
 	if err != nil {
 		gitlab.LogError("Failed to get GitLab status for user %s: %v", userIDStr, err)
@@ -173,7 +172,7 @@ func (h *GitLabAuthHandler) DisconnectGitLab(c *gin.Context) {
 	}
 
 	// Delete GitLab connection
-	ctx := context.Background()
+	ctx := c.Request.Context()
 	if err := h.connectionManager.DeleteGitLabConnection(ctx, userIDStr); err != nil {
 		gitlab.LogError("Failed to disconnect GitLab for user %s: %v", userIDStr, err)
 		c.JSON(http.StatusInternalServerError, gin.H{

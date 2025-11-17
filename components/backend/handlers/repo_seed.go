@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -240,7 +241,11 @@ func GetRepoSeedStatus(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to create temp directory: %v", err)})
 		return
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() {
+		if err := os.RemoveAll(tmpDir); err != nil {
+			log.Printf("Warning: failed to cleanup temp directory %s: %v", tmpDir, err)
+		}
+	}()
 
 	// Get appropriate token
 	var token string
@@ -339,7 +344,11 @@ func SeedRepositoryEndpoint(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to create temp directory: %v", err)})
 		return
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() {
+		if err := os.RemoveAll(tmpDir); err != nil {
+			log.Printf("Warning: failed to cleanup temp directory %s: %v", tmpDir, err)
+		}
+	}()
 
 	authURL, err := git.InjectGitToken(req.RepositoryURL, token)
 	if err != nil {

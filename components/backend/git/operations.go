@@ -399,13 +399,21 @@ func PerformRepoSeeding(ctx context.Context, wf Workflow, branchName, token, age
 	if err != nil {
 		return false, fmt.Errorf("failed to create temp dir for spec repo: %w", err)
 	}
-	defer os.RemoveAll(umbrellaDir)
+	defer func() {
+		if err := os.RemoveAll(umbrellaDir); err != nil {
+			log.Printf("Warning: failed to cleanup temp directory %s: %v", umbrellaDir, err)
+		}
+	}()
 
 	agentSrcDir, err := os.MkdirTemp("", "agents-*")
 	if err != nil {
 		return false, fmt.Errorf("failed to create temp dir for agent source: %w", err)
 	}
-	defer os.RemoveAll(agentSrcDir)
+	defer func() {
+		if err := os.RemoveAll(agentSrcDir); err != nil {
+			log.Printf("Warning: failed to cleanup temp directory %s: %v", agentSrcDir, err)
+		}
+	}()
 
 	// Clone umbrella repo with authentication
 	log.Printf("Cloning umbrella repo: %s", umbrellaRepo.GetURL())
@@ -996,21 +1004,26 @@ func PushRepo(ctx context.Context, repoDir, commitMessage, outputRepoURL, branch
 			defer resp.Body.Close()
 			switch resp.StatusCode {
 			case 200:
-				var ghUser struct {
-					Login string `json:"login"`
-					Name  string `json:"name"`
-					Email string `json:"email"`
-				}
-				if json.Unmarshal([]byte(fmt.Sprintf("%v", resp.Body)), &ghUser) == nil {
-					if gitUserName == "" && ghUser.Name != "" {
-						gitUserName = ghUser.Name
-					} else if gitUserName == "" && ghUser.Login != "" {
-						gitUserName = ghUser.Login
+				body, err := io.ReadAll(resp.Body)
+				if err == nil {
+					var ghUser struct {
+						Login string `json:"login"`
+						Name  string `json:"name"`
+						Email string `json:"email"`
 					}
-					if gitUserEmail == "" && ghUser.Email != "" {
-						gitUserEmail = ghUser.Email
+					if err := json.Unmarshal(body, &ghUser); err == nil {
+						if gitUserName == "" && ghUser.Name != "" {
+							gitUserName = ghUser.Name
+						} else if gitUserName == "" && ghUser.Login != "" {
+							gitUserName = ghUser.Login
+						}
+						if gitUserEmail == "" && ghUser.Email != "" {
+							gitUserEmail = ghUser.Email
+						}
+						log.Printf("gitPushRepo: fetched GitHub user name=%q email=%q", gitUserName, gitUserEmail)
+					} else {
+						log.Printf("Failed to parse GitHub user info: %v", err)
 					}
-					log.Printf("gitPushRepo: fetched GitHub user name=%q email=%q", gitUserName, gitUserEmail)
 				}
 			case 403:
 				log.Printf("gitPushRepo: GitHub API /user returned 403 (token lacks 'read:user' scope, using fallback identity)")
@@ -1495,7 +1508,11 @@ func createBranchInRepo(ctx context.Context, repo GitRepo, branchName, token str
 	if err != nil {
 		return fmt.Errorf("failed to create temp dir: %w", err)
 	}
-	defer os.RemoveAll(repoDir)
+	defer func() {
+		if err := os.RemoveAll(repoDir); err != nil {
+			log.Printf("Warning: failed to cleanup temp directory %s: %v", repoDir, err)
+		}
+	}()
 
 	authenticatedURL, err := InjectGitToken(repoURL, token)
 	if err != nil {

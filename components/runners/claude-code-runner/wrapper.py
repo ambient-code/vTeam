@@ -662,9 +662,6 @@ class ClaudeCodeAdapter:
         }
 
     async def _prepare_workspace(self):
-        # Fetch appropriate token for this repo's URL
-        token = await self._fetch_token_for_url(url)
-
         """Clone input repo/branch into workspace and configure git remotes."""
         workspace = Path(self.context.workspace_path)
         workspace.mkdir(parents=True, exist_ok=True)
@@ -691,9 +688,11 @@ class ClaudeCodeAdapter:
                         continue
                     repo_dir = workspace / name
 
+                    # Fetch appropriate token for this repo's URL
+                    token = await self._fetch_token_for_url(url)
+
                     # Check if repo already exists
                     repo_exists = repo_dir.exists() and (repo_dir / ".git").exists()
-
 
                     if not repo_exists:
                         # Clone fresh copy
@@ -747,6 +746,9 @@ class ClaudeCodeAdapter:
             return
         input_branch = os.getenv("INPUT_BRANCH", "").strip() or "main"
         output_repo = os.getenv("OUTPUT_REPO_URL", "").strip()
+
+        # Fetch appropriate token for this repo's URL
+        token = await self._fetch_token_for_url(input_repo)
 
         workspace_has_git = (workspace / ".git").exists()
         logging.info(f"Single-repo setup: workspace_has_git={workspace_has_git}, reusing={reusing_workspace}")
