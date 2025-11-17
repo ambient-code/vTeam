@@ -47,8 +47,6 @@ Amber is the Ambient Code Platform's AI colleague—an expert in your codebase w
 4. Enter your prompt
 5. Click **Start Session**
 
-Typical response time: 2-5 minutes.
-
 ### On-Demand via kubectl
 
 ```yaml
@@ -111,6 +109,7 @@ sequenceDiagram
 ```
 
 **Key Points:**
+
 - User initiates and controls the entire workflow
 - Amber provides analysis with confidence levels (High 90-100%, Medium 70-89%, Low <70%)
 - Human review required before any action
@@ -185,7 +184,7 @@ spec:
           serviceAccountName: your-project-sa
           containers:
             - name: trigger-amber
-              image: bitnami/kubectl:latest
+              image: registry.k8s.io/kubectl:latest
               command:
                 - /bin/sh
                 - -c
@@ -230,12 +229,7 @@ sequenceDiagram
     participant A as Amber
     participant U as Human Reviewer
 
-    alt Webhook Trigger
-        GH->>A: Issue Created Event
-    else Scheduled Trigger
-        GH->>A: CronJob (Every 4 hours)
-    end
-
+    GH->>A: Issue Created Event (Webhook)
     A->>A: Triage Issue
     A->>A: Assess severity & components
     A->>A: Check auto-fixability<br/>(< 30min + high confidence?)
@@ -265,6 +259,7 @@ sequenceDiagram
 ```
 
 **Key Points:**
+
 - TodoWrite safety gate ensures plan visibility before action
 - Dual checkpoint system: Plan review + PR review
 - Escalation path for complex issues (human expertise required)
@@ -292,7 +287,7 @@ spec:
           serviceAccountName: your-project-sa
           containers:
             - name: trigger-amber
-              image: bitnami/kubectl:latest
+              image: registry.k8s.io/kubectl:latest
               command:
                 - /bin/sh
                 - -c
@@ -310,7 +305,7 @@ spec:
                       2. Security alerts
                       3. Upstream breaking changes
                       4. Open P0/P1 issues
-                      Generate report at docs/amber-reports/$(date +%Y-%m-%d)-health.md
+                      Store findings in session results (accessible via UI)
                     repos:
                       - input:
                           url: https://github.com/your-org/platform
@@ -339,7 +334,7 @@ spec:
           serviceAccountName: your-project-sa
           containers:
             - name: trigger-amber
-              image: bitnami/kubectl:latest
+              image: registry.k8s.io/kubectl:latest
               command:
                 - /bin/sh
                 - -c
@@ -357,7 +352,7 @@ spec:
                       2. Identify related issues
                       3. Suggest priority order
                       4. Flag blockers
-                      Output: docs/amber-reports/sprint-$(date +%Y-%W)-plan.md
+                      Create PR with analysis (viewable in GitHub UI)
                     repos:
                       - input:
                           url: https://github.com/your-org/platform
@@ -384,7 +379,7 @@ sequenceDiagram
     A->>A: Identify dependencies
     A->>A: Assess priorities
     A->>A: Generate metrics<br/>(coverage, open issues, etc.)
-    A->>A: Create markdown report<br/>in docs/amber-reports/
+    A->>A: Create analysis report
     A->>GH: Create feature branch<br/>(amber/sprint-YYYY-WW)
     A->>GH: Commit report
     A->>GH: Create PR
@@ -410,6 +405,7 @@ sequenceDiagram
 ```
 
 **Key Points:**
+
 - Fully automated report generation (no human in loop)
 - Creates PR for review - never commits to main
 - Team reviews and validates before sprint adoption
@@ -421,6 +417,7 @@ sequenceDiagram
 Amber can automatically respond to GitHub events in real-time, providing immediate triage and analysis.
 
 **Supported Events:**
+
 - Issue opened - Automatic triage, severity assessment, component identification
 - PR created - Quick standards compliance review
 - Push to main - Changelog impact analysis
@@ -468,6 +465,7 @@ sequenceDiagram
 ```
 
 **Key Points:**
+
 - High signal, low noise: Only comments when adding unique value
 - Never duplicates CI/linter output
 - Immediate feedback (within seconds of event)
@@ -531,7 +529,9 @@ freshness, open critical issues, recent CI failures.
 
 ### Structured Reports
 
-Location: `docs/amber-reports/YYYY-MM-DD-<type>.md`
+**Access:** Reports are accessible via:
+- PR descriptions in GitHub (for sprint plans and health checks)
+- AgenticSession status in ACP UI (for summaries and findings)
 
 **Health Report Format:**
 ```markdown
@@ -619,9 +619,9 @@ gh workflow run amber-dependency-sync.yml
 
 ### Amber's PRs Frequently Rejected
 
-**Check auto-merge audit trail:**
+**Check PR history:**
 ```bash
-cat docs/amber-reports/auto-merges.md | grep "Rollback"
+gh pr list --author amber --state all --limit 20
 ```
 
 If success rate <80%, open issue with label `amber:improvement` and examples.
