@@ -235,7 +235,23 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 	if !reusingPVC {
 		if err := services.EnsureSessionWorkspacePVC(sessionNamespace, pvcName, ownerRefs); err != nil {
 			log.Printf("Failed to ensure session PVC %s in %s: %v", pvcName, sessionNamespace, err)
-			// Continue; job may still run with ephemeral storage
+			_ = mutateAgenticSessionStatus(sessionNamespace, name, func(status map[string]interface{}) {
+				setCondition(status, conditionUpdate{
+					Type:    conditionPVCReady,
+					Status:  "False",
+					Reason:  "ProvisioningFailed",
+					Message: err.Error(),
+				})
+			})
+		} else {
+			_ = mutateAgenticSessionStatus(sessionNamespace, name, func(status map[string]interface{}) {
+				setCondition(status, conditionUpdate{
+					Type:    conditionPVCReady,
+					Status:  "True",
+					Reason:  "Bound",
+					Message: fmt.Sprintf("PVC %s ready", pvcName),
+				})
+			})
 		}
 	} else {
 		// Verify parent's PVC exists
@@ -254,7 +270,33 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 			}
 			if err := services.EnsureSessionWorkspacePVC(sessionNamespace, pvcName, ownerRefs); err != nil {
 				log.Printf("Failed to create fallback PVC %s: %v", pvcName, err)
+				_ = mutateAgenticSessionStatus(sessionNamespace, name, func(status map[string]interface{}) {
+					setCondition(status, conditionUpdate{
+						Type:    conditionPVCReady,
+						Status:  "False",
+						Reason:  "ProvisioningFailed",
+						Message: err.Error(),
+					})
+				})
+			} else {
+				_ = mutateAgenticSessionStatus(sessionNamespace, name, func(status map[string]interface{}) {
+					setCondition(status, conditionUpdate{
+						Type:    conditionPVCReady,
+						Status:  "True",
+						Reason:  "Bound",
+						Message: fmt.Sprintf("PVC %s ready", pvcName),
+					})
+				})
 			}
+		} else {
+			_ = mutateAgenticSessionStatus(sessionNamespace, name, func(status map[string]interface{}) {
+				setCondition(status, conditionUpdate{
+					Type:    conditionPVCReady,
+					Status:  "True",
+					Reason:  "Reused",
+					Message: fmt.Sprintf("Reused PVC %s from parent session", pvcName),
+				})
+			})
 		}
 	}
 
@@ -297,12 +339,24 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 	_, err = config.K8sClient.BatchV1().Jobs(sessionNamespace).Get(context.TODO(), jobName, v1.GetOptions{})
 	if err == nil {
 		log.Printf("Job %s already exists for AgenticSession %s", jobName, name)
+		_ = mutateAgenticSessionStatus(sessionNamespace, name, func(status map[string]interface{}) {
+			status["jobName"] = jobName
+			status["observedGeneration"] = currentObj.GetGeneration()
+			setCondition(status, conditionUpdate{
+				Type:    conditionJobCreated,
+				Status:  "True",
+				Reason:  "JobExists",
+				Message: "Runner job already exists",
+			})
+		})
 		return nil
 	}
 
 	// Extract spec information from the fresh object
 	spec, _, _ := unstructured.NestedMap(currentObj.Object, "spec")
-	prompt, _, _ := unstructured.NestedString(spec, "prompt")
+	reconcileSpecRepos(sessionNamespace, name, spec)
+	reconcileActiveWorkflow(sessionNamespace, name, spec)
+	prompt, _, _ := unstructured.NestedString(spec, "initialPrompt")
 	timeout, _, _ := unstructured.NestedInt64(spec, "timeout")
 	interactive, _, _ := unstructured.NestedBool(spec, "interactive")
 
@@ -316,6 +370,23 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 	const integrationSecretsName = "ambient-non-vertex-integrations" // GIT_*, JIRA_*, custom keys (optional)
 
 	// Check if integration secrets exist (optional)
+	if _, err := config.K8sClient.CoreV1().Secrets(sessionNamespace).Get(context.TODO(), runnerSecretsName, v1.GetOptions{}); err != nil {
+		if !errors.IsNotFound(err) {
+			log.Printf("Error checking runner secret %s: %v", runnerSecretsName, err)
+		} else {
+			log.Printf("Runner secret %s missing in %s", runnerSecretsName, sessionNamespace)
+		}
+		_ = mutateAgenticSessionStatus(sessionNamespace, name, func(status map[string]interface{}) {
+			setCondition(status, conditionUpdate{
+				Type:    conditionSecretsReady,
+				Status:  "False",
+				Reason:  "RunnerSecretMissing",
+				Message: fmt.Sprintf("Secret %s missing", runnerSecretsName),
+			})
+		})
+		return fmt.Errorf("runner secret %s missing in namespace %s", runnerSecretsName, sessionNamespace)
+	}
+
 	integrationSecretsExist := false
 	if _, err := config.K8sClient.CoreV1().Secrets(sessionNamespace).Get(context.TODO(), integrationSecretsName, v1.GetOptions{}); err == nil {
 		integrationSecretsExist = true
@@ -326,14 +397,31 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 		log.Printf("No %s secret found in %s (optional, skipping)", integrationSecretsName, sessionNamespace)
 	}
 
+	_ = mutateAgenticSessionStatus(sessionNamespace, name, func(status map[string]interface{}) {
+		setCondition(status, conditionUpdate{
+			Type:    conditionSecretsReady,
+			Status:  "True",
+			Reason:  "AllRequiredSecretsFound",
+			Message: "Runner secret available",
+		})
+		if integrationSecretsExist {
+			setCondition(status, conditionUpdate{
+				Type:    "IntegrationSecretsReady",
+				Status:  "True",
+				Reason:  "OptionalSecretFound",
+				Message: fmt.Sprintf("Secret %s present", integrationSecretsName),
+			})
+		}
+	})
+
 	// Extract repos configuration (simplified format: url and branch)
 	type RepoConfig struct {
 		URL    string
 		Branch string
 	}
-	
+
 	var repos []RepoConfig
-	
+
 	// Read simplified repos[] array format
 	if reposArr, found, _ := unstructured.NestedSlice(spec, "repos"); found && len(reposArr) > 0 {
 		repos = make([]RepoConfig, 0, len(reposArr))
@@ -373,13 +461,13 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 			}}
 		}
 	}
-	
+
 	// Get first repo for backward compatibility env vars (first repo is always main repo)
 	var inputRepo, inputBranch, outputRepo, outputBranch string
 	if len(repos) > 0 {
 		inputRepo = repos[0].URL
 		inputBranch = repos[0].Branch
-		outputRepo = repos[0].URL  // Output same as input in simplified format
+		outputRepo = repos[0].URL // Output same as input in simplified format
 		outputBranch = repos[0].Branch
 	}
 
@@ -505,7 +593,7 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 									{Name: "WORKSPACE_PATH", Value: fmt.Sprintf("/workspace/sessions/%s/workspace", name)},
 									{Name: "ARTIFACTS_DIR", Value: "_artifacts"},
 								}
-								
+
 								// Add per-repo environment variables (simplified format)
 								for i, repo := range repos {
 									base = append(base,
@@ -513,14 +601,14 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 										corev1.EnvVar{Name: fmt.Sprintf("REPO_%d_BRANCH", i), Value: repo.Branch},
 									)
 								}
-								
+
 								// Backward compatibility: set INPUT_REPO_URL/OUTPUT_REPO_URL from main repo
 								base = append(base,
 									corev1.EnvVar{Name: "INPUT_REPO_URL", Value: inputRepo},
 									corev1.EnvVar{Name: "INPUT_BRANCH", Value: inputBranch},
 									corev1.EnvVar{Name: "OUTPUT_REPO_URL", Value: outputRepo},
 									corev1.EnvVar{Name: "OUTPUT_BRANCH", Value: outputBranch},
-									corev1.EnvVar{Name: "PROMPT", Value: prompt},
+									corev1.EnvVar{Name: "INITIAL_PROMPT", Value: prompt},
 									corev1.EnvVar{Name: "LLM_MODEL", Value: model},
 									corev1.EnvVar{Name: "LLM_TEMPERATURE", Value: fmt.Sprintf("%.2f", temperature)},
 									corev1.EnvVar{Name: "LLM_MAX_TOKENS", Value: fmt.Sprintf("%d", maxTokens)},
@@ -701,15 +789,6 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 
 	// Do not mount runner Secret volume; runner fetches tokens on demand
 
-	// Update status to Creating before attempting job creation
-	if err := updateAgenticSessionStatus(sessionNamespace, name, map[string]interface{}{
-		"phase":   "Creating",
-		"message": "Creating Kubernetes job",
-	}); err != nil {
-		log.Printf("Failed to update AgenticSession status to Creating: %v", err)
-		// Continue anyway - resource might have been deleted
-	}
-
 	// Create the job
 	createdJob, err := config.K8sClient.BatchV1().Jobs(sessionNamespace).Create(context.TODO(), job, v1.CreateOptions{})
 	if err != nil {
@@ -719,25 +798,34 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 			return nil
 		}
 		log.Printf("Failed to create job %s: %v", jobName, err)
-		// Update status to Error if job creation fails and resource still exists
-		updateAgenticSessionStatus(sessionNamespace, name, map[string]interface{}{
-			"phase":   "Error",
-			"message": fmt.Sprintf("Failed to create job: %v", err),
+		_ = mutateAgenticSessionStatus(sessionNamespace, name, func(status map[string]interface{}) {
+			setCondition(status, conditionUpdate{
+				Type:    conditionJobCreated,
+				Status:  "False",
+				Reason:  "CreateFailed",
+				Message: err.Error(),
+			})
+			setCondition(status, conditionUpdate{
+				Type:    conditionReady,
+				Status:  "False",
+				Reason:  "JobCreationFailed",
+				Message: "Runner job creation failed",
+			})
 		})
 		return fmt.Errorf("failed to create job: %v", err)
 	}
 
 	log.Printf("Created job %s for AgenticSession %s", jobName, name)
-
-	// Update AgenticSession status to Running
-	if err := updateAgenticSessionStatus(sessionNamespace, name, map[string]interface{}{
-		"phase":   "Creating",
-		"message": "Job is being set up",
-	}); err != nil {
-		log.Printf("Failed to update AgenticSession status to Creating: %v", err)
-		// Don't return error here - the job was created successfully
-		// The status update failure might be due to the resource being deleted
-	}
+	_ = mutateAgenticSessionStatus(sessionNamespace, name, func(status map[string]interface{}) {
+		status["jobName"] = jobName
+		status["observedGeneration"] = currentObj.GetGeneration()
+		setCondition(status, conditionUpdate{
+			Type:    conditionJobCreated,
+			Status:  "True",
+			Reason:  "JobCreated",
+			Message: "Runner job created",
+		})
+	})
 
 	// Create a per-job Service pointing to the content container
 	svc := &corev1.Service{
@@ -769,327 +857,266 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 	return nil
 }
 
+func reconcileSpecRepos(sessionNamespace, sessionName string, spec map[string]interface{}) {
+	repoSlice, found, _ := unstructured.NestedSlice(spec, "repos")
+	if !found {
+		_ = mutateAgenticSessionStatus(sessionNamespace, sessionName, func(status map[string]interface{}) {
+			delete(status, "reconciledRepos")
+			setCondition(status, conditionUpdate{
+				Type:    conditionReposReconciled,
+				Status:  "True",
+				Reason:  "NoRepos",
+				Message: "No repositories defined",
+			})
+		})
+		return
+	}
+
+	reconciled := make([]map[string]interface{}, 0, len(repoSlice))
+	for _, entry := range repoSlice {
+		if repoMap, ok := entry.(map[string]interface{}); ok {
+			url, _ := repoMap["url"].(string)
+			if strings.TrimSpace(url) == "" {
+				continue
+			}
+			branch := "main"
+			if b, ok := repoMap["branch"].(string); ok && strings.TrimSpace(b) != "" {
+				branch = b
+			}
+			reconciled = append(reconciled, map[string]interface{}{
+				"url":      url,
+				"branch":   branch,
+				"status":   "Ready",
+				"clonedAt": time.Now().UTC().Format(time.RFC3339),
+			})
+		}
+	}
+
+	_ = mutateAgenticSessionStatus(sessionNamespace, sessionName, func(status map[string]interface{}) {
+		status["reconciledRepos"] = reconciled
+		setCondition(status, conditionUpdate{
+			Type:    conditionReposReconciled,
+			Status:  "True",
+			Reason:  "SpecApplied",
+			Message: fmt.Sprintf("%d repos tracked", len(reconciled)),
+		})
+	})
+}
+
+func reconcileActiveWorkflow(sessionNamespace, sessionName string, spec map[string]interface{}) {
+	workflow, found, _ := unstructured.NestedMap(spec, "activeWorkflow")
+	if !found || len(workflow) == 0 {
+		_ = mutateAgenticSessionStatus(sessionNamespace, sessionName, func(status map[string]interface{}) {
+			delete(status, "reconciledWorkflow")
+			setCondition(status, conditionUpdate{
+				Type:    conditionWorkflowReconciled,
+				Status:  "True",
+				Reason:  "NotConfigured",
+				Message: "No workflow selected",
+			})
+		})
+		return
+	}
+
+	gitURL, _ := workflow["gitUrl"].(string)
+	branch := "main"
+	if b, ok := workflow["branch"].(string); ok && strings.TrimSpace(b) != "" {
+		branch = b
+	}
+
+	_ = mutateAgenticSessionStatus(sessionNamespace, sessionName, func(status map[string]interface{}) {
+		status["reconciledWorkflow"] = map[string]interface{}{
+			"gitUrl":    gitURL,
+			"branch":    branch,
+			"status":    "Active",
+			"appliedAt": time.Now().UTC().Format(time.RFC3339),
+		}
+		setCondition(status, conditionUpdate{
+			Type:    conditionWorkflowReconciled,
+			Status:  "True",
+			Reason:  "SpecApplied",
+			Message: fmt.Sprintf("Workflow %s@%s", gitURL, branch),
+		})
+	})
+}
+
 func monitorJob(jobName, sessionName, sessionNamespace string) {
 	log.Printf("Starting job monitoring for %s (session: %s/%s)", jobName, sessionNamespace, sessionName)
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
 
-	// Main is now the content container to keep service alive
-	mainContainerName := "ambient-content"
-
-	// Track if we've verified owner references
-	ownerRefsChecked := false
-
-	for {
-		time.Sleep(5 * time.Second)
-
-		// Ensure the AgenticSession still exists
+	for range ticker.C {
 		gvr := types.GetAgenticSessionResource()
-		if _, err := config.DynamicClient.Resource(gvr).Namespace(sessionNamespace).Get(context.TODO(), sessionName, v1.GetOptions{}); err != nil {
-			if errors.IsNotFound(err) {
-				log.Printf("AgenticSession %s no longer exists, stopping job monitoring for %s", sessionName, jobName)
-				return
-			}
-			log.Printf("Error checking AgenticSession %s existence: %v", sessionName, err)
-		}
-
-		// Get Job
-		job, err := config.K8sClient.BatchV1().Jobs(sessionNamespace).Get(context.TODO(), jobName, v1.GetOptions{})
+		_, err := config.DynamicClient.Resource(gvr).Namespace(sessionNamespace).Get(context.TODO(), sessionName, v1.GetOptions{})
 		if err != nil {
 			if errors.IsNotFound(err) {
-				log.Printf("Job %s not found, stopping monitoring", jobName)
+				log.Printf("AgenticSession %s deleted; stopping job monitoring", sessionName)
 				return
 			}
-			log.Printf("Error getting job %s: %v", jobName, err)
+			log.Printf("Failed to fetch AgenticSession %s: %v", sessionName, err)
 			continue
 		}
 
-		// Verify pod owner references once (diagnostic)
-		if !ownerRefsChecked && job.Status.Active > 0 {
-			pods, err := config.K8sClient.CoreV1().Pods(sessionNamespace).List(context.TODO(), v1.ListOptions{
-				LabelSelector: fmt.Sprintf("job-name=%s", jobName),
-			})
-			if err == nil && len(pods.Items) > 0 {
-				for _, pod := range pods.Items {
-					hasJobOwner := false
-					for _, ownerRef := range pod.OwnerReferences {
-						if ownerRef.Kind == "Job" && ownerRef.Name == jobName {
-							hasJobOwner = true
-							break
-						}
-					}
-					if !hasJobOwner {
-						log.Printf("WARNING: Pod %s does NOT have Job %s as owner reference! This will prevent automatic cleanup.", pod.Name, jobName)
-					} else {
-						log.Printf("✓ Pod %s has correct Job owner reference", pod.Name)
-					}
-				}
-				ownerRefsChecked = true
+		job, err := config.K8sClient.BatchV1().Jobs(sessionNamespace).Get(context.TODO(), jobName, v1.GetOptions{})
+		if err != nil {
+			if errors.IsNotFound(err) {
+				log.Printf("Job %s deleted; stopping monitor", jobName)
+				return
 			}
+			log.Printf("Error fetching job %s: %v", jobName, err)
+			continue
 		}
 
-		// If K8s already marked the Job as succeeded, mark session Completed but defer cleanup
-		// BUT: respect terminal statuses already set by wrapper (Failed, Completed)
+		pods, err := config.K8sClient.CoreV1().Pods(sessionNamespace).List(context.TODO(), v1.ListOptions{LabelSelector: fmt.Sprintf("job-name=%s", jobName)})
+		if err != nil {
+			log.Printf("Failed to list pods for job %s: %v", jobName, err)
+			continue
+		}
+
 		if job.Status.Succeeded > 0 {
-			// Check current status before overriding
-			gvr := types.GetAgenticSessionResource()
-			currentObj, err := config.DynamicClient.Resource(gvr).Namespace(sessionNamespace).Get(context.TODO(), sessionName, v1.GetOptions{})
-			currentPhase := ""
-			if err == nil && currentObj != nil {
-				if status, found, _ := unstructured.NestedMap(currentObj.Object, "status"); found {
-					if v, ok := status["phase"].(string); ok {
-						currentPhase = v
-					}
-				}
-			}
-			// Only set to Completed if not already in a terminal state (Failed, Completed, Stopped)
-			if currentPhase != "Failed" && currentPhase != "Completed" && currentPhase != "Stopped" {
-				log.Printf("Job %s marked succeeded by Kubernetes, setting to Completed", jobName)
-				_ = updateAgenticSessionStatus(sessionNamespace, sessionName, map[string]interface{}{
-					"phase":   "Completed",
-					"message": "Job completed successfully",
-					"is_error": false,
-				})
-				// Ensure session is interactive so it can be restarted
-				_ = ensureSessionIsInteractive(sessionNamespace, sessionName)
-			} else {
-				log.Printf("Job %s marked succeeded by Kubernetes, but status already %s (not overriding)", jobName, currentPhase)
-			}
-			// Do not delete here; defer cleanup until all repos are finalized
-		}
-
-		// If Job has failed according to backoff policy, mark failed
-		if job.Spec.BackoffLimit != nil && job.Status.Failed >= *job.Spec.BackoffLimit {
-			log.Printf("Job %s failed after %d attempts", jobName, job.Status.Failed)
-			failureMsg := "Job failed"
-			if pods, err := config.K8sClient.CoreV1().Pods(sessionNamespace).List(context.TODO(), v1.ListOptions{LabelSelector: fmt.Sprintf("job-name=%s", jobName)}); err == nil && len(pods.Items) > 0 {
-				pod := pods.Items[0]
-				if logs, err := config.K8sClient.CoreV1().Pods(sessionNamespace).GetLogs(pod.Name, &corev1.PodLogOptions{}).DoRaw(context.TODO()); err == nil {
-					failureMsg = fmt.Sprintf("Job failed: %s", string(logs))
-					if len(failureMsg) > 500 {
-						failureMsg = failureMsg[:500] + "..."
-					}
-				}
-			}
-
-			// Only update to Failed if not already in a terminal state
-			gvr := types.GetAgenticSessionResource()
-			if currentObj, err := config.DynamicClient.Resource(gvr).Namespace(sessionNamespace).Get(context.TODO(), sessionName, v1.GetOptions{}); err == nil {
-				currentPhase := ""
-				if status, found, _ := unstructured.NestedMap(currentObj.Object, "status"); found {
-					if v, ok := status["phase"].(string); ok {
-						currentPhase = v
-					}
-				}
-				if currentPhase != "Failed" && currentPhase != "Completed" && currentPhase != "Stopped" {
-					_ = updateAgenticSessionStatus(sessionNamespace, sessionName, map[string]interface{}{
-						"phase":    "Failed",
-						"message":  failureMsg,
-						"is_error": true,
-					})
-					// Ensure session is interactive so it can be restarted
-					_ = ensureSessionIsInteractive(sessionNamespace, sessionName)
-				}
-			}
+			_ = mutateAgenticSessionStatus(sessionNamespace, sessionName, func(status map[string]interface{}) {
+				status["completionTime"] = time.Now().UTC().Format(time.RFC3339)
+				setCondition(status, conditionUpdate{Type: conditionCompleted, Status: "True", Reason: "JobSucceeded", Message: "Runner completed successfully"})
+				setCondition(status, conditionUpdate{Type: conditionReady, Status: "False", Reason: "Completed", Message: "Session finished"})
+			})
+			_ = ensureSessionIsInteractive(sessionNamespace, sessionName)
 			_ = deleteJobAndPerJobService(sessionNamespace, jobName, sessionName)
 			return
 		}
 
-		// Inspect pods to determine main container state regardless of sidecar
-		pods, err := config.K8sClient.CoreV1().Pods(sessionNamespace).List(context.TODO(), v1.ListOptions{LabelSelector: fmt.Sprintf("job-name=%s", jobName)})
-		if err != nil {
-			log.Printf("Error listing pods for job %s: %v", jobName, err)
-			continue
-		}
-
-		// Check for job with no active pods (pod evicted/preempted/deleted)
-		if len(pods.Items) == 0 && job.Status.Active == 0 && job.Status.Succeeded == 0 && job.Status.Failed == 0 {
-			// Check current phase to see if this is unexpected
-			gvr := types.GetAgenticSessionResource()
-			if currentObj, err := config.DynamicClient.Resource(gvr).Namespace(sessionNamespace).Get(context.TODO(), sessionName, v1.GetOptions{}); err == nil {
-				currentPhase := ""
-				if status, found, _ := unstructured.NestedMap(currentObj.Object, "status"); found {
-					if v, ok := status["phase"].(string); ok {
-						currentPhase = v
-					}
-				}
-				// If session is Running but pod is gone, mark as Failed
-				if currentPhase == "Running" || currentPhase == "Creating" {
-					log.Printf("Job %s has no pods but session is %s, marking as Failed", jobName, currentPhase)
-					_ = updateAgenticSessionStatus(sessionNamespace, sessionName, map[string]interface{}{
-						"phase":          "Failed",
-						"message":        "Job pod was deleted or evicted unexpectedly",
-						"completionTime": time.Now().Format(time.RFC3339),
-					})
-					_ = deleteJobAndPerJobService(sessionNamespace, jobName, sessionName)
-					return
-				}
-			}
-			continue
+		if job.Spec.BackoffLimit != nil && job.Status.Failed >= *job.Spec.BackoffLimit {
+			_ = mutateAgenticSessionStatus(sessionNamespace, sessionName, func(status map[string]interface{}) {
+				status["completionTime"] = time.Now().UTC().Format(time.RFC3339)
+				setCondition(status, conditionUpdate{Type: conditionFailed, Status: "True", Reason: "BackoffLimitExceeded", Message: "Runner failed repeatedly"})
+				setCondition(status, conditionUpdate{Type: conditionReady, Status: "False", Reason: "Error", Message: "Runner failed"})
+			})
+			_ = ensureSessionIsInteractive(sessionNamespace, sessionName)
+			_ = deleteJobAndPerJobService(sessionNamespace, jobName, sessionName)
+			return
 		}
 
 		if len(pods.Items) == 0 {
-			continue
-		}
-		pod := pods.Items[0]
-
-		// Check for pod-level failures (ImagePullBackOff, CrashLoopBackOff, etc.)
-		if pod.Status.Phase == corev1.PodFailed {
-			gvr := types.GetAgenticSessionResource()
-			if currentObj, err := config.DynamicClient.Resource(gvr).Namespace(sessionNamespace).Get(context.TODO(), sessionName, v1.GetOptions{}); err == nil {
-				currentPhase := ""
-				if status, found, _ := unstructured.NestedMap(currentObj.Object, "status"); found {
-					if v, ok := status["phase"].(string); ok {
-						currentPhase = v
-					}
-				}
-				// Only update if not already in terminal state
-				if currentPhase != "Failed" && currentPhase != "Completed" && currentPhase != "Stopped" {
-					failureMsg := fmt.Sprintf("Pod failed: %s - %s", pod.Status.Reason, pod.Status.Message)
-					log.Printf("Job %s pod in Failed phase, updating session to Failed: %s", jobName, failureMsg)
-					_ = updateAgenticSessionStatus(sessionNamespace, sessionName, map[string]interface{}{
-						"phase":    "Failed",
-						"message":  failureMsg,
-						"is_error": true,
+			if job.Status.Active == 0 && job.Status.Succeeded == 0 && job.Status.Failed == 0 {
+				_ = mutateAgenticSessionStatus(sessionNamespace, sessionName, func(status map[string]interface{}) {
+					status["completionTime"] = time.Now().UTC().Format(time.RFC3339)
+					setCondition(status, conditionUpdate{
+						Type:    conditionFailed,
+						Status:  "True",
+						Reason:  "PodMissing",
+						Message: "Job pod disappeared unexpectedly",
 					})
-					_ = deleteJobAndPerJobService(sessionNamespace, jobName, sessionName)
-					return
-				}
-			}
-		}
-
-		// Check for containers in waiting state with errors (ImagePullBackOff, CrashLoopBackOff, etc.)
-		for _, cs := range pod.Status.ContainerStatuses {
-			if cs.State.Waiting != nil {
-				waiting := cs.State.Waiting
-				// Check for error states that indicate permanent failure
-				errorStates := []string{"ImagePullBackOff", "ErrImagePull", "CrashLoopBackOff", "CreateContainerConfigError", "InvalidImageName"}
-				for _, errState := range errorStates {
-					if waiting.Reason == errState {
-						gvr := types.GetAgenticSessionResource()
-						if currentObj, err := config.DynamicClient.Resource(gvr).Namespace(sessionNamespace).Get(context.TODO(), sessionName, v1.GetOptions{}); err == nil {
-							currentPhase := ""
-							if status, found, _ := unstructured.NestedMap(currentObj.Object, "status"); found {
-								if v, ok := status["phase"].(string); ok {
-									currentPhase = v
-								}
-							}
-							// Only update if not already in terminal state and we've been in this state for a while
-							if currentPhase == "Running" || currentPhase == "Creating" {
-								failureMsg := fmt.Sprintf("Container %s failed: %s - %s", cs.Name, waiting.Reason, waiting.Message)
-								log.Printf("Job %s container in error state, updating session to Failed: %s", jobName, failureMsg)
-								_ = updateAgenticSessionStatus(sessionNamespace, sessionName, map[string]interface{}{
-									"phase":          "Failed",
-									"message":        failureMsg,
-									"completionTime": time.Now().Format(time.RFC3339),
-								})
-								_ = deleteJobAndPerJobService(sessionNamespace, jobName, sessionName)
-								return
-							}
-						}
-					}
-				}
-			}
-		}
-
-		// If main container is running and phase hasn't been set to Running yet, update
-		if cs := getContainerStatusByName(&pod, mainContainerName); cs != nil {
-			if cs.State.Running != nil {
-				// Avoid downgrading terminal phases; only set Running when not already terminal
-				func() {
-					gvr := types.GetAgenticSessionResource()
-					obj, err := config.DynamicClient.Resource(gvr).Namespace(sessionNamespace).Get(context.TODO(), sessionName, v1.GetOptions{})
-					if err != nil || obj == nil {
-						// Best-effort: still try to set Running
-						_ = updateAgenticSessionStatus(sessionNamespace, sessionName, map[string]interface{}{
-							"phase":   "Running",
-							"message": "Agent is running",
-						})
-						return
-					}
-					status, _, _ := unstructured.NestedMap(obj.Object, "status")
-					current := ""
-					if v, ok := status["phase"].(string); ok {
-						current = v
-					}
-					if current != "Completed" && current != "Stopped" && current != "Failed" && current != "Running" {
-						_ = updateAgenticSessionStatus(sessionNamespace, sessionName, map[string]interface{}{
-							"phase":   "Running",
-							"message": "Agent is running",
-						})
-					}
-				}()
-			}
-			if cs.State.Terminated != nil {
-				log.Printf("Content container terminated for job %s; checking runner container status instead", jobName)
-				// Don't use content container exit code - check runner instead below
-			}
-		}
-
-		// Check runner container status (the actual work is done here, not in content container)
-		runnerContainerName := "ambient-code-runner"
-		runnerStatus := getContainerStatusByName(&pod, runnerContainerName)
-		if runnerStatus != nil && runnerStatus.State.Terminated != nil {
-			term := runnerStatus.State.Terminated
-
-			// Get current CR status to check if wrapper already set it
-			gvr := types.GetAgenticSessionResource()
-			obj, err := config.DynamicClient.Resource(gvr).Namespace(sessionNamespace).Get(context.TODO(), sessionName, v1.GetOptions{})
-			currentPhase := ""
-			if err == nil && obj != nil {
-				status, _, _ := unstructured.NestedMap(obj.Object, "status")
-				if v, ok := status["phase"].(string); ok {
-					currentPhase = v
-				}
-			}
-
-			// If wrapper already set status to Completed, clean up immediately
-			if currentPhase == "Completed" || currentPhase == "Failed" {
-				log.Printf("Runner exited for job %s with phase %s", jobName, currentPhase)
-
-				// Ensure session is interactive so it can be restarted
+					setCondition(status, conditionUpdate{
+						Type:    conditionReady,
+						Status:  "False",
+						Reason:  "PodMissing",
+						Message: "Runner pod missing",
+					})
+				})
 				_ = ensureSessionIsInteractive(sessionNamespace, sessionName)
-
-				// Clean up Job/Service immediately
 				_ = deleteJobAndPerJobService(sessionNamespace, jobName, sessionName)
-
-				// Keep PVC - it will be deleted via garbage collection when session CR is deleted
-				// This allows users to restart completed sessions and reuse the workspace
-				log.Printf("Session %s completed, keeping PVC for potential restart", sessionName)
 				return
 			}
-
-			// Runner exit code 0 = success (fallback if wrapper didn't set status)
-			if term.ExitCode == 0 {
-				_ = updateAgenticSessionStatus(sessionNamespace, sessionName, map[string]interface{}{
-					"phase":    "Completed",
-					"message":  "Runner completed successfully",
-					"is_error": false,
-				})
-				// Ensure session is interactive so it can be restarted
-				_ = ensureSessionIsInteractive(sessionNamespace, sessionName)
-				log.Printf("Runner container exited successfully for job %s", jobName)
-				// Will cleanup on next iteration
-				continue
-			}
-
-			// Runner non-zero exit = failure
-			msg := term.Message
-			if msg == "" {
-				msg = fmt.Sprintf("Runner container exited with code %d", term.ExitCode)
-			}
-			_ = updateAgenticSessionStatus(sessionNamespace, sessionName, map[string]interface{}{
-				"phase":    "Failed",
-				"message":  msg,
-				"is_error": true,
-			})
-			// Ensure session is interactive so it can be restarted
-			_ = ensureSessionIsInteractive(sessionNamespace, sessionName)
-			log.Printf("Runner container failed for job %s: %s", jobName, msg)
-			// Will cleanup on next iteration
 			continue
 		}
 
-		// Note: Job/Pod cleanup now happens immediately when runner exits (see above)
-		// This loop continues to monitor until cleanup happens
+		pod := pods.Items[0]
+		_ = mutateAgenticSessionStatus(sessionNamespace, sessionName, func(status map[string]interface{}) {
+			status["runnerPodName"] = pod.Name
+		})
+
+		if pod.Spec.NodeName != "" {
+			_ = mutateAgenticSessionStatus(sessionNamespace, sessionName, func(status map[string]interface{}) {
+				setCondition(status, conditionUpdate{Type: conditionPodScheduled, Status: "True", Reason: "Scheduled", Message: fmt.Sprintf("Scheduled on %s", pod.Spec.NodeName)})
+			})
+		}
+
+		if pod.Status.Phase == corev1.PodFailed {
+			_ = mutateAgenticSessionStatus(sessionNamespace, sessionName, func(status map[string]interface{}) {
+				status["completionTime"] = time.Now().UTC().Format(time.RFC3339)
+				setCondition(status, conditionUpdate{Type: conditionFailed, Status: "True", Reason: pod.Status.Reason, Message: pod.Status.Message})
+				setCondition(status, conditionUpdate{Type: conditionReady, Status: "False", Reason: "PodFailed", Message: pod.Status.Message})
+			})
+			_ = ensureSessionIsInteractive(sessionNamespace, sessionName)
+			_ = deleteJobAndPerJobService(sessionNamespace, jobName, sessionName)
+			return
+		}
+
+		runner := getContainerStatusByName(&pod, "ambient-code-runner")
+		if runner == nil {
+			continue
+		}
+
+		if runner.State.Running != nil {
+			_ = mutateAgenticSessionStatus(sessionNamespace, sessionName, func(status map[string]interface{}) {
+				if _, ok := status["startTime"]; !ok {
+					status["startTime"] = time.Now().UTC().Format(time.RFC3339)
+				}
+				setCondition(status, conditionUpdate{Type: conditionRunnerStarted, Status: "True", Reason: "ContainerRunning", Message: "Runner container is executing"})
+				setCondition(status, conditionUpdate{Type: conditionReady, Status: "True", Reason: "Running", Message: "Session is running"})
+			})
+			continue
+		}
+
+		if runner.State.Waiting != nil {
+			waiting := runner.State.Waiting
+			errorStates := map[string]bool{"ImagePullBackOff": true, "ErrImagePull": true, "CrashLoopBackOff": true, "CreateContainerConfigError": true, "InvalidImageName": true}
+			if errorStates[waiting.Reason] {
+				msg := fmt.Sprintf("Runner waiting: %s - %s", waiting.Reason, waiting.Message)
+				_ = mutateAgenticSessionStatus(sessionNamespace, sessionName, func(status map[string]interface{}) {
+					status["completionTime"] = time.Now().UTC().Format(time.RFC3339)
+					setCondition(status, conditionUpdate{Type: conditionFailed, Status: "True", Reason: waiting.Reason, Message: waiting.Message})
+					setCondition(status, conditionUpdate{Type: conditionReady, Status: "False", Reason: waiting.Reason, Message: msg})
+				})
+				_ = ensureSessionIsInteractive(sessionNamespace, sessionName)
+				_ = deleteJobAndPerJobService(sessionNamespace, jobName, sessionName)
+				return
+			}
+		}
+
+		if runner.State.Terminated != nil {
+			term := runner.State.Terminated
+			now := time.Now().UTC().Format(time.RFC3339)
+
+			switch term.ExitCode {
+			case 0:
+				_ = mutateAgenticSessionStatus(sessionNamespace, sessionName, func(status map[string]interface{}) {
+					status["completionTime"] = now
+					setCondition(status, conditionUpdate{Type: conditionCompleted, Status: "True", Reason: "ExitCode0", Message: "Runner exited successfully"})
+					setCondition(status, conditionUpdate{Type: conditionReady, Status: "False", Reason: "Completed", Message: "Runner finished"})
+				})
+			case 2:
+				msg := fmt.Sprintf("Runner exited due to prerequisite failure: %s", term.Message)
+				_ = mutateAgenticSessionStatus(sessionNamespace, sessionName, func(status map[string]interface{}) {
+					status["completionTime"] = now
+					setCondition(status, conditionUpdate{
+						Type:    conditionFailed,
+						Status:  "True",
+						Reason:  "PrerequisiteFailed",
+						Message: msg,
+					})
+					setCondition(status, conditionUpdate{
+						Type:    conditionReady,
+						Status:  "False",
+						Reason:  "PrerequisiteFailed",
+						Message: msg,
+					})
+				})
+			default:
+				msg := fmt.Sprintf("Runner exited with code %d: %s", term.ExitCode, term.Reason)
+				if term.Message != "" {
+					msg = fmt.Sprintf("%s - %s", msg, term.Message)
+				}
+				_ = mutateAgenticSessionStatus(sessionNamespace, sessionName, func(status map[string]interface{}) {
+					status["completionTime"] = now
+					setCondition(status, conditionUpdate{Type: conditionFailed, Status: "True", Reason: "RunnerExit", Message: msg})
+					setCondition(status, conditionUpdate{Type: conditionReady, Status: "False", Reason: "RunnerExit", Message: msg})
+				})
+			}
+
+			_ = ensureSessionIsInteractive(sessionNamespace, sessionName)
+			_ = deleteJobAndPerJobService(sessionNamespace, jobName, sessionName)
+			return
+		}
 	}
 }
 
@@ -1141,95 +1168,6 @@ func deleteJobAndPerJobService(namespace, jobName, sessionName string) error {
 	// NOTE: PVC is kept for all sessions and only deleted via garbage collection
 	// when the session CR is deleted. This allows sessions to be restarted.
 
-	return nil
-}
-
-func updateAgenticSessionStatus(sessionNamespace, name string, statusUpdate map[string]interface{}) error {
-	gvr := types.GetAgenticSessionResource()
-
-	// Get current resource
-	obj, err := config.DynamicClient.Resource(gvr).Namespace(sessionNamespace).Get(context.TODO(), name, v1.GetOptions{})
-	if err != nil {
-		if errors.IsNotFound(err) {
-			log.Printf("AgenticSession %s no longer exists, skipping status update", name)
-			return nil // Don't treat this as an error - resource was deleted
-		}
-		return fmt.Errorf("failed to get AgenticSession %s: %v", name, err)
-	}
-
-	// Update status
-	if obj.Object["status"] == nil {
-		obj.Object["status"] = make(map[string]interface{})
-	}
-
-	status := obj.Object["status"].(map[string]interface{})
-	for key, value := range statusUpdate {
-		status[key] = value
-	}
-
-	// Update the resource with retry logic
-	_, err = config.DynamicClient.Resource(gvr).Namespace(sessionNamespace).UpdateStatus(context.TODO(), obj, v1.UpdateOptions{})
-	if err != nil {
-		if errors.IsNotFound(err) {
-			log.Printf("AgenticSession %s was deleted during status update, skipping", name)
-			return nil // Don't treat this as an error - resource was deleted
-		}
-		return fmt.Errorf("failed to update AgenticSession status: %v", err)
-	}
-
-	return nil
-}
-
-// ensureSessionIsInteractive updates a session's spec to set interactive: true
-// This allows completed sessions to be restarted without requiring manual spec file removal
-func ensureSessionIsInteractive(sessionNamespace, name string) error {
-	gvr := types.GetAgenticSessionResource()
-
-	// Get current resource
-	obj, err := config.DynamicClient.Resource(gvr).Namespace(sessionNamespace).Get(context.TODO(), name, v1.GetOptions{})
-	if err != nil {
-		if errors.IsNotFound(err) {
-			log.Printf("AgenticSession %s no longer exists, skipping interactive update", name)
-			return nil // Don't treat this as an error - resource was deleted
-		}
-		return fmt.Errorf("failed to get AgenticSession %s: %v", name, err)
-	}
-
-	// Check if spec exists and if interactive is already true
-	spec, found, err := unstructured.NestedMap(obj.Object, "spec")
-	if err != nil {
-		return fmt.Errorf("failed to get spec from AgenticSession %s: %v", name, err)
-	}
-	if !found {
-		log.Printf("AgenticSession %s has no spec, cannot update interactive", name)
-		return nil
-	}
-
-	// Check current interactive value
-	interactive, _, _ := unstructured.NestedBool(spec, "interactive")
-	if interactive {
-		log.Printf("AgenticSession %s is already interactive, no update needed", name)
-		return nil
-	}
-
-	// Update spec to set interactive: true
-	if err := unstructured.SetNestedField(obj.Object, true, "spec", "interactive"); err != nil {
-		return fmt.Errorf("failed to set interactive field for AgenticSession %s: %v", name, err)
-	}
-
-	log.Printf("Setting interactive: true for AgenticSession %s to allow restart", name)
-
-	// Update the resource (not UpdateStatus, since we're modifying spec)
-	_, err = config.DynamicClient.Resource(gvr).Namespace(sessionNamespace).Update(context.TODO(), obj, v1.UpdateOptions{})
-	if err != nil {
-		if errors.IsNotFound(err) {
-			log.Printf("AgenticSession %s was deleted during spec update, skipping", name)
-			return nil // Don't treat this as an error - resource was deleted
-		}
-		return fmt.Errorf("failed to update AgenticSession spec: %v", err)
-	}
-
-	log.Printf("Successfully set interactive: true for AgenticSession %s", name)
 	return nil
 }
 

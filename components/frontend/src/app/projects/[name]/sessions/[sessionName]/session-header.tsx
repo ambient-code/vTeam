@@ -44,10 +44,10 @@ export function SessionHeader({
   const phase = session.status?.phase || "Pending";
   const canStop = phase === "Running" || phase === "Creating";
   const canResume = phase === "Stopped";
-  const canDelete = phase === "Completed" || phase === "Failed" || phase === "Stopped" || phase === "Error";
-
-  // startTime removed from simplified status
-  const started = null;
+  const canDelete = phase === "Completed" || phase === "Failed" || phase === "Stopped";
+  const started = session.status?.startTime
+    ? formatDistanceToNow(new Date(session.status.startTime), { addSuffix: true })
+    : null;
 
   return (
     <>

@@ -56,7 +56,7 @@ const WorkspaceTab: React.FC<WorkspaceTabProps> = ({ session, wsLoading, wsUnava
         {session.status?.phase === "Pending" || session.status?.phase === "Creating" ? (
           <div>
             <div className="flex items-center justify-center"><RefreshCw className="animate-spin h-4 w-4 mr-2" /> Service not ready</div>
-            <div className="mt-2">{session.status?.message || "Preparing session workspace..."}</div>
+            <div className="mt-2">Preparing session workspace...</div>
           </div>
         ) : (
           <div>

@@ -23,12 +23,18 @@ from runner_shell.core.protocol import MessageType, SessionStatus, PartialInfo
 from runner_shell.core.context import RunnerContext
 
 
+class PrerequisiteError(RuntimeError):
+    """Raised when slash-command prerequisites are missing."""
+    pass
+
+
 class ClaudeCodeAdapter:
     """Adapter that wraps the existing Claude Code CLI for runner-shell."""
 
     def __init__(self):
         self.context = None
         self.shell = None
+        self.last_exit_code = 1
         self.claude_process = None
         self._incoming_queue: "asyncio.Queue[dict]" = asyncio.Queue()
         self._restart_requested = False
@@ -54,22 +60,12 @@ class ClaudeCodeAdapter:
             await self._wait_for_ws_connection()
 
             # Get prompt from environment
-            prompt = self.context.get_env("PROMPT", "")
+            prompt = self.context.get_env("INITIAL_PROMPT", "")
             if not prompt:
                 prompt = self.context.get_metadata("prompt", "Hello! How can I help you today?")
 
             # Send progress update
             await self._send_log("Starting Claude Code session...")
-
-            # Mark CR Running (best-effort)
-            try:
-                await self._update_cr_status({
-                    "phase": "Running",
-                    "message": "Runner started",
-                })
-            except Exception as _:
-                logging.debug("CR status update (Running) skipped")
-
 
             # Append token to websocket URL if available (to pass SA token to backend)
             try:
@@ -98,70 +94,32 @@ class ClaudeCodeAdapter:
                 # Normal exit - no restart requested
                 break
 
-            # Send completion
-            await self._send_log("Claude Code session completed")
+            success = not (isinstance(result, dict) and result.get("success") is False)
+            if success:
+                await self._send_log("Claude Code session completed")
+            else:
+                await self._send_log("Claude Code session completed with issues")
 
-            # Optional auto-push on completion (default: disabled)
             try:
                 auto_push = str(self.context.get_env('AUTO_PUSH_ON_COMPLETE', 'false')).strip().lower() in ('1','true','yes')
             except Exception:
                 auto_push = False
-            if auto_push:
+            if auto_push and success:
                 await self._push_results_if_any()
 
-            # CR status update based on result - MUST complete before pod exits
-            try:
-                if isinstance(result, dict) and result.get("success"):
-                    logging.info(f"Updating CR status to Completed (result.success={result.get('success')})")
-                    result_summary = ""
-                    if isinstance(result.get("result"), dict):
-                        # Prefer subtype and output if present
-                        subtype = result["result"].get("subtype")
-                        if subtype:
-                            result_summary = f"Completed with subtype: {subtype}"
-                    stdout_text = result.get("stdout") or ""
-                    # Use BLOCKING call to ensure completion before container exits
-                    await self._update_cr_status({
-                        "phase": "Completed",
-                        "completionTime": self._utc_iso(),
-                        "message": "Runner completed",
-                        "subtype": (result.get("result") or {}).get("subtype", "success"),
-                        "is_error": False,
-                        "num_turns": getattr(self, "_turn_count", 0),
-                        "session_id": self.context.session_id,
-                        "result": stdout_text[:10000],
-                    }, blocking=True)
-                    logging.info("CR status update to Completed completed")
-                elif isinstance(result, dict) and not result.get("success"):
-                    # Handle failure case (e.g., SDK crashed without ResultMessage)
-                    error_msg = result.get("error", "Unknown error")
-                    # Use BLOCKING call to ensure completion before container exits
-                    await self._update_cr_status({
-                        "phase": "Failed",
-                        "completionTime": self._utc_iso(),
-                        "message": error_msg,
-                        "is_error": True,
-                        "num_turns": getattr(self, "_turn_count", 0),
-                        "session_id": self.context.session_id,
-                    }, blocking=True)
-            except Exception as e:
-                logging.error(f"CR status update exception: {e}")
-
+            self.last_exit_code = 0 if success else 1
             return result
 
+        except PrerequisiteError as e:
+            self.last_exit_code = 2
+            logging.error(f"Prerequisite validation failed: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+            }
         except Exception as e:
+            self.last_exit_code = 1
             logging.error(f"Claude Code adapter failed: {e}")
-            # Best-effort CR failure update
-            try:
-                await self._update_cr_status({
-                    "phase": "Failed",
-                    "completionTime": self._utc_iso(),
-                    "message": f"Runner failed: {e}",
-                    "is_error": True,
-                    "session_id": self.context.session_id,
-                })
-            except Exception:
-                logging.debug("CR status update (Failed) skipped")
             return {
                 "success": False,
                 "error": str(e)
@@ -803,7 +761,7 @@ class ClaudeCodeAdapter:
 
     async def _validate_prerequisites(self):
         """Validate prerequisite files exist for phase-based slash commands."""
-        prompt = self.context.get_env("PROMPT", "")
+        prompt = self.context.get_env("INITIAL_PROMPT", "")
         if not prompt:
             return
 
@@ -838,17 +796,7 @@ class ClaudeCodeAdapter:
                 if not found:
                     error_message = f"❌ {error_msg}"
                     await self._send_log(error_message)
-                    # Mark session as failed
-                    try:
-                        await self._update_cr_status({
-                            "phase": "Failed",
-                            "completionTime": self._utc_iso(),
-                            "message": error_msg,
-                            "is_error": True,
-                        })
-                    except Exception:
-                        logging.debug("CR status update (Failed) skipped")
-                    raise RuntimeError(error_msg)
+                    raise PrerequisiteError(error_msg)
 
                 break  # Only check the first matching command
 
@@ -1382,41 +1330,6 @@ class ClaudeCodeAdapter:
         except Exception as e:
             logging.error(f"Failed to update annotation: {e}")
 
-    async def _update_cr_status(self, fields: dict, blocking: bool = False):
-        """Update CR status. Set blocking=True for critical final updates before container exit."""
-        url = self._compute_status_url()
-        if not url:
-            return
-        data = _json.dumps(fields).encode('utf-8')
-        req = _urllib_request.Request(url, data=data, headers={'Content-Type': 'application/json'}, method='PUT')
-        # Propagate runner token if present
-        token = (os.getenv('BOT_TOKEN') or '').strip()
-        if token:
-            req.add_header('Authorization', f'Bearer {token}')
-
-        def _do():
-            try:
-                with _urllib_request.urlopen(req, timeout=10) as resp:
-                    _ = resp.read()
-                logging.info(f"CR status update successful to {fields.get('phase', 'unknown')}")
-                return True
-            except _urllib_error.HTTPError as he:
-                logging.error(f"CR status HTTPError: {he.code} - {he.read().decode('utf-8', errors='replace')}")
-                return False
-            except Exception as e:
-                logging.error(f"CR status update failed: {e}")
-                return False
-
-        if blocking:
-            # Synchronous blocking call - ensures completion before container exit
-            logging.info(f"BLOCKING CR status update to {fields.get('phase', 'unknown')}")
-            success = _do()
-            logging.info(f"BLOCKING update {'succeeded' if success else 'failed'}")
-        else:
-            # Async call for non-critical updates
-            loop = asyncio.get_event_loop()
-            await loop.run_in_executor(None, _do)
-
     async def _run_cmd(self, cmd, cwd=None, capture_stdout=False, ignore_errors=False):
         """Run a subprocess command asynchronously."""
         # Redact secrets from command for logging
@@ -1945,14 +1858,15 @@ async def main():
 
     try:
         await shell.start()
-        logging.info("Claude Code runner session completed successfully")
-        return 0
+        logging.info("Claude Code runner session completed")
+        return getattr(adapter, "last_exit_code", 0)
     except KeyboardInterrupt:
         logging.info("Claude Code runner session interrupted")
         return 130
     except Exception as e:
         logging.error(f"Claude Code runner session failed: {e}")
-        return 1
+        exit_code = getattr(adapter, "last_exit_code", 1)
+        return exit_code or 1
 
 
 if __name__ == '__main__':

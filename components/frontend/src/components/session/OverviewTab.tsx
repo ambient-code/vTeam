@@ -69,6 +69,8 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
   const [expandedPods, setExpandedPods] = React.useState<Record<string, boolean>>({});
   
   const projectNamespace = session.metadata?.namespace || '';
+  const startTime = session.status?.startTime ? new Date(session.status.startTime) : null;
+  const completionTime = session.status?.completionTime ? new Date(session.status.completionTime) : null;
   
   const getStatusColor = (status: string) => {
     const lower = status.toLowerCase();
@@ -94,7 +96,7 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
           </CardHeader>
           <CardContent>
             {(() => {
-              const promptText = session.spec.prompt || "";
+              const promptText = session.spec.initialPrompt || "";
               const promptIsLong = promptText.length > 400;
               return (
                 <>
@@ -158,13 +160,22 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                 <div>
                   <div className="text-xs font-semibold text-muted-foreground mb-2">Runtime</div>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {session.status.message && (
-                      <div>
-                        <p className="font-semibold">Status</p>
-                        <p className="text-muted-foreground">{session.status.message}</p>
-                      </div>
-                    )}
-                    {/* startTime, completionTime, jobName removed from simplified status */}
+                    <div>
+                      <p className="font-semibold">Phase</p>
+                      <p className="text-muted-foreground">{session.status?.phase ?? "Unknown"}</p>
+                    </div>
+                    <div>
+                      <p className="font-semibold">Started</p>
+                      <p className="text-muted-foreground">
+                        {startTime ? startTime.toLocaleString() : "Not available"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="font-semibold">Completed</p>
+                      <p className="text-muted-foreground">
+                        {completionTime ? completionTime.toLocaleString() : "In progress"}
+                      </p>
+                    </div>
                   </div>
                 </div>
 

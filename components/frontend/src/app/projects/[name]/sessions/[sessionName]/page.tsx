@@ -65,9 +65,6 @@ export default function ProjectSessionDetailPage({
   const [sessionName, setSessionName] = useState<string>("");
   const [chatInput, setChatInput] = useState("");
   const [backHref, setBackHref] = useState<string | null>(null);
-  const [contentPodSpawning, setContentPodSpawning] = useState(false);
-  const [contentPodReady, setContentPodReady] = useState(false);
-  const [contentPodError, setContentPodError] = useState<string | null>(null);
   const [openAccordionItems, setOpenAccordionItems] = useState<string[]>(["workflows"]);
   const [contextModalOpen, setContextModalOpen] = useState(false);
   const [repoChanging, setRepoChanging] = useState(false);
@@ -434,81 +431,6 @@ export default function ProjectSessionDetailPage({
         onError: (err) => errorToast(err instanceof Error ? err.message : "Failed to end session"),
       }
     );
-  };
-
-  // Auto-spawn content pod on completed session
-  const sessionCompleted = (
-    session?.status?.phase === 'Completed' ||
-    session?.status?.phase === 'Failed' ||
-    session?.status?.phase === 'Stopped'
-  );
-
-  useEffect(() => {
-    if (sessionCompleted && !contentPodReady && !contentPodSpawning && !contentPodError) {
-      spawnContentPodAsync();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionCompleted, contentPodReady, contentPodSpawning, contentPodError]);
-
-  const spawnContentPodAsync = async () => {
-    if (!projectName || !sessionName) return;
-    
-    setContentPodSpawning(true);
-    setContentPodError(null);
-    
-    try {
-      const { spawnContentPod, getContentPodStatus } = await import('@/services/api/sessions');
-      
-      const spawnResult = await spawnContentPod(projectName, sessionName);
-      
-      if (spawnResult.status === 'exists' && spawnResult.ready) {
-        setContentPodReady(true);
-        setContentPodSpawning(false);
-        setContentPodError(null);
-        return;
-      }
-      
-      let attempts = 0;
-      const maxAttempts = 30;
-      
-      const pollInterval = setInterval(async () => {
-        attempts++;
-        
-        try {
-          const status = await getContentPodStatus(projectName, sessionName);
-          
-          if (status.ready) {
-            clearInterval(pollInterval);
-            setContentPodReady(true);
-            setContentPodSpawning(false);
-            setContentPodError(null);
-            successToast('Workspace viewer ready');
-          }
-          
-          if (attempts >= maxAttempts) {
-            clearInterval(pollInterval);
-            setContentPodSpawning(false);
-            const errorMsg = 'Workspace viewer failed to start within 30 seconds';
-            setContentPodError(errorMsg);
-            errorToast(errorMsg);
-          }
-        } catch {
-          if (attempts >= maxAttempts) {
-            clearInterval(pollInterval);
-            setContentPodSpawning(false);
-            const errorMsg = 'Workspace viewer failed to start';
-            setContentPodError(errorMsg);
-            errorToast(errorMsg);
-          }
-        }
-      }, 1000);
-      
-    } catch (error) {
-      setContentPodSpawning(false);
-      const errorMsg = error instanceof Error ? error.message : 'Failed to spawn workspace viewer';
-      setContentPodError(errorMsg);
-      errorToast(errorMsg);
-    }
   };
 
   // Duration calculation removed - startTime/completionTime no longer in status

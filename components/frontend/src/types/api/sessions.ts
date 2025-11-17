@@ -26,8 +26,7 @@ export type AgenticSessionPhase =
   | 'Running'
   | 'Completed'
   | 'Failed'
-  | 'Stopped'
-  | 'Error';
+  | 'Stopped';
 
 export type LLMSettings = {
   model: string;
@@ -41,7 +40,7 @@ export type SessionRepo = {
 };
 
 export type AgenticSessionSpec = {
-  prompt: string;
+  initialPrompt?: string;
   llmSettings: LLMSettings;
   timeout: number;
   displayName?: string;
@@ -56,10 +55,42 @@ export type AgenticSessionSpec = {
   };
 };
 
-export type AgenticSessionStatus = {
-  phase: AgenticSessionPhase;
+export type ReconciledRepo = {
+  url: string;
+  branch: string;
+  name?: string;
+  status?: 'Cloning' | 'Ready' | 'Failed';
+  clonedAt?: string;
+};
+
+export type ReconciledWorkflow = {
+  gitUrl: string;
+  branch: string;
+  status?: 'Cloning' | 'Active' | 'Failed';
+  appliedAt?: string;
+};
+
+export type SessionCondition = {
+  type: string;
+  status: 'True' | 'False' | 'Unknown';
+  reason?: string;
   message?: string;
-  is_error?: boolean;
+  lastTransitionTime?: string;
+  observedGeneration?: number;
+};
+
+export type AgenticSessionStatus = {
+  observedGeneration?: number;
+  phase: AgenticSessionPhase;
+  startTime?: string;
+  completionTime?: string;
+  jobName?: string;
+  runnerPodName?: string;
+  reconciledRepos?: ReconciledRepo[];
+  reconciledWorkflow?: ReconciledWorkflow;
+  sdkSessionId?: string;
+  sdkRestartCount?: number;
+  conditions?: SessionCondition[];
 };
 
 export type AgenticSession = {
@@ -76,7 +107,7 @@ export type AgenticSession = {
 };
 
 export type CreateAgenticSessionRequest = {
-  prompt: string;
+  initialPrompt?: string;
   llmSettings?: Partial<LLMSettings>;
   displayName?: string;
   timeout?: number;

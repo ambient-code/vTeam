@@ -82,7 +82,7 @@ export function CreateSessionDialog({
 
     const request: CreateAgenticSessionRequest = {
       interactive: true,
-      prompt: "Greet the user and briefly explain the workspace capabilities: they can select workflows, add code repositories for context, use slash commands, and you'll help with software engineering tasks. Keep it friendly and concise.",
+      initialPrompt: "Greet the user and briefly explain the workspace capabilities: they can select workflows, add code repositories for context, use slash commands, and you'll help with software engineering tasks. Keep it friendly and concise.",
       llmSettings: {
         model: values.model,
         temperature: values.temperature,

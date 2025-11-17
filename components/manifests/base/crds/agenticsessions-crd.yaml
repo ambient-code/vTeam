@@ -37,9 +37,9 @@ spec:
                 type: boolean
                 description: "When true, run session in interactive chat mode using inbox/outbox files"
                 default: true
-              prompt:
+              initialPrompt:
                 type: string
-                description: "Optional initial prompt for the agentic session. If using a workflow with startupPrompt in ambient.json, this can be omitted."
+                description: "Initial prompt used only on first SDK invocation for brand new sessions (ignored on continuations or workflow restarts)."
               displayName:
                 type: string
                 description: "A descriptive display name for the agentic session generated from prompt and website"
@@ -96,6 +96,10 @@ spec:
           status:
             type: object
             properties:
+              observedGeneration:
+                type: integer
+                format: int64
+                description: "Spec generation that the operator has fully reconciled."
               phase:
                 type: string
                 enum:
@@ -105,14 +109,92 @@ spec:
                 - "Completed"
                 - "Failed"
                 - "Stopped"
-                - "Error"
                 default: "Pending"
-              message:
+              startTime:
                 type: string
-                description: "Status message or error details"
-              is_error:
-                type: boolean
-                description: "Whether the run ended with an error"
+                format: date-time
+                description: "Timestamp when the session runner started executing."
+              completionTime:
+                type: string
+                format: date-time
+                description: "Timestamp when the session reached a terminal phase."
+              jobName:
+                type: string
+                description: "Name of the Kubernetes Job backing this session."
+              runnerPodName:
+                type: string
+                description: "Name of the runner pod currently executing the session."
+              reconciledRepos:
+                type: array
+                description: "Current reconciliation state for each repository."
+                items:
+                  type: object
+                  properties:
+                    url:
+                      type: string
+                    branch:
+                      type: string
+                    name:
+                      type: string
+                    status:
+                      type: string
+                      enum:
+                      - "Cloning"
+                      - "Ready"
+                      - "Failed"
+                    clonedAt:
+                      type: string
+                      format: date-time
+              reconciledWorkflow:
+                type: object
+                description: "Current reconciliation state for the active workflow."
+                properties:
+                  gitUrl:
+                    type: string
+                  branch:
+                    type: string
+                  status:
+                    type: string
+                    enum:
+                    - "Cloning"
+                    - "Active"
+                    - "Failed"
+                  appliedAt:
+                    type: string
+                    format: date-time
+              sdkSessionId:
+                type: string
+                description: "SDK session identifier captured for resume support."
+              sdkRestartCount:
+                type: integer
+                description: "Number of times the SDK has been restarted during this session."
+              conditions:
+                type: array
+                description: "Detailed condition set describing reconciliation progress."
+                items:
+                  type: object
+                  required:
+                  - type
+                  - status
+                  properties:
+                    type:
+                      type: string
+                    status:
+                      type: string
+                      enum:
+                      - "True"
+                      - "False"
+                      - "Unknown"
+                    reason:
+                      type: string
+                    message:
+                      type: string
+                    lastTransitionTime:
+                      type: string
+                      format: date-time
+                    observedGeneration:
+                      type: integer
+                      format: int64
   scope: Namespaced
   names:
     plural: agenticsessions

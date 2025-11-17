@@ -183,33 +183,3 @@ export async function getSessionK8sResources(
 }> {
   return apiClient.get(`/projects/${projectName}/agentic-sessions/${sessionName}/k8s-resources`);
 }
-
-/**
- * Spawn temporary content pod for workspace access
- */
-export async function spawnContentPod(
-  projectName: string,
-  sessionName: string
-): Promise<{ status: string; podName: string; ready?: boolean }> {
-  return apiClient.post(`/projects/${projectName}/agentic-sessions/${sessionName}/spawn-content-pod`);
-}
-
-/**
- * Check temporary content pod status
- */
-export async function getContentPodStatus(
-  projectName: string,
-  sessionName: string
-): Promise<{ status: string; ready: boolean; podName: string; createdAt?: string }> {
-  return apiClient.get(`/projects/${projectName}/agentic-sessions/${sessionName}/content-pod-status`);
-}
-
-/**
- * Delete temporary content pod
- */
-export async function deleteContentPod(
-  projectName: string,
-  sessionName: string
-): Promise<void> {
-  await apiClient.delete(`/projects/${projectName}/agentic-sessions/${sessionName}/content-pod`);
-}

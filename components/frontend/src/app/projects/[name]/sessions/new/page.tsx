@@ -23,7 +23,7 @@ import { useCreateSession } from "@/services/queries/use-sessions";
 
 const formSchema = z
   .object({
-    prompt: z.string(),
+    initialPrompt: z.string(),
     model: z.string().min(1, "Please select a model"),
     temperature: z.number().min(0).max(2),
     maxTokens: z.number().min(100).max(8000),
@@ -42,11 +42,11 @@ const formSchema = z
   })
   .superRefine((data, ctx) => {
     const isInteractive = Boolean(data.interactive);
-    const promptLength = (data.prompt || "").trim().length;
+    const promptLength = (data.initialPrompt || "").trim().length;
     if (!isInteractive && promptLength < 10) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ["prompt"],
+        path: ["initialPrompt"],
         message: "Prompt must be at least 10 characters long",
       });
     }
@@ -71,7 +71,7 @@ export default function NewProjectSessionPage({ params }: { params: Promise<{ na
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      prompt: "",
+      initialPrompt: "",
       model: "claude-sonnet-4-5",
       temperature: 0.7,
       maxTokens: 4000,
@@ -95,11 +95,11 @@ export default function NewProjectSessionPage({ params }: { params: Promise<{ na
   const onSubmit = async (values: FormValues) => {
     if (!projectName) return;
 
-    const promptToSend = values.interactive && !values.prompt.trim()
+    const promptToSend = values.interactive && !values.initialPrompt.trim()
       ? "Greet the user and briefly explain the workspace capabilities: they can select workflows, add code repositories for context, use commands, and you'll help with software engineering tasks. Keep it friendly and concise."
-      : values.prompt;
+      : values.initialPrompt;
     const request: CreateAgenticSessionRequest = {
-      prompt: promptToSend,
+      initialPrompt: promptToSend,
       llmSettings: {
         model: values.model,
         temperature: values.temperature,
@@ -182,7 +182,7 @@ export default function NewProjectSessionPage({ params }: { params: Promise<{ na
               {!isInteractive && (
                 <FormField
                   control={form.control}
-                  name="prompt"
+                  name="initialPrompt"
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Agentic Prompt</FormLabel>
