@@ -729,7 +729,6 @@ func PerformRepoSeeding(ctx context.Context, wf Workflow, branchName, token, age
 
 	// Create feature branch in all supporting repos
 	// Push access will be validated by the actual git operations - if they fail, we'll get a clear error
-	supportingRepos := wf.GetSupportingRepos()
 	if len(supportingRepos) > 0 {
 		log.Printf("Creating feature branch %s in %d supporting repos", branchName, len(supportingRepos))
 		for i, repo := range supportingRepos {
@@ -1394,8 +1393,8 @@ func validateGitLabPushAccess(ctx context.Context, repoURL, gitlabToken string) 
 
 	// Parse response to check permissions and ownership
 	var projectInfo struct {
-		Visibility  string `json:"visibility"`
-		Namespace   struct {
+		Visibility string `json:"visibility"`
+		Namespace  struct {
 			Kind string `json:"kind"`
 			Path string `json:"path"`
 		} `json:"namespace"`

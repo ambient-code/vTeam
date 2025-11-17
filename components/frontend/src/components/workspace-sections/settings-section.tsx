@@ -35,10 +35,14 @@ export function SettingsSection({ projectName }: SettingsSectionProps) {
   const [jiraEmail, setJiraEmail] = useState<string>("");
   const [jiraToken, setJiraToken] = useState<string>("");
   const [showJiraToken, setShowJiraToken] = useState<boolean>(false);
+  const [gitlabToken, setGitlabToken] = useState<string>("");
+  const [gitlabInstanceUrl, setGitlabInstanceUrl] = useState<string>("");
+  const [showGitlabToken, setShowGitlabToken] = useState<boolean>(false);
   const [anthropicExpanded, setAnthropicExpanded] = useState<boolean>(false);
   const [githubExpanded, setGithubExpanded] = useState<boolean>(false);
   const [jiraExpanded, setJiraExpanded] = useState<boolean>(false);
-  const FIXED_KEYS = useMemo(() => ["ANTHROPIC_API_KEY","GIT_USER_NAME","GIT_USER_EMAIL","GITHUB_TOKEN","JIRA_URL","JIRA_PROJECT","JIRA_EMAIL","JIRA_API_TOKEN"] as const, []);
+  const [gitlabExpanded, setGitlabExpanded] = useState<boolean>(false);
+  const FIXED_KEYS = useMemo(() => ["ANTHROPIC_API_KEY","GIT_USER_NAME","GIT_USER_EMAIL","GITHUB_TOKEN","JIRA_URL","JIRA_PROJECT","JIRA_EMAIL","JIRA_API_TOKEN","GITLAB_TOKEN","GITLAB_INSTANCE_URL"] as const, []);
 
   // React Query hooks
   const { data: project, isLoading: projectLoading } = useProject(projectName);
@@ -69,6 +73,8 @@ export function SettingsSection({ projectName }: SettingsSectionProps) {
       setJiraProject(byKey["JIRA_PROJECT"] || "");
       setJiraEmail(byKey["JIRA_EMAIL"] || "");
       setJiraToken(byKey["JIRA_API_TOKEN"] || "");
+      setGitlabToken(byKey["GITLAB_TOKEN"] || "");
+      setGitlabInstanceUrl(byKey["GITLAB_INSTANCE_URL"] || "");
       setSecrets(allSecrets.filter(s => !FIXED_KEYS.includes(s.key as typeof FIXED_KEYS[number])));
     }
   }, [runnerSecrets, integrationSecrets, FIXED_KEYS]);
@@ -139,6 +145,8 @@ export function SettingsSection({ projectName }: SettingsSectionProps) {
     if (jiraProject) integrationData["JIRA_PROJECT"] = jiraProject;
     if (jiraEmail) integrationData["JIRA_EMAIL"] = jiraEmail;
     if (jiraToken) integrationData["JIRA_API_TOKEN"] = jiraToken;
+    if (gitlabToken) integrationData["GITLAB_TOKEN"] = gitlabToken;
+    if (gitlabInstanceUrl) integrationData["GITLAB_INSTANCE_URL"] = gitlabInstanceUrl;
     for (const { key, value } of secrets) {
       if (!key) continue;
       if (FIXED_KEYS.includes(key as typeof FIXED_KEYS[number])) continue;
@@ -407,6 +415,54 @@ export function SettingsSection({ projectName }: SettingsSectionProps) {
                       </Button>
                     </div>
                   </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* GitLab Integration Section */}
+          <div className="border rounded-lg">
+            <button
+              type="button"
+              onClick={() => setGitlabExpanded(!gitlabExpanded)}
+              className="w-full flex items-center justify-between p-3 hover:bg-muted/50 transition-colors rounded-lg"
+            >
+              <div className="flex items-center gap-2">
+                {gitlabExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                <span className="font-semibold">GitLab Integration</span>
+                {(gitlabToken || gitlabInstanceUrl) && <span className="text-xs text-muted-foreground">(configured)</span>}
+              </div>
+            </button>
+            {gitlabExpanded && (
+              <div className="px-3 pb-3 space-y-3 border-t pt-3">
+                <div className="text-xs text-muted-foreground">Configure GitLab credentials for repository operations (clone, commit, push)</div>
+                <div className="space-y-2">
+                  <Label htmlFor="gitlabToken">GITLAB_TOKEN</Label>
+                  <div className="text-xs text-muted-foreground mb-1">GitLab personal access token (glpat-...) with api, read_api, read_user, write_repository scopes</div>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="gitlabToken"
+                      type={showGitlabToken ? "text" : "password"}
+                      placeholder="glpat-..."
+                      value={gitlabToken}
+                      onChange={(e) => setGitlabToken(e.target.value)}
+                      className="flex-1"
+                    />
+                    <Button type="button" variant="ghost" size="sm" onClick={() => setShowGitlabToken((v) => !v)} aria-label={showGitlabToken ? "Hide token" : "Show token"}>
+                      {showGitlabToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </Button>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="gitlabInstanceUrl">GITLAB_INSTANCE_URL</Label>
+                  <div className="text-xs text-muted-foreground mb-1">GitLab instance URL (leave empty for gitlab.com, or use https://gitlab.company.com for self-hosted)</div>
+                  <Input
+                    id="gitlabInstanceUrl"
+                    type="text"
+                    placeholder="https://gitlab.com"
+                    value={gitlabInstanceUrl}
+                    onChange={(e) => setGitlabInstanceUrl(e.target.value)}
+                  />
                 </div>
               </div>
             )}
