@@ -118,12 +118,6 @@ spec:
                 type: string
                 format: date-time
                 description: "Timestamp when the session reached a terminal phase."
-              jobName:
-                type: string
-                description: "Name of the Kubernetes Job backing this session."
-              runnerPodName:
-                type: string
-                description: "Name of the runner pod currently executing the session."
               reconciledRepos:
                 type: array
                 description: "Current reconciliation state for each repository."

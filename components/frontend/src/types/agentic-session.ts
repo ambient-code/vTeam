@@ -147,8 +147,6 @@ export type AgenticSessionStatus = {
 	phase: AgenticSessionPhase;
 	startTime?: string;
 	completionTime?: string;
-	jobName?: string;
-	runnerPodName?: string;
 	reconciledRepos?: ReconciledRepo[];
 	reconciledWorkflow?: ReconciledWorkflow;
 	sdkSessionId?: string;

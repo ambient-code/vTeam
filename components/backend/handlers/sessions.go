@@ -182,13 +182,8 @@ func parseStatus(status map[string]interface{}) *types.AgenticSessionStatus {
 		result.CompletionTime = types.StringPtr(completionTime)
 	}
 
-	if jobName, ok := status["jobName"].(string); ok {
-		result.JobName = jobName
-	}
-
-	if podName, ok := status["runnerPodName"].(string); ok {
-		result.RunnerPodName = podName
-	}
+	// jobName and runnerPodName removed - they go stale on restarts
+	// Use GET /k8s-resources endpoint for live job/pod information
 
 	if sdkSessionID, ok := status["sdkSessionId"].(string); ok {
 		result.SDKSessionID = sdkSessionID
@@ -1861,7 +1856,8 @@ func StartSession(c *gin.Context) {
 
 			// Delete the old job so operator creates a new one
 			// This ensures fresh token and clean state
-			jobName := fmt.Sprintf("ambient-runner-%s", sessionName)
+			// Job name format matches operator: {sessionName}-job
+			jobName := fmt.Sprintf("%s-job", sessionName)
 			log.Printf("StartSession: Deleting old job %s to allow operator to create fresh one", jobName)
 			if err := reqK8s.BatchV1().Jobs(project).Delete(c.Request.Context(), jobName, v1.DeleteOptions{
 				PropagationPolicy: func() *v1.DeletionPropagation { p := v1.DeletePropagationBackground; return &p }(),

@@ -415,7 +415,6 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 	if err == nil {
 		log.Printf("Job %s already exists for AgenticSession %s", jobName, name)
 		_ = mutateAgenticSessionStatus(sessionNamespace, name, func(status map[string]interface{}) {
-			status["jobName"] = jobName
 			status["observedGeneration"] = currentObj.GetGeneration()
 			setCondition(status, conditionUpdate{
 				Type:    conditionJobCreated,
@@ -892,7 +891,6 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 
 	log.Printf("Created job %s for AgenticSession %s", jobName, name)
 	_ = mutateAgenticSessionStatus(sessionNamespace, name, func(status map[string]interface{}) {
-		status["jobName"] = jobName
 		status["observedGeneration"] = currentObj.GetGeneration()
 		setCondition(status, conditionUpdate{
 			Type:    conditionJobCreated,
@@ -1265,9 +1263,8 @@ func monitorJob(jobName, sessionName, sessionNamespace string) {
 		}
 
 		pod := pods.Items[0]
-		_ = mutateAgenticSessionStatus(sessionNamespace, sessionName, func(status map[string]interface{}) {
-			status["runnerPodName"] = pod.Name
-		})
+		// Note: We don't store pod name in status (pods are ephemeral, can be recreated)
+		// Use k8s-resources endpoint or kubectl for live pod info
 
 		if pod.Spec.NodeName != "" {
 			_ = mutateAgenticSessionStatus(sessionNamespace, sessionName, func(status map[string]interface{}) {

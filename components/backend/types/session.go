@@ -37,8 +37,6 @@ type AgenticSessionStatus struct {
 	Phase              string              `json:"phase,omitempty"`
 	StartTime          *string             `json:"startTime,omitempty"`
 	CompletionTime     *string             `json:"completionTime,omitempty"`
-	JobName            string              `json:"jobName,omitempty"`
-	RunnerPodName      string              `json:"runnerPodName,omitempty"`
 	ReconciledRepos    []ReconciledRepo    `json:"reconciledRepos,omitempty"`
 	ReconciledWorkflow *ReconciledWorkflow `json:"reconciledWorkflow,omitempty"`
 	SDKSessionID       string              `json:"sdkSessionId,omitempty"`
