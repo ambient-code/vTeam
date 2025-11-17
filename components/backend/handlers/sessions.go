@@ -38,6 +38,8 @@ var (
 	SendMessageToSession              func(string, string, map[string]interface{})
 )
 
+const runnerTokenRefreshedAtAnnotation = "ambient-code.io/token-refreshed-at"
+
 // parseSpec parses AgenticSessionSpec with v1alpha1 fields
 func parseSpec(spec map[string]interface{}) types.AgenticSessionSpec {
 	result := types.AgenticSessionSpec{}
@@ -669,12 +671,16 @@ func provisionRunnerTokenForSession(c *gin.Context, reqK8s *kubernetes.Clientset
 
 	// Store token in a Secret (update if exists to refresh token)
 	secretName := fmt.Sprintf("ambient-runner-token-%s", sessionName)
+	refreshedAt := time.Now().UTC().Format(time.RFC3339)
 	sec := &corev1.Secret{
 		ObjectMeta: v1.ObjectMeta{
 			Name:            secretName,
 			Namespace:       project,
 			Labels:          map[string]string{"app": "ambient-runner-token"},
 			OwnerReferences: []v1.OwnerReference{ownerRef},
+			Annotations: map[string]string{
+				runnerTokenRefreshedAtAnnotation: refreshedAt,
+			},
 		},
 		Type:       corev1.SecretTypeOpaque,
 		StringData: secretData,
@@ -685,7 +691,20 @@ func provisionRunnerTokenForSession(c *gin.Context, reqK8s *kubernetes.Clientset
 		if errors.IsAlreadyExists(err) {
 			// Secret exists - update it with fresh token
 			log.Printf("Updating existing secret %s with fresh token", secretName)
-			if _, err := reqK8s.CoreV1().Secrets(project).Update(c.Request.Context(), sec, v1.UpdateOptions{}); err != nil {
+			existing, getErr := reqK8s.CoreV1().Secrets(project).Get(c.Request.Context(), secretName, v1.GetOptions{})
+			if getErr != nil {
+				return fmt.Errorf("get Secret for update: %w", getErr)
+			}
+			secretCopy := existing.DeepCopy()
+			if secretCopy.Data == nil {
+				secretCopy.Data = map[string][]byte{}
+			}
+			secretCopy.Data["k8s-token"] = []byte(k8sToken)
+			if secretCopy.Annotations == nil {
+				secretCopy.Annotations = map[string]string{}
+			}
+			secretCopy.Annotations[runnerTokenRefreshedAtAnnotation] = refreshedAt
+			if _, err := reqK8s.CoreV1().Secrets(project).Update(c.Request.Context(), secretCopy, v1.UpdateOptions{}); err != nil {
 				return fmt.Errorf("update Secret: %w", err)
 			}
 			log.Printf("Successfully updated secret %s with fresh token", secretName)
@@ -1086,6 +1105,11 @@ func SelectWorkflow(c *gin.Context) {
 		return
 	}
 
+	if err := ensureRuntimeMutationAllowed(item); err != nil {
+		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+		return
+	}
+
 	// Update activeWorkflow in spec
 	spec, ok := item.Object["spec"].(map[string]interface{})
 	if !ok {
@@ -1169,6 +1193,11 @@ func AddRepo(c *gin.Context) {
 		return
 	}
 
+	if err := ensureRuntimeMutationAllowed(item); err != nil {
+		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+		return
+	}
+
 	// Update spec.repos
 	spec, ok := item.Object["spec"].(map[string]interface{})
 	if !ok {
@@ -1228,6 +1257,11 @@ func RemoveRepo(c *gin.Context) {
 		}
 		log.Printf("Failed to get session %s in project %s: %v", sessionName, project, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get session"})
+		return
+	}
+
+	if err := ensureRuntimeMutationAllowed(item); err != nil {
+		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -1888,6 +1922,95 @@ func StartSession(c *gin.Context) {
 	c.JSON(http.StatusAccepted, session)
 }
 
+func ensureRuntimeMutationAllowed(item *unstructured.Unstructured) error {
+	if item == nil {
+		return fmt.Errorf("session not loaded")
+	}
+
+	spec, _ := item.Object["spec"].(map[string]interface{})
+	interactive := false
+	if spec != nil {
+		if v, ok := spec["interactive"].(bool); ok {
+			interactive = v
+		}
+	}
+	if !interactive {
+		return fmt.Errorf("session is not interactive")
+	}
+
+	status, _ := item.Object["status"].(map[string]interface{})
+	phase := ""
+	if status != nil {
+		if p, ok := status["phase"].(string); ok {
+			phase = strings.TrimSpace(strings.ToLower(p))
+		}
+	}
+
+	if phase != "running" {
+		displayPhase := "unknown"
+		if status != nil {
+			if original, ok := status["phase"].(string); ok && strings.TrimSpace(original) != "" {
+				displayPhase = original
+			}
+		}
+		return fmt.Errorf("session must be Running to mutate spec (current phase: %s)", displayPhase)
+	}
+
+	return nil
+}
+
+func copyStatusMap(src map[string]interface{}) map[string]interface{} {
+	if src == nil {
+		return map[string]interface{}{}
+	}
+	dst := make(map[string]interface{}, len(src))
+	for k, v := range src {
+		dst[k] = v
+	}
+	return dst
+}
+
+func upsertStatusCondition(status map[string]interface{}, condType, condStatus, reason, message string) {
+	now := time.Now().UTC().Format(time.RFC3339)
+	conditions, _ := status["conditions"].([]interface{})
+	updated := false
+
+	for i, cond := range conditions {
+		entry, ok := cond.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		t, _ := entry["type"].(string)
+		if strings.EqualFold(t, condType) {
+			if entry["status"] != condStatus {
+				entry["lastTransitionTime"] = now
+			}
+			entry["status"] = condStatus
+			if reason != "" {
+				entry["reason"] = reason
+			}
+			if message != "" {
+				entry["message"] = message
+			}
+			conditions[i] = entry
+			updated = true
+			break
+		}
+	}
+
+	if !updated {
+		conditions = append(conditions, map[string]interface{}{
+			"type":               condType,
+			"status":             condStatus,
+			"reason":             reason,
+			"message":            message,
+			"lastTransitionTime": now,
+		})
+	}
+
+	status["conditions"] = conditions
+}
+
 func StopSession(c *gin.Context) {
 	project := c.GetString("project")
 	sessionName := c.Param("sessionName")
@@ -1908,8 +2031,10 @@ func StopSession(c *gin.Context) {
 	if spec, ok := item.Object["spec"].(map[string]interface{}); ok {
 		if interactive, ok := spec["interactive"].(bool); !ok || !interactive {
 			spec["interactive"] = true
-			if _, err := reqDyn.Resource(gvr).Namespace(project).Update(context.TODO(), item, v1.UpdateOptions{}); err != nil {
+			if updatedItem, err := reqDyn.Resource(gvr).Namespace(project).Update(context.TODO(), item, v1.UpdateOptions{}); err != nil {
 				log.Printf("Failed to set interactive flag for %s: %v", sessionName, err)
+			} else {
+				item = updatedItem
 			}
 		}
 	}
@@ -1919,23 +2044,29 @@ func StopSession(c *gin.Context) {
 		return
 	}
 
-	statusPayload := map[string]interface{}{
-		"phase":          "Stopped",
-		"completionTime": time.Now().Format(time.RFC3339),
+	fresh, err := DynamicClient.Resource(gvr).Namespace(project).Get(context.TODO(), sessionName, v1.GetOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Session not found"})
+			return
+		}
+		log.Printf("Failed to refresh agentic session %s in project %s: %v", sessionName, project, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to refresh session"})
+		return
 	}
 
-	updated, err := DynamicClient.Resource(gvr).Namespace(project).UpdateStatus(context.TODO(), &unstructured.Unstructured{
-		Object: map[string]interface{}{
-			"apiVersion": item.GetAPIVersion(),
-			"kind":       item.GetKind(),
-			"metadata": map[string]interface{}{
-				"name":            item.GetName(),
-				"namespace":       item.GetNamespace(),
-				"resourceVersion": item.GetResourceVersion(),
-			},
-			"status": statusPayload,
-		},
-	}, v1.UpdateOptions{})
+	existingStatus, _ := fresh.Object["status"].(map[string]interface{})
+	statusPayload := copyStatusMap(existingStatus)
+	now := time.Now().UTC().Format(time.RFC3339)
+	statusPayload["phase"] = "Stopped"
+	statusPayload["completionTime"] = now
+	delete(statusPayload, "startTime")
+	upsertStatusCondition(statusPayload, "Ready", "False", "UserStopped", "User requested stop")
+	upsertStatusCondition(statusPayload, "RunnerStarted", "False", "UserStopped", "Runner stop requested")
+
+	fresh.Object["status"] = statusPayload
+
+	updated, err := DynamicClient.Resource(gvr).Namespace(project).UpdateStatus(context.TODO(), fresh, v1.UpdateOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			log.Printf("Agentic session %s was deleted during stop operation", sessionName)

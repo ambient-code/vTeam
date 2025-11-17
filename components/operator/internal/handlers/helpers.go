@@ -10,22 +10,29 @@ import (
 	"ambient-code-operator/internal/config"
 	"ambient-code-operator/internal/types"
 
+	authnv1 "k8s.io/api/authentication/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
 const (
-	conditionReady              = "Ready"
-	conditionPVCReady           = "PVCReady"
-	conditionSecretsReady       = "SecretsReady"
-	conditionJobCreated         = "JobCreated"
-	conditionPodScheduled       = "PodScheduled"
-	conditionRunnerStarted      = "RunnerStarted"
-	conditionReposReconciled    = "ReposReconciled"
-	conditionWorkflowReconciled = "WorkflowReconciled"
-	conditionCompleted          = "Completed"
-	conditionFailed             = "Failed"
+	conditionReady                     = "Ready"
+	conditionPVCReady                  = "PVCReady"
+	conditionSecretsReady              = "SecretsReady"
+	conditionJobCreated                = "JobCreated"
+	conditionPodScheduled              = "PodScheduled"
+	conditionRunnerStarted             = "RunnerStarted"
+	conditionReposReconciled           = "ReposReconciled"
+	conditionWorkflowReconciled        = "WorkflowReconciled"
+	conditionCompleted                 = "Completed"
+	conditionFailed                    = "Failed"
+	runnerTokenSecretAnnotation        = "ambient-code.io/runner-token-secret"
+	runnerServiceAccountAnnotation     = "ambient-code.io/runner-sa"
+	runnerTokenRefreshedAtAnnotation   = "ambient-code.io/token-refreshed-at"
+	runnerTokenRefreshTTL              = 45 * time.Minute
+	defaultRunnerTokenSecretPrefix     = "ambient-runner-token-"
+	defaultSessionServiceAccountPrefix = "ambient-session-"
 )
 
 type conditionUpdate struct {
@@ -196,13 +203,70 @@ func derivePhaseFromConditions(status map[string]interface{}) string {
 	}
 }
 
-// ensureFreshRunnerToken is a placeholder for token refresh logic.
+// ensureFreshRunnerToken refreshes the runner SA token if it is older than the allowed TTL.
 func ensureFreshRunnerToken(ctx context.Context, session *unstructured.Unstructured) error {
-	// Token minting still happens in the backend today. This helper exists so the
-	// reconciliation loop can be wired up without blocking on future work. When
-	// operator-managed tokens are implemented, this helper will delete and
-	// recreate runner secrets if they are older than the allowed TTL.
-	_ = ctx
-	_ = session
+	if session == nil {
+		return fmt.Errorf("session is nil")
+	}
+
+	namespace := session.GetNamespace()
+	if namespace == "" {
+		return fmt.Errorf("session namespace is empty")
+	}
+
+	annotations := session.GetAnnotations()
+	secretName := strings.TrimSpace(annotations[runnerTokenSecretAnnotation])
+	if secretName == "" {
+		secretName = fmt.Sprintf("%s%s", defaultRunnerTokenSecretPrefix, session.GetName())
+	}
+
+	secret, err := config.K8sClient.CoreV1().Secrets(namespace).Get(ctx, secretName, v1.GetOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return nil
+		}
+		return fmt.Errorf("failed to fetch runner token secret %s/%s: %w", namespace, secretName, err)
+	}
+
+	if secret.Annotations != nil {
+		if refreshedAtStr := secret.Annotations[runnerTokenRefreshedAtAnnotation]; refreshedAtStr != "" {
+			if refreshedAt, parseErr := time.Parse(time.RFC3339, refreshedAtStr); parseErr == nil {
+				if time.Since(refreshedAt) < runnerTokenRefreshTTL {
+					return nil
+				}
+			}
+		}
+	}
+
+	saName := strings.TrimSpace(annotations[runnerServiceAccountAnnotation])
+	if saName == "" {
+		saName = fmt.Sprintf("%s%s", defaultSessionServiceAccountPrefix, session.GetName())
+	}
+
+	tokenReq := &authnv1.TokenRequest{Spec: authnv1.TokenRequestSpec{}}
+	tokenResp, err := config.K8sClient.CoreV1().ServiceAccounts(namespace).CreateToken(ctx, saName, tokenReq, v1.CreateOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to mint token for %s/%s: %w", namespace, saName, err)
+	}
+	token := strings.TrimSpace(tokenResp.Status.Token)
+	if token == "" {
+		return fmt.Errorf("received empty token for %s/%s", namespace, saName)
+	}
+
+	secretCopy := secret.DeepCopy()
+	if secretCopy.Data == nil {
+		secretCopy.Data = map[string][]byte{}
+	}
+	secretCopy.Data["k8s-token"] = []byte(token)
+	if secretCopy.Annotations == nil {
+		secretCopy.Annotations = map[string]string{}
+	}
+	secretCopy.Annotations[runnerTokenRefreshedAtAnnotation] = time.Now().UTC().Format(time.RFC3339)
+
+	if _, err := config.K8sClient.CoreV1().Secrets(namespace).Update(ctx, secretCopy, v1.UpdateOptions{}); err != nil {
+		return fmt.Errorf("failed to update runner token secret %s/%s: %w", namespace, secretName, err)
+	}
+
+	log.Printf("Refreshed runner token for session %s/%s", namespace, session.GetName())
 	return nil
 }

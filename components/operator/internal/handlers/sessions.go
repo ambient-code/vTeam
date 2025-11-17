@@ -947,7 +947,7 @@ func monitorJob(jobName, sessionName, sessionNamespace string) {
 
 	for range ticker.C {
 		gvr := types.GetAgenticSessionResource()
-		_, err := config.DynamicClient.Resource(gvr).Namespace(sessionNamespace).Get(context.TODO(), sessionName, v1.GetOptions{})
+		sessionObj, err := config.DynamicClient.Resource(gvr).Namespace(sessionNamespace).Get(context.TODO(), sessionName, v1.GetOptions{})
 		if err != nil {
 			if errors.IsNotFound(err) {
 				log.Printf("AgenticSession %s deleted; stopping job monitoring", sessionName)
@@ -955,6 +955,10 @@ func monitorJob(jobName, sessionName, sessionNamespace string) {
 			}
 			log.Printf("Failed to fetch AgenticSession %s: %v", sessionName, err)
 			continue
+		}
+
+		if err := ensureFreshRunnerToken(context.TODO(), sessionObj); err != nil {
+			log.Printf("Failed to refresh runner token for %s/%s: %v", sessionNamespace, sessionName, err)
 		}
 
 		job, err := config.K8sClient.BatchV1().Jobs(sessionNamespace).Get(context.TODO(), jobName, v1.GetOptions{})

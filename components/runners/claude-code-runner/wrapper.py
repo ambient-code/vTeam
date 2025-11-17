@@ -49,7 +49,12 @@ class ClaudeCodeAdapter:
         # Initialize workflow if ACTIVE_WORKFLOW env vars are set
         await self._initialize_workflow_if_set()
         # Validate prerequisite files exist for phase-based commands
-        await self._validate_prerequisites()
+        try:
+            await self._validate_prerequisites()
+        except PrerequisiteError as exc:
+            self.last_exit_code = 2
+            logging.error("Prerequisite validation failed during initialization: %s", exc)
+            raise
 
     async def run(self):
         """Run the Claude Code CLI session."""

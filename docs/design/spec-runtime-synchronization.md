@@ -170,6 +170,8 @@ curl -X POST /api/projects/myproject/agentic-sessions/session-123/start
 
 **Implementation:**
 
+> **Runtime guard rails:** The backend now enforces that runtime repo/workflow mutations are only accepted when the session is both interactive and currently in the `Running` phase. Calls made outside that window receive `409 Conflict`, allowing the UI to surface actionable errors instead of letting the operator chase impossible updates.
+
 ```go
 // Backend: Handle runtime repo addition
 func AddRepoToSession(c *gin.Context) {
@@ -200,14 +202,14 @@ func AddRepoToSession(c *gin.Context) {
     spec, _ := session.Object["spec"].(map[string]interface{})
     interactive, _ := spec["interactive"].(bool)
     if !interactive {
-        c.JSON(http.StatusBadRequest, gin.H{"error": "Can only add repos to interactive sessions"})
+        c.JSON(http.StatusConflict, gin.H{"error": "Can only add repos to interactive sessions"})
         return
     }
     
     status, _ := session.Object["status"].(map[string]interface{})
     phase, _ := status["phase"].(string)
     if phase != "Running" {
-        c.JSON(http.StatusBadRequest, gin.H{"error": "Session must be running to add repos"})
+        c.JSON(http.StatusConflict, gin.H{"error": "Session must be running to add repos"})
         return
     }
     
