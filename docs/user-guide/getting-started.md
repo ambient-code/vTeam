@@ -39,8 +39,8 @@ crc setup
 
 ```bash
 # Clone the repository
-git clone https://github.com/ambient-code/vTeam.git
-cd vTeam
+git clone https://github.com/ambient-code/platform.git
+cd platform
 
 # Single command to start everything
 make dev-start
@@ -110,7 +110,7 @@ Now let's create your first agentic session to verify everything works:
 
 ### Using the Web Interface
 
-1. **Access the vTeam UI** in your browser
+1. **Access the ACP UI** in your browser
 2. **Create a new project** (if not already created)
 3. **Start a new AgenticSession**:
    - Provide a prompt describing your task
@@ -179,7 +179,7 @@ oc get pods -n vteam-dev -o jsonpath='{.items[*].spec.containers[*].image}'
 
 ## What's Next?
 
-Now that vTeam is running, you're ready to:
+Now that the Ambient Code Platform is running, you're ready to:
 
 1. **Try hands-on exercises** → [Lab 1: Your First Agentic Session](../labs/basic/lab-1-first-rfe.md)
 2. **Explore the reference documentation** → [Reference Guide](../reference/index.md)
@@ -190,7 +190,7 @@ Now that vTeam is running, you're ready to:
 If you encounter issues not covered here:
 
 - **Check CLAUDE.md** in the repository root for detailed development documentation
-- **Search existing issues** → [GitHub Issues](https://github.com/ambient-code/vTeam/issues)
+- **Search existing issues** → [GitHub Issues](https://github.com/ambient-code/platform/issues)
 - **Create a new issue** with your error details and environment info
 
 Welcome to Kubernetes-native AI automation! 🚀

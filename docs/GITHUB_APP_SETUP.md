@@ -1,19 +1,19 @@
 # GitHub App Setup
 
-This guide explains how to configure a GitHub App for vTeam so users can browse repositories, clone, and push changes during agentic sessions and RFE seeding.
+This guide explains how to configure a GitHub App for the Ambient Code Platform so users can browse repositories, clone, and push changes during agentic sessions and RFE seeding.
 
 ## Prerequisites
 
 - A GitHub account (or organization) where the App will be installed
 - Permissions to create a GitHub App
-- Deployed vTeam backend and frontend
+- Deployed ACP backend and frontend
 - Ability to set environment variables on the backend Deployment
 
 ## 1) Create a GitHub App
 
 1. Go to GitHub → Settings → Developer settings → GitHub Apps → New GitHub App
 2. Use these base settings:
-   - GitHub App name: vTeam (or your own)
+   - GitHub App name: Ambient Code Platform (or your own)
    - Homepage URL: your frontend route (e.g., https://ambient-code.<apps-domain>)
    - Callback URL (optional if using user OAuth verification): https://<frontend>/api/auth/github/user/callback
    - Webhook: Not required
@@ -88,4 +88,4 @@ The backend stores a mapping of the current user to their installation in a Conf
 
 ## GitHub Enterprise (GHE)
 
-vTeam primarily targets github.com. If you need GHE, additional host configuration may be required throughout the codepaths (API base URL); contact maintainers before enabling.
+The Ambient Code Platform primarily targets github.com. If you need GHE, additional host configuration may be required throughout the codepaths (API base URL); contact maintainers before enabling.

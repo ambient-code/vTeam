@@ -203,7 +203,7 @@ The system includes 16 specialized AI agent personas:
 
 ## Prompt Engineering Strategy
 
-The vTeam system uses a **layered prompting approach**:
+The Ambient Code Platform uses a **layered prompting approach**:
 
 1. **Base System Prompts**: Define agent personalities and expertise areas
 2. **Context-Aware Prompts**: Inject current session context and phase information

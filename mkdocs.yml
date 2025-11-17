@@ -1,10 +1,10 @@
-site_name: vTeam Documentation
-site_description: AI-powered automation system for engineering refinement
+site_name: Ambient Code Platform Documentation
+site_description: AI-powered automation platform for intelligent agentic workflows
 site_author: Red Hat AI Engineering Team
-site_url: https://vteam-docs.example.com
+site_url: https://acp-docs.example.com
 
-repo_name: ambient-code/vTeam
-repo_url: https://github.com/ambient-code/vTeam
+repo_name: ambient-code/platform
+repo_url: https://github.com/ambient-code/platform
 edit_uri: edit/main/docs/
 
 # Exclude files from the documentation build

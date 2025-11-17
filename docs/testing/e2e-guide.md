@@ -125,7 +125,7 @@ Test from user perspective, not implementation details or API internals.
 
 ### 5. Auth Headers Automatic
 
-Don't manually add auth headers - they're auto-injected in vTeam.
+Don't manually add auth headers - they're auto-injected in the platform's e2e tests.
 
 ### 6. Use Unique Test Data
 
@@ -158,7 +158,7 @@ it('should create a new project when user fills form and clicks submit', () => {
 - ❌ Testing implementation details instead of user workflows
 - ❌ Using fragile CSS selectors instead of data-testid
 - ❌ Fixed waits (`cy.wait(3000)`) instead of conditional waits
-- ❌ Manually adding auth headers (automatic in vTeam e2e)
+- ❌ Manually adding auth headers (automatic in ACP e2e tests)
 - ❌ Not cleaning up test data
 - ❌ Hardcoded test data causing conflicts
 - ❌ Tests that depend on execution order

@@ -123,8 +123,8 @@ Before using the platform, ensure you have:
 If you encounter issues:
 
 - **Common problems**: See the [Troubleshooting section](getting-started.md#common-issues) in Getting Started
-- **Documentation bugs**: [Submit an issue](https://github.com/ambient-code/vTeam/issues)
-- **Questions**: [GitHub Discussions](https://github.com/ambient-code/vTeam/discussions)
+- **Documentation bugs**: [Submit an issue](https://github.com/ambient-code/platform/issues)
+- **Questions**: [GitHub Discussions](https://github.com/ambient-code/platform/discussions)
 - **CLAUDE.md**: Check the project root for detailed development documentation
 
 ---
