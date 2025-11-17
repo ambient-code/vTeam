@@ -75,6 +75,47 @@ Apply: `kubectl apply -f amber-session.yaml`
 
 Monitor: `kubectl get agenticsession amber-analysis -n your-project -w`
 
+### Visual Workflow: Interactive Consultation
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant UI as ACP UI
+    participant A as Amber
+
+    U->>UI: Create AgenticSession
+    U->>UI: Enter prompt/question
+    UI->>A: Start session
+    A->>A: Analyze codebase context
+    A->>A: Generate response with<br/>file:line references
+    A->>UI: Return analysis
+
+    rect rgb(255, 230, 230)
+        Note over U,UI: ⚠️ HUMAN REVIEW
+        UI->>U: Display response with<br/>confidence level
+        U->>U: Review recommendation
+    end
+
+    alt Accept Recommendation
+        rect rgb(255, 230, 230)
+            Note over U: ⚠️ HUMAN DECISION
+            U->>U: Implement suggested action
+        end
+    else Need More Information
+        U->>UI: Ask follow-up question
+        UI->>A: Continue session
+        A->>UI: Provide additional context
+    else Reject/Close
+        U->>UI: End session
+    end
+```
+
+**Key Points:**
+- User initiates and controls the entire workflow
+- Amber provides analysis with confidence levels (High 90-100%, Medium 70-89%, Low <70%)
+- Human review required before any action
+- Interactive back-and-forth supported
+
 ## Understanding Amber's Authority
 
 Amber operates within a clear hierarchy to ensure quality and compliance:
@@ -181,6 +222,55 @@ spec:
 - **Pattern detection**: Identifies related issues before they multiply
 - **Knowledge preservation**: Documents decisions in PR descriptions
 
+### Visual Workflow: Background Agent Mode (Issue-to-PR)
+
+```mermaid
+sequenceDiagram
+    participant GH as GitHub
+    participant A as Amber
+    participant U as Human Reviewer
+
+    alt Webhook Trigger
+        GH->>A: Issue Created Event
+    else Scheduled Trigger
+        GH->>A: CronJob (Every 4 hours)
+    end
+
+    A->>A: Triage Issue
+    A->>A: Assess severity & components
+    A->>A: Check auto-fixability<br/>(< 30min + high confidence?)
+
+    alt High Confidence Auto-Fix
+        A->>A: Use TodoWrite<br/>(Show detailed plan)
+        rect rgb(255, 230, 230)
+            Note over A,U: ⚠️ HUMAN CHECKPOINT
+            A->>U: Display plan in session
+            U->>A: Review & approve plan
+        end
+        A->>GH: Create PR with fix
+        Note over GH: PR includes:<br/>- Detailed context<br/>- Rollback instructions<br/>- Confidence level
+        rect rgb(255, 230, 230)
+            Note over GH,U: ⚠️ HUMAN REVIEW REQUIRED
+            U->>GH: Review PR
+            U->>GH: Merge or request changes
+        end
+    else Needs Investigation
+        A->>GH: Add analysis comment
+        A->>GH: Suggest assignee
+        rect rgb(255, 230, 230)
+            Note over GH,U: ⚠️ HUMAN DECISION
+            U->>GH: Assign to developer<br/>or take action
+        end
+    end
+```
+
+**Key Points:**
+- TodoWrite safety gate ensures plan visibility before action
+- Dual checkpoint system: Plan review + PR review
+- Escalation path for complex issues (human expertise required)
+- Rollback instructions included in every PR
+- Never auto-merges - always requires human PR review
+
 ### Scheduled (Automated Health Checks)
 
 Create CronJobs to run Amber periodically:
@@ -278,6 +368,111 @@ spec:
                   EOF
           restartPolicy: Never
 ```
+
+### Visual Workflow: Scheduled Health Checks / Sprint Planning
+
+```mermaid
+sequenceDiagram
+    participant Cron as CronJob
+    participant A as Amber
+    participant GH as GitHub
+    participant Team as Team
+
+    Cron->>A: Trigger (Monday 9 AM)
+    A->>A: Analyze backlog
+    A->>A: Group issues by theme
+    A->>A: Identify dependencies
+    A->>A: Assess priorities
+    A->>A: Generate metrics<br/>(coverage, open issues, etc.)
+    A->>A: Create markdown report<br/>in docs/amber-reports/
+    A->>GH: Create feature branch<br/>(amber/sprint-YYYY-WW)
+    A->>GH: Commit report
+    A->>GH: Create PR
+
+    rect rgb(255, 230, 230)
+        Note over GH,Team: ⚠️ HUMAN REVIEW
+        Team->>GH: Review sprint plan
+        Team->>Team: Validate priorities
+        Team->>Team: Discuss recommendations
+    end
+
+    alt Accept Plan
+        rect rgb(255, 230, 230)
+            Note over GH,Team: ⚠️ HUMAN DECISION
+            Team->>GH: Merge PR
+            Team->>Team: Use in sprint planning
+        end
+    else Modify Plan
+        Team->>GH: Request changes
+        Team->>GH: Update manually
+        Team->>GH: Merge modified plan
+    end
+```
+
+**Key Points:**
+- Fully automated report generation (no human in loop)
+- Creates PR for review - never commits to main
+- Team reviews and validates before sprint adoption
+- Can be modified before acceptance
+- Weekly cadence aligns with sprint planning
+
+## Webhook-Triggered Mode (Reactive Intelligence)
+
+Amber can automatically respond to GitHub events in real-time, providing immediate triage and analysis.
+
+**Supported Events:**
+- Issue opened - Automatic triage, severity assessment, component identification
+- PR created - Quick standards compliance review
+- Push to main - Changelog impact analysis
+
+### Visual Workflow: Webhook-Triggered Reactive Intelligence
+
+```mermaid
+sequenceDiagram
+    participant GH as GitHub
+    participant A as Amber
+    participant U as Developer
+
+    alt Issue Opened
+        GH->>A: Issue created webhook
+        A->>A: Triage severity
+        A->>A: Identify components
+        A->>A: Find related issues
+        A->>GH: Add comment with analysis
+        rect rgb(255, 230, 230)
+            Note over GH,U: ⚠️ HUMAN DECISION
+            U->>GH: Review triage
+            U->>GH: Assign or adjust labels
+        end
+    else PR Created
+        GH->>A: PR created webhook
+        A->>A: Check linting compliance
+        A->>A: Verify standards (CLAUDE.md)
+        A->>A: Scan for breaking changes
+        alt Unique Value Found
+            A->>GH: Add inline comment
+            rect rgb(255, 230, 230)
+                Note over GH,U: ⚠️ HUMAN REVIEW
+                U->>GH: Address comment or discuss
+            end
+        else No Issues / CI Covered
+            A->>A: Skip (avoid noise)
+        end
+    else Push to Main
+        GH->>A: Push event
+        A->>A: Analyze commit changes
+        A->>A: Check dependency impact
+        A->>A: Prepare changelog update
+        A->>GH: Optional comment if<br/>breaking changes detected
+    end
+```
+
+**Key Points:**
+- High signal, low noise: Only comments when adding unique value
+- Never duplicates CI/linter output
+- Immediate feedback (within seconds of event)
+- All actions require human review/decision
+- Safety principle: "When in doubt, don't comment"
 
 ## Example Prompts
 
