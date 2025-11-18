@@ -43,6 +43,8 @@ func registerRoutes(r *gin.Engine) {
 			projectGroup.GET("/repo/tree", handlers.GetRepoTree)
 			projectGroup.GET("/repo/blob", handlers.GetRepoBlob)
 			projectGroup.GET("/repo/branches", handlers.ListRepoBranches)
+			projectGroup.GET("/repo/seed-status", handlers.GetRepoSeedStatus)
+			projectGroup.POST("/repo/seed", handlers.SeedRepositoryEndpoint)
 
 			projectGroup.GET("/agentic-sessions", handlers.ListSessions)
 			projectGroup.POST("/agentic-sessions", handlers.CreateSession)
@@ -101,6 +103,11 @@ func registerRoutes(r *gin.Engine) {
 		api.GET("/auth/github/status", handlers.GetGitHubStatusGlobal)
 		api.POST("/auth/github/disconnect", handlers.DisconnectGitHubGlobal)
 		api.GET("/auth/github/user/callback", handlers.HandleGitHubUserOAuthCallback)
+
+		// GitLab authentication endpoints
+		api.POST("/auth/gitlab/connect", handlers.ConnectGitLabGlobal)
+		api.GET("/auth/gitlab/status", handlers.GetGitLabStatusGlobal)
+		api.POST("/auth/gitlab/disconnect", handlers.DisconnectGitLabGlobal)
 
 		// Cluster info endpoint (public, no auth required)
 		api.GET("/cluster-info", handlers.GetClusterInfo)

@@ -107,3 +107,20 @@ type WorkflowSelection struct {
 	Branch string `json:"branch,omitempty"`
 	Path   string `json:"path,omitempty"`
 }
+
+// Mixed Provider Support Types
+
+// ProviderResult contains the result of operations for a specific provider
+type ProviderResult struct {
+	Provider ProviderType `json:"provider"`
+	Success  bool         `json:"success"`
+	Error    string       `json:"error,omitempty"`
+	RepoURL  string       `json:"repoUrl"`
+}
+
+// MixedProviderSessionResult contains results from multiple providers
+type MixedProviderSessionResult struct {
+	OverallSuccess bool             `json:"overallSuccess"`
+	Results        []ProviderResult `json:"results"`
+	Message        string           `json:"message"`
+}

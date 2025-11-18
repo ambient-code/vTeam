@@ -70,7 +70,6 @@ class ClaudeCodeAdapter:
             except Exception as _:
                 logging.debug("CR status update (Running) skipped")
 
-
             # Append token to websocket URL if available (to pass SA token to backend)
             try:
                 if self.shell and getattr(self.shell, 'transport', None):
@@ -86,7 +85,7 @@ class ClaudeCodeAdapter:
             result = None
             while True:
                 result = await self._run_claude_agent_sdk(prompt)
-                
+
                 # Check if restart was requested (workflow changed)
                 if self._restart_requested:
                     self._restart_requested = False
@@ -94,7 +93,7 @@ class ClaudeCodeAdapter:
                     logging.info("Restarting Claude SDK due to workflow change")
                     # Loop will call _run_claude_agent_sdk again with updated env vars
                     continue
-                
+
                 # Normal exit - no restart requested
                 break
 
@@ -224,7 +223,7 @@ class ClaudeCodeAdapter:
             cwd_path = self.context.workspace_path
             add_dirs = []
             derived_name = None  # Track workflow name for system prompt
-            
+
             # Check for active workflow first
             active_workflow_url = (os.getenv('ACTIVE_WORKFLOW_GIT_URL') or '').strip()
             if active_workflow_url:
@@ -233,18 +232,17 @@ class ClaudeCodeAdapter:
                     owner, repo, _ = self._parse_owner_repo(active_workflow_url)
                     derived_name = repo or ''
                     if not derived_name:
-                        from urllib.parse import urlparse as _urlparse
-                        p = _urlparse(active_workflow_url)
+                        p = urlparse(active_workflow_url)
                         parts = [p for p in (p.path or '').split('/') if p]
                         if parts:
                             derived_name = parts[-1]
                     derived_name = (derived_name or '').removesuffix('.git').strip()
-                    
+
                     if derived_name:
                         workflow_path = str(Path(self.context.workspace_path) / "workflows" / derived_name)
-                        # NOTE: Don't append ACTIVE_WORKFLOW_PATH here - we already extracted 
+                        # NOTE: Don't append ACTIVE_WORKFLOW_PATH here - we already extracted
                         # the subdirectory during clone, so workflow_path is the final location
-                        
+
                         if Path(workflow_path).exists():
                             cwd_path = workflow_path
                             logging.info(f"Using workflow as CWD: {derived_name}")
@@ -256,7 +254,7 @@ class ClaudeCodeAdapter:
                 except Exception as e:
                     logging.warning(f"Failed to derive workflow name: {e}, using default")
                     cwd_path = str(Path(self.context.workspace_path) / "workflows" / "default")
-                
+
                 # Add all repos as additional directories so they're accessible to Claude
                 for r in repos_cfg:
                     name = (r.get('name') or '').strip()
@@ -265,7 +263,7 @@ class ClaudeCodeAdapter:
                         if repo_path not in add_dirs:
                             add_dirs.append(repo_path)
                             logging.info(f"Added repo as additional directory: {name}")
-                
+
                 # Add artifacts directory
                 artifacts_path = str(Path(self.context.workspace_path) / "artifacts")
                 if artifacts_path not in add_dirs:
@@ -294,7 +292,7 @@ class ClaudeCodeAdapter:
                     p = str(Path(self.context.workspace_path) / name)
                     if p != cwd_path:
                         add_dirs.append(p)
-                
+
                 # Add artifacts directory for repos mode too
                 artifacts_path = str(Path(self.context.workspace_path) / "artifacts")
                 if artifacts_path not in add_dirs:
@@ -351,7 +349,7 @@ class ClaudeCodeAdapter:
             options = ClaudeAgentOptions(
                 cwd=cwd_path,
                 permission_mode="acceptEdits",
-                allowed_tools= allowed_tools,
+                allowed_tools=allowed_tools,
                 mcp_servers=mcp_servers,
                 setting_sources=["project"],
                 system_prompt=system_prompt_config
@@ -536,7 +534,7 @@ class ClaudeCodeAdapter:
                         logging.info("No initial prompt - Claude will greet based on system prompt")
                 else:
                     logging.info("Skipping prompts - SDK resuming with full context")
-                
+
                 # Mark that first run is complete
                 self._first_run = False
 
@@ -665,7 +663,6 @@ class ClaudeCodeAdapter:
 
     async def _prepare_workspace(self):
         """Clone input repo/branch into workspace and configure git remotes."""
-        token = os.getenv("GITHUB_TOKEN") or await self._fetch_github_token()
         workspace = Path(self.context.workspace_path)
         workspace.mkdir(parents=True, exist_ok=True)
 
@@ -690,6 +687,9 @@ class ClaudeCodeAdapter:
                     if not name or not url:
                         continue
                     repo_dir = workspace / name
+
+                    # Fetch appropriate token for this repo's URL
+                    token = await self._fetch_token_for_url(url)
 
                     # Check if repo already exists
                     repo_exists = repo_dir.exists() and (repo_dir / ".git").exists()
@@ -746,6 +746,9 @@ class ClaudeCodeAdapter:
             return
         input_branch = os.getenv("INPUT_BRANCH", "").strip() or "main"
         output_repo = os.getenv("OUTPUT_REPO_URL", "").strip()
+
+        # Fetch appropriate token for this repo's URL
+        token = await self._fetch_token_for_url(input_repo)
 
         workspace_has_git = (workspace / ".git").exists()
         logging.info(f"Single-repo setup: workspace_has_git={workspace_has_git}, reusing={reusing_workspace}")
@@ -857,62 +860,63 @@ class ClaudeCodeAdapter:
         active_workflow_url = (os.getenv('ACTIVE_WORKFLOW_GIT_URL') or '').strip()
         if not active_workflow_url:
             return  # No workflow to initialize
-        
+
         active_workflow_branch = (os.getenv('ACTIVE_WORKFLOW_BRANCH') or 'main').strip()
         active_workflow_path = (os.getenv('ACTIVE_WORKFLOW_PATH') or '').strip()
-        
+
         # Derive workflow name from URL
         try:
             owner, repo, _ = self._parse_owner_repo(active_workflow_url)
             derived_name = repo or ''
             if not derived_name:
-                from urllib.parse import urlparse as _urlparse
-                p = _urlparse(active_workflow_url)
+                p = urlparse(active_workflow_url)
                 parts = [p for p in (p.path or '').split('/') if p]
                 if parts:
                     derived_name = parts[-1]
             derived_name = (derived_name or '').removesuffix('.git').strip()
-            
+
             if not derived_name:
                 logging.warning("Could not derive workflow name from URL, skipping initialization")
                 return
-            
+
             workflow_dir = Path(self.context.workspace_path) / "workflows" / derived_name
-            
+
             # Only clone if workflow directory doesn't exist
             if workflow_dir.exists():
                 logging.info(f"Workflow {derived_name} already exists, skipping initialization")
                 return
-            
+
             logging.info(f"Initializing workflow {derived_name} from CR spec on startup")
             # Clone the workflow but don't request restart (we haven't started yet)
             await self._clone_workflow_repository(active_workflow_url, active_workflow_branch, active_workflow_path, derived_name)
-            
+
         except Exception as e:
             logging.error(f"Failed to initialize workflow on startup: {e}")
             # Don't fail the session if workflow init fails - continue without it
-    
+
     async def _clone_workflow_repository(self, git_url: str, branch: str, path: str, workflow_name: str):
         """Clone workflow repository without requesting restart (used during initialization)."""
         workspace = Path(self.context.workspace_path)
-        token = os.getenv("GITHUB_TOKEN") or await self._fetch_github_token()
-        
+
         workflow_dir = workspace / "workflows" / workflow_name
         temp_clone_dir = workspace / "workflows" / f"{workflow_name}-clone-temp"
-        
+
         # Check if workflow already exists
         if workflow_dir.exists():
             await self._send_log(f"✓ Workflow {workflow_name} already loaded")
             logging.info(f"Workflow {workflow_name} already exists at {workflow_dir}")
             return
-        
+
+        # Fetch appropriate token based on repo URL
+        token = await self._fetch_token_for_url(git_url)
+
         # Clone to temporary directory first
         await self._send_log(f"📥 Cloning workflow {workflow_name}...")
         logging.info(f"Cloning workflow from {git_url} (branch: {branch})")
         clone_url = self._url_with_token(git_url, token) if token else git_url
         await self._run_cmd(["git", "clone", "--branch", branch, "--single-branch", clone_url, str(temp_clone_dir)], cwd=str(workspace))
         logging.info(f"Successfully cloned workflow to temp directory")
-        
+
         # Extract subdirectory if path is specified
         if path and path.strip():
             subdir_path = temp_clone_dir / path.strip()
@@ -931,7 +935,7 @@ class ClaudeCodeAdapter:
             # No path specified, use entire repo
             temp_clone_dir.rename(workflow_dir)
             logging.info(f"Using entire repository as workflow")
-        
+
         await self._send_log(f"✅ Workflow {workflow_name} ready")
         logging.info(f"Workflow {workflow_name} setup complete at {workflow_dir}")
 
@@ -944,31 +948,30 @@ class ClaudeCodeAdapter:
                 derived_name = repo or ''
                 if not derived_name:
                     # Fallback: last path segment without .git
-                    from urllib.parse import urlparse as _urlparse
-                    p = _urlparse(git_url)
+                    p = urlparse(git_url)
                     parts = [p for p in (p.path or '').split('/') if p]
                     if parts:
                         derived_name = parts[-1]
                 derived_name = (derived_name or '').removesuffix('.git').strip()
             except Exception:
                 derived_name = 'workflow'
-            
+
             if not derived_name:
                 await self._send_log("❌ Could not derive workflow name from URL")
                 return
-            
+
             # Clone the workflow repository
             await self._clone_workflow_repository(git_url, branch, path, derived_name)
-            
+
             # Set environment variables for the restart
             os.environ['ACTIVE_WORKFLOW_GIT_URL'] = git_url
             os.environ['ACTIVE_WORKFLOW_BRANCH'] = branch
             if path and path.strip():
                 os.environ['ACTIVE_WORKFLOW_PATH'] = path
-            
+
             # Request restart to switch Claude's working directory
             self._restart_requested = True
-            
+
         except Exception as e:
             logging.error(f"Failed to setup workflow: {e}")
             await self._send_log(f"❌ Workflow setup failed: {e}")
@@ -978,21 +981,22 @@ class ClaudeCodeAdapter:
         repo_url = str(payload.get('url') or '').strip()
         repo_branch = str(payload.get('branch') or '').strip() or 'main'
         repo_name = str(payload.get('name') or '').strip()
-        
+
         if not repo_url or not repo_name:
             logging.warning("Invalid repo_added payload")
             return
-        
+
         workspace = Path(self.context.workspace_path)
         repo_dir = workspace / repo_name
-        
+
         if repo_dir.exists():
             await self._send_log(f"Repository {repo_name} already exists")
             return
-        
-        token = os.getenv("GITHUB_TOKEN") or await self._fetch_github_token()
+
+        # Fetch appropriate token based on repo URL
+        token = await self._fetch_token_for_url(repo_url)
         clone_url = self._url_with_token(repo_url, token) if token else repo_url
-        
+
         await self._send_log(f"📥 Cloning {repo_name}...")
         await self._run_cmd(["git", "clone", "--branch", repo_branch, "--single-branch", clone_url, str(repo_dir)], cwd=str(workspace))
         
@@ -1003,40 +1007,40 @@ class ClaudeCodeAdapter:
         await self._run_cmd(["git", "config", "user.email", user_email], cwd=str(repo_dir))
         
         await self._send_log(f"✅ Repository {repo_name} added")
-        
+
         # Update REPOS_JSON env var
         repos_cfg = self._get_repos_config()
         repos_cfg.append({'name': repo_name, 'input': {'url': repo_url, 'branch': repo_branch}})
         os.environ['REPOS_JSON'] = _json.dumps(repos_cfg)
-        
+
         # Request restart to update additional directories
         self._restart_requested = True
 
     async def _handle_repo_removed(self, payload):
         """Remove repository and request restart."""
         repo_name = str(payload.get('name') or '').strip()
-        
+
         if not repo_name:
             logging.warning("Invalid repo_removed payload")
             return
-        
+
         workspace = Path(self.context.workspace_path)
         repo_dir = workspace / repo_name
-        
+
         if not repo_dir.exists():
             await self._send_log(f"Repository {repo_name} not found")
             return
-        
+
         await self._send_log(f"🗑️ Removing {repo_name}...")
         shutil.rmtree(repo_dir)
-        
+
         # Update REPOS_JSON env var
         repos_cfg = self._get_repos_config()
         repos_cfg = [r for r in repos_cfg if r.get('name') != repo_name]
         os.environ['REPOS_JSON'] = _json.dumps(repos_cfg)
-        
+
         await self._send_log(f"✅ Repository {repo_name} removed")
-        
+
         # Request restart to update additional directories
         self._restart_requested = True
 
@@ -1342,13 +1346,12 @@ class ClaudeCodeAdapter:
 
         # Transform status URL to patch endpoint
         try:
-            from urllib.parse import urlparse as _up, urlunparse as _uu
-            p = _up(status_url)
+            p = urlparse(status_url)
             # Remove /status suffix to get base resource URL
             new_path = p.path.rstrip("/")
             if new_path.endswith("/status"):
                 new_path = new_path[:-7]
-            url = _uu((p.scheme, p.netloc, new_path, '', '', ''))
+            url = urlunparse((p.scheme, p.netloc, new_path, '', '', ''))
 
             # JSON merge patch to update annotations
             patch = _json.dumps({
@@ -1368,6 +1371,7 @@ class ClaudeCodeAdapter:
                 req.add_header('Authorization', f'Bearer {token}')
 
             loop = asyncio.get_event_loop()
+
             def _do():
                 try:
                     with _urllib_request.urlopen(req, timeout=10) as resp:
@@ -1511,9 +1515,19 @@ class ClaudeCodeAdapter:
             netloc = parsed.netloc
             if "@" in netloc:
                 netloc = netloc.split("@", 1)[1]
-            auth = f"x-access-token:{token}@"
+
+            # Use appropriate auth format based on provider
+            hostname = parsed.hostname or ""
+            if 'gitlab' in hostname.lower():
+                # GitLab uses oauth2 token format
+                auth = f"oauth2:{token}@"
+            else:
+                # GitHub and others use x-access-token format
+                auth = f"x-access-token:{token}@"
+
             new_netloc = auth + netloc
-            return urlunparse((parsed.scheme, new_netloc, parsed.path, parsed.params, parsed.query, parsed.fragment))
+            return urlunparse((parsed.scheme, new_netloc, parsed.path,
+                               parsed.params, parsed.query, parsed.fragment))
         except Exception:
             return url
 
@@ -1540,8 +1554,7 @@ class ClaudeCodeAdapter:
 
         try:
             # Transform status URL to point to parent session
-            from urllib.parse import urlparse as _up, urlunparse as _uu
-            p = _up(status_url)
+            p = urlparse(status_url)
             path_parts = [pt for pt in p.path.split('/') if pt]
 
             if 'projects' in path_parts and 'agentic-sessions' in path_parts:
@@ -1549,7 +1562,7 @@ class ClaudeCodeAdapter:
                 project = path_parts[proj_idx + 1] if len(path_parts) > proj_idx + 1 else ''
                 # Point to parent session's status
                 new_path = f"/api/projects/{project}/agentic-sessions/{session_name}"
-                url = _uu((p.scheme, p.netloc, new_path, '', '', ''))
+                url = urlunparse((p.scheme, p.netloc, new_path, '', '', ''))
                 logging.info(f"Fetching SDK session ID from: {url}")
             else:
                 logging.error("Could not parse project path from status URL")
@@ -1564,6 +1577,7 @@ class ClaudeCodeAdapter:
             req.add_header('Authorization', f'Bearer {bot}')
 
         loop = asyncio.get_event_loop()
+
         def _do_req():
             try:
                 with _urllib_request.urlopen(req, timeout=15) as resp:
@@ -1601,6 +1615,41 @@ class ClaudeCodeAdapter:
             logging.error(f"Failed to parse SDK session ID: {e}")
             return ""
 
+    async def _fetch_token_for_url(self, url: str) -> str:
+        """Fetch appropriate token based on repository URL.
+
+        Detects the provider (GitHub, GitLab) from the hostname and returns
+        the corresponding token from environment or API.
+        """
+        try:
+            parsed = urlparse(url)
+            hostname = parsed.hostname or ""
+
+            # Check if it's a GitLab instance (gitlab.com or self-hosted)
+            if 'gitlab' in hostname.lower():
+                token = os.getenv("GITLAB_TOKEN", "").strip()
+                if token:
+                    logging.info(f"Using GITLAB_TOKEN for {hostname}")
+                    return token
+                else:
+                    logging.warning(
+                        f"No GITLAB_TOKEN found for GitLab URL: {url}")
+                    return ""
+
+            # Default to GitHub for github.com or unknown hosts
+            token = os.getenv(
+                "GITHUB_TOKEN") or await self._fetch_github_token()
+            if token:
+                logging.info(f"Using GitHub token for {hostname}")
+            return token
+
+        except Exception as e:
+            logging.warning(
+                f"Failed to parse URL {url}: {e}, falling back to GitHub token"
+            )
+            return os.getenv(
+                "GITHUB_TOKEN") or await self._fetch_github_token()
+
     async def _fetch_github_token(self) -> str:
         # Try cached value from env first (GITHUB_TOKEN from ambient-non-vertex-integrations)
         cached = os.getenv("GITHUB_TOKEN", "").strip()
@@ -1615,14 +1664,13 @@ class ClaudeCodeAdapter:
             return ""
 
         try:
-            from urllib.parse import urlparse as _up, urlunparse as _uu
-            p = _up(status_url)
+            p = urlparse(status_url)
             new_path = p.path.rstrip("/")
             if new_path.endswith("/status"):
                 new_path = new_path[:-7] + "/github/token"
             else:
                 new_path = new_path + "/github/token"
-            url = _uu((p.scheme, p.netloc, new_path, '', '', ''))
+            url = urlunparse((p.scheme, p.netloc, new_path, '', '', ''))
             logging.info(f"Fetching GitHub token from: {url}")
         except Exception as e:
             logging.error(f"Failed to construct token URL: {e}")
@@ -1637,6 +1685,7 @@ class ClaudeCodeAdapter:
             logging.warning("No BOT_TOKEN available for token fetch")
 
         loop = asyncio.get_event_loop()
+
         def _do_req():
             try:
                 with _urllib_request.urlopen(req, timeout=10) as resp:
@@ -1677,7 +1726,6 @@ class ClaudeCodeAdapter:
                 partial=partial,
             )
 
-
     async def _check_pr_intent(self, output: str):
         """Check if output indicates PR creation intent."""
         pr_indicators = [
@@ -1709,21 +1757,21 @@ class ClaudeCodeAdapter:
 
     def _build_workspace_context_prompt(self, repos_cfg, workflow_name, artifacts_path, ambient_config):
         """Generate comprehensive system prompt describing workspace layout."""
-        
+
         prompt = "You are Claude Code working in a structured development workspace.\n\n"
-        
+
         # Current working directory
         if workflow_name:
             prompt += "## Current Workflow\n"
             prompt += f"Working directory: workflows/{workflow_name}/\n"
             prompt += "This directory contains workflow logic and automation scripts.\n\n"
-        
+
         # Artifacts directory
         prompt += "## Shared Artifacts Directory\n"
         prompt += f"Location: {artifacts_path}\n"
         prompt += "Purpose: Create all output artifacts (documents, specs, reports) here.\n"
         prompt += "This directory persists across workflows and has its own git remote.\n\n"
-        
+
         # Available repos
         if repos_cfg:
             prompt += "## Available Code Repositories\n"
@@ -1732,16 +1780,16 @@ class ClaudeCodeAdapter:
                 prompt += f"- {name}/\n"
             prompt += "\nThese repositories contain source code you can read or modify.\n"
             prompt += "Each has its own git configuration and remote.\n\n"
-        
+
         # Workflow-specific instructions
         if ambient_config.get("systemPrompt"):
             prompt += f"## Workflow Instructions\n{ambient_config['systemPrompt']}\n\n"
-        
+
         prompt += "## Navigation\n"
         prompt += "All directories are accessible via relative or absolute paths.\n"
-        
+
         return prompt
-    
+
     def _get_repos_config(self) -> list[dict]:
         """Read repos mapping from REPOS_JSON env if present."""
         try:
@@ -1766,8 +1814,7 @@ class ClaudeCodeAdapter:
                             derived = repo or ''
                             if not derived:
                                 # Fallback: last path segment without .git
-                                from urllib.parse import urlparse as _urlparse
-                                p = _urlparse(url)
+                                p = urlparse(url)
                                 parts = [p for p in (p.path or '').split('/') if p]
                                 if parts:
                                     derived = parts[-1]
@@ -1895,16 +1942,16 @@ class ClaudeCodeAdapter:
         """
         try:
             config_path = Path(cwd_path) / ".ambient" / "ambient.json"
-            
+
             if not config_path.exists():
                 logging.info(f"No ambient.json found at {config_path}, using defaults")
                 return {}
-            
+
             with open(config_path, 'r') as f:
                 config = _json.load(f)
                 logging.info(f"Loaded ambient.json: name={config.get('name')}, artifactsDir={config.get('artifactsDir')}")
                 return config
-                
+
         except _json.JSONDecodeError as e:
             logging.error(f"Failed to parse ambient.json: {e}")
             return {}
