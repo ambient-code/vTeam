@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: litellm-service
+  labels:
+    app: litellm
+    app.kubernetes.io/name: litellm
+    app.kubernetes.io/component: proxy
+spec:
+  selector:
+    app: litellm
+  ports:
+  - port: 4000
+    targetPort: http
+    protocol: TCP
+    name: http
+  type: ClusterIP

@@ -1,0 +1,25 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: openwebui-base
+
+namespace: openwebui
+
+# Common resources across all environments
+resources:
+- namespace.yaml
+- rbac.yaml
+- litellm/deployment.yaml
+- litellm/service.yaml
+- litellm/configmap.yaml
+- open-webui/deployment.yaml
+- open-webui/service.yaml
+- open-webui/pvc.yaml
+
+# Default images (can be overridden by overlays)
+images:
+- name: ghcr.io/berriai/litellm
+  newTag: main-latest
+- name: ghcr.io/open-webui/open-webui
+  newTag: main

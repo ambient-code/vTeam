@@ -1,0 +1,18 @@
+# Environment files with secrets
+.env
+*.env
+!.env.example
+
+# Backup files
+*.bak
+backup*.tar.gz
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
