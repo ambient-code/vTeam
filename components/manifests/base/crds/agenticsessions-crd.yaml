@@ -106,9 +106,10 @@ spec:
                 - "Pending"
                 - "Creating"
                 - "Running"
+                - "Stopping"
+                - "Stopped"
                 - "Completed"
                 - "Failed"
-                - "Stopped"
                 default: "Pending"
               startTime:
                 type: string

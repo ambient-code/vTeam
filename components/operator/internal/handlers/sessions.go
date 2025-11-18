@@ -196,13 +196,25 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 	if desiredPhase == "Stopped" && (phase == "Running" || phase == "Creating") {
 		log.Printf("[DesiredPhase] Session %s/%s: user requested stop (current=%s → desired=Stopped)", sessionNamespace, name, phase)
 
-		// Delete running job
+		// Set phase=Stopping to indicate cleanup in progress
+		_ = mutateAgenticSessionStatus(sessionNamespace, name, func(status map[string]interface{}) {
+			status["phase"] = "Stopping"
+			setCondition(status, conditionUpdate{
+				Type:    conditionReady,
+				Status:  "False",
+				Reason:  "Stopping",
+				Message: "Cleaning up job and pods",
+			})
+		})
+
+		// Delete running job (this triggers pod deletion via OwnerReferences)
 		jobName := fmt.Sprintf("%s-job", name)
 		if err := deleteJobAndPerJobService(sessionNamespace, jobName, name); err != nil {
 			log.Printf("[DesiredPhase] Warning: failed to delete job: %v", err)
+			// Set to Stopped anyway - cleanup will happen via OwnerReferences
 		}
 
-		// Update status to Stopped
+		// Update status to Stopped after cleanup initiated
 		_ = mutateAgenticSessionStatus(sessionNamespace, name, func(status map[string]interface{}) {
 			status["phase"] = "Stopped"
 			status["completionTime"] = time.Now().UTC().Format(time.RFC3339)
@@ -224,7 +236,7 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 		_ = clearAnnotation(sessionNamespace, name, "ambient-code.io/desired-phase")
 		_ = clearAnnotation(sessionNamespace, name, "ambient-code.io/stop-requested-at")
 
-		log.Printf("[DesiredPhase] Session %s/%s: stopped and updated status to Stopped", sessionNamespace, name)
+		log.Printf("[DesiredPhase] Session %s/%s: transitioned Stopping → Stopped", sessionNamespace, name)
 		return nil
 	}
 

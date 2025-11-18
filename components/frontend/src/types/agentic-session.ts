@@ -1,4 +1,4 @@
-export type AgenticSessionPhase = "Pending" | "Creating" | "Running" | "Completed" | "Failed" | "Stopped";
+export type AgenticSessionPhase = "Pending" | "Creating" | "Running" | "Stopping" | "Stopped" | "Completed" | "Failed";
 
 export type LLMSettings = {
 	model: string;
