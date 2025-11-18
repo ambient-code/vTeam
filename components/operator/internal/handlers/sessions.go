@@ -583,9 +583,40 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 			ambientVertexSecretCopied = true
 			log.Printf("Successfully copied %s secret to %s", types.AmbientVertexSecretName, sessionNamespace)
 		} else if !errors.IsNotFound(err) {
+			errMsg := fmt.Sprintf("Failed to check for %s secret: %v", types.AmbientVertexSecretName, err)
+			_ = mutateAgenticSessionStatus(sessionNamespace, name, func(status map[string]interface{}) {
+				setCondition(status, conditionUpdate{
+					Type:    conditionSecretsReady,
+					Status:  "False",
+					Reason:  "SecretCheckFailed",
+					Message: errMsg,
+				})
+				setCondition(status, conditionUpdate{
+					Type:    conditionFailed,
+					Status:  "True",
+					Reason:  "VertexSecretError",
+					Message: errMsg,
+				})
+			})
 			return fmt.Errorf("failed to check for %s secret in %s (CLAUDE_CODE_USE_VERTEX=1): %w", types.AmbientVertexSecretName, operatorNamespace, err)
 		} else {
 			// Vertex enabled but secret not found - fail fast
+			errMsg := fmt.Sprintf("CLAUDE_CODE_USE_VERTEX=1 but %s secret not found in namespace %s. Create it with: kubectl create secret generic %s --from-file=ambient-code-key.json=/path/to/sa.json -n %s",
+				types.AmbientVertexSecretName, operatorNamespace, types.AmbientVertexSecretName, operatorNamespace)
+			_ = mutateAgenticSessionStatus(sessionNamespace, name, func(status map[string]interface{}) {
+				setCondition(status, conditionUpdate{
+					Type:    conditionSecretsReady,
+					Status:  "False",
+					Reason:  "VertexSecretMissing",
+					Message: errMsg,
+				})
+				setCondition(status, conditionUpdate{
+					Type:    conditionFailed,
+					Status:  "True",
+					Reason:  "VertexSecretMissing",
+					Message: "Vertex AI enabled but ambient-vertex secret not found",
+				})
+			})
 			return fmt.Errorf("CLAUDE_CODE_USE_VERTEX=1 but %s secret not found in namespace %s", types.AmbientVertexSecretName, operatorNamespace)
 		}
 	} else {
