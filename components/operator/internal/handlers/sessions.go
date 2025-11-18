@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"ambient-code-operator/internal/config"
@@ -27,6 +28,12 @@ import (
 	intstr "k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/util/retry"
+)
+
+// Track which jobs are currently being monitored to prevent duplicate goroutines
+var (
+	monitoredJobs   = make(map[string]bool)
+	monitoredJobsMu sync.Mutex
 )
 
 // WatchAgenticSessions watches for AgenticSession custom resources and creates jobs
@@ -434,9 +441,18 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 		_, err := config.K8sClient.BatchV1().Jobs(sessionNamespace).Get(context.TODO(), jobName, v1.GetOptions{})
 		if err == nil {
 			// Job exists, start monitoring if not already running
-			// The job was created before operator restart, resume monitoring
-			log.Printf("Resuming monitoring for existing job %s (session in Creating phase)", jobName)
-			go monitorJob(jobName, name, sessionNamespace)
+			monitorKey := fmt.Sprintf("%s/%s", sessionNamespace, jobName)
+			monitoredJobsMu.Lock()
+			alreadyMonitoring := monitoredJobs[monitorKey]
+			if !alreadyMonitoring {
+				monitoredJobs[monitorKey] = true
+				monitoredJobsMu.Unlock()
+				log.Printf("Resuming monitoring for existing job %s (session in Creating phase)", jobName)
+				go monitorJob(jobName, name, sessionNamespace)
+			} else {
+				monitoredJobsMu.Unlock()
+				log.Printf("Job %s already being monitored, skipping duplicate", jobName)
+			}
 			return nil
 		} else if errors.IsNotFound(err) {
 			// Job doesn't exist but phase is Creating - this is inconsistent state
@@ -1154,8 +1170,18 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 		log.Printf("Failed to create per-job content service for %s: %v", name, serr)
 	}
 
-	// Start monitoring the job
-	go monitorJob(jobName, name, sessionNamespace)
+	// Start monitoring the job (only if not already being monitored)
+	monitorKey := fmt.Sprintf("%s/%s", sessionNamespace, jobName)
+	monitoredJobsMu.Lock()
+	alreadyMonitoring := monitoredJobs[monitorKey]
+	if !alreadyMonitoring {
+		monitoredJobs[monitorKey] = true
+		monitoredJobsMu.Unlock()
+		go monitorJob(jobName, name, sessionNamespace)
+	} else {
+		monitoredJobsMu.Unlock()
+		log.Printf("Job %s already being monitored, skipping duplicate goroutine", jobName)
+	}
 
 	return nil
 }
@@ -1410,6 +1436,16 @@ func reconcileActiveWorkflow(sessionNamespace, sessionName string, spec map[stri
 }
 
 func monitorJob(jobName, sessionName, sessionNamespace string) {
+	monitorKey := fmt.Sprintf("%s/%s", sessionNamespace, jobName)
+
+	// Remove from monitoring map when this goroutine exits
+	defer func() {
+		monitoredJobsMu.Lock()
+		delete(monitoredJobs, monitorKey)
+		monitoredJobsMu.Unlock()
+		log.Printf("Stopped monitoring job %s (goroutine exiting)", jobName)
+	}()
+
 	log.Printf("Starting job monitoring for %s (session: %s/%s)", jobName, sessionNamespace, sessionName)
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
