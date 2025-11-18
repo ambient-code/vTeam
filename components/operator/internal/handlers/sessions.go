@@ -431,22 +431,36 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 	// If in Creating phase, check if job exists
 	if phase == "Creating" {
 		jobName := fmt.Sprintf("%s-job", name)
-		if _, err := config.K8sClient.BatchV1().Jobs(sessionNamespace).Get(context.TODO(), jobName, v1.GetOptions{}); err == nil {
+		_, err := config.K8sClient.BatchV1().Jobs(sessionNamespace).Get(context.TODO(), jobName, v1.GetOptions{})
+		if err == nil {
 			// Job exists, start monitoring if not already running
 			// The job was created before operator restart, resume monitoring
 			log.Printf("Resuming monitoring for existing job %s (session in Creating phase)", jobName)
 			go monitorJob(jobName, name, sessionNamespace)
 			return nil
 		} else if errors.IsNotFound(err) {
-			// Job doesn't exist but phase is Creating - reset to Pending
-			log.Printf("Session %s in Creating phase but job not found, resetting to Pending", name)
+			// Job doesn't exist but phase is Creating - this is inconsistent state
+			// Could happen if job was manually deleted or operator crashed between job creation and status update
+			// Reset to Pending and let it fall through to job creation logic below
+			log.Printf("Session %s in Creating phase but job not found, resetting to Pending and recreating", name)
 			_ = mutateAgenticSessionStatus(sessionNamespace, name, func(status map[string]interface{}) {
 				status["phase"] = "Pending"
+				// Clear Creating-related conditions
+				setCondition(status, conditionUpdate{
+					Type:    conditionJobCreated,
+					Status:  "False",
+					Reason:  "JobMissing",
+					Message: "Job not found, will recreate",
+				})
 			})
-			return nil
+			// Don't return - fall through to Pending logic to create job
+			phase = "Pending"
+		} else {
+			// Error checking job - log and continue
+			log.Printf("Error checking job for Creating session %s: %v, will attempt recovery", name, err)
+			// Fall through to Pending logic
+			phase = "Pending"
 		}
-		// Error checking job - continue to try creating it
-		log.Printf("Error checking job for Creating session %s: %v, will attempt to create", name, err)
 	}
 
 	// Check for session continuation (parent session ID)
