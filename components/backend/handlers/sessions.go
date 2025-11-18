@@ -1766,10 +1766,8 @@ func StartSession(c *gin.Context) {
 
 	// Check if this is a continuation (session is in a terminal phase)
 	isActualContinuation := false
-	currentPhase := ""
 	if currentStatus, ok := item.Object["status"].(map[string]interface{}); ok {
 		if phase, ok := currentStatus["phase"].(string); ok {
-			currentPhase = phase
 			terminalPhases := []string{"Completed", "Failed", "Stopped", "Error"}
 			for _, terminalPhase := range terminalPhases {
 				if phase == terminalPhase {

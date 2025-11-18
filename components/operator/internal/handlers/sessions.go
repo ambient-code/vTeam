@@ -151,7 +151,7 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 
 		// Delete old job if it exists (from previous run)
 		jobName := fmt.Sprintf("%s-job", name)
-		job, err := config.K8sClient.BatchV1().Jobs(sessionNamespace).Get(context.TODO(), jobName, v1.GetOptions{})
+		_, err = config.K8sClient.BatchV1().Jobs(sessionNamespace).Get(context.TODO(), jobName, v1.GetOptions{})
 		if err == nil {
 			log.Printf("[DesiredPhase] Cleaning up old job %s before restart", jobName)
 			if err := deleteJobAndPerJobService(sessionNamespace, jobName, name); err != nil {
@@ -430,8 +430,7 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 
 	// Check for session continuation (parent session ID)
 	parentSessionID := ""
-	// Check annotations first
-	annotations := currentObj.GetAnnotations()
+	// Annotations already loaded above, reuse
 	if val, ok := annotations["vteam.ambient-code/parent-session-id"]; ok {
 		parentSessionID = strings.TrimSpace(val)
 	}
