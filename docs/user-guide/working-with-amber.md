@@ -168,6 +168,11 @@ spec:
   autoPushOnComplete: conditional  # Only if auto-fix attempted
 ```
 
+**Safety Gates:**
+- **TodoWrite checkpoint**: Amber shows detailed plan before implementing fix
+- **Human approval required**: Session results display plan, user confirms via UI before PR creation
+- **Dual review**: (1) Plan review in session + (2) PR review in GitHub
+
 **Backlog Reduction (Scheduled):**
 ```yaml
 apiVersion: batch/v1
@@ -212,6 +217,21 @@ spec:
                   EOF
           restartPolicy: Never
 ```
+
+**Safety Gates in This CronJob:**
+```yaml
+spec:
+  prompt: |
+    # ... existing prompt ...
+    3. Use TodoWrite to show plan before executing  # 👈 SAFETY GATE
+    4. Include rollback instructions in PR description
+```
+
+**Why This Matters:**
+- TodoWrite creates a visible checkpoint showing what Amber will do
+- User can review the plan in the AgenticSession UI before approval
+- No code changes happen until plan is confirmed
+- Every PR includes rollback instructions for safety
 
 ### Key Benefits
 
@@ -317,6 +337,9 @@ spec:
           restartPolicy: Never
 ```
 
+**No TodoWrite Needed Here:**
+This is a read-only analysis workflow. Amber generates a report and commits it to a feature branch, then creates a PR. No direct code changes to main codebase, so TodoWrite checkpoint isn't required. The PR itself serves as the review gate.
+
 **Weekly Sprint Planning:**
 
 ```yaml
@@ -363,6 +386,20 @@ spec:
                   EOF
           restartPolicy: Never
 ```
+
+**No TodoWrite Needed Here:**
+Similar to health checks, this is an analysis workflow. Amber creates a report in a feature branch and opens a PR. The team reviews the sprint plan via the PR before merging. No code execution, only planning analysis.
+
+**When TodoWrite IS Required:**
+- Modifying code (bug fixes, refactoring, features)
+- Changing configuration (YAML, env vars, secrets)
+- Database migrations or destructive operations
+- Any changes to production-affecting resources
+
+**When TodoWrite Is Optional:**
+- Read-only analysis and reporting
+- Documentation updates (non-critical)
+- Creating planning documents (like sprint plans)
 
 ### Visual Workflow: Scheduled Health Checks / Sprint Planning
 
@@ -535,7 +572,7 @@ freshness, open critical issues, recent CI failures.
 
 **Health Report Format:**
 ```markdown
-# Codebase Health Report - 2025-11-16
+# Codebase Health Report - 2025-11-17
 
 ## Executive Summary
 [2-3 sentences: key findings, actions]

@@ -78,22 +78,22 @@ jobs:
           fi
 
           # Principle IV: TDD - Check for Red-Green-Refactor mention
-          if ! grep -q "Red-Green-Refactor\|TDD\|Test-Driven" agents/amber.md; then
+          if ! grep -qi "Red-Green-Refactor\|Test-Driven Development" agents/amber.md; then
             VIOLATIONS="${VIOLATIONS}\n- Missing Principle IV enforcement: TDD requirements"
           fi
 
           # Principle VI: Observability - Check for structured logging
-          if ! grep -q "structured logging\|Structured logs" agents/amber.md; then
+          if ! grep -qi "structured logging" agents/amber.md; then
             VIOLATIONS="${VIOLATIONS}\n- Missing Principle VI enforcement: Structured logging"
           fi
 
           # Principle VIII: Context Engineering - CRITICAL
-          if ! grep -q "200K\|token limit\|context budget" agents/amber.md; then
+          if ! grep -q "200K token\|context budget" agents/amber.md; then
             VIOLATIONS="${VIOLATIONS}\n- Missing Principle VIII enforcement: Context engineering"
           fi
 
           # Principle X: Commit Discipline
-          if ! grep -q "Conventional commit\|atomic commit" agents/amber.md; then
+          if ! grep -qi "conventional commit" agents/amber.md; then
             VIOLATIONS="${VIOLATIONS}\n- Missing Principle X enforcement: Commit discipline"
           fi
 

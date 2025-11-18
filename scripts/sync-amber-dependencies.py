@@ -180,7 +180,7 @@ def generate_dependency_markdown(
     react_version = js_frontend.get("react", "unknown")
     react_query_version = js_frontend.get("@tanstack/react-query", "unknown")
 
-    langfuse_version = js_frontend.get("langfuse", python_runner.get("langfuse", "unknown"))
+    langfuse_version = python_runner.get("langfuse", js_frontend.get("langfuse", "unknown"))
 
     markdown = f"""**Kubernetes Ecosystem:**
 - `k8s.io/{{api,apimachinery,client-go}}@{k8s_version}` - Watch for breaking changes in 1.31+
@@ -205,7 +205,7 @@ def generate_dependency_markdown(
 - TypeScript strict mode, ESLint
 
 **Langfuse:**
-- Langfuse v{langfuse_version} (observability integration)
+- Langfuse {langfuse_version} (observability integration)
 - Tracing, cost analytics, integration points in ACP"""
 
     return markdown
