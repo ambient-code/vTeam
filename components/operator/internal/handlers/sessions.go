@@ -423,9 +423,30 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 		return nil
 	}
 
-	// Only process if status is Pending
-	if phase != "Pending" {
+	// Only process if status is Pending or Creating (to handle operator restarts)
+	if phase != "Pending" && phase != "Creating" {
 		return nil
+	}
+
+	// If in Creating phase, check if job exists
+	if phase == "Creating" {
+		jobName := fmt.Sprintf("%s-job", name)
+		if _, err := config.K8sClient.BatchV1().Jobs(sessionNamespace).Get(context.TODO(), jobName, v1.GetOptions{}); err == nil {
+			// Job exists, start monitoring if not already running
+			// The job was created before operator restart, resume monitoring
+			log.Printf("Resuming monitoring for existing job %s (session in Creating phase)", jobName)
+			go monitorJob(jobName, name, sessionNamespace)
+			return nil
+		} else if errors.IsNotFound(err) {
+			// Job doesn't exist but phase is Creating - reset to Pending
+			log.Printf("Session %s in Creating phase but job not found, resetting to Pending", name)
+			_ = mutateAgenticSessionStatus(sessionNamespace, name, func(status map[string]interface{}) {
+				status["phase"] = "Pending"
+			})
+			return nil
+		}
+		// Error checking job - continue to try creating it
+		log.Printf("Error checking job for Creating session %s: %v, will attempt to create", name, err)
 	}
 
 	// Check for session continuation (parent session ID)
