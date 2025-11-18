@@ -9,7 +9,7 @@ const nextConfig = {
         source: '/:path*',
         headers: [
           // Content Security Policy
-          // - script-src: Allow 'self' scripts and 'unsafe-inline' for the theme initialization script
+          // - script-src: Allow 'self' scripts only (next-themes handles dark mode without inline scripts)
           // - style-src: Allow 'self' and 'unsafe-inline' (required for Tailwind CSS)
           // - connect-src: Allow 'self' and WebSocket connections (ws:/wss:) for backend communication
           // - default-src: Restrict all other resources to same-origin only
@@ -17,7 +17,7 @@ const nextConfig = {
             key: 'Content-Security-Policy',
             value: [
               "default-src 'self'",
-              "script-src 'self' 'unsafe-inline'",
+              "script-src 'self'",
               "style-src 'self' 'unsafe-inline'",
               "connect-src 'self' ws: wss:",
               "img-src 'self' data: blob:",

@@ -25,33 +25,15 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        {/*
-          Security: Inline script for flash-free theme initialization
-          - Wrapped in IIFE to avoid global scope pollution
-          - Validates theme value is exactly 'light' or 'dark' before use
-          - Uses try-catch to handle localStorage access errors
-          - Minimal code to reduce attack surface
-          - Required for preventing flash of wrong theme on page load
-        */}
-        <script dangerouslySetInnerHTML={{
-          __html: `
-            (function() {
-              try {
-                const theme = localStorage.getItem('theme');
-                const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-                // Security: Only apply 'dark' class if theme is explicitly 'dark'
-                // This prevents any XSS payload from being used as a class name
-                if (theme === 'dark' || (!theme && systemPrefersDark)) {
-                  document.documentElement.classList.add('dark');
-                }
-              } catch (e) {}
-            })()
-          `
-        }} />
         <meta name="backend-ws-base" content={wsBase} />
       </head>
       <body className={`${inter.className} min-h-screen flex flex-col`} suppressHydrationWarning>
-        <ThemeProvider>
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+        >
           <QueryProvider>
             <Navigation feedbackUrl={feedbackUrl} />
             <main className="flex-1 bg-background overflow-auto">{children}</main>
