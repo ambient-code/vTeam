@@ -48,20 +48,20 @@ spec:
         - "0.0.0.0"
         resources:
           requests:
-            cpu: 100m
-            memory: 256Mi
-          limits:
-            cpu: 500m
+            cpu: 200m
             memory: 512Mi
+          limits:
+            cpu: 1000m
+            memory: 2Gi
         livenessProbe:
           httpGet:
-            path: /health
+            path: /health/liveliness
             port: http
           initialDelaySeconds: 30
           periodSeconds: 10
         readinessProbe:
           httpGet:
-            path: /health
+            path: /health/readiness
             port: http
           initialDelaySeconds: 5
           periodSeconds: 5
