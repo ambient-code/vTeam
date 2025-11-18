@@ -479,6 +479,8 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 									{Name: "BACKEND_API_URL", Value: fmt.Sprintf("http://backend-service.%s.svc.cluster.local:8080/api", appConfig.BackendNamespace)},
 									// WebSocket URL used by runner-shell to connect back to backend
 									{Name: "WEBSOCKET_URL", Value: fmt.Sprintf("ws://backend-service.%s.svc.cluster.local:8080/api/projects/%s/sessions/%s/ws", appConfig.BackendNamespace, sessionNamespace, name)},
+									// Frontend URL for MCP OAuth callbacks (discovered from Route/Ingress)
+									{Name: "VTEAM_FRONTEND_URL", Value: config.DiscoverFrontendURL(appConfig.BackendNamespace)},
 									// S3 disabled; backend persists messages
 								}
 
