@@ -6,32 +6,144 @@ on:
 jobs:
   test-local-dev-simulation:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
     
     steps:
     - name: Checkout code
       uses: actions/checkout@v5
       
-    - name: Validate local dev scripts
+    - name: Install minikube and kubectl
       run: |
-        echo "Validating local development scripts..."
-        # Check if scripts exist and are executable
-        test -f components/scripts/local-dev/crc-start.sh
-        test -f components/scripts/local-dev/crc-test.sh
-        test -f components/scripts/local-dev/crc-stop.sh
+        # Install kubectl
+        curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+        chmod +x kubectl
+        sudo mv kubectl /usr/local/bin/
         
-        # Validate script syntax
-        bash -n components/scripts/local-dev/crc-start.sh
-        bash -n components/scripts/local-dev/crc-test.sh
-        bash -n components/scripts/local-dev/crc-stop.sh
+        # Install minikube
+        curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
+        sudo install minikube-linux-amd64 /usr/local/bin/minikube
         
-        echo "All local development scripts are valid"
-        
-    - name: Test Makefile targets
+        # Verify installations
+        kubectl version --client
+        minikube version
+    
+    - name: Validate Makefile
       run: |
-        echo "Testing Makefile targets..."
-        # Test that the targets exist (dry run)
-        make -n dev-start
-        make -n dev-test
-        make -n dev-stop
-        echo "All Makefile targets are valid"
+        echo "Validating Makefile quality..."
+        make validate-makefile
+        
+    - name: Deploy using Makefile
+      run: |
+        echo "Using Makefile to deploy complete stack..."
+        make local-up CONTAINER_ENGINE=docker
+        
+    - name: Wait for deployments
+      run: |
+        echo "Waiting for deployments to be ready..."
+        kubectl wait --for=condition=available --timeout=180s deployment/backend-api -n ambient-code || {
+          echo "⚠️  Backend deployment timeout - showing status"
+          kubectl get pods -n ambient-code -o wide
+          kubectl describe deployment backend-api -n ambient-code | tail -50
+        }
+        kubectl wait --for=condition=available --timeout=180s deployment/frontend -n ambient-code || {
+          echo "⚠️  Frontend deployment timeout - showing status"
+          kubectl get pods -n ambient-code -o wide
+          kubectl describe deployment frontend -n ambient-code | tail -50
+        }
+        kubectl wait --for=condition=available --timeout=180s deployment/agentic-operator -n ambient-code || {
+          echo "⚠️  Operator deployment timeout - showing status"
+          kubectl get pods -n ambient-code -o wide
+          kubectl describe deployment agentic-operator -n ambient-code | tail -50
+        }
+    
+    - name: Run Makefile smoke tests
+      run: |
+        echo "Running Makefile smoke tests..."
+        make local-test-quick CONTAINER_ENGINE=docker || {
+          echo "Smoke tests failed - showing debugging information..."
+          make local-troubleshoot
+          exit 1
+        }
+    
+    - name: Run comprehensive test suite
+      run: |
+        echo "Running local development test suite..."
+        chmod +x tests/local-dev-test.sh
+        
+        # Run tests in CI mode (known failures tracked separately)
+        ./tests/local-dev-test.sh --skip-setup --ci || {
+          echo "Test suite failed - showing debugging information..."
+          make local-troubleshoot
+          exit 1
+        }
+    
+    - name: Validate production manifest safety
+      if: always()
+      run: |
+        echo "Validating production manifests do NOT contain dev mode variables..."
+        
+        # Check base and production manifests for DISABLE_AUTH
+        for manifest in components/manifests/base/*.yaml components/manifests/overlays/production/*.yaml; do
+          if [ -f "$manifest" ]; then
+            if grep -q "DISABLE_AUTH" "$manifest"; then
+              echo "❌ CRITICAL: Production manifest contains DISABLE_AUTH: $manifest"
+              exit 1
+            fi
+            
+            if grep -qE "ENVIRONMENT.*[\"']?(local|development)[\"']?" "$manifest"; then
+              echo "❌ CRITICAL: Production manifest sets ENVIRONMENT=local/development: $manifest"
+              exit 1
+            fi
+          fi
+        done
+        
+        echo "✅ All production manifests are safe"
+        
+    - name: Show deployment status
+      if: always()
+      run: |
+        echo "=== Namespace ==="
+        kubectl get namespace ambient-code || true
+        
+        echo ""
+        echo "=== Deployments ==="
+        kubectl get deployments -n ambient-code -o wide || true
+        
+        echo ""
+        echo "=== ReplicaSets ==="
+        kubectl get replicasets -n ambient-code -o wide || true
+        
+        echo ""
+        echo "=== Pods ==="
+        kubectl get pods -n ambient-code -o wide || true
+        
+        echo ""
+        echo "=== Services ==="
+        kubectl get svc -n ambient-code || true
+        
+        echo ""
+        echo "=== Ingress ==="
+        kubectl get ingress -n ambient-code || true
+        
+        echo ""
+        echo "=== CRDs ==="
+        kubectl get crd | grep vteam || true
+        
+        echo ""
+        echo "=== Events (last 30) ==="
+        kubectl get events -n ambient-code --sort-by='.lastTimestamp' | tail -30 || true
+        
+        echo ""
+        echo "=== Deployment describe (if no pods) ==="
+        if ! kubectl get pods -n ambient-code 2>/dev/null | grep -q "backend-api\|frontend\|agentic-operator"; then
+          echo "No pods found - describing deployments for details:"
+          kubectl describe deployment backend-api -n ambient-code 2>/dev/null | tail -50 || true
+          kubectl describe deployment frontend -n ambient-code 2>/dev/null | tail -50 || true
+          kubectl describe deployment agentic-operator -n ambient-code 2>/dev/null | tail -50 || true
+        fi
+    
+    - name: Cleanup
+      if: always()
+      run: |
+        echo "Cleaning up using Makefile..."
+        make local-clean || true

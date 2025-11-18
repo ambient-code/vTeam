@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agentic-operator
+  namespace: ambient-code
+  labels:
+    app: agentic-operator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agentic-operator
+  template:
+    metadata:
+      labels:
+        app: agentic-operator
+    spec:
+      serviceAccountName: agentic-operator
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+      - name: agentic-operator
+        image: vteam-operator:latest
+        imagePullPolicy: Never
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: false
+        env:
+        - name: NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: BACKEND_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: BACKEND_API_URL
+          value: "http://backend-service:8080/api"
+        - name: AMBIENT_CODE_RUNNER_IMAGE
+          value: "vteam-claude-runner:latest"
+        - name: CONTENT_SERVICE_IMAGE
+          value: "vteam-backend:latest"
+        - name: IMAGE_PULL_POLICY
+          value: "Never"
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 200m
+            memory: 256Mi
+        livenessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - "ps aux | grep '[o]perator' || exit 1"
+          initialDelaySeconds: 30
+          periodSeconds: 10
+      restartPolicy: Always

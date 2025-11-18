@@ -1,6 +1,6 @@
 # Makefile for ambient-code-backend
 
-.PHONY: help build test test-unit test-contract test-integration clean run docker-build docker-run
+.PHONY: help build test test-unit test-contract test-integration clean run container-build container-run
 
 # Default target
 help: ## Show this help message
@@ -71,12 +71,14 @@ run: ## Run the backend server locally
 dev: ## Run with live reload (requires air: go install github.com/cosmtrek/air@latest)
 	air
 
-# Docker targets
-docker-build: ## Build Docker image
-	docker build -t ambient-code-backend .
+# Container targets
+CONTAINER_ENGINE ?= podman
 
-docker-run: ## Run Docker container
-	docker run -p 8080:8080 ambient-code-backend
+container-build: ## Build container image
+	$(CONTAINER_ENGINE) build -t ambient-code-backend .
+
+container-run: ## Run container
+	$(CONTAINER_ENGINE) run -p 8080:8080 ambient-code-backend
 
 # Linting and formatting
 fmt: ## Format Go code
@@ -132,5 +134,5 @@ check-env: ## Check environment setup for development
 	@go version >/dev/null 2>&1 || (echo "❌ Go not installed"; exit 1)
 	@echo "✅ Go installed: $(shell go version)"
 	@kubectl version --client >/dev/null 2>&1 || echo "⚠️  kubectl not found (needed for integration tests)"
-	@docker version >/dev/null 2>&1 || echo "⚠️  Docker not found (needed for container builds)"
+	@podman version >/dev/null 2>&1 || echo "⚠️  Podman not found (needed for container builds)"
 	@echo "Environment check complete"

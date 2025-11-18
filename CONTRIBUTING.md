@@ -75,8 +75,8 @@ Before contributing, ensure you have:
 - Go 1.24+ (for backend/operator development)
 - Node.js 20+ and npm (for frontend development)
 - Python 3.11+ (for runner development)
-- Docker or Podman (for building containers)
-- OpenShift Local (CRC) or access to an OpenShift/Kubernetes cluster
+- Podman or Docker (for building containers)
+- Minikube and kubectl (for local development)
 - Git for version control
 
 ### Fork and Clone
@@ -125,8 +125,8 @@ Use conventional commit messages:
 
 ```bash
 git commit -m "feat: add multi-repo session support"
-git commit -m "fix: resolve PVC mounting issue in CRC"
-git commit -m "docs: update CRC setup instructions"
+git commit -m "fix: resolve PVC mounting issue in minikube"
+git commit -m "docs: update minikube setup instructions"
 git commit -m "test: add integration tests for operator"
 ```
 
@@ -282,7 +282,7 @@ npm test
 2. **Run tests** and ensure they pass
 3. **Update documentation** if you changed functionality
 4. **Rebase on latest main** to avoid merge conflicts
-5. **Test locally** with CRC if possible
+5. **Test locally** with Minikube if possible
 
 ### PR Description
 
@@ -314,197 +314,198 @@ Your PR should include:
 
 ## Local Development Setup
 
-The recommended way to develop and test Ambient Code Platform locally is using OpenShift Local (CRC - CodeReady Containers). This provides a complete OpenShift environment running on your local machine with real authentication, RBAC, and production-like behavior.
+The recommended way to develop and test Ambient Code Platform locally is using **Minikube**. This provides a lightweight Kubernetes environment on your local machine with no authentication requirements, making development fast and easy.
 
-### Installing and Setting Up CRC
-
-#### RHEL/Fedora
-
-See [crc instructions for RHEL/Fedora](https://medium.com/@Tal-Hason/openshift-local-aka-crc-install-and-customize-on-fedora-any-linux-6eb775035e06)
+### Installing Minikube and Prerequisites
 
 #### macOS
 
-1. **Download CRC 2.54.0** (recommended version):
-   - Download from: [CRC 2.54.0](https://mirror.openshift.com/pub/openshift-v4/clients/crc/2.54.0/)
-   - **Why 2.54.0?** Later versions have known certificate expiration issues that can cause failures like `Failed to update pull secret on the disk: Temporary error: pull secret not updated to disk (x204)`
-   - Choose the appropriate file for your system (e.g., `crc-macos-amd64.pkg` or `crc-macos-arm64.pkg`)
+```bash
+# Install using Homebrew
+brew install minikube kubectl
+```
 
-2. **Download your pull secret**:
-   - Visit: https://console.redhat.com/openshift/create/local
-   - Click the "Download pull secret" button
-   - This downloads a file called `pull-secret`
+#### Linux (Debian/Ubuntu)
 
-3. **Install CRC**:
-   - Run the downloaded `.pkg` installer
-   - Follow the installation prompts
+```bash
+# Install Podman
+sudo apt-get update
+sudo apt-get install podman
 
-4. **Set up pull secret**:
+# Install kubectl
+curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
 
-   ```bash
-   mkdir -p ~/.crc
-   mv ~/Downloads/pull-secret ~/.crc/pull-secret.json
-   ```
+# Install Minikube
+curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
+sudo install minikube-linux-amd64 /usr/local/bin/minikube
+```
 
-### Quick Start with CRC
+#### Linux (Fedora/RHEL)
 
-Once CRC is installed and configured, you can start the complete development environment:
+```bash
+# Install Podman
+sudo dnf install podman
+
+# Install kubectl
+curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+
+# Install Minikube
+curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
+sudo install minikube-linux-amd64 /usr/local/bin/minikube
+```
+
+### Quick Start
+
+Once Minikube and prerequisites are installed, you can start the complete development environment with a single command:
 
 #### First-Time Setup
 
-First, set up and start CRC:
-
 ```shell
-crc setup
-crc start
+make local-up
 ```
 
-After the last command, make note of the admin usernames and passwords since you may need them to log in to the OpenShift console.
+This command will:
+- Start Minikube with appropriate resources
+- Enable required addons (ingress, storage)
+- Build container images
+- Deploy all components (backend, frontend, operator)
+- Set up networking
 
-Next run the command to start the Ambient Code Platform:
+The setup takes 2-3 minutes on first run.
+
+#### Access the Application
+
+Get the access URL:
 
 ```shell
-make dev-start
+make local-url
 ```
 
-To access Ambient Code Platform:
+This will display the frontend and backend URLs, typically:
+- Frontend: `http://192.168.64.4:30030`
+- Backend: `http://192.168.64.4:30080`
 
-- open https://vteam-frontend-vteam-dev.apps-crc.testing in a browser
+Or manually construct the URL:
+
+```shell
+# Get Minikube IP
+minikube ip
+
+# Access at http://<minikube-ip>:30030
+```
+
+**Authentication:**
+
+Authentication is **completely disabled** for local development:
+- ✅ No login required
+- ✅ Automatic login as "developer"
+- ✅ Full access to all features
+- ✅ Backend uses service account for Kubernetes API
 
 #### Stopping and Restarting
 
-You can stop `crc` with:
+Stop the application (keeps Minikube running):
 
 ```shell
-crc stop
+make local-stop
 ```
 
-and then restart `crc` and Ambient Code Platform with:
+Restart the application:
 
 ```shell
-crc start
-make dev-start
+make local-up
 ```
 
-If this doesn't work, you may want to do a full cleanup to get an entirely fresh start:
+Delete the entire Minikube cluster:
 
 ```shell
-crc stop
-crc cleanup
-rm -rf ~/.crc/cache
-rm -rf ~/.crc/machines
-crc setup
-crc start
-make dev-start
-```
-
-Be sure to keep the new admin credentials after running `crc start` too.
-
-### Development with Hot Reloading
-
-If you have made local changes and want to test them with hot-reloading, use development mode:
-
-#### Enable Development Mode
-
-Instead of `make dev-start`, first run:
-
-```shell
-DEV_MODE=true make dev-start
-```
-
-#### Start File Sync
-
-Then, in a **separate terminal**, run:
-
-```shell
-make dev-sync
-```
-
-This enables hot-reloading for both backend and frontend, automatically syncing your local changes to the running pods. You can now edit code locally and see changes reflected immediately.
-
-**Sync individual components:**
-```shell
-make dev-sync-backend   # Sync only backend
-make dev-sync-frontend  # Sync only frontend
+make local-delete
 ```
 
 ### Additional Development Commands
 
-**View logs:**
+**Check status:**
 ```bash
-make dev-logs           # Both backend and frontend
-make dev-logs-backend   # Backend only
-make dev-logs-frontend  # Frontend only
-make dev-logs-operator  # Operator only
+make local-status       # View pod status and deployment info
 ```
 
-**Operator management:**
+**View logs:**
 ```bash
-make dev-restart-operator  # Restart operator
-make dev-operator-status   # Show operator status
+make local-logs         # Backend logs
+make local-logs-frontend # Frontend logs (if available)
+make local-logs-operator # Operator logs (if available)
 ```
 
 **Cleanup:**
 ```bash
-make dev-stop              # Stop processes, keep CRC running
-make dev-stop-cluster      # Stop processes and shutdown CRC
-make dev-clean             # Stop and delete OpenShift project
+make local-stop         # Stop deployment, keep Minikube running
+make local-delete       # Delete entire Minikube cluster
+```
+
+**Access Kubernetes:**
+```bash
+kubectl get pods -n ambient-code       # View pods
+kubectl logs <pod-name> -n ambient-code # View specific pod logs
+kubectl describe pod <pod-name> -n ambient-code # Debug pod issues
 ```
 
 ## Troubleshooting
 
-### CRC Installation and Setup Issues
+### Minikube Installation and Setup Issues
 
 #### Insufficient Resources
 
-If `crc` or the platform won't start, you may need to allocate more resources:
+If Minikube or the platform won't start, you may need to allocate more resources:
 
 ```shell
-crc stop
-crc config set cpus 8
-crc config set memory 16384
-crc config set disk-size 200
-crc start
+# Stop Minikube
+minikube stop
+
+# Delete the existing cluster
+minikube delete
+
+# Start with more resources
+minikube start --memory=8192 --cpus=4 --disk-size=50g
+
+# Then deploy the application
+make local-up
 ```
 
-#### CRC Version Issues
+#### Minikube Won't Start
 
-If you encounter issues with CRC (especially certificate expiration problems), try version 2.54.0 which is known to work well:
-
-- Download: [CRC 2.54.0](https://mirror.openshift.com/pub/openshift-v4/clients/crc/2.54.0/)
-
-#### Complete CRC Reset
-
-If CRC is completely broken, you can fully reset it:
+If Minikube fails to start, try these steps:
 
 ```shell
-crc stop
-crc delete
-crc cleanup
+# Check status
+minikube status
 
-# Remove CRC user directory
-sudo rm -rf ~/.crc
+# View logs
+minikube logs
 
-# Remove CRC installation
-sudo rm -rf /usr/local/crc
-sudo rm /usr/local/bin/crc
-
-# Verify they're gone
-ls -la ~/.crc 2>&1
-ls -la /usr/local/crc 2>&1
-which crc 2>&1
+# Try with a specific driver
+minikube start --driver=podman
+# or
+minikube start --driver=docker
 ```
 
-After resetting, restart from the [Installing and Setting Up CRC](#installing-and-setting-up-crc) section.
+#### Complete Minikube Reset
 
-#### Pull Secret Issues
-
-If CRC can't find your pull secret, verify the pull secret file exists at `~/.crc/pull-secret.json` and then run:
+If Minikube is completely broken, you can fully reset it:
 
 ```shell
-crc config set pull-secret-file ~/.crc/pull-secret.json
-```
+# Stop and delete cluster
+minikube stop
+minikube delete
 
-Then restart CRC.
+# Clear cache (optional)
+rm -rf ~/.minikube/cache
+
+# Start fresh
+minikube start --memory=4096 --cpus=2
+make local-up
+```
 
 ### Application Issues
 
@@ -513,45 +514,76 @@ Then restart CRC.
 The fastest way to view logs:
 
 ```bash
-make dev-logs              # Both backend and frontend
-make dev-logs-backend      # Backend only
-make dev-logs-frontend     # Frontend only
-make dev-logs-operator     # Operator only
+make local-logs         # Backend logs
+kubectl logs -n ambient-code -l app=backend --tail=100 -f
+kubectl logs -n ambient-code -l app=frontend --tail=100 -f
+kubectl logs -n ambient-code -l app=operator --tail=100 -f
 ```
 
-#### Viewing Logs via OpenShift Console
+#### Viewing Logs via Kubernetes Dashboard
 
-For detailed debugging through the OpenShift web console:
+For detailed debugging through the Kubernetes dashboard:
 
-1. Open https://console-openshift-console.apps-crc.testing in a browser
-2. Log in with the administrator credentials (shown when you ran `crc start`)
-3. Navigate to **Home > Projects** → select `vteam-dev`
-4. Go to **Workloads > Pods**
-5. Find pods in `Running` state (backend, frontend, operator)
-6. Click on a pod → **Logs** tab
+```bash
+# Open Kubernetes dashboard
+minikube dashboard
+```
 
-**Tip:** Start with the backend pod for most issues, as it handles core platform logic.
+This will open a web interface where you can:
+1. Navigate to **Workloads > Pods**
+2. Select the `ambient-code` namespace
+3. Click on a pod to view details and logs
 
 #### Common Issues
 
 **Pods not starting:**
 
 ```bash
-oc get pods -n vteam-dev
-oc describe pod <pod-name> -n vteam-dev
+kubectl get pods -n ambient-code
+kubectl describe pod <pod-name> -n ambient-code
 ```
 
 **Image pull errors:**
 
 ```bash
-oc get events -n vteam-dev --sort-by='.lastTimestamp'
+kubectl get events -n ambient-code --sort-by='.lastTimestamp'
+```
+
+**Check if images are loaded:**
+
+```bash
+minikube ssh docker images | grep ambient-code
 ```
 
 **PVC issues:**
 
 ```bash
-oc get pvc -n vteam-dev
-oc describe pvc backend-state-pvc -n vteam-dev
+kubectl get pvc -n ambient-code
+kubectl describe pvc <pvc-name> -n ambient-code
+```
+
+**Service not accessible:**
+
+```bash
+# Check services
+kubectl get services -n ambient-code
+
+# Check NodePort assignments
+kubectl get service backend -n ambient-code -o jsonpath='{.spec.ports[0].nodePort}'
+kubectl get service frontend -n ambient-code -o jsonpath='{.spec.ports[0].nodePort}'
+
+# Get Minikube IP
+minikube ip
+```
+
+**Networking issues:**
+
+```bash
+# Verify ingress addon is enabled
+minikube addons list | grep ingress
+
+# Enable if disabled
+minikube addons enable ingress
 ```
 
 ## Getting Help

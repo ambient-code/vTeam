@@ -35,10 +35,33 @@ The platform consists of containerized microservices orchestrated via Kubernetes
 5. **Result Storage**: Analysis results stored back in Custom Resource status
 6. **UI Updates**: Frontend displays real-time progress and completed results
 
+## 🚀 Quick Start
+
+**Get started in under 5 minutes!**
+
+See **[QUICK_START.md](QUICK_START.md)** for the fastest way to run vTeam locally.
+
+```bash
+# Install prerequisites (one-time)
+brew install minikube kubectl  # macOS
+# or follow QUICK_START.md for Linux
+
+# Start
+make local-up
+
+# Check status
+make local-status
+```
+
+That's it! Access the app at `http://$(minikube ip):30030` (get IP with `make local-url`).
+
+---
+
 ## Prerequisites
 
 ### Required Tools
-- **OpenShift Local (CRC)** for local development or OpenShift cluster for production
+- **Minikube** for local development or **OpenShift cluster** for production
+- **Podman** for building container images (or Docker as alternative)
 - **oc** (OpenShift CLI) or **kubectl** v1.28+ configured to access your cluster
 - **Docker or Podman** for building container images
 - **Container registry access** (Docker Hub, Quay.io, ECR, etc.) for production
@@ -137,8 +160,11 @@ REGISTRY=$REGISTRY ./deploy.sh
 ### Container Engine Options
 
 ```bash
-# Use Podman instead of Docker
-make build-all CONTAINER_ENGINE=podman
+# Build with Podman (default)
+make build-all
+
+# Use Docker instead of Podman
+make build-all CONTAINER_ENGINE=docker
 
 # Build for specific platform
 # Default is linux/amd64
@@ -288,48 +314,53 @@ curl http://localhost:8080/health
 
 ## Development
 
-### Local Development with OpenShift Local (CRC)
+### Local Development with Minikube
 
 **Single Command Setup:**
 ```bash
 # Start complete local development environment
-make dev-start
+make local-start
 ```
 
 **What this provides:**
+- ✅ Local Kubernetes cluster with minikube
+- ✅ No authentication required - automatic login as "developer"
 - ✅ Full OpenShift cluster with CRC
 - ✅ Real OpenShift authentication and RBAC
 - ✅ Production-like environment
 - ✅ Automatic image builds and deployments
 - ✅ Working frontend-backend integration
+- ✅ Ingress configuration for easy access
+- ✅ Faster startup than OpenShift (2-3 minutes)
 
 **Prerequisites:**
 ```bash
-# Install CRC (macOS)
-brew install crc
-
-# Get Red Hat pull secret (free):
-# 1. Visit: https://console.redhat.com/openshift/create/local
-# 2. Download pull secret to ~/.crc/pull-secret.json
-# 3. Run: crc setup
+# Install minikube and kubectl (macOS)
+brew install minikube kubectl
 
 # Then start development
-make dev-start
+make local-start
 ```
 
-**Hot Reloading (optional):**
+**Local MiniKube Access URLs:**
+
+
+Or using NodePort (no /etc/hosts needed):
+- Frontend: `http://$(minikube ip):30030`
+- Backend: `http://$(minikube ip):30080`
+
+**Common Commands:**
 ```bash
-# Terminal 1: Start with development images
-DEV_MODE=true make dev-start
-
-# Terminal 2: Enable file sync for hot-reloading
-make dev-sync
+make local-start     # Start minikube and deploy
+make local-stop      # Stop deployment (keep minikube)
+make local-delete    # Delete minikube cluster
+make local-status    # Check deployment status
+make local-logs      # View backend logs
+make dev-test        # Run tests
 ```
 
-**Access URLs:**
-- Frontend: `https://vteam-frontend-vteam-dev.apps-crc.testing`
-- Backend: `https://vteam-backend-vteam-dev.apps-crc.testing/health`
-- Console: `https://console-openshift-console.apps-crc.testing`
+**For detailed local development guide, see:**
+- [docs/LOCAL_DEVELOPMENT.md](docs/LOCAL_DEVELOPMENT.md)
 
 ### Building from Source
 ```bash

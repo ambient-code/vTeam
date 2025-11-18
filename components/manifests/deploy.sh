@@ -11,7 +11,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-# Load .env file if it exists (optional for local CRC setups)
+# Load .env file if it exists (optional for local setups)
 if [ -f ".env" ]; then
     set -a  # automatically export all variables
     source .env
