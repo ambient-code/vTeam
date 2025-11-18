@@ -99,6 +99,7 @@ type ReconciledRepo struct {
 type ReconciledWorkflow struct {
 	GitURL    string  `json:"gitUrl"`
 	Branch    string  `json:"branch"`
+	Path      string  `json:"path,omitempty"`
 	Status    string  `json:"status,omitempty"`
 	AppliedAt *string `json:"appliedAt,omitempty"`
 }

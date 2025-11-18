@@ -147,6 +147,9 @@ spec:
                     type: string
                   branch:
                     type: string
+                  path:
+                    type: string
+                    description: "Optional path within the workflow repository"
                   status:
                     type: string
                     enum:

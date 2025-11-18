@@ -53,6 +53,8 @@ func registerRoutes(r *gin.Engine) {
 			projectGroup.POST("/agentic-sessions/:sessionName/clone", handlers.CloneSession)
 			projectGroup.POST("/agentic-sessions/:sessionName/start", handlers.StartSession)
 			projectGroup.POST("/agentic-sessions/:sessionName/stop", handlers.StopSession)
+			projectGroup.POST("/agentic-sessions/:sessionName/workspace/enable", handlers.EnableWorkspaceAccess)
+			projectGroup.POST("/agentic-sessions/:sessionName/workspace/touch", handlers.TouchWorkspaceAccess)
 			projectGroup.GET("/agentic-sessions/:sessionName/workspace", handlers.ListSessionWorkspace)
 			projectGroup.GET("/agentic-sessions/:sessionName/workspace/*path", handlers.GetSessionWorkspaceFile)
 			projectGroup.PUT("/agentic-sessions/:sessionName/workspace/*path", handlers.PutSessionWorkspaceFile)

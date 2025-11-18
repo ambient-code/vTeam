@@ -17,8 +17,10 @@ import (
 	"ambient-code-operator/internal/services"
 	"ambient-code-operator/internal/types"
 
+	authnv1 "k8s.io/api/authentication/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -119,7 +121,158 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 		phase = "Pending"
 	}
 
-	log.Printf("Processing AgenticSession %s with phase %s", name, phase)
+	// Check for desired-phase annotation (user-requested state transitions)
+	annotations := currentObj.GetAnnotations()
+	desiredPhase := ""
+	if annotations != nil {
+		desiredPhase = strings.TrimSpace(annotations["ambient-code.io/desired-phase"])
+	}
+
+	log.Printf("Processing AgenticSession %s with phase %s (desired: %s)", name, phase, desiredPhase)
+
+	// === DESIRED PHASE RECONCILIATION ===
+	// Handle user-requested state transitions via annotations
+
+	// Handle desired-phase=Running (user wants to start/restart)
+	if desiredPhase == "Running" && phase != "Running" && phase != "Creating" && phase != "Pending" {
+		log.Printf("[DesiredPhase] Session %s/%s: user requested start/restart (current=%s → desired=Running)", sessionNamespace, name, phase)
+
+		// Delete temp pod if it exists (to free PVC for job)
+		tempPodName := fmt.Sprintf("temp-content-%s", name)
+		if _, err := config.K8sClient.CoreV1().Pods(sessionNamespace).Get(context.TODO(), tempPodName, v1.GetOptions{}); err == nil {
+			log.Printf("[DesiredPhase] Deleting temp pod %s to free PVC for job", tempPodName)
+			if err := config.K8sClient.CoreV1().Pods(sessionNamespace).Delete(context.TODO(), tempPodName, v1.DeleteOptions{}); err != nil && !errors.IsNotFound(err) {
+				log.Printf("[DesiredPhase] Warning: failed to delete temp pod: %v", err)
+			}
+			// Clear temp pod annotations
+			_ = clearAnnotation(sessionNamespace, name, tempContentRequestedAnnotation)
+			_ = clearAnnotation(sessionNamespace, name, tempContentLastAccessedAnnotation)
+		}
+
+		// Delete old job if it exists (from previous run)
+		jobName := fmt.Sprintf("%s-job", name)
+		job, err := config.K8sClient.BatchV1().Jobs(sessionNamespace).Get(context.TODO(), jobName, v1.GetOptions{})
+		if err == nil {
+			log.Printf("[DesiredPhase] Cleaning up old job %s before restart", jobName)
+			if err := deleteJobAndPerJobService(sessionNamespace, jobName, name); err != nil {
+				log.Printf("[DesiredPhase] Warning: failed to cleanup old job: %v", err)
+			}
+		} else if !errors.IsNotFound(err) {
+			log.Printf("[DesiredPhase] Error checking for old job: %v", err)
+		}
+
+		// Regenerate runner token if this is a continuation
+		// Check if parent-session-id annotation is set
+		if parentSessionID := strings.TrimSpace(annotations["vteam.ambient-code/parent-session-id"]); parentSessionID != "" {
+			log.Printf("[DesiredPhase] Continuation detected (parent=%s), ensuring fresh runner token", parentSessionID)
+			if err := regenerateRunnerToken(sessionNamespace, name, currentObj); err != nil {
+				log.Printf("[DesiredPhase] Warning: failed to regenerate token: %v", err)
+				// Non-fatal - backend may have already done it
+			}
+		}
+
+		// Set phase=Pending to trigger job creation
+		_ = mutateAgenticSessionStatus(sessionNamespace, name, func(status map[string]interface{}) {
+			status["phase"] = "Pending"
+			status["startTime"] = time.Now().UTC().Format(time.RFC3339)
+			delete(status, "completionTime")
+			setCondition(status, conditionUpdate{
+				Type:    conditionReady,
+				Status:  "False",
+				Reason:  "Restarting",
+				Message: "Preparing to start session",
+			})
+		})
+
+		// Clear desired-phase annotation (request fulfilled)
+		_ = clearAnnotation(sessionNamespace, name, "ambient-code.io/desired-phase")
+		_ = clearAnnotation(sessionNamespace, name, "ambient-code.io/start-requested-at")
+
+		log.Printf("[DesiredPhase] Session %s/%s: set phase=Pending, will create job on next reconciliation", sessionNamespace, name)
+		return nil // Will be processed again with phase=Pending
+	}
+
+	// Handle desired-phase=Stopped (user wants to stop)
+	if desiredPhase == "Stopped" && (phase == "Running" || phase == "Creating") {
+		log.Printf("[DesiredPhase] Session %s/%s: user requested stop (current=%s → desired=Stopped)", sessionNamespace, name, phase)
+
+		// Delete running job
+		jobName := fmt.Sprintf("%s-job", name)
+		if err := deleteJobAndPerJobService(sessionNamespace, jobName, name); err != nil {
+			log.Printf("[DesiredPhase] Warning: failed to delete job: %v", err)
+		}
+
+		// Update status to Stopped
+		_ = mutateAgenticSessionStatus(sessionNamespace, name, func(status map[string]interface{}) {
+			status["phase"] = "Stopped"
+			status["completionTime"] = time.Now().UTC().Format(time.RFC3339)
+			setCondition(status, conditionUpdate{
+				Type:    conditionReady,
+				Status:  "False",
+				Reason:  "UserStopped",
+				Message: "User requested stop",
+			})
+			setCondition(status, conditionUpdate{
+				Type:    conditionRunnerStarted,
+				Status:  "False",
+				Reason:  "UserStopped",
+				Message: "Runner stopped by user",
+			})
+		})
+
+		// Clear desired-phase annotation (request fulfilled)
+		_ = clearAnnotation(sessionNamespace, name, "ambient-code.io/desired-phase")
+		_ = clearAnnotation(sessionNamespace, name, "ambient-code.io/stop-requested-at")
+
+		log.Printf("[DesiredPhase] Session %s/%s: stopped and updated status to Stopped", sessionNamespace, name)
+		return nil
+	}
+
+	// === TEMP CONTENT POD RECONCILIATION ===
+	// Manage temporary content pods for workspace access on stopped sessions
+
+	tempContentRequested := annotations != nil && annotations[tempContentRequestedAnnotation] == "true"
+	tempPodName := fmt.Sprintf("temp-content-%s", name)
+
+	// Only manage temp pods for stopped/completed/failed sessions
+	if phase == "Stopped" || phase == "Completed" || phase == "Failed" {
+		if tempContentRequested {
+			// User wants workspace access - ensure temp pod exists
+			if err := reconcileTempContentPod(sessionNamespace, name, tempPodName, currentObj); err != nil {
+				log.Printf("[TempPod] Failed to reconcile temp pod: %v", err)
+			}
+		} else {
+			// Temp pod not requested - delete if it exists
+			tempPod, err := config.K8sClient.CoreV1().Pods(sessionNamespace).Get(context.TODO(), tempPodName, v1.GetOptions{})
+			if err == nil {
+				log.Printf("[TempPod] Deleting unrequested temp pod: %s", tempPodName)
+				if err := config.K8sClient.CoreV1().Pods(sessionNamespace).Delete(context.TODO(), tempPodName, v1.DeleteOptions{}); err != nil && !errors.IsNotFound(err) {
+					log.Printf("[TempPod] Failed to delete temp pod: %v", err)
+				} else {
+					_ = mutateAgenticSessionStatus(sessionNamespace, name, func(status map[string]interface{}) {
+						setCondition(status, conditionUpdate{
+							Type:    conditionTempContentPodReady,
+							Status:  "False",
+							Reason:  "NotRequested",
+							Message: "Temp pod removed (not requested)",
+						})
+					})
+				}
+			} else if errors.IsNotFound(err) && tempPod != nil {
+				// Ensure condition is cleared if pod doesn't exist
+				_ = mutateAgenticSessionStatus(sessionNamespace, name, func(status map[string]interface{}) {
+					setCondition(status, conditionUpdate{
+						Type:    conditionTempContentPodReady,
+						Status:  "False",
+						Reason:  "NotFound",
+						Message: "Temp pod does not exist",
+					})
+				})
+			}
+		}
+	}
+
+	// === CONTINUE WITH PHASE-BASED RECONCILIATION ===
 
 	// Handle Stopped phase - clean up running job if it exists
 	if phase == "Stopped" {
@@ -1196,6 +1349,15 @@ func monitorJob(jobName, sessionName, sessionNamespace string) {
 			continue
 		}
 
+		// Check if session was stopped - exit monitor loop immediately
+		sessionStatus, _, _ := unstructured.NestedMap(sessionObj.Object, "status")
+		if sessionStatus != nil {
+			if currentPhase, ok := sessionStatus["phase"].(string); ok && currentPhase == "Stopped" {
+				log.Printf("AgenticSession %s was stopped; stopping job monitoring", sessionName)
+				return
+			}
+		}
+
 		if err := ensureFreshRunnerToken(context.TODO(), sessionObj); err != nil {
 			log.Printf("Failed to refresh runner token for %s/%s: %v", sessionNamespace, sessionName, err)
 		}
@@ -1424,38 +1586,74 @@ func CleanupExpiredTempContentPods() {
 			LabelSelector: "app=temp-content-service",
 		})
 		if err != nil {
-			log.Printf("Failed to list temp content pods: %v", err)
+			log.Printf("[TempPodCleanup] Failed to list temp content pods: %v", err)
 			continue
 		}
 
+		gvr := types.GetAgenticSessionResource()
 		for _, pod := range pods.Items {
-			// Check TTL annotation
-			createdAtStr := pod.Annotations["vteam.ambient-code/created-at"]
-			ttlStr := pod.Annotations["vteam.ambient-code/ttl"]
-
-			if createdAtStr == "" || ttlStr == "" {
+			sessionName := pod.Labels["agentic-session"]
+			if sessionName == "" {
+				log.Printf("[TempPodCleanup] Temp pod %s has no agentic-session label, skipping", pod.Name)
 				continue
 			}
 
-			createdAt, err := time.Parse(time.RFC3339, createdAtStr)
+			// Check if session still exists
+			session, err := config.DynamicClient.Resource(gvr).Namespace(pod.Namespace).Get(context.TODO(), sessionName, v1.GetOptions{})
 			if err != nil {
-				log.Printf("Failed to parse created-at for pod %s: %v", pod.Name, err)
-				continue
-			}
-
-			ttlSeconds := int64(0)
-			if _, err := fmt.Sscanf(ttlStr, "%d", &ttlSeconds); err != nil {
-				log.Printf("Failed to parse TTL for pod %s: %v", pod.Name, err)
-				continue
-			}
-
-			ttlDuration := time.Duration(ttlSeconds) * time.Second
-			if time.Since(createdAt) > ttlDuration {
-				log.Printf("Deleting expired temp content pod: %s/%s (age: %v, ttl: %v)",
-					pod.Namespace, pod.Name, time.Since(createdAt), ttlDuration)
-				if err := config.K8sClient.CoreV1().Pods(pod.Namespace).Delete(context.TODO(), pod.Name, v1.DeleteOptions{}); err != nil && !errors.IsNotFound(err) {
-					log.Printf("Failed to delete expired temp pod %s/%s: %v", pod.Namespace, pod.Name, err)
+				if errors.IsNotFound(err) {
+					// Session deleted, delete temp pod
+					log.Printf("[TempPodCleanup] Session %s/%s gone, deleting orphaned temp pod %s", pod.Namespace, sessionName, pod.Name)
+					if err := config.K8sClient.CoreV1().Pods(pod.Namespace).Delete(context.TODO(), pod.Name, v1.DeleteOptions{}); err != nil && !errors.IsNotFound(err) {
+						log.Printf("[TempPodCleanup] Failed to delete orphaned temp pod: %v", err)
+					}
 				}
+				continue
+			}
+
+			// Get last-accessed timestamp from session annotation
+			annotations := session.GetAnnotations()
+			lastAccessedStr := annotations[tempContentLastAccessedAnnotation]
+			if lastAccessedStr == "" {
+				// Fall back to pod created-at if no last-accessed
+				lastAccessedStr = pod.Annotations["ambient-code.io/created-at"]
+			}
+
+			if lastAccessedStr == "" {
+				log.Printf("[TempPodCleanup] No timestamp for temp pod %s, skipping", pod.Name)
+				continue
+			}
+
+			lastAccessed, err := time.Parse(time.RFC3339, lastAccessedStr)
+			if err != nil {
+				log.Printf("[TempPodCleanup] Failed to parse timestamp for pod %s: %v", pod.Name, err)
+				continue
+			}
+
+			// Delete if inactive for > 10 minutes
+			if time.Since(lastAccessed) > tempContentInactivityTTL {
+				log.Printf("[TempPodCleanup] Deleting inactive temp pod %s/%s (last accessed: %v ago)",
+					pod.Namespace, pod.Name, time.Since(lastAccessed))
+
+				if err := config.K8sClient.CoreV1().Pods(pod.Namespace).Delete(context.TODO(), pod.Name, v1.DeleteOptions{}); err != nil && !errors.IsNotFound(err) {
+					log.Printf("[TempPodCleanup] Failed to delete temp pod: %v", err)
+					continue
+				}
+
+				// Update condition
+				_ = mutateAgenticSessionStatus(pod.Namespace, sessionName, func(status map[string]interface{}) {
+					setCondition(status, conditionUpdate{
+						Type:    conditionTempContentPodReady,
+						Status:  "False",
+						Reason:  "Expired",
+						Message: fmt.Sprintf("Temp pod deleted due to inactivity (%v)", time.Since(lastAccessed)),
+					})
+				})
+
+				// Clear temp-content-requested annotation
+				delete(annotations, tempContentRequestedAnnotation)
+				delete(annotations, tempContentLastAccessedAnnotation)
+				_ = updateAnnotations(pod.Namespace, sessionName, annotations)
 			}
 		}
 	}
@@ -1600,6 +1798,146 @@ func deleteAmbientVertexSecret(ctx context.Context, namespace string) error {
 	return nil
 }
 
+// reconcileTempContentPod ensures a temporary content pod exists for workspace access
+func reconcileTempContentPod(sessionNamespace, sessionName, tempPodName string, session *unstructured.Unstructured) error {
+	// Check if pod already exists
+	tempPod, err := config.K8sClient.CoreV1().Pods(sessionNamespace).Get(context.TODO(), tempPodName, v1.GetOptions{})
+
+	if errors.IsNotFound(err) {
+		// Create temp pod
+		log.Printf("[TempPod] Creating temp content pod for workspace access: %s/%s", sessionNamespace, tempPodName)
+
+		pvcName := fmt.Sprintf("ambient-workspace-%s", sessionName)
+		appConfig := config.LoadConfig()
+
+		pod := &corev1.Pod{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      tempPodName,
+				Namespace: sessionNamespace,
+				Labels: map[string]string{
+					"app":             "temp-content-service",
+					"agentic-session": sessionName,
+				},
+				Annotations: map[string]string{
+					"ambient-code.io/created-at": time.Now().UTC().Format(time.RFC3339),
+				},
+				OwnerReferences: []v1.OwnerReference{{
+					APIVersion: session.GetAPIVersion(),
+					Kind:       session.GetKind(),
+					Name:       session.GetName(),
+					UID:        session.GetUID(),
+					Controller: boolPtr(true),
+				}},
+			},
+			Spec: corev1.PodSpec{
+				RestartPolicy: corev1.RestartPolicyNever,
+				Containers: []corev1.Container{{
+					Name:            "content",
+					Image:           appConfig.ContentServiceImage,
+					ImagePullPolicy: appConfig.ImagePullPolicy,
+					Env: []corev1.EnvVar{
+						{Name: "CONTENT_SERVICE_MODE", Value: "true"},
+						{Name: "STATE_BASE_DIR", Value: "/workspace"},
+					},
+					Ports: []corev1.ContainerPort{{ContainerPort: 8080, Name: "http"}},
+					VolumeMounts: []corev1.VolumeMount{{
+						Name:      "workspace",
+						MountPath: "/workspace",
+					}},
+					ReadinessProbe: &corev1.Probe{
+						ProbeHandler: corev1.ProbeHandler{
+							HTTPGet: &corev1.HTTPGetAction{
+								Path: "/health",
+								Port: intstr.FromString("http"),
+							},
+						},
+						InitialDelaySeconds: 3,
+						PeriodSeconds:       3,
+					},
+				}},
+				Volumes: []corev1.Volume{{
+					Name: "workspace",
+					VolumeSource: corev1.VolumeSource{
+						PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+							ClaimName: pvcName,
+						},
+					},
+				}},
+			},
+		}
+
+		if _, err := config.K8sClient.CoreV1().Pods(sessionNamespace).Create(context.TODO(), pod, v1.CreateOptions{}); err != nil {
+			log.Printf("[TempPod] Failed to create temp pod: %v", err)
+			_ = mutateAgenticSessionStatus(sessionNamespace, sessionName, func(status map[string]interface{}) {
+				setCondition(status, conditionUpdate{
+					Type:    conditionTempContentPodReady,
+					Status:  "False",
+					Reason:  "CreationFailed",
+					Message: fmt.Sprintf("Failed to create temp pod: %v", err),
+				})
+			})
+			return fmt.Errorf("failed to create temp pod: %w", err)
+		}
+
+		log.Printf("[TempPod] Created temp pod %s", tempPodName)
+		_ = mutateAgenticSessionStatus(sessionNamespace, sessionName, func(status map[string]interface{}) {
+			setCondition(status, conditionUpdate{
+				Type:    conditionTempContentPodReady,
+				Status:  "Unknown",
+				Reason:  "Provisioning",
+				Message: "Temp content pod starting",
+			})
+		})
+		return nil
+	}
+
+	if err != nil {
+		return fmt.Errorf("failed to check temp pod: %w", err)
+	}
+
+	// Temp pod exists, check readiness
+	if tempPod.Status.Phase == corev1.PodRunning {
+		ready := false
+		for _, cond := range tempPod.Status.Conditions {
+			if cond.Type == corev1.PodReady && cond.Status == corev1.ConditionTrue {
+				ready = true
+				break
+			}
+		}
+
+		if ready {
+			_ = mutateAgenticSessionStatus(sessionNamespace, sessionName, func(status map[string]interface{}) {
+				setCondition(status, conditionUpdate{
+					Type:    conditionTempContentPodReady,
+					Status:  "True",
+					Reason:  "Ready",
+					Message: "Temp content pod is ready for workspace access",
+				})
+			})
+		} else {
+			_ = mutateAgenticSessionStatus(sessionNamespace, sessionName, func(status map[string]interface{}) {
+				setCondition(status, conditionUpdate{
+					Type:    conditionTempContentPodReady,
+					Status:  "Unknown",
+					Reason:  "NotReady",
+					Message: "Temp content pod not ready yet",
+				})
+			})
+		}
+	} else if tempPod.Status.Phase == corev1.PodFailed {
+		_ = mutateAgenticSessionStatus(sessionNamespace, sessionName, func(status map[string]interface{}) {
+			setCondition(status, conditionUpdate{
+				Type:    conditionTempContentPodReady,
+				Status:  "False",
+				Reason:  "PodFailed",
+				Message: fmt.Sprintf("Temp content pod failed: %s", tempPod.Status.Message),
+			})
+		})
+	}
+
+	return nil
+}
+
 // getBackendAPIURL returns the backend API URL for the given namespace
 func getBackendAPIURL(namespace string) string {
 	appConfig := config.LoadConfig()
@@ -1665,6 +2003,161 @@ func deriveRepoNameFromURL(repoURL string) string {
 	}
 
 	return "repo"
+}
+
+// regenerateRunnerToken provisions a fresh ServiceAccount, Role, RoleBinding, and token Secret for a session.
+// This is called when restarting sessions to ensure fresh tokens.
+func regenerateRunnerToken(sessionNamespace, sessionName string, session *unstructured.Unstructured) error {
+	log.Printf("[TokenProvision] Regenerating runner token for %s/%s", sessionNamespace, sessionName)
+
+	// Create owner reference
+	ownerRef := v1.OwnerReference{
+		APIVersion: session.GetAPIVersion(),
+		Kind:       session.GetKind(),
+		Name:       session.GetName(),
+		UID:        session.GetUID(),
+		Controller: boolPtr(true),
+	}
+
+	// Create ServiceAccount
+	saName := fmt.Sprintf("ambient-session-%s", sessionName)
+	sa := &corev1.ServiceAccount{
+		ObjectMeta: v1.ObjectMeta{
+			Name:            saName,
+			Namespace:       sessionNamespace,
+			Labels:          map[string]string{"app": "ambient-runner"},
+			OwnerReferences: []v1.OwnerReference{ownerRef},
+		},
+	}
+	if _, err := config.K8sClient.CoreV1().ServiceAccounts(sessionNamespace).Create(context.TODO(), sa, v1.CreateOptions{}); err != nil {
+		if !errors.IsAlreadyExists(err) {
+			return fmt.Errorf("create SA: %w", err)
+		}
+		log.Printf("[TokenProvision] ServiceAccount %s already exists", saName)
+	}
+
+	// Create Role with least-privilege permissions
+	roleName := fmt.Sprintf("ambient-session-%s-role", sessionName)
+	role := &rbacv1.Role{
+		ObjectMeta: v1.ObjectMeta{
+			Name:            roleName,
+			Namespace:       sessionNamespace,
+			OwnerReferences: []v1.OwnerReference{ownerRef},
+		},
+		Rules: []rbacv1.PolicyRule{
+			{
+				APIGroups: []string{"vteam.ambient-code"},
+				Resources: []string{"agenticsessions"},
+				Verbs:     []string{"get", "list", "watch", "update", "patch"},
+			},
+			{
+				APIGroups: []string{"authorization.k8s.io"},
+				Resources: []string{"selfsubjectaccessreviews"},
+				Verbs:     []string{"create"},
+			},
+		},
+	}
+	if _, err := config.K8sClient.RbacV1().Roles(sessionNamespace).Create(context.TODO(), role, v1.CreateOptions{}); err != nil {
+		if errors.IsAlreadyExists(err) {
+			// Update existing role to ensure latest permissions
+			if _, err := config.K8sClient.RbacV1().Roles(sessionNamespace).Update(context.TODO(), role, v1.UpdateOptions{}); err != nil {
+				return fmt.Errorf("update Role: %w", err)
+			}
+			log.Printf("[TokenProvision] Updated existing Role %s", roleName)
+		} else {
+			return fmt.Errorf("create Role: %w", err)
+		}
+	}
+
+	// Create RoleBinding
+	rbName := fmt.Sprintf("ambient-session-%s-rb", sessionName)
+	rb := &rbacv1.RoleBinding{
+		ObjectMeta: v1.ObjectMeta{
+			Name:            rbName,
+			Namespace:       sessionNamespace,
+			OwnerReferences: []v1.OwnerReference{ownerRef},
+		},
+		RoleRef:  rbacv1.RoleRef{APIGroup: "rbac.authorization.k8s.io", Kind: "Role", Name: roleName},
+		Subjects: []rbacv1.Subject{{Kind: "ServiceAccount", Name: saName, Namespace: sessionNamespace}},
+	}
+	if _, err := config.K8sClient.RbacV1().RoleBindings(sessionNamespace).Create(context.TODO(), rb, v1.CreateOptions{}); err != nil {
+		if !errors.IsAlreadyExists(err) {
+			return fmt.Errorf("create RoleBinding: %w", err)
+		}
+		log.Printf("[TokenProvision] RoleBinding %s already exists", rbName)
+	}
+
+	// Mint token
+	tr := &authnv1.TokenRequest{Spec: authnv1.TokenRequestSpec{}}
+	tok, err := config.K8sClient.CoreV1().ServiceAccounts(sessionNamespace).CreateToken(context.TODO(), saName, tr, v1.CreateOptions{})
+	if err != nil {
+		return fmt.Errorf("mint token: %w", err)
+	}
+	k8sToken := strings.TrimSpace(tok.Status.Token)
+	if k8sToken == "" {
+		return fmt.Errorf("received empty token for SA %s", saName)
+	}
+
+	// Store token in Secret
+	secretName := fmt.Sprintf("ambient-runner-token-%s", sessionName)
+	refreshedAt := time.Now().UTC().Format(time.RFC3339)
+	sec := &corev1.Secret{
+		ObjectMeta: v1.ObjectMeta{
+			Name:            secretName,
+			Namespace:       sessionNamespace,
+			Labels:          map[string]string{"app": "ambient-runner-token"},
+			OwnerReferences: []v1.OwnerReference{ownerRef},
+			Annotations: map[string]string{
+				"ambient-code.io/token-refreshed-at": refreshedAt,
+			},
+		},
+		Type: corev1.SecretTypeOpaque,
+		Data: map[string][]byte{
+			"k8s-token": []byte(k8sToken),
+		},
+	}
+
+	// Create or update secret
+	if _, err := config.K8sClient.CoreV1().Secrets(sessionNamespace).Create(context.TODO(), sec, v1.CreateOptions{}); err != nil {
+		if errors.IsAlreadyExists(err) {
+			existing, getErr := config.K8sClient.CoreV1().Secrets(sessionNamespace).Get(context.TODO(), secretName, v1.GetOptions{})
+			if getErr != nil {
+				return fmt.Errorf("get Secret for update: %w", getErr)
+			}
+			secretCopy := existing.DeepCopy()
+			if secretCopy.Data == nil {
+				secretCopy.Data = map[string][]byte{}
+			}
+			secretCopy.Data["k8s-token"] = []byte(k8sToken)
+			if secretCopy.Annotations == nil {
+				secretCopy.Annotations = map[string]string{}
+			}
+			secretCopy.Annotations["ambient-code.io/token-refreshed-at"] = refreshedAt
+			if _, err := config.K8sClient.CoreV1().Secrets(sessionNamespace).Update(context.TODO(), secretCopy, v1.UpdateOptions{}); err != nil {
+				return fmt.Errorf("update Secret: %w", err)
+			}
+			log.Printf("[TokenProvision] Updated secret %s with fresh token", secretName)
+		} else {
+			return fmt.Errorf("create Secret: %w", err)
+		}
+	} else {
+		log.Printf("[TokenProvision] Created secret %s with runner token", secretName)
+	}
+
+	// Annotate session with secret/SA names
+	sessionAnnotations := session.GetAnnotations()
+	if sessionAnnotations == nil {
+		sessionAnnotations = make(map[string]string)
+	}
+	sessionAnnotations["ambient-code.io/runner-token-secret"] = secretName
+	sessionAnnotations["ambient-code.io/runner-sa"] = saName
+	if err := updateAnnotations(sessionNamespace, sessionName, sessionAnnotations); err != nil {
+		log.Printf("[TokenProvision] Warning: failed to annotate session: %v", err)
+		// Non-fatal - job will use default names
+	}
+
+	log.Printf("[TokenProvision] Successfully regenerated token for session %s/%s", sessionNamespace, sessionName)
+	return nil
 }
 
 // Helper functions

@@ -432,21 +432,8 @@ func CreateSession(c *gin.Context) {
 		}
 		annotations := metadata["annotations"].(map[string]interface{})
 		annotations["vteam.ambient-code/parent-session-id"] = req.ParentSessionID
-		log.Printf("Creating continuation session from parent %s", req.ParentSessionID)
-
-		// Clean up temp-content pod from parent session to free the PVC
-		// This prevents Multi-Attach errors when the new session tries to mount the same workspace
-		reqK8s, _ := GetK8sClientsForRequest(c)
-		if reqK8s != nil {
-			tempPodName := fmt.Sprintf("temp-content-%s", req.ParentSessionID)
-			if err := reqK8s.CoreV1().Pods(project).Delete(c.Request.Context(), tempPodName, v1.DeleteOptions{}); err != nil {
-				if !errors.IsNotFound(err) {
-					log.Printf("CreateSession: failed to delete temp-content pod %s (non-fatal): %v", tempPodName, err)
-				}
-			} else {
-				log.Printf("CreateSession: deleted temp-content pod %s to free PVC for continuation", tempPodName)
-			}
-		}
+		log.Printf("Creating continuation session from parent %s (operator will handle temp pod cleanup)", req.ParentSessionID)
+		// Note: Operator will delete temp pod when session starts (desired-phase=Running)
 	}
 
 	if len(envVars) > 0 {
@@ -1762,7 +1749,7 @@ func ensureRunnerRolePermissions(c *gin.Context, reqK8s *kubernetes.Clientset, p
 func StartSession(c *gin.Context) {
 	project := c.GetString("project")
 	sessionName := c.Param("sessionName")
-	reqK8s, reqDyn := GetK8sClientsForRequest(c)
+	_, reqDyn := GetK8sClientsForRequest(c)
 	gvr := GetAgenticSessionV1Alpha1Resource()
 
 	// Get current resource
@@ -1777,27 +1764,7 @@ func StartSession(c *gin.Context) {
 		return
 	}
 
-	// Ensure runner role has required permissions (update if needed for existing sessions)
-	if err := ensureRunnerRolePermissions(c, reqK8s, project, sessionName); err != nil {
-		log.Printf("Warning: failed to ensure runner role permissions for %s: %v", sessionName, err)
-		// Non-fatal - continue with restart
-	}
-
-	// Clean up temp-content pod if it exists to free the PVC
-	// This prevents Multi-Attach errors when the session job tries to mount the workspace
-	if reqK8s != nil {
-		tempPodName := fmt.Sprintf("temp-content-%s", sessionName)
-		if err := reqK8s.CoreV1().Pods(project).Delete(c.Request.Context(), tempPodName, v1.DeleteOptions{}); err != nil {
-			if !errors.IsNotFound(err) {
-				log.Printf("StartSession: failed to delete temp-content pod %s (non-fatal): %v", tempPodName, err)
-			}
-		} else {
-			log.Printf("StartSession: deleted temp-content pod %s to free PVC", tempPodName)
-		}
-	}
-
 	// Check if this is a continuation (session is in a terminal phase)
-	// Terminal phases from CRD: Completed, Failed, Stopped, Error
 	isActualContinuation := false
 	currentPhase := ""
 	if currentStatus, ok := item.Object["status"].(map[string]interface{}); ok {
@@ -1814,91 +1781,41 @@ func StartSession(c *gin.Context) {
 		}
 	}
 
-	if !isActualContinuation {
-		log.Printf("StartSession: Not a continuation - current phase is: %s (not in terminal phases)", currentPhase)
+	// Set annotations to signal desired state to operator
+	annotations := item.GetAnnotations()
+	if annotations == nil {
+		annotations = make(map[string]string)
 	}
 
-	// Only set parent session annotation if this is an actual continuation
-	// Don't set it on first start, even though StartSession can be called for initial creation
+	// Signal start/restart request to operator
+	annotations["ambient-code.io/desired-phase"] = "Running"
+	annotations["ambient-code.io/start-requested-at"] = time.Now().Format(time.RFC3339)
+
+	// For continuations, set parent-session-id so operator reuses PVC
 	if isActualContinuation {
-		annotations := item.GetAnnotations()
-		if annotations == nil {
-			annotations = make(map[string]string)
-		}
 		annotations["vteam.ambient-code/parent-session-id"] = sessionName
-		item.SetAnnotations(annotations)
-		log.Printf("StartSession: Set parent-session-id annotation to %s for continuation (has completion time)", sessionName)
-
-		// For headless sessions being continued, force interactive mode
-		if spec, ok := item.Object["spec"].(map[string]interface{}); ok {
-			if interactive, ok := spec["interactive"].(bool); !ok || !interactive {
-				// Session was headless, convert to interactive
-				spec["interactive"] = true
-				log.Printf("StartSession: Converting headless session to interactive for continuation")
-			}
-		}
-
-		// Update the metadata and spec to persist the annotation and interactive flag
-		item, err = reqDyn.Resource(gvr).Namespace(project).Update(context.TODO(), item, v1.UpdateOptions{})
-		if err != nil {
-			log.Printf("Failed to update agentic session metadata %s in project %s: %v", sessionName, project, err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update session metadata"})
-			return
-		}
-
-		// Regenerate runner token for continuation (old token may have expired)
-		log.Printf("StartSession: Regenerating runner token for session continuation")
-		if err := provisionRunnerTokenForSession(c, reqK8s, reqDyn, project, sessionName); err != nil {
-			log.Printf("Warning: failed to regenerate runner token for session %s/%s: %v", project, sessionName, err)
-			// Non-fatal: continue anyway, operator may retry
-		} else {
-			log.Printf("StartSession: Successfully regenerated runner token for continuation")
-
-			// Delete the old job so operator creates a new one
-			// This ensures fresh token and clean state
-			// Job name format matches operator: {sessionName}-job
-			jobName := fmt.Sprintf("%s-job", sessionName)
-			log.Printf("StartSession: Deleting old job %s to allow operator to create fresh one", jobName)
-			if err := reqK8s.BatchV1().Jobs(project).Delete(c.Request.Context(), jobName, v1.DeleteOptions{
-				PropagationPolicy: func() *v1.DeletionPropagation { p := v1.DeletePropagationBackground; return &p }(),
-			}); err != nil {
-				if !errors.IsNotFound(err) {
-					log.Printf("Warning: failed to delete old job %s: %v", jobName, err)
-				} else {
-					log.Printf("StartSession: Job %s already gone", jobName)
-				}
-			} else {
-				log.Printf("StartSession: Successfully deleted old job %s", jobName)
-			}
-		}
-	} else {
-		log.Printf("StartSession: Not setting parent-session-id (first run, no completion time)")
+		log.Printf("StartSession: Continuation detected - set parent-session-id=%s for PVC reuse", sessionName)
 	}
 
-	// Now update status to trigger start (using the fresh object from Update)
-	if item.Object["status"] == nil {
-		item.Object["status"] = make(map[string]interface{})
+	item.SetAnnotations(annotations)
+
+	// For headless sessions being continued, force interactive mode
+	if spec, ok := item.Object["spec"].(map[string]interface{}); ok {
+		if interactive, ok := spec["interactive"].(bool); !ok || !interactive {
+			spec["interactive"] = true
+			log.Printf("StartSession: Converting headless session to interactive for continuation")
+		}
 	}
 
-	status := item.Object["status"].(map[string]interface{})
-	// Set to Pending so operator will process it (operator only acts on Pending phase)
-	status["phase"] = "Pending"
-	// Clear completion time from previous run
-	delete(status, "completionTime")
-	// Update start time for this run
-	status["startTime"] = time.Now().Format(time.RFC3339)
-
-	// Update the status subresource using backend SA (status updates require elevated permissions)
-	if DynamicClient == nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "backend not initialized"})
-		return
-	}
-	updated, err := DynamicClient.Resource(gvr).Namespace(project).UpdateStatus(context.TODO(), item, v1.UpdateOptions{})
+	// Update spec and annotations (operator will observe and handle job lifecycle)
+	updated, err := reqDyn.Resource(gvr).Namespace(project).Update(context.TODO(), item, v1.UpdateOptions{})
 	if err != nil {
-		log.Printf("Failed to start agentic session %s in project %s: %v", sessionName, project, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to start agentic session"})
+		log.Printf("Failed to update agentic session %s in project %s: %v", sessionName, project, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update session"})
 		return
 	}
+
+	log.Printf("StartSession: Set desired-phase=Running annotation (operator will reconcile)")
 
 	// Parse and return updated session
 	session := types.AgenticSession{
@@ -1955,58 +1872,6 @@ func ensureRuntimeMutationAllowed(item *unstructured.Unstructured) error {
 	return nil
 }
 
-func copyStatusMap(src map[string]interface{}) map[string]interface{} {
-	if src == nil {
-		return map[string]interface{}{}
-	}
-	dst := make(map[string]interface{}, len(src))
-	for k, v := range src {
-		dst[k] = v
-	}
-	return dst
-}
-
-func upsertStatusCondition(status map[string]interface{}, condType, condStatus, reason, message string) {
-	now := time.Now().UTC().Format(time.RFC3339)
-	conditions, _ := status["conditions"].([]interface{})
-	updated := false
-
-	for i, cond := range conditions {
-		entry, ok := cond.(map[string]interface{})
-		if !ok {
-			continue
-		}
-		t, _ := entry["type"].(string)
-		if strings.EqualFold(t, condType) {
-			if entry["status"] != condStatus {
-				entry["lastTransitionTime"] = now
-			}
-			entry["status"] = condStatus
-			if reason != "" {
-				entry["reason"] = reason
-			}
-			if message != "" {
-				entry["message"] = message
-			}
-			conditions[i] = entry
-			updated = true
-			break
-		}
-	}
-
-	if !updated {
-		conditions = append(conditions, map[string]interface{}{
-			"type":               condType,
-			"status":             condStatus,
-			"reason":             reason,
-			"message":            message,
-			"lastTransitionTime": now,
-		})
-	}
-
-	status["conditions"] = conditions
-}
-
 func StopSession(c *gin.Context) {
 	project := c.GetString("project")
 	sessionName := c.Param("sessionName")
@@ -2024,55 +1889,38 @@ func StopSession(c *gin.Context) {
 		return
 	}
 
+	// Set annotations to signal desired state to operator
+	annotations := item.GetAnnotations()
+	if annotations == nil {
+		annotations = make(map[string]string)
+	}
+
+	// Signal stop request to operator
+	annotations["ambient-code.io/desired-phase"] = "Stopped"
+	annotations["ambient-code.io/stop-requested-at"] = time.Now().Format(time.RFC3339)
+	item.SetAnnotations(annotations)
+
+	// Force interactive mode so session can be restarted later
 	if spec, ok := item.Object["spec"].(map[string]interface{}); ok {
 		if interactive, ok := spec["interactive"].(bool); !ok || !interactive {
 			spec["interactive"] = true
-			if updatedItem, err := reqDyn.Resource(gvr).Namespace(project).Update(context.TODO(), item, v1.UpdateOptions{}); err != nil {
-				log.Printf("Failed to set interactive flag for %s: %v", sessionName, err)
-			} else {
-				item = updatedItem
-			}
+			log.Printf("StopSession: Converting headless session to interactive for future restart capability")
 		}
 	}
 
-	if DynamicClient == nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "backend not initialized"})
-		return
-	}
-
-	fresh, err := DynamicClient.Resource(gvr).Namespace(project).Get(context.TODO(), sessionName, v1.GetOptions{})
+	// Update spec and annotations (operator will observe and handle job cleanup)
+	updated, err := reqDyn.Resource(gvr).Namespace(project).Update(context.TODO(), item, v1.UpdateOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Session not found"})
-			return
-		}
-		log.Printf("Failed to refresh agentic session %s in project %s: %v", sessionName, project, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to refresh session"})
-		return
-	}
-
-	existingStatus, _ := fresh.Object["status"].(map[string]interface{})
-	statusPayload := copyStatusMap(existingStatus)
-	now := time.Now().UTC().Format(time.RFC3339)
-	statusPayload["phase"] = "Stopped"
-	statusPayload["completionTime"] = now
-	delete(statusPayload, "startTime")
-	upsertStatusCondition(statusPayload, "Ready", "False", "UserStopped", "User requested stop")
-	upsertStatusCondition(statusPayload, "RunnerStarted", "False", "UserStopped", "Runner stop requested")
-
-	fresh.Object["status"] = statusPayload
-
-	updated, err := DynamicClient.Resource(gvr).Namespace(project).UpdateStatus(context.TODO(), fresh, v1.UpdateOptions{})
-	if err != nil {
-		if errors.IsNotFound(err) {
-			log.Printf("Agentic session %s was deleted during stop operation", sessionName)
 			c.JSON(http.StatusOK, gin.H{"message": "Session no longer exists (already deleted)"})
 			return
 		}
-		log.Printf("Failed to update agentic session status %s: %v", sessionName, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update agentic session status"})
+		log.Printf("Failed to update agentic session %s: %v", sessionName, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update session"})
 		return
 	}
+
+	log.Printf("StopSession: Set desired-phase=Stopped annotation (operator will reconcile)")
 
 	session := types.AgenticSession{
 		APIVersion: updated.GetAPIVersion(),
@@ -2086,8 +1934,100 @@ func StopSession(c *gin.Context) {
 		session.Status = parseStatus(statusMap)
 	}
 
-	log.Printf("Marked agentic session %s as stopped (operator will handle cleanup)", sessionName)
 	c.JSON(http.StatusAccepted, session)
+}
+
+// EnableWorkspaceAccess requests a temporary content pod for workspace access on stopped sessions
+// POST /api/projects/:projectName/agentic-sessions/:sessionName/workspace/enable
+func EnableWorkspaceAccess(c *gin.Context) {
+	project := c.GetString("project")
+	sessionName := c.Param("sessionName")
+	_, reqDyn := GetK8sClientsForRequest(c)
+	gvr := GetAgenticSessionV1Alpha1Resource()
+
+	item, err := reqDyn.Resource(gvr).Namespace(project).Get(context.TODO(), sessionName, v1.GetOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Session not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get session"})
+		return
+	}
+
+	// Only allow for stopped/completed/failed sessions
+	status, _ := item.Object["status"].(map[string]interface{})
+	phase, _ := status["phase"].(string)
+	if phase != "Stopped" && phase != "Completed" && phase != "Failed" {
+		c.JSON(http.StatusConflict, gin.H{"error": "Workspace access only available for stopped sessions"})
+		return
+	}
+
+	// Set annotation to request temp pod
+	annotations := item.GetAnnotations()
+	if annotations == nil {
+		annotations = make(map[string]string)
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	annotations["ambient-code.io/temp-content-requested"] = "true"
+	annotations["ambient-code.io/temp-content-last-accessed"] = now
+	item.SetAnnotations(annotations)
+
+	// Update CR
+	updated, err := reqDyn.Resource(gvr).Namespace(project).Update(context.TODO(), item, v1.UpdateOptions{})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to enable workspace access"})
+		return
+	}
+
+	session := types.AgenticSession{
+		APIVersion: updated.GetAPIVersion(),
+		Kind:       updated.GetKind(),
+		Metadata:   updated.Object["metadata"].(map[string]interface{}),
+	}
+	if spec, ok := updated.Object["spec"].(map[string]interface{}); ok {
+		session.Spec = parseSpec(spec)
+	}
+	if status, ok := updated.Object["status"].(map[string]interface{}); ok {
+		session.Status = parseStatus(status)
+	}
+
+	log.Printf("EnableWorkspaceAccess: Set temp-content-requested annotation for %s", sessionName)
+	c.JSON(http.StatusAccepted, session)
+}
+
+// TouchWorkspaceAccess updates the last-accessed timestamp to keep temp pod alive
+// POST /api/projects/:projectName/agentic-sessions/:sessionName/workspace/touch
+func TouchWorkspaceAccess(c *gin.Context) {
+	project := c.GetString("project")
+	sessionName := c.Param("sessionName")
+	_, reqDyn := GetK8sClientsForRequest(c)
+	gvr := GetAgenticSessionV1Alpha1Resource()
+
+	item, err := reqDyn.Resource(gvr).Namespace(project).Get(context.TODO(), sessionName, v1.GetOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Session not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get session"})
+		return
+	}
+
+	annotations := item.GetAnnotations()
+	if annotations == nil {
+		annotations = make(map[string]string)
+	}
+	annotations["ambient-code.io/temp-content-last-accessed"] = time.Now().UTC().Format(time.RFC3339)
+	item.SetAnnotations(annotations)
+
+	if _, err := reqDyn.Resource(gvr).Namespace(project).Update(context.TODO(), item, v1.UpdateOptions{}); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update timestamp"})
+		return
+	}
+
+	log.Printf("TouchWorkspaceAccess: Updated last-accessed timestamp for %s", sessionName)
+	c.JSON(http.StatusOK, gin.H{"message": "Workspace access timestamp updated"})
 }
 
 // GetSessionK8sResources returns job, pod, and PVC information for a session

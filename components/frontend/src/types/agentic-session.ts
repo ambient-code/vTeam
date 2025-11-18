@@ -46,6 +46,7 @@ export type ReconciledRepo = {
 export type ReconciledWorkflow = {
 	gitUrl: string;
 	branch: string;
+	path?: string;
 	status?: "Cloning" | "Active" | "Failed";
 	appliedAt?: string;
 };

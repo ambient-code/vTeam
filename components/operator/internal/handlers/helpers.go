@@ -25,12 +25,16 @@ const (
 	conditionRunnerStarted             = "RunnerStarted"
 	conditionReposReconciled           = "ReposReconciled"
 	conditionWorkflowReconciled        = "WorkflowReconciled"
+	conditionTempContentPodReady       = "TempContentPodReady"
 	conditionCompleted                 = "Completed"
 	conditionFailed                    = "Failed"
 	runnerTokenSecretAnnotation        = "ambient-code.io/runner-token-secret"
 	runnerServiceAccountAnnotation     = "ambient-code.io/runner-sa"
 	runnerTokenRefreshedAtAnnotation   = "ambient-code.io/token-refreshed-at"
+	tempContentRequestedAnnotation     = "ambient-code.io/temp-content-requested"
+	tempContentLastAccessedAnnotation  = "ambient-code.io/temp-content-last-accessed"
 	runnerTokenRefreshTTL              = 45 * time.Minute
+	tempContentInactivityTTL           = 10 * time.Minute
 	defaultRunnerTokenSecretPrefix     = "ambient-runner-token-"
 	defaultSessionServiceAccountPrefix = "ambient-session-"
 )
@@ -126,6 +130,61 @@ func ensureSessionIsInteractive(sessionNamespace, name string) error {
 	_, err = config.DynamicClient.Resource(gvr).Namespace(sessionNamespace).Update(context.TODO(), obj, v1.UpdateOptions{})
 	if err != nil && !errors.IsNotFound(err) {
 		return fmt.Errorf("failed to persist interactive flag for %s: %w", name, err)
+	}
+
+	return nil
+}
+
+// updateAnnotations updates annotations on the AgenticSession CR.
+func updateAnnotations(sessionNamespace, name string, annotations map[string]string) error {
+	gvr := types.GetAgenticSessionResource()
+
+	obj, err := config.DynamicClient.Resource(gvr).Namespace(sessionNamespace).Get(context.TODO(), name, v1.GetOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			log.Printf("AgenticSession %s no longer exists, skipping annotation update", name)
+			return nil
+		}
+		return fmt.Errorf("failed to get AgenticSession %s: %w", name, err)
+	}
+
+	obj.SetAnnotations(annotations)
+
+	_, err = config.DynamicClient.Resource(gvr).Namespace(sessionNamespace).Update(context.TODO(), obj, v1.UpdateOptions{})
+	if err != nil && !errors.IsNotFound(err) {
+		return fmt.Errorf("failed to update annotations for %s: %w", name, err)
+	}
+
+	return nil
+}
+
+// clearAnnotation removes a specific annotation from the AgenticSession CR.
+func clearAnnotation(sessionNamespace, name, annotationKey string) error {
+	gvr := types.GetAgenticSessionResource()
+
+	obj, err := config.DynamicClient.Resource(gvr).Namespace(sessionNamespace).Get(context.TODO(), name, v1.GetOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return nil
+		}
+		return fmt.Errorf("failed to get AgenticSession %s: %w", name, err)
+	}
+
+	annotations := obj.GetAnnotations()
+	if annotations == nil {
+		return nil
+	}
+
+	if _, exists := annotations[annotationKey]; !exists {
+		return nil
+	}
+
+	delete(annotations, annotationKey)
+	obj.SetAnnotations(annotations)
+
+	_, err = config.DynamicClient.Resource(gvr).Namespace(sessionNamespace).Update(context.TODO(), obj, v1.UpdateOptions{})
+	if err != nil && !errors.IsNotFound(err) {
+		return fmt.Errorf("failed to clear annotation %s for %s: %w", annotationKey, name, err)
 	}
 
 	return nil
