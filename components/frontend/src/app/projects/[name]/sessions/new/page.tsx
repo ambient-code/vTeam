@@ -20,7 +20,6 @@ import { RepositoryDialog } from "./repository-dialog";
 import { RepositoryList } from "./repository-list";
 import { ModelConfiguration } from "./model-configuration";
 import { useCreateSession } from "@/services/queries/use-sessions";
-import { useRfeWorkflow } from "@/services/queries/use-rfe";
 
 const formSchema = z
   .object({
@@ -63,14 +62,12 @@ export default function NewProjectSessionPage({ params }: { params: Promise<{ na
   const searchParams = useSearchParams();
   const [projectName, setProjectName] = useState<string>("");
   const [prefillWorkspacePath, setPrefillWorkspacePath] = useState<string | undefined>(undefined);
-  const [rfeWorkflowId, setRfeWorkflowId] = useState<string | undefined>(undefined);
   const [editingRepoIndex, setEditingRepoIndex] = useState<number | null>(null);
   const [repoDialogOpen, setRepoDialogOpen] = useState(false);
   const [tempRepo, setTempRepo] = useState<{ input: { url: string; branch: string }; output?: { url: string; branch: string } }>({ input: { url: "", branch: "main" } });
 
   // React Query hooks
   const createSessionMutation = useCreateSession();
-  const { data: rfeWorkflow } = useRfeWorkflow(projectName, rfeWorkflowId || "");
 
   useEffect(() => {
     params.then(({ name }) => setProjectName(name));
@@ -79,15 +76,13 @@ export default function NewProjectSessionPage({ params }: { params: Promise<{ na
   useEffect(() => {
     const ws = searchParams?.get("workspacePath");
     if (ws) setPrefillWorkspacePath(ws);
-    const rfe = searchParams?.get("rfeWorkflow");
-    if (rfe) setRfeWorkflowId(rfe);
   }, [searchParams]);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       prompt: "",
-      model: "claude-3-7-sonnet-latest",
+      model: "claude-sonnet-4-5",
       temperature: 0.7,
       maxTokens: 4000,
       timeout: 300,
@@ -105,23 +100,6 @@ export default function NewProjectSessionPage({ params }: { params: Promise<{ na
   // Watch interactive to adjust prompt field hints
   const isInteractive = form.watch("interactive");
 
-  // Prefill repos from RFE workflow when loaded
-  useEffect(() => {
-    if (!rfeWorkflow?.umbrellaRepo) return;
-
-    const repos = [
-      {
-        input: { url: rfeWorkflow.umbrellaRepo.url, branch: rfeWorkflow.umbrellaRepo.branch || "main" },
-        output: { url: rfeWorkflow.umbrellaRepo.url, branch: rfeWorkflow.umbrellaRepo.branch || "main" }
-      },
-      ...((rfeWorkflow.supportingRepos || []).map((r: { url: string; branch?: string }) => ({
-        input: { url: r.url, branch: r.branch || "main" },
-        output: { url: r.url, branch: r.branch || "main" }
-      })))
-    ];
-    form.setValue("repos", repos);
-    form.setValue("mainRepoIndex", 0); // umbrella is main
-  }, [rfeWorkflow, form]);
 
 
   
@@ -130,7 +108,7 @@ export default function NewProjectSessionPage({ params }: { params: Promise<{ na
     if (!projectName) return;
 
     const promptToSend = values.interactive && !values.prompt.trim()
-      ? "Running in interactive mode"
+      ? "Greet the user and briefly explain the workspace capabilities: they can select workflows, add code repositories for context, use commands, and you'll help with software engineering tasks. Keep it friendly and concise."
       : values.prompt;
     const request: CreateAgenticSessionRequest = {
       prompt: promptToSend,
@@ -148,12 +126,11 @@ export default function NewProjectSessionPage({ params }: { params: Promise<{ na
         request.workspacePath = prefillWorkspacePath;
       }
 
-      // Apply labels if rfeWorkflowId is present
-      if (rfeWorkflowId || projectName) {
+      // Apply labels if projectName is present
+      if (projectName) {
         request.labels = {
           ...(request.labels || {}),
-          ...(projectName ? { project: projectName } : {}),
-          ...(rfeWorkflowId ? { "rfe-workflow": rfeWorkflowId } : {}),
+          project: projectName,
         };
       }
 

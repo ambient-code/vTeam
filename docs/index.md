@@ -27,8 +27,8 @@ brew install crc
 crc setup
 
 # Clone and deploy
-git clone https://github.com/ambient-code/vTeam.git
-cd vTeam
+git clone https://github.com/ambient-code/platform.git
+cd platform
 make dev-start
 ```
 
@@ -85,9 +85,9 @@ Production deployment resources:
 
 ## Getting Help
 
-- **Documentation Issues**: [GitHub Issues](https://github.com/ambient-code/vTeam/issues)
-- **Questions**: [GitHub Discussions](https://github.com/ambient-code/vTeam/discussions)
-- **Source Code**: [GitHub Repository](https://github.com/ambient-code/vTeam)
+- **Documentation Issues**: [GitHub Issues](https://github.com/ambient-code/platform/issues)
+- **Questions**: [GitHub Discussions](https://github.com/ambient-code/platform/discussions)
+- **Source Code**: [GitHub Repository](https://github.com/ambient-code/platform)
 
 ## Quick Links
 

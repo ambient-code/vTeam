@@ -37,6 +37,12 @@ export type AgenticSessionSpec = {
 	// Multi-repo support
 	repos?: SessionRepo[];
 	mainRepoIndex?: number;
+	// Active workflow for dynamic workflow switching
+	activeWorkflow?: {
+		gitUrl: string;
+		branch: string;
+		path?: string;
+	};
 };
 
 // -----------------------------
@@ -171,88 +177,11 @@ export type CreateAgenticSessionRequest = {
 	annotations?: Record<string, string>;
 };
 
-// New types for RFE workflows
-export type WorkflowPhase = "pre" | "ideate" | "specify" | "plan" | "tasks" | "implement" | "review" | "completed";
-
 export type AgentPersona = {
 	persona: string;
 	name: string;
 	role: string;
 	description: string;
-};
-
-export type ArtifactFile = {
-	path: string;
-	name: string;
-	content: string;
-	lastModified: string;
-	size: number;
-	agent?: string;
-	phase?: string;
-};
-
-export type RFESession = {
-	id: string;
-	agentPersona: string; // Agent persona key (e.g., "ENGINEERING_MANAGER")
-	phase: WorkflowPhase;
-	status: string; // "pending", "running", "completed", "failed"
-	startedAt?: string;
-	completedAt?: string;
-	result?: string;
-	cost?: number;
-};
-
-export type RFEWorkflow = {
-	id: string;
-	title: string;
-	description: string;
-	branchName?: string; // Platform-generated feature branch name
-  currentPhase?: WorkflowPhase; // derived in UI
-  status?: "active" | "completed" | "failed" | "paused"; // derived in UI
-  // New CRD-aligned repo fields
-  umbrellaRepo?: GitRepository; // required in CRD, but optional in API reads
-  supportingRepos?: GitRepository[];
-  workspacePath?: string; // CRD-aligned optional path
-  parentOutcome?: string; // Optional parent Jira Outcome key (e.g., RHASTRAT-456)
-  agentSessions?: RFESession[];
-  artifacts?: ArtifactFile[];
-	createdAt: string;
-	updatedAt: string;
-  phaseResults?: { [phase: string]: PhaseResult };
-  jiraLinks?: Array<{ path: string; jiraKey: string }>;
-};
-
-export type CreateRFEWorkflowRequest = {
-	title: string;
-	description: string;
-  umbrellaRepo: GitRepository;
-  supportingRepos?: GitRepository[];
-  workspacePath?: string;
-  parentOutcome?: string; // Optional parent Jira Outcome key (e.g., RHASTRAT-456)
-};
-
-export type PhaseResult = {
-	phase: string;
-	status: string; // "completed", "in_progress", "failed"
-	agents: string[]; // agents that worked on this phase
-	artifacts: string[]; // artifact paths created in this phase
-	summary: string;
-	startedAt: string;
-	completedAt?: string;
-	metadata?: { [key: string]: unknown };
-};
-
-export type RFEWorkflowStatus = {
-	phase: WorkflowPhase;
-	agentProgress: {
-		[agentPersona: string]: {
-			status: AgenticSessionPhase;
-			sessionName?: string;
-			completedAt?: string;
-		};
-	};
-	artifactCount: number;
-	lastActivity: string;
 };
 
 export type { Project } from "@/types/project";

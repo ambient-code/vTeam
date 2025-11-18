@@ -4,7 +4,6 @@ import "./globals.css";
 import { Navigation } from "@/components/navigation";
 import { QueryProvider } from "@/components/providers/query-provider";
 import { Toaster } from "@/components/ui/toaster";
-import { VersionFooter } from "@/components/version-footer";
 import { env } from "@/lib/env";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -21,16 +20,16 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   const wsBase = env.BACKEND_URL.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:')
+  const feedbackUrl = env.FEEDBACK_URL
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
         <meta name="backend-ws-base" content={wsBase} />
       </head>
-      <body className={`${inter.className} min-h-screen flex flex-col`}>
+      <body className={`${inter.className} min-h-screen flex flex-col`} suppressHydrationWarning>
         <QueryProvider>
-          <Navigation />
+          <Navigation feedbackUrl={feedbackUrl} />
           <main className="flex-1 bg-background overflow-auto">{children}</main>
-          <VersionFooter />
           <Toaster />
         </QueryProvider>
       </body>

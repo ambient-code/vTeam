@@ -5,17 +5,13 @@ import (
 	"log"
 	"os"
 
-	"ambient-code-backend/crd"
 	"ambient-code-backend/git"
 	"ambient-code-backend/github"
 	"ambient-code-backend/handlers"
-	"ambient-code-backend/jira"
 	"ambient-code-backend/k8s"
 	"ambient-code-backend/server"
-	"ambient-code-backend/types"
 	"ambient-code-backend/websocket"
 
-	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 )
 
@@ -36,6 +32,11 @@ func main() {
 		handlers.GitPushRepo = git.PushRepo
 		handlers.GitAbandonRepo = git.AbandonRepo
 		handlers.GitDiffRepo = git.DiffRepo
+		handlers.GitCheckMergeStatus = git.CheckMergeStatus
+		handlers.GitPullRepo = git.PullRepo
+		handlers.GitPushToRepo = git.PushToRepo
+		handlers.GitCreateBranch = git.CreateBranch
+		handlers.GitListRemoteBranches = git.ListRemoteBranches
 
 		log.Printf("Content service using StateBaseDir: %s", server.StateBaseDir)
 
@@ -64,14 +65,16 @@ func main() {
 	}
 	git.GitHubTokenManager = github.Manager
 
-	// Initialize CRD package
-	crd.GetRFEWorkflowResource = k8s.GetRFEWorkflowResource
-
 	// Initialize content handlers
 	handlers.StateBaseDir = server.StateBaseDir
 	handlers.GitPushRepo = git.PushRepo
 	handlers.GitAbandonRepo = git.AbandonRepo
 	handlers.GitDiffRepo = git.DiffRepo
+	handlers.GitCheckMergeStatus = git.CheckMergeStatus
+	handlers.GitPullRepo = git.PullRepo
+	handlers.GitPushToRepo = git.PushToRepo
+	handlers.GitCreateBranch = git.CreateBranch
+	handlers.GitListRemoteBranches = git.ListRemoteBranches
 
 	// Initialize GitHub auth handlers
 	handlers.K8sClient = server.K8sClient
@@ -88,21 +91,7 @@ func main() {
 	handlers.DynamicClient = server.DynamicClient
 	handlers.GetGitHubToken = git.GetGitHubToken
 	handlers.DeriveRepoFolderFromURL = git.DeriveRepoFolderFromURL
-
-	// Initialize RFE workflow handlers
-	handlers.GetRFEWorkflowResource = k8s.GetRFEWorkflowResource
-	handlers.UpsertProjectRFEWorkflowCR = crd.UpsertProjectRFEWorkflowCR
-	handlers.PerformRepoSeeding = performRepoSeeding
-	handlers.CheckRepoSeeding = checkRepoSeeding
-	handlers.CheckBranchExists = checkBranchExists
-	handlers.RfeFromUnstructured = jira.RFEFromUnstructured
-
-	// Initialize Jira handler
-	jiraHandler := &jira.Handler{
-		GetK8sClientsForRequest:    handlers.GetK8sClientsForRequest,
-		GetProjectSettingsResource: k8s.GetProjectSettingsResource,
-		GetRFEWorkflowResource:     k8s.GetRFEWorkflowResource,
-	}
+	handlers.SendMessageToSession = websocket.SendMessageToSession
 
 	// Initialize repo handlers
 	handlers.GetK8sClientsForRequestRepo = handlers.GetK8sClientsForRequest
@@ -115,71 +104,8 @@ func main() {
 	// Initialize websocket package
 	websocket.StateBaseDir = server.StateBaseDir
 
-	// Normal server mode - create closure to capture jiraHandler
-	registerRoutesWithJira := func(r *gin.Engine) {
-		registerRoutes(r, jiraHandler)
-	}
-	if err := server.Run(registerRoutesWithJira); err != nil {
+	// Normal server mode
+	if err := server.Run(registerRoutes); err != nil {
 		log.Fatalf("Server error: %v", err)
 	}
-}
-
-// Adapter types to implement git package interfaces for RFEWorkflow
-type rfeWorkflowAdapter struct {
-	wf *types.RFEWorkflow
-}
-
-type gitRepositoryAdapter struct {
-	repo *types.GitRepository
-}
-
-// Wrapper for git.PerformRepoSeeding that adapts *types.RFEWorkflow to git.Workflow interface
-func performRepoSeeding(ctx context.Context, wf *types.RFEWorkflow, branchName, githubToken, agentURL, agentBranch, agentPath, specKitRepo, specKitVersion, specKitTemplate string) (bool, error) {
-	return git.PerformRepoSeeding(ctx, &rfeWorkflowAdapter{wf: wf}, branchName, githubToken, agentURL, agentBranch, agentPath, specKitRepo, specKitVersion, specKitTemplate)
-}
-
-// GetUmbrellaRepo implements git.Workflow interface
-func (r *rfeWorkflowAdapter) GetUmbrellaRepo() git.GitRepo {
-	if r.wf.UmbrellaRepo == nil {
-		return nil
-	}
-	return &gitRepositoryAdapter{repo: r.wf.UmbrellaRepo}
-}
-
-// GetSupportingRepos implements git.Workflow interface
-func (r *rfeWorkflowAdapter) GetSupportingRepos() []git.GitRepo {
-	if len(r.wf.SupportingRepos) == 0 {
-		return nil
-	}
-	repos := make([]git.GitRepo, 0, len(r.wf.SupportingRepos))
-	for i := range r.wf.SupportingRepos {
-		repos = append(repos, &gitRepositoryAdapter{repo: &r.wf.SupportingRepos[i]})
-	}
-	return repos
-}
-
-// GetURL implements git.GitRepo interface
-func (g *gitRepositoryAdapter) GetURL() string {
-	if g.repo == nil {
-		return ""
-	}
-	return g.repo.URL
-}
-
-// GetBranch implements git.GitRepo interface
-func (g *gitRepositoryAdapter) GetBranch() *string {
-	if g.repo == nil {
-		return nil
-	}
-	return g.repo.Branch
-}
-
-// Wrapper for git.CheckRepoSeeding
-func checkRepoSeeding(ctx context.Context, repoURL string, branch *string, githubToken string) (bool, map[string]interface{}, error) {
-	return git.CheckRepoSeeding(ctx, repoURL, branch, githubToken)
-}
-
-// Wrapper for git.CheckBranchExists
-func checkBranchExists(ctx context.Context, repoURL, branchName, githubToken string) (bool, error) {
-	return git.CheckBranchExists(ctx, repoURL, branchName, githubToken)
 }

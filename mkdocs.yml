@@ -1,10 +1,10 @@
-site_name: vTeam Documentation
-site_description: AI-powered automation system for engineering refinement
+site_name: Ambient Code Platform Documentation
+site_description: AI-powered automation platform for intelligent agentic workflows
 site_author: Red Hat AI Engineering Team
-site_url: https://vteam-docs.example.com
+site_url: https://acp-docs.example.com
 
-repo_name: ambient-code/vTeam
-repo_url: https://github.com/ambient-code/vTeam
+repo_name: ambient-code/platform
+repo_url: https://github.com/ambient-code/platform
 edit_uri: edit/main/docs/
 
 # Exclude files from the documentation build
@@ -13,6 +13,9 @@ exclude_docs: |
 
 theme:
   name: material
+  font:
+    text: IBM Plex Sans
+    code: IBM Plex Mono
   palette:
     - scheme: default
       primary: red
@@ -21,7 +24,7 @@ theme:
         icon: material/brightness-7
         name: Switch to dark mode
     - scheme: slate
-      primary: red  
+      primary: red
       accent: red
       toggle:
         icon: material/brightness-4
@@ -41,11 +44,15 @@ nav:
   - User Guide:
     - Overview: user-guide/index.md
     - Getting Started: user-guide/getting-started.md
+    - Working with Amber: user-guide/working-with-amber.md
   - Labs:
     - Overview: labs/index.md
     - Lab 1 - Your First Agentic Session: labs/basic/lab-1-first-rfe.md
+  - Testing:
+    - E2E Testing Guide: testing/e2e-guide.md
   - Reference:
     - Overview: reference/index.md
+    - Constitution: reference/constitution.md
     - Glossary: reference/glossary.md
   - Deployment Guides:
     - GitHub App Setup: GITHUB_APP_SETUP.md

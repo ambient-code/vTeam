@@ -269,8 +269,8 @@ Default limits (configurable via ProjectSettings):
 
 ### Getting Help
 
-- **Documentation Issues**: [GitHub Issues](https://github.com/ambient-code/vTeam/issues)
-- **API Questions**: [GitHub Discussions](https://github.com/ambient-code/vTeam/discussions)
+- **Documentation Issues**: [GitHub Issues](https://github.com/ambient-code/platform/issues)
+- **API Questions**: [GitHub Discussions](https://github.com/ambient-code/platform/discussions)
 - **Bug Reports**: Include system info, error messages, and reproduction steps
 
 ### Gathering System Information
@@ -304,4 +304,4 @@ kubectl logs job/<session-name> -n <namespace>
 
 ---
 
-This reference documentation is maintained alongside the codebase. Found an error or missing information? [Submit a pull request](https://github.com/ambient-code/vTeam/pulls) or [create an issue](https://github.com/ambient-code/vTeam/issues).
+This reference documentation is maintained alongside the codebase. Found an error or missing information? [Submit a pull request](https://github.com/ambient-code/platform/pulls) or [create an issue](https://github.com/ambient-code/platform/issues).

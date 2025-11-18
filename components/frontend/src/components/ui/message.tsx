@@ -74,6 +74,7 @@ const LOADING_MESSAGES = [
   "Surfing the data waves",
   "Juggling bits and bytes",
   "Tipping my fedora",
+  "Reticulating splines",
 ];
 
 export const LoadingDots = () => {
@@ -90,17 +91,59 @@ export const LoadingDots = () => {
 
   return (
     <div className="flex items-center mt-2">
-      <div className="flex space-x-1">
-        <div className="w-1 h-1 bg-blue-500 rounded-full animate-bounce"></div>
-        <div
-          className="w-1 h-1 bg-blue-500 rounded-full animate-bounce"
-          style={{ animationDelay: "0.1s" }}
-        ></div>
-        <div
-          className="w-1 h-1 bg-blue-500 rounded-full animate-bounce"
-          style={{ animationDelay: "0.2s" }}
-        ></div>
-      </div>
+      <svg
+        width="24"
+        height="8"
+        viewBox="0 0 24 8"
+        xmlns="http://www.w3.org/2000/svg"
+        className="mr-2"
+      >
+        <style>
+          {`
+            @keyframes loadingDotPulse {
+              0%, 60%, 100% {
+                opacity: 0.3;
+              }
+              30% {
+                opacity: 1;
+              }
+            }
+            .loading-dot {
+              animation: loadingDotPulse 1.4s infinite ease-in-out;
+            }
+            .loading-dot-1 {
+              animation-delay: 0s;
+            }
+            .loading-dot-2 {
+              animation-delay: 0.2s;
+            }
+            .loading-dot-3 {
+              animation-delay: 0.4s;
+            }
+          `}
+        </style>
+        <circle
+          className="loading-dot loading-dot-1"
+          cx="4"
+          cy="4"
+          r="3"
+          fill="#3b82f6"
+        />
+        <circle
+          className="loading-dot loading-dot-2"
+          cx="12"
+          cy="4"
+          r="3"
+          fill="#3b82f6"
+        />
+        <circle
+          className="loading-dot loading-dot-3"
+          cx="20"
+          cy="4"
+          r="3"
+          fill="#3b82f6"
+        />
+      </svg>
       <span className="ml-2 text-xs text-gray-400">{LOADING_MESSAGES[messageIndex]}</span>
     </div>
   );

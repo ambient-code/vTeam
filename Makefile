@@ -1,4 +1,4 @@
-.PHONY: help setup-env build-all build-frontend build-backend build-operator build-runner deploy clean dev-frontend dev-backend lint test registry-login push-all dev-start dev-stop dev-test dev-logs-operator dev-restart-operator dev-operator-status dev-test-operator
+.PHONY: help setup-env build-all build-frontend build-backend build-operator build-runner deploy clean dev-frontend dev-backend lint test registry-login push-all dev-start dev-stop dev-test dev-logs-operator dev-restart-operator dev-operator-status dev-test-operator e2e-test e2e-setup e2e-clean
 
 # Default target
 help: ## Show this help message
@@ -62,12 +62,12 @@ build-runner: ## Build the Claude Code runner container image
 	cd components/runners && $(CONTAINER_ENGINE) build $(PLATFORM_FLAG) $(BUILD_FLAGS) -t $(RUNNER_IMAGE) -f claude-code-runner/Dockerfile .
 
 # Kubernetes deployment
-deploy: ## Deploy all components to Kubernetes
-	@echo "Deploying to Kubernetes..."
+deploy: ## Deploy all components to OpenShift (production overlay)
+	@echo "Deploying to OpenShift..."
 	cd components/manifests && ./deploy.sh
 
 # Cleanup
-clean: ## Clean up all Kubernetes resources
+clean: ## Clean up all Kubernetes resources (production overlay)
 	@echo "Cleaning up Kubernetes resources..."
 	cd components/manifests && ./deploy.sh clean
 
@@ -146,3 +146,22 @@ dev-operator-status: ## Show operator status and recent events
 dev-test-operator: ## Run only operator tests
 	@echo "Running operator-specific tests..."
 	@bash components/scripts/local-dev/crc-test.sh 2>&1 | grep -A 1 "Operator"
+
+# E2E Testing with kind
+e2e-test: ## Run complete e2e test suite (setup, deploy, test, cleanup)
+	@echo "Running e2e tests..."
+	@# Clean up any existing cluster first
+	@cd e2e && CONTAINER_ENGINE=$(CONTAINER_ENGINE) ./scripts/cleanup.sh 2>/dev/null || true
+	@# Setup and deploy (allows password prompt for /etc/hosts)
+	cd e2e && CONTAINER_ENGINE=$(CONTAINER_ENGINE) ./scripts/setup-kind.sh
+	cd e2e && CONTAINER_ENGINE=$(CONTAINER_ENGINE) ./scripts/deploy.sh
+	@# Run tests with cleanup trap (no more password prompts needed)
+	@cd e2e && trap 'CONTAINER_ENGINE=$(CONTAINER_ENGINE) ./scripts/cleanup.sh' EXIT; ./scripts/run-tests.sh
+
+e2e-setup: ## Install e2e test dependencies
+	@echo "Installing e2e test dependencies..."
+	cd e2e && npm install
+
+e2e-clean: ## Clean up e2e test environment
+	@echo "Cleaning up e2e environment..."
+	cd e2e && CONTAINER_ENGINE=$(CONTAINER_ENGINE) ./scripts/cleanup.sh

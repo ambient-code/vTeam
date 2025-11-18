@@ -58,10 +58,16 @@ function FileTreeItem({ node, selectedPath, onSelect, onToggle, depth = 0 }: Ite
         style={{ paddingLeft: `${(depth + 1) * 12}px` }}
         onClick={async () => {
           if (node.type === "folder") {
-            const next = !expanded;
-            setExpanded(next);
-            if (next && onToggle) {
-              await onToggle(node);
+            // If folder has children, toggle expand/collapse
+            if (node.children && node.children.length > 0) {
+              const next = !expanded;
+              setExpanded(next);
+              if (next && onToggle) {
+                await onToggle(node);
+              }
+            } else {
+              // If folder has no children (flat listing), call onSelect to navigate
+              onSelect(node);
             }
           } else {
             onSelect(node);

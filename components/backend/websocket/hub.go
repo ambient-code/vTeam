@@ -1,3 +1,4 @@
+// Package websocket provides real-time WebSocket communication for session updates.
 package websocket
 
 import (

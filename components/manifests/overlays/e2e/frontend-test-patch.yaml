@@ -1,0 +1,22 @@
+# Patch to add test environment variables to frontend
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+spec:
+  template:
+    spec:
+      containers:
+      - name: frontend
+        env:
+        # E2E testing: provide token for Next.js API routes
+        - name: OC_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: test-user-token
+              key: token
+        - name: OC_USER
+          value: "system:serviceaccount:ambient-code:test-user"
+        - name: OC_EMAIL
+          value: "test-user@vteam.local"
+

@@ -32,7 +32,7 @@ You're a developer who wants to automate code analysis and documentation tasks. 
 1. **Ensure the platform is running**. For local development with OpenShift Local (CRC):
 
    ```bash
-   cd vTeam
+   cd platform
    make dev-start
    ```
 
@@ -196,7 +196,7 @@ Interactive sessions allow back-and-forth conversation with Claude Code.
 
 ## Step 6: Multi-Repository Session (Advanced)
 
-vTeam supports operating on multiple repositories simultaneously.
+The Ambient Code Platform supports operating on multiple repositories simultaneously.
 
 1. **Create a multi-repo session**:
 
@@ -314,7 +314,7 @@ A successful AgenticSession should have:
 After completing this lab, you should understand:
 
 1. **AgenticSession Lifecycle**: How sessions are created, executed, and completed
-2. **Kubernetes Integration**: How vTeam uses CRs, Operators, and Jobs
+2. **Kubernetes Integration**: How the platform uses CRs, Operators, and Jobs
 3. **Session Modes**: When to use interactive vs headless execution
 4. **Multi-Repo Support**: How to work with multiple repositories simultaneously
 5. **Monitoring**: How to track session progress via UI and CLI
@@ -337,9 +337,9 @@ You've successfully completed Lab 1 when:
 - [ ] Monitored session execution via UI and CLI
 - [ ] Understood the difference between interactive and headless modes
 - [ ] Reviewed session results and status
-- [ ] Can explain how vTeam uses Kubernetes resources
+- [ ] Can explain how the platform uses Kubernetes resources
 
-**Congratulations!** You've mastered the fundamentals of vTeam's AgenticSession workflow. You're now ready to automate development tasks using AI-powered agents in a Kubernetes-native environment.
+**Congratulations!** You've mastered the fundamentals of the Ambient Code Platform's AgenticSession workflow. You're now ready to automate development tasks using AI-powered agents in a Kubernetes-native environment.
 
 ---
 

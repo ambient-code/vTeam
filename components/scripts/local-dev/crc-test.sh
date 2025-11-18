@@ -98,8 +98,7 @@ test_project_exists() {
 
 test_crds_applied() {
   oc get crd agenticsessions.vteam.ambient-code >/dev/null 2>&1 &&
-  oc get crd projectsettings.vteam.ambient-code >/dev/null 2>&1 &&
-  oc get crd rfeworkflows.vteam.ambient-code >/dev/null 2>&1
+  oc get crd projectsettings.vteam.ambient-code >/dev/null 2>&1
 }
 
 test_service_accounts() {

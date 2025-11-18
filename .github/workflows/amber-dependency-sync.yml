@@ -1,0 +1,203 @@
+name: Amber Knowledge Sync - Dependencies
+
+on:
+  schedule:
+    # Run daily at 7 AM UTC
+    - cron: '0 7 * * *'
+
+  workflow_dispatch:  # Allow manual triggering
+
+permissions:
+  contents: write  # Required to commit changes
+  issues: write    # Required to create constitution violation issues
+
+jobs:
+  sync-dependencies:
+    name: Update Amber's Dependency Knowledge
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          ref: main
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          # Install toml parsing library (prefer tomli for Python <3.11 compatibility)
+          pip install tomli 2>/dev/null || echo "tomli not available, will use manual parsing"
+
+      - name: Run dependency sync script
+        id: sync
+        run: |
+          echo "Running Amber dependency sync..."
+          python scripts/sync-amber-dependencies.py
+
+          # Check if agent file was modified
+          if git diff --quiet agents/amber.md; then
+            echo "changed=false" >> $GITHUB_OUTPUT
+            echo "No changes detected - dependency versions are current"
+          else
+            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "Changes detected - will commit update"
+          fi
+
+      - name: Validate sync accuracy
+        run: |
+          echo "🧪 Validating dependency extraction..."
+
+          # Spot check: Verify K8s version matches
+          K8S_IN_GOMOD=$(grep "k8s.io/api" components/backend/go.mod | awk '{print $2}' | sed 's/v//')
+          K8S_IN_AMBER=$(grep "k8s.io/{api" agents/amber.md | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+
+          if [ "$K8S_IN_GOMOD" != "$K8S_IN_AMBER" ]; then
+            echo "❌ K8s version mismatch: go.mod=$K8S_IN_GOMOD, Amber=$K8S_IN_AMBER"
+            exit 1
+          fi
+
+          echo "✅ Validation passed: Kubernetes $K8S_IN_GOMOD"
+
+      - name: Validate constitution compliance
+        id: constitution_check
+        run: |
+          echo "🔍 Checking Amber's alignment with ACP Constitution..."
+
+          # Check if Amber enforces required principles
+          VIOLATIONS=""
+
+          # Principle III: Type Safety - Check for panic() enforcement
+          if ! grep -q "FORBIDDEN.*panic()" agents/amber.md; then
+            VIOLATIONS="${VIOLATIONS}\n- Missing Principle III enforcement: No panic() rule"
+          fi
+
+          # Principle IV: TDD - Check for Red-Green-Refactor mention
+          if ! grep -qi "Red-Green-Refactor\|Test-Driven Development" agents/amber.md; then
+            VIOLATIONS="${VIOLATIONS}\n- Missing Principle IV enforcement: TDD requirements"
+          fi
+
+          # Principle VI: Observability - Check for structured logging
+          if ! grep -qi "structured logging" agents/amber.md; then
+            VIOLATIONS="${VIOLATIONS}\n- Missing Principle VI enforcement: Structured logging"
+          fi
+
+          # Principle VIII: Context Engineering - CRITICAL
+          if ! grep -q "200K token\|context budget" agents/amber.md; then
+            VIOLATIONS="${VIOLATIONS}\n- Missing Principle VIII enforcement: Context engineering"
+          fi
+
+          # Principle X: Commit Discipline
+          if ! grep -qi "conventional commit" agents/amber.md; then
+            VIOLATIONS="${VIOLATIONS}\n- Missing Principle X enforcement: Commit discipline"
+          fi
+
+          # Security: User token requirement
+          if ! grep -q "GetK8sClientsForRequest" agents/amber.md; then
+            VIOLATIONS="${VIOLATIONS}\n- Missing Principle II enforcement: User token authentication"
+          fi
+
+          if [ -n "$VIOLATIONS" ]; then
+            echo "constitution_violations<<EOF" >> $GITHUB_OUTPUT
+            echo -e "$VIOLATIONS" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+            echo "violations_found=true" >> $GITHUB_OUTPUT
+            echo "⚠️  Constitution violations detected (will file issue)"
+          else
+            echo "violations_found=false" >> $GITHUB_OUTPUT
+            echo "✅ Constitution compliance verified"
+          fi
+
+      - name: File constitution violation issue
+        if: steps.constitution_check.outputs.violations_found == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const violations = `${{ steps.constitution_check.outputs.constitution_violations }}`;
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: '🚨 Amber Constitution Compliance Violations Detected',
+              body: `## Constitution Violations in Amber Agent Definition
+
+            **Date**: ${new Date().toISOString().split('T')[0]}
+            **Agent File**: \`agents/amber.md\`
+            **Constitution**: \`.specify/memory/constitution.md\` (v1.0.0)
+
+            ### Violations Detected:
+
+            ${violations}
+
+            ### Required Actions:
+
+            1. Review Amber's agent definition against the ACP Constitution
+            2. Add missing principle enforcement rules
+            3. Update Amber's behavior guidelines to include constitution compliance
+            4. Verify fix by running: \`gh workflow run amber-dependency-sync.yml\`
+
+            ### Related Documents:
+
+            - ACP Constitution: \`.specify/memory/constitution.md\`
+            - Amber Agent: \`agents/amber.md\`
+            - Implementation Plan: \`docs/implementation-plans/amber-implementation.md\`
+
+            **Priority**: P1 - Amber must follow and enforce the constitution
+            **Labels**: amber, constitution, compliance
+
+            ---
+            *Auto-filed by Amber dependency sync workflow*`,
+              labels: ['amber', 'constitution', 'compliance', 'automated']
+            });
+
+      - name: Display changes
+        if: steps.sync.outputs.changed == 'true'
+        run: |
+          echo "📝 Changes to Amber's dependency knowledge:"
+          git diff agents/amber.md
+
+      - name: Commit and push changes
+        if: steps.sync.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add agents/amber.md
+
+          # Generate commit message with timestamp
+          COMMIT_DATE=$(date +%Y-%m-%d)
+
+          git commit -m "chore(amber): sync dependency versions - ${COMMIT_DATE}
+
+          🤖 Automated daily knowledge sync
+
+          Updated Amber's dependency knowledge with current versions from:
+          - components/backend/go.mod
+          - components/operator/go.mod
+          - components/runners/claude-code-runner/pyproject.toml
+          - components/frontend/package.json
+
+          This ensures Amber has accurate knowledge of our dependency stack
+          for codebase analysis, security monitoring, and upgrade planning.
+
+          Co-Authored-By: Amber <noreply@ambient-code.ai>"
+
+          git push
+
+      - name: Summary
+        if: always()
+        run: |
+          if [ "${{ steps.sync.outputs.changed }}" == "true" ]; then
+            echo "## ✅ Amber Knowledge Updated" >> $GITHUB_STEP_SUMMARY
+            echo "Dependency versions synced from go.mod, pyproject.toml, package.json" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ job.status }}" == "failure" ]; then
+            echo "## ⚠️ Sync Failed" >> $GITHUB_STEP_SUMMARY
+            echo "Check logs above. Common issues: missing dependency files, AUTO-GENERATED markers" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "## ✓ No Changes Needed" >> $GITHUB_STEP_SUMMARY
+          fi

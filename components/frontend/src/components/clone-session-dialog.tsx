@@ -140,8 +140,8 @@ export function CloneSessionDialog({
                         <SelectValue
                           placeholder={
                             loadingProjects
-                              ? "Loading projects..."
-                              : "Select a project"
+                              ? "Loading workspaces..."
+                              : "Select a workspace"
                           }
                         />
                       </SelectTrigger>

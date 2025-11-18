@@ -1,0 +1,211 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: agenticsessions.vteam.ambient-code
+spec:
+  group: vteam.ambient-code
+  versions:
+  - name: v1alpha1
+    served: true
+    storage: true
+    subresources:
+      status: {}
+    schema:
+      openAPIV3Schema:
+        type: object
+        properties:
+          spec:
+            type: object
+            properties:
+              # Multiple-repo configuration (new unified mapping)
+              repos:
+                type: array
+                description: "List of repositories. Each has an input (required) and an optional output mapping."
+                items:
+                  type: object
+                  required:
+                  - input
+                  properties:
+                    input:
+                      type: object
+                      required:
+                      - url
+                      properties:
+                        url:
+                          type: string
+                          description: "Input (upstream) Git repository URL"
+                        branch:
+                          type: string
+                          description: "Input branch to checkout"
+                          default: "main"
+                    output:
+                      type: object
+                      description: "Optional output (fork/target) repository"
+                      properties:
+                        url:
+                          type: string
+                          description: "Output Git repository URL (fork or same as input)"
+                        branch:
+                          type: string
+                          description: "Output branch to push to"
+                          default: "main"
+              mainRepoIndex:
+                type: integer
+                description: "Index of the repo in repos array treated as the main repo (Claude working dir). Defaults to 0 (first repo)."
+                default: 0
+              interactive:
+                type: boolean
+                description: "When true, run session in interactive chat mode using inbox/outbox files"
+              prompt:
+                type: string
+                description: "Optional initial prompt for the agentic session. If using a workflow with startupPrompt in ambient.json, this can be omitted."
+              displayName:
+                type: string
+                description: "A descriptive display name for the agentic session generated from prompt and website"
+              userContext:
+                type: object
+                description: "Authenticated caller identity captured at creation time"
+                properties:
+                  userId:
+                    type: string
+                    description: "Stable user identifier (from SSO)"
+                  displayName:
+                    type: string
+                    description: "Human-readable display name"
+                  groups:
+                    type: array
+                    items:
+                      type: string
+                    description: "Group memberships of the user"
+              llmSettings:
+                type: object
+                properties:
+                  model:
+                    type: string
+                    default: "claude-3-7-sonnet-latest"
+                  temperature:
+                    type: number
+                    default: 0.7
+                  maxTokens:
+                    type: integer
+                    default: 4000
+                description: "LLM configuration settings"
+              timeout:
+                type: integer
+                default: 300
+                description: "Timeout in seconds for the agentic session"
+              autoPushOnComplete:
+                type: boolean
+                default: false
+                description: "When true, the runner will commit and push changes automatically after it finishes"
+              activeWorkflow:
+                type: object
+                description: "Active workflow configuration for dynamic workflow switching"
+                properties:
+                  gitUrl:
+                    type: string
+                    description: "Git repository URL for the workflow"
+                  branch:
+                    type: string
+                    description: "Branch to clone"
+                    default: "main"
+                  path:
+                    type: string
+                    description: "Optional path within repo (for repos with multiple workflows)"
+          status:
+            type: object
+            properties:
+              phase:
+                type: string
+                enum:
+                - "Pending"
+                - "Creating"
+                - "Running"
+                - "Completed"
+                - "Failed"
+                - "Stopped"
+                - "Error"
+                default: "Pending"
+              message:
+                type: string
+                description: "Status message or error details"
+              startTime:
+                type: string
+                format: date-time
+              completionTime:
+                type: string
+                format: date-time
+              jobName:
+                type: string
+                description: "Name of the Kubernetes job created for this session"
+              stateDir:
+                type: string
+                description: "Directory path where session state files are stored"
+              # Result summary fields from the runner's ResultMessage
+              subtype:
+                type: string
+                description: "Result subtype (e.g., success, error, interrupted)"
+              is_error:
+                type: boolean
+                description: "Whether the run ended with an error"
+              num_turns:
+                type: integer
+                description: "Number of conversation turns in the run"
+              session_id:
+                type: string
+                description: "Runner session identifier"
+              total_cost_usd:
+                type: number
+                description: "Total cost of the run in USD as reported by the runner"
+              usage:
+                type: object
+                description: "Token and request usage breakdown"
+                x-kubernetes-preserve-unknown-fields: true
+              result:
+                type: string
+                description: "Final result text as reported by the runner"
+              has_workspace_changes:
+                type: boolean
+                description: "Whether workspace has uncommitted changes (for cleanup decisions)"
+              repos:
+                type: array
+                description: "Per-repo status tracking"
+                items:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                      description: "Repository name (derived from URL or spec.repos[].name)"
+                    status:
+                      type: string
+                      description: "Repository state"
+                      enum:
+                      - "pushed"
+                      - "abandoned"
+                      - "diff"
+                      - "nodiff"
+                    last_updated:
+                      type: string
+                      format: date-time
+                      description: "Last time this repo status was updated"
+                    total_added:
+                      type: integer
+                      description: "Total lines added (from git diff)"
+                    total_removed:
+                      type: integer
+                      description: "Total lines removed (from git diff)"
+    additionalPrinterColumns:
+    - name: Phase
+      type: string
+      description: Current phase of the agentic session
+      jsonPath: .status.phase
+    - name: Age
+      type: date
+      jsonPath: .metadata.creationTimestamp
+  scope: Namespaced
+  names:
+    plural: agenticsessions
+    singular: agenticsession
+    kind: AgenticSession
+    shortNames:
+    - as

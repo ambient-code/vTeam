@@ -24,12 +24,12 @@ type Props = {
 };
 
 const ResultsTab: React.FC<Props> = ({ result, meta, components }) => {
-  if (!result && !meta) return <div className="text-sm text-muted-foreground">No results yet</div>;
+  if (!result && !meta) return <div className="text-sm text-muted-foreground">No artifacts yet</div>;
   return (
     <Card>
       <CardHeader>
         <CardTitle>
-          Agent Results
+          Agent Artifacts
         </CardTitle>
       </CardHeader>
       <CardContent>

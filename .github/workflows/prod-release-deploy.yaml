@@ -202,35 +202,54 @@ jobs:
     runs-on: ubuntu-latest
     needs: [release, build-and-push]
     steps:
-      - name: Checkout code
+      - name: Checkout code from release tag
         uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.release.outputs.new_tag }}
 
       - name: Install oc
         uses: redhat-actions/oc-installer@v1
         with:
           oc_version: 'latest'
 
+      - name: Install kustomize
+        run: |
+          curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+          sudo mv kustomize /usr/local/bin/
+          kustomize version
+
       - name: Log in to OpenShift Cluster
         run: |
           oc login ${{ secrets.PROD_OPENSHIFT_SERVER }} --token=${{ secrets.PROD_OPENSHIFT_TOKEN }} --insecure-skip-tls-verify
 
-      - name: Delete deployments in ambient-code namespace to force re-deploy
+      - name: Update kustomization with release image tags
+        working-directory: components/manifests/overlays/production
         run: |
-          oc delete deployment --all -n ambient-code
+          RELEASE_TAG="${{ needs.release.outputs.new_tag }}"
+          kustomize edit set image quay.io/ambient_code/vteam_frontend:latest=quay.io/ambient_code/vteam_frontend:${RELEASE_TAG}
+          kustomize edit set image quay.io/ambient_code/vteam_backend:latest=quay.io/ambient_code/vteam_backend:${RELEASE_TAG}
+          kustomize edit set image quay.io/ambient_code/vteam_operator:latest=quay.io/ambient_code/vteam_operator:${RELEASE_TAG}
+          kustomize edit set image quay.io/ambient_code/vteam_claude_runner:latest=quay.io/ambient_code/vteam_claude_runner:${RELEASE_TAG}
 
-      - name: Deploy updated components to OpenShift
+      - name: Validate kustomization
+        working-directory: components/manifests/overlays/production
         run: |
-          oc apply -k components/manifests
+          kustomize build . > /dev/null
+          echo "✅ Kustomization validation passed"
 
-      - name: Update frontend if changed
+      - name: Apply production overlay with kustomize
+        working-directory: components/manifests/overlays/production
         run: |
-          oc patch deployment frontend -n ambient-code --patch "{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"frontend\",\"image\":\"quay.io/ambient_code/vteam_frontend:${{ needs.release.outputs.new_tag }}\",\"env\":[{\"name\":\"BACKEND_URL\",\"value\":\"http://backend-service:8080/api\"},{\"name\":\"NODE_ENV\",\"value\":\"production\"},{\"name\":\"GITHUB_APP_SLUG\",\"value\":\"ambient-code\"},{\"name\":\"VTEAM_VERSION\",\"value\":\"${{ needs.release.outputs.new_tag }}\"}]}]}}}}"
+          oc apply -k . -n ambient-code
 
-      - name: Update backend if changed
+      - name: Update frontend environment variables
         run: |
-          oc patch deployment backend-api -n ambient-code --patch "{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"backend-api\",\"image\":\"quay.io/ambient_code/vteam_backend:${{ needs.release.outputs.new_tag }}\"}]}}}}"
+          oc patch deployment frontend -n ambient-code --type=json -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/env", "value": [{"name":"BACKEND_URL","value":"http://backend-service:8080/api"},{"name":"NODE_ENV","value":"production"},{"name":"GITHUB_APP_SLUG","value":"ambient-code"},{"name":"VTEAM_VERSION","value":"${{ needs.release.outputs.new_tag }}"}]}]'
 
-      - name: Update operator image and environment variables
+      - name: Update backend environment variables
         run: |
-          oc patch deployment agentic-operator -n ambient-code --patch "{\"spec\":{\"template\":{\"spec\":{\"containers\":[{\"name\":\"agentic-operator\",\"image\":\"quay.io/ambient_code/vteam_operator:${{ needs.release.outputs.new_tag }}\"}]}}}}"
-          oc patch deployment agentic-operator -n ambient-code --type=json -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/env", "value": [{"name":"NAMESPACE","valueFrom":{"fieldRef":{"fieldPath":"metadata.namespace"}}},{"name":"BACKEND_NAMESPACE","valueFrom":{"fieldRef":{"fieldPath":"metadata.namespace"}}},{"name":"BACKEND_API_URL","value":"http://backend-service:8080/api"},{"name":"AMBIENT_CODE_RUNNER_IMAGE","value":"quay.io/ambient_code/vteam_claude_runner:${{ needs.release.outputs.new_tag }}"},{"name":"CONTENT_SERVICE_IMAGE","value":"quay.io/ambient_code/vteam_backend:${{ needs.release.outputs.new_tag }}"},{"name":"IMAGE_PULL_POLICY","value":"Always"}]}]'
+          oc patch deployment backend-api -n ambient-code --type=json -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/env", "value": [{"name":"NAMESPACE","valueFrom":{"fieldRef":{"fieldPath":"metadata.namespace"}}},{"name":"PORT","value":"8080"},{"name":"STATE_BASE_DIR","value":"/workspace"},{"name":"SPEC_KIT_REPO","value":"ambient-code/spec-kit-rh"},{"name":"SPEC_KIT_VERSION","value":"main"},{"name":"SPEC_KIT_TEMPLATE","value":"spec-kit-template-claude-sh"},{"name":"CONTENT_SERVICE_IMAGE","value":"quay.io/ambient_code/vteam_backend:${{ needs.release.outputs.new_tag }}"},{"name":"IMAGE_PULL_POLICY","value":"Always"},{"name":"OOTB_WORKFLOWS_REPO","value":"https://github.com/ambient-code/ootb-ambient-workflows.git"},{"name":"OOTB_WORKFLOWS_BRANCH","value":"main"},{"name":"OOTB_WORKFLOWS_PATH","value":"workflows"},{"name":"CLAUDE_CODE_USE_VERTEX","valueFrom":{"configMapKeyRef":{"name":"operator-config","key":"CLAUDE_CODE_USE_VERTEX"}}},{"name":"GITHUB_APP_ID","valueFrom":{"secretKeyRef":{"name":"github-app-secret","key":"GITHUB_APP_ID","optional":true}}},{"name":"GITHUB_PRIVATE_KEY","valueFrom":{"secretKeyRef":{"name":"github-app-secret","key":"GITHUB_PRIVATE_KEY","optional":true}}},{"name":"GITHUB_CLIENT_ID","valueFrom":{"secretKeyRef":{"name":"github-app-secret","key":"GITHUB_CLIENT_ID","optional":true}}},{"name":"GITHUB_CLIENT_SECRET","valueFrom":{"secretKeyRef":{"name":"github-app-secret","key":"GITHUB_CLIENT_SECRET","optional":true}}},{"name":"GITHUB_STATE_SECRET","valueFrom":{"secretKeyRef":{"name":"github-app-secret","key":"GITHUB_STATE_SECRET","optional":true}}}]}]'
+
+      - name: Update operator environment variables
+        run: |
+          oc patch deployment agentic-operator -n ambient-code --type=json -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/env", "value": [{"name":"NAMESPACE","valueFrom":{"fieldRef":{"fieldPath":"metadata.namespace"}}},{"name":"BACKEND_NAMESPACE","valueFrom":{"fieldRef":{"fieldPath":"metadata.namespace"}}},{"name":"BACKEND_API_URL","value":"http://backend-service:8080/api"},{"name":"AMBIENT_CODE_RUNNER_IMAGE","value":"quay.io/ambient_code/vteam_claude_runner:${{ needs.release.outputs.new_tag }}"},{"name":"CONTENT_SERVICE_IMAGE","value":"quay.io/ambient_code/vteam_backend:${{ needs.release.outputs.new_tag }}"},{"name":"IMAGE_PULL_POLICY","value":"Always"},{"name":"CLAUDE_CODE_USE_VERTEX","valueFrom":{"configMapKeyRef":{"name":"operator-config","key":"CLAUDE_CODE_USE_VERTEX"}}},{"name":"CLOUD_ML_REGION","valueFrom":{"configMapKeyRef":{"name":"operator-config","key":"CLOUD_ML_REGION"}}},{"name":"ANTHROPIC_VERTEX_PROJECT_ID","valueFrom":{"configMapKeyRef":{"name":"operator-config","key":"ANTHROPIC_VERTEX_PROJECT_ID"}}},{"name":"GOOGLE_APPLICATION_CREDENTIALS","valueFrom":{"configMapKeyRef":{"name":"operator-config","key":"GOOGLE_APPLICATION_CREDENTIALS"}}}]}]'

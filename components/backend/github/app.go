@@ -1,3 +1,4 @@
+// Package github implements GitHub App authentication and API integration.
 package github
 
 import (

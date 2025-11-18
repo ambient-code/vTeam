@@ -1,0 +1,51 @@
+# Override operator ClusterRole for local dev
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: agentic-operator
+rules:
+# AgenticSession custom resources
+- apiGroups: ["vteam.ambient-code"]
+  resources: ["agenticsessions"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["vteam.ambient-code"]
+  resources: ["agenticsessions/status"]
+  verbs: ["update"]
+# ProjectSettings custom resources
+- apiGroups: ["vteam.ambient-code"]
+  resources: ["projectsettings"]
+  verbs: ["get", "list", "watch", "create"]
+- apiGroups: ["vteam.ambient-code"]
+  resources: ["projectsettings/status"]
+  verbs: ["update"]
+# Namespaces (watch for managed namespaces)
+- apiGroups: [""]
+  resources: ["namespaces"]
+  verbs: ["get", "list", "watch"]
+# Jobs (create and monitor)
+- apiGroups: ["batch"]
+  resources: ["jobs"]
+  verbs: ["get", "create"]
+# Pods (for job logs)
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["list"]
+- apiGroups: [""]
+  resources: ["pods/log"]
+  verbs: ["get"]
+# PVCs (create workspace PVCs)
+- apiGroups: [""]
+  resources: ["persistentvolumeclaims"]
+  verbs: ["get", "create"]
+# Services and Deployments (for content service)
+- apiGroups: [""]
+  resources: ["services"]
+  verbs: ["get", "create"]
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["create"]
+# RoleBindings (group access)
+- apiGroups: ["rbac.authorization.k8s.io"]
+  resources: ["rolebindings"]
+  verbs: ["get", "create"]
+

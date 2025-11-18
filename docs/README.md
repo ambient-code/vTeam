@@ -1,6 +1,6 @@
-# vTeam Documentation
+# Ambient Code Platform Documentation
 
-This directory contains the complete documentation for the vTeam system, built with MkDocs and Material theme.
+This directory contains the complete documentation for the Ambient Code Platform, built with MkDocs and Material theme.
 
 ## Quick Start
 
@@ -103,7 +103,7 @@ mkdocs gh-deploy
 mkdocs build
 
 # Deploy site/ directory to your web server
-rsync -av site/ user@server:/var/www/vteam-docs/
+rsync -av site/ user@server:/var/www/acp-docs/
 ```
 
 ## Maintenance
@@ -144,4 +144,4 @@ markdownlint docs/**/*.md
 
 ---
 
-This documentation system is designed to scale with the vTeam project. As features are added and the system evolves, the documentation structure can accommodate new content while maintaining clear organization and navigation.
+This documentation system is designed to scale with the Ambient Code Platform. As features are added and the system evolves, the documentation structure can accommodate new content while maintaining clear organization and navigation.

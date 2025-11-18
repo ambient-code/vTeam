@@ -1,0 +1,18 @@
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: frontend-route
+  labels:
+    app: frontend
+spec:
+  to:
+    kind: Service
+    name: frontend-service
+    weight: 100
+  port:
+    targetPort: dashboard-ui
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+  wildcardPolicy: None
+

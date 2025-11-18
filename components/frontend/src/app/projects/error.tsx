@@ -25,7 +25,7 @@ export default function ProjectsError({
             <CardTitle>Failed to load projects</CardTitle>
           </div>
           <CardDescription>
-            {error.message || 'An unexpected error occurred while loading projects.'}
+            {error.message || 'An unexpected error occurred while loading workspaces.'}
           </CardDescription>
         </CardHeader>
         <CardContent>

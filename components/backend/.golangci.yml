@@ -1,5 +1,5 @@
 # golangci-lint configuration for vTeam backend
-# Compatible with golangci-lint v2.x
+# Compatible with golangci-lint v2+
 #
 # This configuration is pragmatic for a Kubernetes-native application.
 # We focus on catching real bugs rather than style issues.
@@ -11,10 +11,31 @@ run:
 
 linters:
   enable:
-    - govet
-    - ineffassign
-    - staticcheck
-    - unused
-    - misspell
+    - govet         # Reports suspicious constructs
+    - ineffassign   # Detect ineffectual assignments
+    - staticcheck   # Advanced static analysis (includes many useful checks)
+    - unused        # Check for unused constants, variables, functions
+    - misspell      # Find commonly misspelled words
   disable:
-    - errcheck
+    - errcheck      # Disabled: too many false positives with defer cleanup
+
+  settings:
+    staticcheck:
+      checks: ["all", "-SA1019"]  # Disable deprecation warnings only
+
+  exclusions:
+    rules:
+      # Exclude all linters from test files
+      - path: _test\.go
+        linters:
+          - staticcheck
+          - govet
+
+      # Allow type assertions in K8s unstructured object parsing (intentional pattern)
+      - path: (handlers|jira)/.*\.go
+        text: "type assertion"
+
+issues:
+  max-issues-per-linter: 0  # Show all issues
+  max-same-issues: 0        # Show all instances
+  new: false                # Show all issues

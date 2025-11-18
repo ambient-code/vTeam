@@ -224,3 +224,217 @@ export function useAbandonSessionChanges() {
   });
 }
 
+/**
+ * Hook to get git merge status
+ */
+export function useGitMergeStatus(
+  projectName: string,
+  sessionName: string,
+  path: string = 'artifacts',
+  branch: string = 'main',
+  enabled: boolean = true
+) {
+  return useQuery({
+    queryKey: [...workspaceKeys.all, 'git-merge-status', projectName, sessionName, path, branch],
+    queryFn: () => workspaceApi.getGitMergeStatus(projectName, sessionName, path, branch),
+    enabled: enabled && !!projectName && !!sessionName,
+    staleTime: 5000, // 5 seconds - merge status can change frequently
+  });
+}
+
+/**
+ * Hook to pull git changes
+ */
+export function useGitPull() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      projectName,
+      sessionName,
+      path = 'artifacts',
+      branch = 'main',
+    }: {
+      projectName: string;
+      sessionName: string;
+      path?: string;
+      branch?: string;
+    }) => workspaceApi.gitPull(projectName, sessionName, path, branch),
+    onSuccess: (_data, { projectName, sessionName }) => {
+      // Invalidate workspace and merge status
+      queryClient.invalidateQueries({
+        queryKey: workspaceKeys.lists(),
+      });
+      queryClient.invalidateQueries({
+        queryKey: [...workspaceKeys.all, 'git-merge-status', projectName, sessionName],
+      });
+    },
+  });
+}
+
+/**
+ * Hook to push git changes
+ */
+export function useGitPush() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      projectName,
+      sessionName,
+      path = 'artifacts',
+      branch = 'main',
+      message,
+    }: {
+      projectName: string;
+      sessionName: string;
+      path?: string;
+      branch?: string;
+      message?: string;
+    }) => workspaceApi.gitPush(projectName, sessionName, path, branch, message),
+    onSuccess: (_data, { projectName, sessionName }) => {
+      // Invalidate workspace and merge status
+      queryClient.invalidateQueries({
+        queryKey: workspaceKeys.lists(),
+      });
+      queryClient.invalidateQueries({
+        queryKey: [...workspaceKeys.all, 'git-merge-status', projectName, sessionName],
+      });
+    },
+  });
+}
+
+/**
+ * Hook to create git branch
+ */
+export function useGitCreateBranch() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      projectName,
+      sessionName,
+      branchName,
+      path = 'artifacts',
+    }: {
+      projectName: string;
+      sessionName: string;
+      branchName: string;
+      path?: string;
+    }) => workspaceApi.gitCreateBranch(projectName, sessionName, branchName, path),
+    onSuccess: (_data, { projectName, sessionName }) => {
+      // Invalidate branches list and merge status
+      queryClient.invalidateQueries({
+        queryKey: [...workspaceKeys.all, 'git-branches', projectName, sessionName],
+      });
+      queryClient.invalidateQueries({
+        queryKey: [...workspaceKeys.all, 'git-merge-status', projectName, sessionName],
+      });
+    },
+  });
+}
+
+/**
+ * Hook to list remote branches
+ */
+export function useGitListBranches(
+  projectName: string,
+  sessionName: string,
+  path: string = 'artifacts',
+  enabled: boolean = true
+) {
+  return useQuery({
+    queryKey: [...workspaceKeys.all, 'git-branches', projectName, sessionName, path],
+    queryFn: () => workspaceApi.gitListBranches(projectName, sessionName, path),
+    enabled: enabled && !!projectName && !!sessionName,
+    staleTime: 30000, // 30 seconds - branches don't change often
+  });
+}
+
+/**
+ * Hook to get git status
+ */
+export function useGitStatus(
+  projectName: string,
+  sessionName: string,
+  path: string,
+  options?: { enabled?: boolean }
+) {
+  return useQuery({
+    queryKey: [...workspaceKeys.all, 'git-status', projectName, sessionName, path],
+    queryFn: () => workspaceApi.gitStatus(projectName, sessionName, path),
+    enabled: !!projectName && !!sessionName && !!path && (options?.enabled ?? true),
+    staleTime: 5000, // 5 seconds - status can change frequently
+  });
+}
+
+/**
+ * Hook to configure git remote
+ */
+export function useConfigureGitRemote() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      projectName,
+      sessionName,
+      path,
+      remoteUrl,
+      branch = 'main',
+    }: {
+      projectName: string;
+      sessionName: string;
+      path: string;
+      remoteUrl: string;
+      branch?: string;
+    }) => workspaceApi.configureGitRemote(projectName, sessionName, path, remoteUrl, branch),
+    onSuccess: (_data, { projectName, sessionName, path }) => {
+      // Invalidate git status to reflect new remote
+      queryClient.invalidateQueries({
+        queryKey: [...workspaceKeys.all, 'git-status', projectName, sessionName, path],
+      });
+      // Invalidate branches list
+      queryClient.invalidateQueries({
+        queryKey: [...workspaceKeys.all, 'git-branches', projectName, sessionName, path],
+      });
+    },
+  });
+}
+
+/**
+ * Hook to synchronize git (commit, pull, push)
+ */
+export function useSynchronizeGit() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      projectName,
+      sessionName,
+      path,
+      message,
+      branch,
+    }: {
+      projectName: string;
+      sessionName: string;
+      path: string;
+      message?: string;
+      branch?: string;
+    }) => workspaceApi.synchronizeGit(projectName, sessionName, path, message, branch),
+    onSuccess: (_data, { projectName, sessionName, path }) => {
+      // Invalidate git status
+      queryClient.invalidateQueries({
+        queryKey: [...workspaceKeys.all, 'git-status', projectName, sessionName, path],
+      });
+      // Invalidate workspace to show updated files
+      queryClient.invalidateQueries({
+        queryKey: workspaceKeys.lists(),
+      });
+      // Invalidate merge status
+      queryClient.invalidateQueries({
+        queryKey: [...workspaceKeys.all, 'git-merge-status', projectName, sessionName],
+      });
+    },
+  });
+}
+

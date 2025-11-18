@@ -10,6 +10,7 @@ import sys
 import logging
 import json as _json
 import re
+import shutil
 from pathlib import Path
 from urllib.parse import urlparse, urlunparse
 from urllib import request as _urllib_request, error as _urllib_error
@@ -30,6 +31,8 @@ class ClaudeCodeAdapter:
         self.shell = None
         self.claude_process = None
         self._incoming_queue: "asyncio.Queue[dict]" = asyncio.Queue()
+        self._restart_requested = False
+        self._first_run = True  # Track if this is the first SDK run or a mid-session restart
 
     async def initialize(self, context: RunnerContext):
         """Initialize the adapter with context."""
@@ -37,6 +40,8 @@ class ClaudeCodeAdapter:
         logging.info(f"Initialized Claude Code adapter for session {context.session_id}")
         # Prepare workspace from input repo if provided
         await self._prepare_workspace()
+        # Initialize workflow if ACTIVE_WORKFLOW env vars are set
+        await self._initialize_workflow_if_set()
         # Validate prerequisite files exist for phase-based commands
         await self._validate_prerequisites()
 
@@ -77,8 +82,21 @@ class ClaudeCodeAdapter:
             except Exception:
                 pass
 
-            # Execute Claude Code CLI (interactive or one-shot based on env)
-            result = await self._run_claude_agent_sdk(prompt)
+            # Execute Claude Code CLI with restart support for workflow switching
+            result = None
+            while True:
+                result = await self._run_claude_agent_sdk(prompt)
+                
+                # Check if restart was requested (workflow changed)
+                if self._restart_requested:
+                    self._restart_requested = False
+                    await self._send_log("🔄 Restarting Claude with new workflow...")
+                    logging.info("Restarting Claude SDK due to workflow change")
+                    # Loop will call _run_claude_agent_sdk again with updated env vars
+                    continue
+                
+                # Normal exit - no restart requested
+                break
 
             # Send completion
             await self._send_log("Claude Code session completed")
@@ -152,22 +170,109 @@ class ClaudeCodeAdapter:
     async def _run_claude_agent_sdk(self, prompt: str):
         """Execute the Claude Code SDK with the given prompt."""
         try:
-            from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
+            # Check for authentication method: API key or service account
+            # IMPORTANT: Must check and set env vars BEFORE importing SDK
             api_key = self.context.get_env('ANTHROPIC_API_KEY', '')
-            if not api_key:
-                raise RuntimeError("ANTHROPIC_API_KEY is required for Claude Code SDK")
+            # SDK official flag is CLAUDE_CODE_USE_VERTEX=1
+            use_vertex = (
+                self.context.get_env('CLAUDE_CODE_USE_VERTEX', '').strip() == '1'
+                )
+
+            # Determine which authentication method to use
+            if not api_key and not use_vertex:
+                raise RuntimeError("Either ANTHROPIC_API_KEY or CLAUDE_CODE_USE_VERTEX=1 must be set")
+
+            # Set environment variables BEFORE importing SDK
+            # The Anthropic SDK checks these during initialization
+            if api_key:
+                os.environ['ANTHROPIC_API_KEY'] = api_key
+                logging.info("Using Anthropic API key authentication")
+
+            # Configure Vertex AI if requested
+            if use_vertex:
+                vertex_credentials = await self._setup_vertex_credentials()
+
+                # Clear API key if set, to force Vertex AI mode
+                if 'ANTHROPIC_API_KEY' in os.environ:
+                    logging.info("Clearing ANTHROPIC_API_KEY to force Vertex AI mode")
+                    del os.environ['ANTHROPIC_API_KEY']
+
+                # Set the SDK's official Vertex AI flag
+                os.environ['CLAUDE_CODE_USE_VERTEX'] = '1'
+
+                # Set Vertex AI environment variables
+                os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = vertex_credentials.get('credentials_path', '')
+                os.environ['ANTHROPIC_VERTEX_PROJECT_ID'] = vertex_credentials.get('project_id', '')
+                os.environ['CLOUD_ML_REGION'] = vertex_credentials.get('region', '')
+
+                logging.info(f"Vertex AI environment configured:")
+                logging.info(f"  CLAUDE_CODE_USE_VERTEX: {os.environ.get('CLAUDE_CODE_USE_VERTEX')}")
+                logging.info(f"  GOOGLE_APPLICATION_CREDENTIALS: {os.environ.get('GOOGLE_APPLICATION_CREDENTIALS')}")
+                logging.info(f"  ANTHROPIC_VERTEX_PROJECT_ID: {os.environ.get('ANTHROPIC_VERTEX_PROJECT_ID')}")
+                logging.info(f"  CLOUD_ML_REGION: {os.environ.get('CLOUD_ML_REGION')}")
+
+            # NOW we can safely import the SDK with the correct environment set
+            from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
 
             # Check if continuing from previous session
             # If PARENT_SESSION_ID is set, use SDK's built-in resume functionality
             parent_session_id = self.context.get_env('PARENT_SESSION_ID', '').strip()
             is_continuation = bool(parent_session_id)
 
-            # Determine cwd and additional dirs from multi-repo config
+            # Determine cwd and additional dirs from multi-repo config or workflow
             repos_cfg = self._get_repos_config()
             cwd_path = self.context.workspace_path
             add_dirs = []
-            if repos_cfg:
-                # Prefer explicit MAIN_REPO_NAME, else use MAIN_REPO_INDEX, else default to 0
+            derived_name = None  # Track workflow name for system prompt
+            
+            # Check for active workflow first
+            active_workflow_url = (os.getenv('ACTIVE_WORKFLOW_GIT_URL') or '').strip()
+            if active_workflow_url:
+                # Derive workflow name from URL
+                try:
+                    owner, repo, _ = self._parse_owner_repo(active_workflow_url)
+                    derived_name = repo or ''
+                    if not derived_name:
+                        from urllib.parse import urlparse as _urlparse
+                        p = _urlparse(active_workflow_url)
+                        parts = [p for p in (p.path or '').split('/') if p]
+                        if parts:
+                            derived_name = parts[-1]
+                    derived_name = (derived_name or '').removesuffix('.git').strip()
+                    
+                    if derived_name:
+                        workflow_path = str(Path(self.context.workspace_path) / "workflows" / derived_name)
+                        # NOTE: Don't append ACTIVE_WORKFLOW_PATH here - we already extracted 
+                        # the subdirectory during clone, so workflow_path is the final location
+                        
+                        if Path(workflow_path).exists():
+                            cwd_path = workflow_path
+                            logging.info(f"Using workflow as CWD: {derived_name}")
+                        else:
+                            logging.warning(f"Workflow directory not found: {workflow_path}, using default")
+                            cwd_path = str(Path(self.context.workspace_path) / "workflows" / "default")
+                    else:
+                        cwd_path = str(Path(self.context.workspace_path) / "workflows" / "default")
+                except Exception as e:
+                    logging.warning(f"Failed to derive workflow name: {e}, using default")
+                    cwd_path = str(Path(self.context.workspace_path) / "workflows" / "default")
+                
+                # Add all repos as additional directories so they're accessible to Claude
+                for r in repos_cfg:
+                    name = (r.get('name') or '').strip()
+                    if name:
+                        repo_path = str(Path(self.context.workspace_path) / name)
+                        if repo_path not in add_dirs:
+                            add_dirs.append(repo_path)
+                            logging.info(f"Added repo as additional directory: {name}")
+                
+                # Add artifacts directory
+                artifacts_path = str(Path(self.context.workspace_path) / "artifacts")
+                if artifacts_path not in add_dirs:
+                    add_dirs.append(artifacts_path)
+                    logging.info("Added artifacts directory as additional directory")
+            elif repos_cfg:
+                # Multi-repo mode: Prefer explicit MAIN_REPO_NAME, else use MAIN_REPO_INDEX, else default to 0
                 main_name = (os.getenv('MAIN_REPO_NAME') or '').strip()
                 if not main_name:
                     idx_raw = (os.getenv('MAIN_REPO_INDEX') or '').strip()
@@ -189,6 +294,31 @@ class ClaudeCodeAdapter:
                     p = str(Path(self.context.workspace_path) / name)
                     if p != cwd_path:
                         add_dirs.append(p)
+                
+                # Add artifacts directory for repos mode too
+                artifacts_path = str(Path(self.context.workspace_path) / "artifacts")
+                if artifacts_path not in add_dirs:
+                    add_dirs.append(artifacts_path)
+                    logging.info("Added artifacts directory as additional directory")
+            else:
+                # No workflow and no repos: start in artifacts directory for ad-hoc work
+                cwd_path = str(Path(self.context.workspace_path) / "artifacts")
+
+            # Load ambient.json configuration (only if workflow is active)
+            ambient_config = self._load_ambient_config(cwd_path) if active_workflow_url else {}
+
+            # Ensure the working directory exists before passing to SDK
+            cwd_path_obj = Path(cwd_path)
+            if not cwd_path_obj.exists():
+                logging.warning(f"Working directory does not exist, creating: {cwd_path}")
+                try:
+                    cwd_path_obj.mkdir(parents=True, exist_ok=True)
+                    logging.info(f"Created working directory: {cwd_path}")
+                except Exception as e:
+                    logging.error(f"Failed to create working directory: {e}")
+                    # Fall back to workspace root
+                    cwd_path = self.context.workspace_path
+                    logging.info(f"Falling back to workspace root: {cwd_path}")
 
             # Log working directory and additional directories for debugging
             logging.info(f"Claude SDK CWD: {cwd_path}")
@@ -204,17 +334,29 @@ class ClaudeCodeAdapter:
                     allowed_tools.append(f"mcp__{server_name}")
                 logging.info(f"MCP tool permissions granted for servers: {list(mcp_servers.keys())}")
 
+            # Build comprehensive workspace context system prompt
+            workspace_prompt = self._build_workspace_context_prompt(
+                repos_cfg=repos_cfg,
+                workflow_name=derived_name if active_workflow_url else None,
+                artifacts_path="artifacts",
+                ambient_config=ambient_config
+            )
+            system_prompt_config = {
+                "type": "text",
+                "text": workspace_prompt
+            }
+            logging.info(f"Applied workspace context system prompt (length: {len(workspace_prompt)} chars)")
+
             # Configure SDK options with session resumption if continuing
             options = ClaudeAgentOptions(
-                cwd=cwd_path, 
+                cwd=cwd_path,
                 permission_mode="acceptEdits",
                 allowed_tools= allowed_tools,
                 mcp_servers=mcp_servers,
                 setting_sources=["project"],
-                system_prompt={"type":"preset",
-                               "preset":"claude_code"}
+                system_prompt=system_prompt_config
                 )
-            
+
             # Use SDK's built-in session resumption if continuing
             # The CLI stores session state in /app/.claude which is now persisted in PVC
             # We need to get the SDK's UUID session ID, not our K8s session name
@@ -244,6 +386,10 @@ class ClaudeCodeAdapter:
             model = self.context.get_env('LLM_MODEL')
             if model:
                 try:
+                    # Map Anthropic API model names to Vertex AI model names if using Vertex
+                    if use_vertex:
+                        model = self._map_to_vertex_model(model)
+                        logging.info(f"Mapped to Vertex AI model: {model}")
                     options.model = model  # type: ignore[attr-defined]
                 except Exception:
                     pass
@@ -266,8 +412,6 @@ class ClaudeCodeAdapter:
                 except Exception:
                     pass
 
-            os.environ['ANTHROPIC_API_KEY'] = api_key
-
             result_payload = None
             self._turn_count = 0
             # Import SDK message and content types for accurate mapping
@@ -285,7 +429,7 @@ class ClaudeCodeAdapter:
             interactive = str(self.context.get_env('INTERACTIVE', 'false')).strip().lower() in ('1', 'true', 'yes')
 
             sdk_session_id = None
-            
+
             async def process_response_stream(client_obj):
                 nonlocal result_payload, sdk_session_id
                 async for message in client_obj.receive_response():
@@ -369,23 +513,32 @@ class ClaudeCodeAdapter:
                 if is_continuation and parent_session_id:
                     await self._send_log("✅ SDK resuming session with full context")
                     logging.info(f"SDK is handling session resumption for {parent_session_id}")
-                
+
                 async def process_one_prompt(text: str):
                     await self.shell._send_message(MessageType.AGENT_RUNNING, {})
                     await client.query(text)
                     await process_response_stream(client)
 
-                # Initial prompt (if any)
-                # Skip if this is a continuation - SDK already has the full context
-                if prompt and prompt.strip() and not is_continuation:
-                    # Store the initial prompt as a user message so it appears in history for continuation
-                    await self.shell._send_message(
-                        MessageType.USER_MESSAGE,
-                        {"content": prompt},
-                    )
-                    await process_one_prompt(prompt)
-                elif is_continuation:
-                    logging.info("Skipping initial prompt - SDK resuming with full context")
+                # Handle startup prompts
+                # Only send startupPrompt from workflow on restart (not first run)
+                # This way workflow greeting appears when you switch TO a workflow mid-session
+                if not is_continuation:
+                    if ambient_config.get("startupPrompt") and not self._first_run:
+                        # Workflow was just activated - show its greeting
+                        startup_msg = ambient_config["startupPrompt"]
+                        await process_one_prompt(startup_msg)
+                        logging.info(f"Sent workflow startupPrompt ({len(startup_msg)} chars)")
+                    elif prompt and prompt.strip() and self._first_run:
+                        # First run with explicit prompt - use it
+                        await process_one_prompt(prompt)
+                        logging.info("Sent initial prompt to bootstrap session")
+                    else:
+                        logging.info("No initial prompt - Claude will greet based on system prompt")
+                else:
+                    logging.info("Skipping prompts - SDK resuming with full context")
+                
+                # Mark that first run is complete
+                self._first_run = False
 
                 if interactive:
                     await self._send_log({"level": "system", "message": "Chat ready"})
@@ -402,6 +555,27 @@ class ClaudeCodeAdapter:
                                 await process_one_prompt(text)
                         elif mtype in ('end_session', 'terminate', 'stop'):
                             await self._send_log({"level": "system", "message": "interactive.ended"})
+                            break
+                        elif mtype == 'workflow_change':
+                            # Handle workflow selection during interactive session
+                            git_url = str(payload.get('gitUrl') or '').strip()
+                            branch = str(payload.get('branch') or 'main').strip()
+                            path = str(payload.get('path') or '').strip()
+                            if git_url:
+                                await self._handle_workflow_selection(git_url, branch, path)
+                                # Break out of interactive loop to trigger restart
+                                break
+                            else:
+                                await self._send_log("⚠️ Workflow change request missing gitUrl")
+                        elif mtype == 'repo_added':
+                            # Handle dynamic repo addition
+                            await self._handle_repo_added(payload)
+                            # Break out of interactive loop to trigger restart
+                            break
+                        elif mtype == 'repo_removed':
+                            # Handle dynamic repo removal
+                            await self._handle_repo_removed(payload)
+                            # Break out of interactive loop to trigger restart
                             break
                         elif mtype == 'interrupt':
                             try:
@@ -431,6 +605,64 @@ class ClaudeCodeAdapter:
                 "error": str(e)
             }
 
+    def _map_to_vertex_model(self, model: str) -> str:
+        """Map Anthropic API model names to Vertex AI model names.
+
+        Args:
+            model: Anthropic API model name (e.g., 'claude-sonnet-4-5')
+
+        Returns:
+            Vertex AI model name (e.g., 'claude-sonnet-4-5@20250929')
+        """
+        # Model mapping from Anthropic API to Vertex AI
+        # Reference: https://cloud.google.com/vertex-ai/generative-ai/docs/partner-models/use-claude
+        model_map = {
+            'claude-opus-4-1': 'claude-opus-4-1@20250805',
+            'claude-sonnet-4-5': 'claude-sonnet-4-5@20250929',
+            'claude-haiku-4-5': 'claude-haiku-4-5@20251001',
+        }
+
+        mapped = model_map.get(model, model)
+        if mapped != model:
+            logging.info(f"Model mapping: {model} → {mapped}")
+        return mapped
+
+    async def _setup_vertex_credentials(self) -> dict:
+        """Set up Google Cloud Vertex AI credentials from service account.
+
+        Returns:
+            dict with 'credentials_path', 'project_id', and 'region'
+
+        Raises:
+            RuntimeError: If required Vertex AI configuration is missing
+        """
+        # Get service account configuration from environment
+        # These are passed by the operator from its own environment
+        service_account_path = self.context.get_env('GOOGLE_APPLICATION_CREDENTIALS', '').strip()
+        project_id = self.context.get_env('ANTHROPIC_VERTEX_PROJECT_ID', '').strip()
+        region = self.context.get_env('CLOUD_ML_REGION', '').strip()
+
+        # Validate required fields
+        if not service_account_path:
+            raise RuntimeError("GOOGLE_APPLICATION_CREDENTIALS must be set when CLAUDE_CODE_USE_VERTEX=1")
+        if not project_id:
+            raise RuntimeError("ANTHROPIC_VERTEX_PROJECT_ID must be set when CLAUDE_CODE_USE_VERTEX=1")
+        if not region:
+            raise RuntimeError("CLOUD_ML_REGION must be set when CLAUDE_CODE_USE_VERTEX=1")
+
+        # Verify service account file exists
+        if not Path(service_account_path).exists():
+            raise RuntimeError(f"Service account key file not found at {service_account_path}")
+
+        logging.info(f"Vertex AI configured: project={project_id}, region={region}")
+        await self._send_log(f"Using Vertex AI with project {project_id} in {region}")
+
+        return {
+            'credentials_path': service_account_path,
+            'project_id': project_id,
+            'region': region,
+        }
+
     async def _prepare_workspace(self):
         """Clone input repo/branch into workspace and configure git remotes."""
         token = os.getenv("GITHUB_TOKEN") or await self._fetch_github_token()
@@ -440,7 +672,7 @@ class ClaudeCodeAdapter:
         # Check if reusing workspace from previous session
         parent_session_id = self.context.get_env('PARENT_SESSION_ID', '').strip()
         reusing_workspace = bool(parent_session_id)
-        
+
         logging.info(f"Workspace preparation: parent_session_id={parent_session_id[:8] if parent_session_id else 'None'}, reusing={reusing_workspace}")
         if reusing_workspace:
             await self._send_log(f"♻️ Reusing workspace from session {parent_session_id[:8]}")
@@ -458,16 +690,18 @@ class ClaudeCodeAdapter:
                     if not name or not url:
                         continue
                     repo_dir = workspace / name
-                    
+
                     # Check if repo already exists
                     repo_exists = repo_dir.exists() and (repo_dir / ".git").exists()
-                    
+
                     if not repo_exists:
                         # Clone fresh copy
                         await self._send_log(f"📥 Cloning {name}...")
                         logging.info(f"Cloning {name} from {url} (branch: {branch})")
                         clone_url = self._url_with_token(url, token) if token else url
                         await self._run_cmd(["git", "clone", "--branch", branch, "--single-branch", clone_url, str(repo_dir)], cwd=str(workspace))
+                        # Update remote URL to persist token (git strips it from clone URL)
+                        await self._run_cmd(["git", "remote", "set-url", "origin", clone_url], cwd=str(repo_dir), ignore_errors=True)
                         logging.info(f"Successfully cloned {name}")
                     elif reusing_workspace:
                         # Reusing workspace - preserve local changes from previous session
@@ -512,10 +746,10 @@ class ClaudeCodeAdapter:
             return
         input_branch = os.getenv("INPUT_BRANCH", "").strip() or "main"
         output_repo = os.getenv("OUTPUT_REPO_URL", "").strip()
-        
+
         workspace_has_git = (workspace / ".git").exists()
         logging.info(f"Single-repo setup: workspace_has_git={workspace_has_git}, reusing={reusing_workspace}")
-        
+
         try:
             if not workspace_has_git:
                 # Clone fresh copy
@@ -523,6 +757,8 @@ class ClaudeCodeAdapter:
                 logging.info(f"Cloning from {input_repo} (branch: {input_branch})")
                 clone_url = self._url_with_token(input_repo, token) if token else input_repo
                 await self._run_cmd(["git", "clone", "--branch", input_branch, "--single-branch", clone_url, str(workspace)], cwd=str(workspace.parent))
+                # Update remote URL to persist token (git strips it from clone URL)
+                await self._run_cmd(["git", "remote", "set-url", "origin", clone_url], cwd=str(workspace), ignore_errors=True)
                 logging.info("Successfully cloned repository")
             elif reusing_workspace:
                 # Reusing workspace - preserve local changes from previous session
@@ -556,6 +792,14 @@ class ClaudeCodeAdapter:
         except Exception as e:
             logging.error(f"Failed to prepare workspace: {e}")
             await self._send_log(f"Workspace preparation failed: {e}")
+
+        # Create artifacts directory (initial working directory)
+        try:
+            artifacts_dir = workspace / "artifacts"
+            artifacts_dir.mkdir(parents=True, exist_ok=True)
+            logging.info("Created artifacts directory")
+        except Exception as e:
+            logging.warning(f"Failed to create artifacts directory: {e}")
 
     async def _validate_prerequisites(self):
         """Validate prerequisite files exist for phase-based slash commands."""
@@ -608,6 +852,193 @@ class ClaudeCodeAdapter:
 
                 break  # Only check the first matching command
 
+    async def _initialize_workflow_if_set(self):
+        """Initialize workflow on startup if ACTIVE_WORKFLOW env vars are set."""
+        active_workflow_url = (os.getenv('ACTIVE_WORKFLOW_GIT_URL') or '').strip()
+        if not active_workflow_url:
+            return  # No workflow to initialize
+        
+        active_workflow_branch = (os.getenv('ACTIVE_WORKFLOW_BRANCH') or 'main').strip()
+        active_workflow_path = (os.getenv('ACTIVE_WORKFLOW_PATH') or '').strip()
+        
+        # Derive workflow name from URL
+        try:
+            owner, repo, _ = self._parse_owner_repo(active_workflow_url)
+            derived_name = repo or ''
+            if not derived_name:
+                from urllib.parse import urlparse as _urlparse
+                p = _urlparse(active_workflow_url)
+                parts = [p for p in (p.path or '').split('/') if p]
+                if parts:
+                    derived_name = parts[-1]
+            derived_name = (derived_name or '').removesuffix('.git').strip()
+            
+            if not derived_name:
+                logging.warning("Could not derive workflow name from URL, skipping initialization")
+                return
+            
+            workflow_dir = Path(self.context.workspace_path) / "workflows" / derived_name
+            
+            # Only clone if workflow directory doesn't exist
+            if workflow_dir.exists():
+                logging.info(f"Workflow {derived_name} already exists, skipping initialization")
+                return
+            
+            logging.info(f"Initializing workflow {derived_name} from CR spec on startup")
+            # Clone the workflow but don't request restart (we haven't started yet)
+            await self._clone_workflow_repository(active_workflow_url, active_workflow_branch, active_workflow_path, derived_name)
+            
+        except Exception as e:
+            logging.error(f"Failed to initialize workflow on startup: {e}")
+            # Don't fail the session if workflow init fails - continue without it
+    
+    async def _clone_workflow_repository(self, git_url: str, branch: str, path: str, workflow_name: str):
+        """Clone workflow repository without requesting restart (used during initialization)."""
+        workspace = Path(self.context.workspace_path)
+        token = os.getenv("GITHUB_TOKEN") or await self._fetch_github_token()
+        
+        workflow_dir = workspace / "workflows" / workflow_name
+        temp_clone_dir = workspace / "workflows" / f"{workflow_name}-clone-temp"
+        
+        # Check if workflow already exists
+        if workflow_dir.exists():
+            await self._send_log(f"✓ Workflow {workflow_name} already loaded")
+            logging.info(f"Workflow {workflow_name} already exists at {workflow_dir}")
+            return
+        
+        # Clone to temporary directory first
+        await self._send_log(f"📥 Cloning workflow {workflow_name}...")
+        logging.info(f"Cloning workflow from {git_url} (branch: {branch})")
+        clone_url = self._url_with_token(git_url, token) if token else git_url
+        await self._run_cmd(["git", "clone", "--branch", branch, "--single-branch", clone_url, str(temp_clone_dir)], cwd=str(workspace))
+        logging.info(f"Successfully cloned workflow to temp directory")
+        
+        # Extract subdirectory if path is specified
+        if path and path.strip():
+            subdir_path = temp_clone_dir / path.strip()
+            if subdir_path.exists() and subdir_path.is_dir():
+                # Copy only the subdirectory contents
+                shutil.copytree(subdir_path, workflow_dir)
+                shutil.rmtree(temp_clone_dir)
+                await self._send_log(f"✓ Extracted workflow from: {path}")
+                logging.info(f"Extracted subdirectory {path} to {workflow_dir}")
+            else:
+                # Path not found, use full repo
+                temp_clone_dir.rename(workflow_dir)
+                await self._send_log(f"⚠️ Path '{path}' not found, using full repository")
+                logging.warning(f"Subdirectory {path} not found, using full repo")
+        else:
+            # No path specified, use entire repo
+            temp_clone_dir.rename(workflow_dir)
+            logging.info(f"Using entire repository as workflow")
+        
+        await self._send_log(f"✅ Workflow {workflow_name} ready")
+        logging.info(f"Workflow {workflow_name} setup complete at {workflow_dir}")
+
+    async def _handle_workflow_selection(self, git_url: str, branch: str = "main", path: str = ""):
+        """Clone and setup a workflow repository during an interactive session."""
+        try:
+            # Derive workflow name from URL
+            try:
+                owner, repo, _ = self._parse_owner_repo(git_url)
+                derived_name = repo or ''
+                if not derived_name:
+                    # Fallback: last path segment without .git
+                    from urllib.parse import urlparse as _urlparse
+                    p = _urlparse(git_url)
+                    parts = [p for p in (p.path or '').split('/') if p]
+                    if parts:
+                        derived_name = parts[-1]
+                derived_name = (derived_name or '').removesuffix('.git').strip()
+            except Exception:
+                derived_name = 'workflow'
+            
+            if not derived_name:
+                await self._send_log("❌ Could not derive workflow name from URL")
+                return
+            
+            # Clone the workflow repository
+            await self._clone_workflow_repository(git_url, branch, path, derived_name)
+            
+            # Set environment variables for the restart
+            os.environ['ACTIVE_WORKFLOW_GIT_URL'] = git_url
+            os.environ['ACTIVE_WORKFLOW_BRANCH'] = branch
+            if path and path.strip():
+                os.environ['ACTIVE_WORKFLOW_PATH'] = path
+            
+            # Request restart to switch Claude's working directory
+            self._restart_requested = True
+            
+        except Exception as e:
+            logging.error(f"Failed to setup workflow: {e}")
+            await self._send_log(f"❌ Workflow setup failed: {e}")
+
+    async def _handle_repo_added(self, payload):
+        """Clone newly added repository and request restart."""
+        repo_url = str(payload.get('url') or '').strip()
+        repo_branch = str(payload.get('branch') or '').strip() or 'main'
+        repo_name = str(payload.get('name') or '').strip()
+        
+        if not repo_url or not repo_name:
+            logging.warning("Invalid repo_added payload")
+            return
+        
+        workspace = Path(self.context.workspace_path)
+        repo_dir = workspace / repo_name
+        
+        if repo_dir.exists():
+            await self._send_log(f"Repository {repo_name} already exists")
+            return
+        
+        token = os.getenv("GITHUB_TOKEN") or await self._fetch_github_token()
+        clone_url = self._url_with_token(repo_url, token) if token else repo_url
+        
+        await self._send_log(f"📥 Cloning {repo_name}...")
+        await self._run_cmd(["git", "clone", "--branch", repo_branch, "--single-branch", clone_url, str(repo_dir)], cwd=str(workspace))
+        
+        # Configure git identity
+        user_name = os.getenv("GIT_USER_NAME", "").strip() or "Ambient Code Bot"
+        user_email = os.getenv("GIT_USER_EMAIL", "").strip() or "bot@ambient-code.local"
+        await self._run_cmd(["git", "config", "user.name", user_name], cwd=str(repo_dir))
+        await self._run_cmd(["git", "config", "user.email", user_email], cwd=str(repo_dir))
+        
+        await self._send_log(f"✅ Repository {repo_name} added")
+        
+        # Update REPOS_JSON env var
+        repos_cfg = self._get_repos_config()
+        repos_cfg.append({'name': repo_name, 'input': {'url': repo_url, 'branch': repo_branch}})
+        os.environ['REPOS_JSON'] = _json.dumps(repos_cfg)
+        
+        # Request restart to update additional directories
+        self._restart_requested = True
+
+    async def _handle_repo_removed(self, payload):
+        """Remove repository and request restart."""
+        repo_name = str(payload.get('name') or '').strip()
+        
+        if not repo_name:
+            logging.warning("Invalid repo_removed payload")
+            return
+        
+        workspace = Path(self.context.workspace_path)
+        repo_dir = workspace / repo_name
+        
+        if not repo_dir.exists():
+            await self._send_log(f"Repository {repo_name} not found")
+            return
+        
+        await self._send_log(f"🗑️ Removing {repo_name}...")
+        shutil.rmtree(repo_dir)
+        
+        # Update REPOS_JSON env var
+        repos_cfg = self._get_repos_config()
+        repos_cfg = [r for r in repos_cfg if r.get('name') != repo_name]
+        os.environ['REPOS_JSON'] = _json.dumps(repos_cfg)
+        
+        await self._send_log(f"✅ Repository {repo_name} removed")
+        
+        # Request restart to update additional directories
+        self._restart_requested = True
 
     async def _push_results_if_any(self):
         """Commit and push changes to output repo/branch if configured."""
@@ -617,7 +1048,7 @@ class ClaudeCodeAdapter:
             logging.info("GitHub token obtained for push operations")
         else:
             logging.warning("No GitHub token available - push may fail for private repos")
-        
+
         repos_cfg = self._get_repos_config()
         if repos_cfg:
             # Multi-repo flow
@@ -631,33 +1062,33 @@ class ClaudeCodeAdapter:
                     if not status.strip():
                         logging.info(f"No changes detected for {name}, skipping push")
                         continue
-                    
+
                     out = r.get('output') or {}
                     out_url_raw = (out.get('url') or '').strip()
                     if not out_url_raw:
                         logging.warning(f"No output URL configured for {name}, skipping push")
                         continue
-                    
+
                     # Add token to output URL
                     out_url = self._url_with_token(out_url_raw, token) if token else out_url_raw
-                    
+
                     in_ = r.get('input') or {}
                     in_branch = (in_.get('branch') or '').strip()
                     out_branch = (out.get('branch') or '').strip() or f"sessions/{self.context.session_id}"
 
                     await self._send_log(f"Pushing changes for {name}...")
                     logging.info(f"Configuring output remote with authentication for {name}")
-                    
+
                     # Reconfigure output remote with token before push
                     await self._run_cmd(["git", "remote", "remove", "output"], cwd=str(repo_dir), ignore_errors=True)
                     await self._run_cmd(["git", "remote", "add", "output", out_url], cwd=str(repo_dir))
-                    
+
                     logging.info(f"Checking out branch {out_branch} for {name}")
                     await self._run_cmd(["git", "checkout", "-B", out_branch], cwd=str(repo_dir))
-                    
+
                     logging.info(f"Staging all changes for {name}")
                     await self._run_cmd(["git", "add", "-A"], cwd=str(repo_dir))
-                    
+
                     logging.info(f"Committing changes for {name}")
                     try:
                         await self._run_cmd(["git", "commit", "-m", f"Session {self.context.session_id}: update"], cwd=str(repo_dir))
@@ -668,19 +1099,19 @@ class ClaudeCodeAdapter:
                         else:
                             logging.error(f"Commit failed for {name}: {e}")
                             raise
-                    
+
                     # Verify we have a valid output remote
                     logging.info(f"Verifying output remote for {name}")
                     remotes_output = await self._run_cmd(["git", "remote", "-v"], cwd=str(repo_dir), capture_stdout=True)
                     logging.info(f"Git remotes for {name}:\n{self._redact_secrets(remotes_output)}")
-                    
+
                     if "output" not in remotes_output:
                         raise RuntimeError(f"Output remote not configured for {name}")
-                    
+
                     logging.info(f"Pushing to output remote: {out_branch} for {name}")
                     await self._send_log(f"Pushing {name} to {out_branch}...")
                     await self._run_cmd(["git", "push", "-u", "output", f"HEAD:{out_branch}"], cwd=str(repo_dir))
-                    
+
                     logging.info(f"Push completed for {name}")
                     await self._send_log(f"✓ Push completed for {name}")
 
@@ -704,10 +1135,10 @@ class ClaudeCodeAdapter:
         if not output_repo_raw:
             logging.info("No OUTPUT_REPO_URL configured, skipping legacy single-repo push")
             return
-        
+
         # Add token to output URL
         output_repo = self._url_with_token(output_repo_raw, token) if token else output_repo_raw
-        
+
         output_branch = os.getenv("OUTPUT_BRANCH", "").strip() or f"sessions/{self.context.session_id}"
         input_repo = os.getenv("INPUT_REPO_URL", "").strip()
         input_branch = os.getenv("INPUT_BRANCH", "").strip()
@@ -717,20 +1148,20 @@ class ClaudeCodeAdapter:
             if not status.strip():
                 await self._send_log({"level": "system", "message": "No changes to push."})
                 return
-            
+
             await self._send_log("Committing and pushing changes...")
             logging.info("Configuring output remote with authentication")
-            
+
             # Reconfigure output remote with token before push
             await self._run_cmd(["git", "remote", "remove", "output"], cwd=str(workspace), ignore_errors=True)
             await self._run_cmd(["git", "remote", "add", "output", output_repo], cwd=str(workspace))
-            
+
             logging.info(f"Checking out branch {output_branch}")
             await self._run_cmd(["git", "checkout", "-B", output_branch], cwd=str(workspace))
-            
+
             logging.info("Staging all changes")
             await self._run_cmd(["git", "add", "-A"], cwd=str(workspace))
-            
+
             logging.info("Committing changes")
             try:
                 await self._run_cmd(["git", "commit", "-m", f"Session {self.context.session_id}: update"], cwd=str(workspace))
@@ -742,19 +1173,19 @@ class ClaudeCodeAdapter:
                 else:
                     logging.error(f"Commit failed: {e}")
                     raise
-            
+
             # Verify we have a valid output remote
             logging.info("Verifying output remote")
             remotes_output = await self._run_cmd(["git", "remote", "-v"], cwd=str(workspace), capture_stdout=True)
             logging.info(f"Git remotes:\n{self._redact_secrets(remotes_output)}")
-            
+
             if "output" not in remotes_output:
                 raise RuntimeError("Output remote not configured")
-            
+
             logging.info(f"Pushing to output remote: {output_branch}")
             await self._send_log(f"Pushing to {output_branch}...")
             await self._run_cmd(["git", "push", "-u", "output", f"HEAD:{output_branch}"], cwd=str(workspace))
-            
+
             logging.info("Push completed")
             await self._send_log("✓ Push completed")
 
@@ -908,7 +1339,7 @@ class ClaudeCodeAdapter:
         status_url = self._compute_status_url()
         if not status_url:
             return
-        
+
         # Transform status URL to patch endpoint
         try:
             from urllib.parse import urlparse as _up, urlunparse as _uu
@@ -918,7 +1349,7 @@ class ClaudeCodeAdapter:
             if new_path.endswith("/status"):
                 new_path = new_path[:-7]
             url = _uu((p.scheme, p.netloc, new_path, '', '', ''))
-            
+
             # JSON merge patch to update annotations
             patch = _json.dumps({
                 "metadata": {
@@ -927,15 +1358,15 @@ class ClaudeCodeAdapter:
                     }
                 }
             }).encode('utf-8')
-            
+
             req = _urllib_request.Request(url, data=patch, headers={
                 'Content-Type': 'application/merge-patch+json'
             }, method='PATCH')
-            
+
             token = (os.getenv('BOT_TOKEN') or '').strip()
             if token:
                 req.add_header('Authorization', f'Bearer {token}')
-            
+
             loop = asyncio.get_event_loop()
             def _do():
                 try:
@@ -946,11 +1377,11 @@ class ClaudeCodeAdapter:
                 except Exception as e:
                     logging.error(f"Annotation update failed: {e}")
                     return False
-            
+
             await loop.run_in_executor(None, _do)
         except Exception as e:
             logging.error(f"Failed to update annotation: {e}")
-    
+
     async def _update_cr_status(self, fields: dict, blocking: bool = False):
         """Update CR status. Set blocking=True for critical final updates before container exit."""
         url = self._compute_status_url()
@@ -991,7 +1422,7 @@ class ClaudeCodeAdapter:
         # Redact secrets from command for logging
         cmd_safe = [self._redact_secrets(str(arg)) for arg in cmd]
         logging.info(f"Running command: {' '.join(cmd_safe)}")
-        
+
         proc = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
@@ -1001,18 +1432,18 @@ class ClaudeCodeAdapter:
         stdout_data, stderr_data = await proc.communicate()
         stdout_text = stdout_data.decode("utf-8", errors="replace")
         stderr_text = stderr_data.decode("utf-8", errors="replace")
-        
+
         # Log output for debugging (redacted)
         if stdout_text.strip():
             logging.info(f"Command stdout: {self._redact_secrets(stdout_text.strip())}")
         if stderr_text.strip():
             logging.info(f"Command stderr: {self._redact_secrets(stderr_text.strip())}")
-            
+
         if proc.returncode != 0 and not ignore_errors:
             raise RuntimeError(stderr_text or f"Command failed: {' '.join(cmd_safe)}")
-        
+
         logging.info(f"Command completed with return code: {proc.returncode}")
-        
+
         if capture_stdout:
             return stdout_text
         return ""
@@ -1048,7 +1479,7 @@ class ClaudeCodeAdapter:
 
     async def _send_log(self, payload):
         """Send a system-level message. Accepts either a string or a dict payload.
-        
+
         Args:
             payload: String message or dict with 'message' key
         """
@@ -1061,12 +1492,12 @@ class ClaudeCodeAdapter:
             text = str(payload.get("message", ""))
         else:
             text = str(payload)
-        
+
         # Create payload dict
         message_payload = {
             "message": text
         }
-        
+
         await self.shell._send_message(
             MessageType.SYSTEM_MESSAGE,
             message_payload,
@@ -1106,13 +1537,13 @@ class ClaudeCodeAdapter:
         if not status_url:
             logging.warning("Cannot fetch SDK session ID: status URL not available")
             return ""
-        
+
         try:
             # Transform status URL to point to parent session
             from urllib.parse import urlparse as _up, urlunparse as _uu
             p = _up(status_url)
             path_parts = [pt for pt in p.path.split('/') if pt]
-            
+
             if 'projects' in path_parts and 'agentic-sessions' in path_parts:
                 proj_idx = path_parts.index('projects')
                 project = path_parts[proj_idx + 1] if len(path_parts) > proj_idx + 1 else ''
@@ -1126,12 +1557,12 @@ class ClaudeCodeAdapter:
         except Exception as e:
             logging.error(f"Failed to construct session URL: {e}")
             return ""
-        
+
         req = _urllib_request.Request(url, headers={'Content-Type': 'application/json'}, method='GET')
         bot = (os.getenv('BOT_TOKEN') or '').strip()
         if bot:
             req.add_header('Authorization', f'Bearer {bot}')
-        
+
         loop = asyncio.get_event_loop()
         def _do_req():
             try:
@@ -1143,18 +1574,18 @@ class ClaudeCodeAdapter:
             except Exception as e:
                 logging.warning(f"SDK session ID fetch failed: {e}")
                 return ''
-        
+
         resp_text = await loop.run_in_executor(None, _do_req)
         if not resp_text:
             return ""
-        
+
         try:
             data = _json.loads(resp_text)
             # Look for SDK session ID in annotations (persists across restarts)
             metadata = data.get('metadata', {})
             annotations = metadata.get('annotations', {})
             sdk_session_id = annotations.get('ambient-code.io/sdk-session-id', '')
-            
+
             if sdk_session_id:
                 # Validate it's a UUID
                 if '-' in sdk_session_id and len(sdk_session_id) == 36:
@@ -1171,18 +1602,18 @@ class ClaudeCodeAdapter:
             return ""
 
     async def _fetch_github_token(self) -> str:
-        # Try cached value from env first
+        # Try cached value from env first (GITHUB_TOKEN from ambient-non-vertex-integrations)
         cached = os.getenv("GITHUB_TOKEN", "").strip()
         if cached:
             logging.info("Using GITHUB_TOKEN from environment")
             return cached
-        
+
         # Build mint URL from status URL if available
         status_url = self._compute_status_url()
         if not status_url:
             logging.warning("Cannot fetch GitHub token: status URL not available")
             return ""
-        
+
         try:
             from urllib.parse import urlparse as _up, urlunparse as _uu
             p = _up(status_url)
@@ -1196,7 +1627,7 @@ class ClaudeCodeAdapter:
         except Exception as e:
             logging.error(f"Failed to construct token URL: {e}")
             return ""
-        
+
         req = _urllib_request.Request(url, data=b"{}", headers={'Content-Type': 'application/json'}, method='POST')
         bot = (os.getenv('BOT_TOKEN') or '').strip()
         if bot:
@@ -1204,7 +1635,7 @@ class ClaudeCodeAdapter:
             logging.debug("Using BOT_TOKEN for authentication")
         else:
             logging.warning("No BOT_TOKEN available for token fetch")
-        
+
         loop = asyncio.get_event_loop()
         def _do_req():
             try:
@@ -1213,12 +1644,12 @@ class ClaudeCodeAdapter:
             except Exception as e:
                 logging.warning(f"GitHub token fetch failed: {e}")
                 return ''
-        
+
         resp_text = await loop.run_in_executor(None, _do_req)
         if not resp_text:
             logging.warning("Empty response from token endpoint")
             return ""
-        
+
         try:
             data = _json.loads(resp_text)
             token = str(data.get('token') or '')
@@ -1269,13 +1700,48 @@ class ClaudeCodeAdapter:
         msg_type = message.get('type', '')
 
         # Queue interactive messages for processing loop
-        if msg_type in ('user_message', 'interrupt', 'end_session', 'terminate', 'stop'):
+        if msg_type in ('user_message', 'interrupt', 'end_session', 'terminate', 'stop', 'workflow_change', 'repo_added', 'repo_removed'):
             await self._incoming_queue.put(message)
             logging.debug(f"Queued incoming message: {msg_type}")
             return
 
         logging.debug(f"Claude Code adapter received message: {msg_type}")
 
+    def _build_workspace_context_prompt(self, repos_cfg, workflow_name, artifacts_path, ambient_config):
+        """Generate comprehensive system prompt describing workspace layout."""
+        
+        prompt = "You are Claude Code working in a structured development workspace.\n\n"
+        
+        # Current working directory
+        if workflow_name:
+            prompt += "## Current Workflow\n"
+            prompt += f"Working directory: workflows/{workflow_name}/\n"
+            prompt += "This directory contains workflow logic and automation scripts.\n\n"
+        
+        # Artifacts directory
+        prompt += "## Shared Artifacts Directory\n"
+        prompt += f"Location: {artifacts_path}\n"
+        prompt += "Purpose: Create all output artifacts (documents, specs, reports) here.\n"
+        prompt += "This directory persists across workflows and has its own git remote.\n\n"
+        
+        # Available repos
+        if repos_cfg:
+            prompt += "## Available Code Repositories\n"
+            for i, repo in enumerate(repos_cfg):
+                name = repo.get('name', f'repo-{i}')
+                prompt += f"- {name}/\n"
+            prompt += "\nThese repositories contain source code you can read or modify.\n"
+            prompt += "Each has its own git configuration and remote.\n\n"
+        
+        # Workflow-specific instructions
+        if ambient_config.get("systemPrompt"):
+            prompt += f"## Workflow Instructions\n{ambient_config['systemPrompt']}\n\n"
+        
+        prompt += "## Navigation\n"
+        prompt += "All directories are accessible via relative or absolute paths.\n"
+        
+        return prompt
+    
     def _get_repos_config(self) -> list[dict]:
         """Read repos mapping from REPOS_JSON env if present."""
         try:
@@ -1420,6 +1886,31 @@ class ClaudeCodeAdapter:
         except Exception as e:
             logging.error(f"Error loading MCP config: {e}")
             return None
+
+    def _load_ambient_config(self, cwd_path: str) -> dict:
+        """Load ambient.json configuration from workflow directory.
+        
+        Searches for ambient.json in the .ambient directory relative to the working directory.
+        Returns empty dict if not found (not an error - just use defaults).
+        """
+        try:
+            config_path = Path(cwd_path) / ".ambient" / "ambient.json"
+            
+            if not config_path.exists():
+                logging.info(f"No ambient.json found at {config_path}, using defaults")
+                return {}
+            
+            with open(config_path, 'r') as f:
+                config = _json.load(f)
+                logging.info(f"Loaded ambient.json: name={config.get('name')}, artifactsDir={config.get('artifactsDir')}")
+                return config
+                
+        except _json.JSONDecodeError as e:
+            logging.error(f"Failed to parse ambient.json: {e}")
+            return {}
+        except Exception as e:
+            logging.error(f"Error loading ambient.json: {e}")
+            return {}
 
 
 async def main():

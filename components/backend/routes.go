@@ -2,7 +2,6 @@ package main
 
 import (
 	"ambient-code-backend/handlers"
-	"ambient-code-backend/jira"
 	"ambient-code-backend/websocket"
 
 	"github.com/gin-gonic/gin"
@@ -15,12 +14,24 @@ func registerContentRoutes(r *gin.Engine) {
 	r.POST("/content/github/push", handlers.ContentGitPush)
 	r.POST("/content/github/abandon", handlers.ContentGitAbandon)
 	r.GET("/content/github/diff", handlers.ContentGitDiff)
+	r.GET("/content/git-status", handlers.ContentGitStatus)
+	r.POST("/content/git-configure-remote", handlers.ContentGitConfigureRemote)
+	r.POST("/content/git-sync", handlers.ContentGitSync)
+	r.GET("/content/workflow-metadata", handlers.ContentWorkflowMetadata)
+	r.GET("/content/git-merge-status", handlers.ContentGitMergeStatus)
+	r.POST("/content/git-pull", handlers.ContentGitPull)
+	r.POST("/content/git-push", handlers.ContentGitPushToBranch)
+	r.POST("/content/git-create-branch", handlers.ContentGitCreateBranch)
+	r.GET("/content/git-list-branches", handlers.ContentGitListBranches)
 }
 
-func registerRoutes(r *gin.Engine, jiraHandler *jira.Handler) {
+func registerRoutes(r *gin.Engine) {
 	// API routes
 	api := r.Group("/api")
 	{
+		// Public endpoints (no auth required)
+		api.GET("/workflows/ootb", handlers.ListOOTBWorkflows)
+
 		api.POST("/projects/:projectName/agentic-sessions/:sessionName/github/token", handlers.MintSessionGitHubToken)
 
 		projectGroup := api.Group("/projects/:projectName", handlers.ValidateProjectContext())
@@ -49,30 +60,27 @@ func registerRoutes(r *gin.Engine, jiraHandler *jira.Handler) {
 			projectGroup.POST("/agentic-sessions/:sessionName/github/push", handlers.PushSessionRepo)
 			projectGroup.POST("/agentic-sessions/:sessionName/github/abandon", handlers.AbandonSessionRepo)
 			projectGroup.GET("/agentic-sessions/:sessionName/github/diff", handlers.DiffSessionRepo)
+			projectGroup.GET("/agentic-sessions/:sessionName/git/status", handlers.GetGitStatus)
+			projectGroup.POST("/agentic-sessions/:sessionName/git/configure-remote", handlers.ConfigureGitRemote)
+			projectGroup.POST("/agentic-sessions/:sessionName/git/synchronize", handlers.SynchronizeGit)
+			projectGroup.GET("/agentic-sessions/:sessionName/git/merge-status", handlers.GetGitMergeStatus)
+			projectGroup.POST("/agentic-sessions/:sessionName/git/pull", handlers.GitPullSession)
+			projectGroup.POST("/agentic-sessions/:sessionName/git/push", handlers.GitPushSession)
+			projectGroup.POST("/agentic-sessions/:sessionName/git/create-branch", handlers.GitCreateBranchSession)
+			projectGroup.GET("/agentic-sessions/:sessionName/git/list-branches", handlers.GitListBranchesSession)
 			projectGroup.GET("/agentic-sessions/:sessionName/k8s-resources", handlers.GetSessionK8sResources)
 			projectGroup.POST("/agentic-sessions/:sessionName/spawn-content-pod", handlers.SpawnContentPod)
 			projectGroup.GET("/agentic-sessions/:sessionName/content-pod-status", handlers.GetContentPodStatus)
 			projectGroup.DELETE("/agentic-sessions/:sessionName/content-pod", handlers.DeleteContentPod)
-
-			projectGroup.GET("/rfe-workflows", handlers.ListProjectRFEWorkflows)
-			projectGroup.POST("/rfe-workflows", handlers.CreateProjectRFEWorkflow)
-			projectGroup.GET("/rfe-workflows/:id", handlers.GetProjectRFEWorkflow)
-			projectGroup.PUT("/rfe-workflows/:id", handlers.UpdateProjectRFEWorkflow)
-			projectGroup.GET("/rfe-workflows/:id/summary", handlers.GetProjectRFEWorkflowSummary)
-			projectGroup.DELETE("/rfe-workflows/:id", handlers.DeleteProjectRFEWorkflow)
-			projectGroup.POST("/rfe-workflows/:id/seed", handlers.SeedProjectRFEWorkflow)
-			projectGroup.GET("/rfe-workflows/:id/check-seeding", handlers.CheckProjectRFEWorkflowSeeding)
-			projectGroup.GET("/rfe-workflows/:id/agents", handlers.GetProjectRFEWorkflowAgents)
+			projectGroup.POST("/agentic-sessions/:sessionName/workflow", handlers.SelectWorkflow)
+			projectGroup.GET("/agentic-sessions/:sessionName/workflow/metadata", handlers.GetWorkflowMetadata)
+			projectGroup.POST("/agentic-sessions/:sessionName/repos", handlers.AddRepo)
+			projectGroup.DELETE("/agentic-sessions/:sessionName/repos/:repoName", handlers.RemoveRepo)
 
 			projectGroup.GET("/sessions/:sessionId/ws", websocket.HandleSessionWebSocket)
 			projectGroup.GET("/sessions/:sessionId/messages", websocket.GetSessionMessagesWS)
 			// Removed: /messages/claude-format - Using SDK's built-in resume with persisted ~/.claude state
 			projectGroup.POST("/sessions/:sessionId/messages", websocket.PostSessionMessageWS)
-			projectGroup.POST("/rfe-workflows/:id/jira", jiraHandler.PublishWorkflowFileToJira)
-			projectGroup.GET("/rfe-workflows/:id/jira", handlers.GetWorkflowJira)
-			projectGroup.GET("/rfe-workflows/:id/sessions", handlers.ListProjectRFEWorkflowSessions)
-			projectGroup.POST("/rfe-workflows/:id/sessions/link", handlers.AddProjectRFEWorkflowSession)
-			projectGroup.DELETE("/rfe-workflows/:id/sessions/:sessionName", handlers.RemoveProjectRFEWorkflowSession)
 
 			projectGroup.GET("/permissions", handlers.ListProjectPermissions)
 			projectGroup.POST("/permissions", handlers.AddProjectPermission)
@@ -83,10 +91,10 @@ func registerRoutes(r *gin.Engine, jiraHandler *jira.Handler) {
 			projectGroup.DELETE("/keys/:keyId", handlers.DeleteProjectKey)
 
 			projectGroup.GET("/secrets", handlers.ListNamespaceSecrets)
-			projectGroup.GET("/runner-secrets/config", handlers.GetRunnerSecretsConfig)
-			projectGroup.PUT("/runner-secrets/config", handlers.UpdateRunnerSecretsConfig)
 			projectGroup.GET("/runner-secrets", handlers.ListRunnerSecrets)
 			projectGroup.PUT("/runner-secrets", handlers.UpdateRunnerSecrets)
+			projectGroup.GET("/integration-secrets", handlers.ListIntegrationSecrets)
+			projectGroup.PUT("/integration-secrets", handlers.UpdateIntegrationSecrets)
 		}
 
 		api.POST("/auth/github/install", handlers.LinkGitHubInstallationGlobal)

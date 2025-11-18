@@ -8,7 +8,7 @@ Integrate the vTeam operator into the `crc-start.sh` local development workflow,
 ### What's Already Working
 - ✅ Backend build and deployment via BuildConfig
 - ✅ Frontend build and deployment via BuildConfig
-- ✅ CRD application (agenticsessions, projectsettings, rfeworkflows)
+- ✅ CRD application (agenticsessions, projectsettings)
 - ✅ RBAC for backend service account
 - ✅ Operator Dockerfile exists (`components/operator/Dockerfile`)
 - ✅ Operator manifests exist (`components/manifests/operator-deployment.yaml`)

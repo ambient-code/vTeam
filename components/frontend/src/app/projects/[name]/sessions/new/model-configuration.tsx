@@ -6,11 +6,9 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const models = [
+  { value: "claude-sonnet-4-5", label: "Claude Sonnet 4.5" },
   { value: "claude-opus-4-1", label: "Claude Opus 4.1" },
-  { value: "claude-opus-4-0", label: "Claude Opus 4" },
-  { value: "claude-sonnet-4-0", label: "Claude Sonnet 4" },
-  { value: "claude-3-7-sonnet-latest", label: "Claude Sonnet 3.7" },
-  { value: "claude-3-5-haiku-latest", label: "Claude Haiku 3.5" },
+  { value: "claude-haiku-4-5", label: "Claude Haiku 4.5" },
 ];
 
 type ModelConfigurationProps = {

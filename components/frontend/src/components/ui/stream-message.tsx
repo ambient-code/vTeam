@@ -15,6 +15,21 @@ export type StreamMessageProps = {
   isNewest?: boolean;
 };
 
+const getRandomAgentMessage = () => {
+  const messages = [
+    "The agents are working together on your request...",
+    "One agent is going on a tangent, the others are reeling them back in...",
+    "The agents are collaborating in perfect harmony...",
+    "One agent wishes it could touch grass...",
+    "The agents are debating the best approach (it's getting heated)...",
+    "The agents scheduled a standup, but then realized they don't have feet...",
+    "One agent suggested a pivot to blockchain, but the others vetoed it...",
+    "The agents are having a productive meeting...",
+    "One agent is caffeinated and the others are trying to keep up...",
+    "The agents are brainstorming (if you can call it that)...",
+  ];
+  return messages[Math.floor(Math.random() * messages.length)];
+};
 
 export const StreamMessage: React.FC<StreamMessageProps> = ({ message, onGoToResults, plainCard=false, isNewest=false }) => {
   const isToolUsePair = (m: MessageObject | ToolUseMessages): m is ToolUseMessages =>
@@ -33,7 +48,7 @@ export const StreamMessage: React.FC<StreamMessageProps> = ({ message, onGoToRes
     case "agent_waiting": {
       if (!isNewest) return null;
       return (
-        <span className="text-xs text-gray-500">Waiting for input...</span>
+        <span className="text-xs text-gray-500">{getRandomAgentMessage()}</span>
       )
     }
     case "user_message":

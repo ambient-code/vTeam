@@ -60,3 +60,30 @@ export function useUpdateSecrets() {
     },
   });
 }
+
+// Integration secrets hooks (ambient-non-vertex-integrations)
+
+export function useIntegrationSecrets(projectName: string) {
+  return useQuery({
+    queryKey: ['integration-secrets', projectName],
+    queryFn: () => secretsApi.getIntegrationSecrets(projectName),
+    enabled: !!projectName,
+  });
+}
+
+export function useUpdateIntegrationSecrets() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      projectName,
+      secrets,
+    }: {
+      projectName: string;
+      secrets: secretsApi.Secret[];
+    }) => secretsApi.updateIntegrationSecrets(projectName, secrets),
+    onSuccess: (_, { projectName }) => {
+      queryClient.invalidateQueries({ queryKey: ['integration-secrets', projectName] });
+    },
+  });
+}

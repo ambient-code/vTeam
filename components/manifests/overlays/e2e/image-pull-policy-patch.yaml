@@ -1,0 +1,6 @@
+# Patch to set imagePullPolicy: IfNotPresent for E2E tests
+# Images are loaded directly into kind cluster, use local images first
+# This applies to all deployments (backend, frontend, operator)
+- op: replace
+  path: /spec/template/spec/containers/0/imagePullPolicy
+  value: IfNotPresent

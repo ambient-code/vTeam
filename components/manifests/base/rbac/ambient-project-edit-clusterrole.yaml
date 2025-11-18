@@ -1,0 +1,63 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: ambient-project-edit
+rules:
+# AgenticSessions (create and update - backend SA can also handle CRUD operations)
+- apiGroups: ["vteam.ambient-code"]
+  resources: ["agenticsessions"]
+  verbs: ["get", "list", "watch", "create", "update", "patch"]
+- apiGroups: ["vteam.ambient-code"]
+  resources: ["agenticsessions/status"]
+  verbs: ["get", "list", "watch"]
+# ProjectSettings (read-only)
+- apiGroups: ["vteam.ambient-code"]
+  resources: ["projectsettings"]
+  verbs: ["get", "list", "watch"]
+# OpenShift Projects (read-only to list projects - OpenShift filters to only projects user has access to)
+- apiGroups: ["project.openshift.io"]
+  resources: ["projects"]
+  verbs: ["get", "list", "watch"]
+# ConfigMaps (read Git config during session creation)
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["get"]
+# Secrets (only for creating runner tokens during session provisioning)
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["create"]
+# Jobs (session management - read access for monitoring, delete for cleanup)
+# Note: Job creation is handled by the backend service account, not users
+- apiGroups: ["batch"]
+  resources: ["jobs"]
+  verbs: ["get", "list", "watch", "delete"]
+# Pods (monitoring and logs)
+- apiGroups: [""]
+  resources: ["pods", "pods/log"]
+  verbs: ["get", "list", "watch"]
+# PersistentVolumeClaims (workspace storage - read access for monitoring)
+- apiGroups: [""]
+  resources: ["persistentvolumeclaims"]
+  verbs: ["get", "list", "watch"]
+# Services (content services - read access for monitoring)
+- apiGroups: [""]
+  resources: ["services"]
+  verbs: ["get", "list", "watch"]
+# Deployments (content services - read access for monitoring)
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["get", "list", "watch"]
+# ServiceAccounts (for provisioning runner tokens)
+- apiGroups: [""]
+  resources: ["serviceaccounts"]
+  verbs: ["get", "list", "create", "update", "patch"]
+# RBAC resources (for provisioning runner permissions)
+- apiGroups: ["rbac.authorization.k8s.io"]
+  resources: ["roles", "rolebindings"]
+  verbs: ["get", "list", "create", "update", "patch", "delete"]
+# Token creation for ServiceAccounts
+- apiGroups: [""]
+  resources: ["serviceaccounts/token"]
+  verbs: ["create"]
+
+

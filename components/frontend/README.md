@@ -50,6 +50,31 @@ npm run dev
 # Open http://localhost:3000
 ```
 
+### Development Commands
+
+```bash
+cd components/frontend
+
+# Install dependencies
+npm install
+
+# Development server
+npm run dev
+
+# Build
+npm run build
+
+# Production server
+npm start
+
+# Linting
+npm run lint
+```
+
+**Pre-commit checklist**:
+- Run `npm run build` - must pass with 0 errors, 0 warnings
+- See `DESIGN_GUIDELINES.md` for comprehensive frontend development standards
+
 ### Header forwarding model (dev and prod)
 Next.js API routes forward incoming headers to the backend. They do not auto-inject user identity. In development, you can optionally provide values via environment or `oc`:
 
@@ -67,11 +92,15 @@ In production, put an OAuth/ingress proxy in front of the app to set these heade
 ### Environment variables
 - `BACKEND_URL` (default: `http://localhost:8080/api`)
   - Used by server-side API routes to reach the backend.
+- `FEEDBACK_URL` (optional)
+  - URL for the feedback link in the masthead. If not set, the link will not appear.
 - Optional dev helpers: `OC_USER`, `OC_EMAIL`, `OC_TOKEN`, `ENABLE_OC_WHOAMI=1`
 
 You can also put these in a `.env.local` file in this folder:
 ```
 BACKEND_URL=http://localhost:8080/api
+# Optional: URL for feedback link in masthead
+# FEEDBACK_URL=https://forms.example.com/feedback
 # Optional dev helpers
 # OC_USER=your.name
 # OC_EMAIL=your.name@example.com

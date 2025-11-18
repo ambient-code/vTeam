@@ -1,3 +1,4 @@
+// Package k8s provides Kubernetes client creation and configuration utilities.
 package k8s
 
 import "k8s.io/apimachinery/pkg/runtime/schema"
@@ -17,15 +18,6 @@ func GetProjectSettingsResource() schema.GroupVersionResource {
 		Group:    "vteam.ambient-code",
 		Version:  "v1alpha1",
 		Resource: "projectsettings",
-	}
-}
-
-// GetRFEWorkflowResource returns the GroupVersionResource for RFEWorkflow CRD
-func GetRFEWorkflowResource() schema.GroupVersionResource {
-	return schema.GroupVersionResource{
-		Group:    "vteam.ambient-code",
-		Version:  "v1alpha1",
-		Resource: "rfeworkflows",
 	}
 }
 

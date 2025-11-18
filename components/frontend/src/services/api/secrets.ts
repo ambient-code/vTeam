@@ -75,3 +75,31 @@ export async function updateSecrets(
     { data }
   );
 }
+
+/**
+ * Get integration secrets values (GIT_*, JIRA_*, custom keys)
+ * Hardcoded secret name: "ambient-non-vertex-integrations"
+ */
+export async function getIntegrationSecrets(projectName: string): Promise<Secret[]> {
+  const data = await apiClient.get<Record<string, string>>(
+    `/projects/${projectName}/integration-secrets`
+  );
+  return Object.entries<string>(data || {}).map(([key, value]) => ({ key, value }));
+}
+
+/**
+ * Update integration secrets values (GIT_*, JIRA_*, custom keys)
+ * Hardcoded secret name: "ambient-non-vertex-integrations"
+ */
+export async function updateIntegrationSecrets(
+  projectName: string,
+  secrets: Secret[]
+): Promise<void> {
+  const data: Record<string, string> = Object.fromEntries(
+    secrets.map(s => [s.key, s.value])
+  );
+  await apiClient.put<void, { data: Record<string, string> }>(
+    `/projects/${projectName}/integration-secrets`,
+    { data }
+  );
+}

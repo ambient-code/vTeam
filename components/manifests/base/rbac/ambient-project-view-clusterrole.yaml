@@ -1,0 +1,30 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: ambient-project-view
+rules:
+# AgenticSessions and ProjectSettings (read-only)
+- apiGroups: ["vteam.ambient-code"]
+  resources: ["agenticsessions", "projectsettings"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["vteam.ambient-code"]
+  resources: ["agenticsessions/status", "projectsettings/status"]
+  verbs: ["get", "list", "watch"]
+# OpenShift Projects (read-only to list projects - OpenShift filters to only projects user has access to)
+- apiGroups: ["project.openshift.io"]
+  resources: ["projects"]
+  verbs: ["get", "list", "watch"]
+# Jobs and Pods (monitoring)
+- apiGroups: ["batch"]
+  resources: ["jobs"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["pods", "pods/log"]
+  verbs: ["get", "list", "watch"]
+# PersistentVolumeClaims, Services, Deployments (read-only monitoring)
+- apiGroups: [""]
+  resources: ["persistentvolumeclaims", "services"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["get", "list", "watch"]

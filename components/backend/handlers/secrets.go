@@ -1,9 +1,9 @@
 package handlers
 
 import (
+	"fmt"
 	"log"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -12,9 +12,9 @@ import (
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// Runner secrets management
-// Config is stored in ProjectSettings.spec.runnerSecretsName
-// The Secret lives in the project namespace and stores key/value pairs for runners
+// Two-secret architecture (hardcoded secret names):
+// 1. ambient-runner-secrets: ANTHROPIC_API_KEY only (ignored when Vertex enabled)
+// 2. ambient-non-vertex-integrations: GITHUB_TOKEN, JIRA_*, custom keys (optional, injected if present)
 
 // ListNamespaceSecrets handles GET /api/projects/:projectName/secrets -> { items: [{name, createdAt}] }
 func ListNamespaceSecrets(c *gin.Context) {
@@ -51,106 +51,21 @@ func ListNamespaceSecrets(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"items": items})
 }
 
-// GetRunnerSecretsConfig handles GET /api/projects/:projectName/runner-secrets/config
-func GetRunnerSecretsConfig(c *gin.Context) {
-	projectName := c.Param("projectName")
-	_, reqDyn := GetK8sClientsForRequest(c)
-
-	gvr := GetProjectSettingsResource()
-	// ProjectSettings is a singleton per namespace named 'projectsettings'
-	obj, err := reqDyn.Resource(gvr).Namespace(projectName).Get(c.Request.Context(), "projectsettings", v1.GetOptions{})
-	if err != nil && !errors.IsNotFound(err) {
-		log.Printf("Failed to read ProjectSettings for %s: %v", projectName, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read runner secrets config"})
-		return
-	}
-
-	secretName := ""
-	if obj != nil {
-		if spec, ok := GetSpecMap(obj); ok {
-			if v, ok := spec["runnerSecretsName"].(string); ok {
-				secretName = v
-			}
-		}
-	}
-	c.JSON(http.StatusOK, gin.H{"secretName": secretName})
-}
-
-// UpdateRunnerSecretsConfig handles PUT /api/projects/:projectName/runner-secrets/config { secretName }
-func UpdateRunnerSecretsConfig(c *gin.Context) {
-	projectName := c.Param("projectName")
-	_, reqDyn := GetK8sClientsForRequest(c)
-
-	var req struct {
-		SecretName string `json:"secretName" binding:"required"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	if strings.TrimSpace(req.SecretName) == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "secretName is required"})
-		return
-	}
-
-	// Operator owns ProjectSettings. If it exists, update; otherwise, return not found.
-	gvr := GetProjectSettingsResource()
-	obj, err := reqDyn.Resource(gvr).Namespace(projectName).Get(c.Request.Context(), "projectsettings", v1.GetOptions{})
-	if errors.IsNotFound(err) {
-		c.JSON(http.StatusNotFound, gin.H{"error": "ProjectSettings not found. Ensure the namespace is labeled ambient-code.io/managed=true and wait for operator."})
-		return
-	}
-	if err != nil {
-		log.Printf("Failed to read ProjectSettings for %s: %v", projectName, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read runner secrets config"})
-		return
-	}
-
-	// Update spec.runnerSecretsName
-	spec, ok := GetSpecMap(obj)
-	if !ok {
-		spec = make(map[string]interface{})
-	}
-	if spec == nil {
-		spec = map[string]interface{}{}
-		obj.Object["spec"] = spec
-	}
-	spec["runnerSecretsName"] = req.SecretName
-
-	if _, err := reqDyn.Resource(gvr).Namespace(projectName).Update(c.Request.Context(), obj, v1.UpdateOptions{}); err != nil {
-		log.Printf("Failed to update ProjectSettings for %s: %v", projectName, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update runner secrets config"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"secretName": req.SecretName})
-}
+// Runner secrets (ANTHROPIC_API_KEY only)
+// Hardcoded secret name: "ambient-runner-secrets"
+// Only injected when Vertex is disabled
 
 // ListRunnerSecrets handles GET /api/projects/:projectName/runner-secrets -> { data: { key: value } }
 func ListRunnerSecrets(c *gin.Context) {
 	projectName := c.Param("projectName")
-	reqK8s, reqDyn := GetK8sClientsForRequest(c)
+	reqK8s, _ := GetK8sClientsForRequest(c)
+	if reqK8s == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid or missing token"})
+		c.Abort()
+		return
+	}
 
-	// Read config
-	gvr := GetProjectSettingsResource()
-	obj, err := reqDyn.Resource(gvr).Namespace(projectName).Get(c.Request.Context(), "projectsettings", v1.GetOptions{})
-	if err != nil && !errors.IsNotFound(err) {
-		log.Printf("Failed to read ProjectSettings for %s: %v", projectName, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read runner secrets config"})
-		return
-	}
-	secretName := ""
-	if obj != nil {
-		if spec, ok := GetSpecMap(obj); ok {
-			if v, ok := spec["runnerSecretsName"].(string); ok {
-				secretName = v
-			}
-		}
-	}
-	if secretName == "" {
-		c.JSON(http.StatusOK, gin.H{"data": map[string]string{}})
-		return
-	}
+	const secretName = "ambient-runner-secrets"
 
 	sec, err := reqK8s.CoreV1().Secrets(projectName).Get(c.Request.Context(), secretName, v1.GetOptions{})
 	if err != nil {
@@ -173,7 +88,12 @@ func ListRunnerSecrets(c *gin.Context) {
 // UpdateRunnerSecrets handles PUT /api/projects/:projectName/runner-secrets { data: { key: value } }
 func UpdateRunnerSecrets(c *gin.Context) {
 	projectName := c.Param("projectName")
-	reqK8s, reqDyn := GetK8sClientsForRequest(c)
+	reqK8s, _ := GetK8sClientsForRequest(c)
+	if reqK8s == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid or missing token"})
+		c.Abort()
+		return
+	}
 
 	var req struct {
 		Data map[string]string `json:"data" binding:"required"`
@@ -183,29 +103,22 @@ func UpdateRunnerSecrets(c *gin.Context) {
 		return
 	}
 
-	// Read config for secret name
-	gvr := GetProjectSettingsResource()
-	obj, err := reqDyn.Resource(gvr).Namespace(projectName).Get(c.Request.Context(), "projectsettings", v1.GetOptions{})
-	if err != nil && !errors.IsNotFound(err) {
-		log.Printf("Failed to read ProjectSettings for %s: %v", projectName, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read runner secrets config"})
-		return
+	// Validate that only allowed keys are present in runner secrets
+	allowedKeys := map[string]bool{
+		"ANTHROPIC_API_KEY": true,
+		// Future: "GEMINI_KEY": true, etc.
 	}
-	secretName := ""
-	if obj != nil {
-		if spec, ok := obj.Object["spec"].(map[string]interface{}); ok {
-			if v, ok := spec["runnerSecretsName"].(string); ok {
-				secretName = strings.TrimSpace(v)
-			}
+	for key := range req.Data {
+		if !allowedKeys[key] {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": fmt.Sprintf("Invalid key '%s' for ambient-runner-secrets. Only ANTHROPIC_API_KEY is allowed.", key),
+			})
+			return
 		}
 	}
-	if secretName == "" {
-		secretName = "ambient-runner-secrets"
-	}
 
-	// Do not create/update ProjectSettings here. The operator owns it.
+	const secretName = "ambient-runner-secrets"
 
-	// Try to get existing Secret
 	sec, err := reqK8s.CoreV1().Secrets(projectName).Get(c.Request.Context(), secretName, v1.GetOptions{})
 	if errors.IsNotFound(err) {
 		// Create new Secret
@@ -245,4 +158,97 @@ func UpdateRunnerSecrets(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "runner secrets updated"})
+}
+
+// Integration secrets (GITHUB_TOKEN, JIRA_*, custom keys)
+// Hardcoded secret name: "ambient-non-vertex-integrations"
+// Injected as env vars if present (optional), regardless of Vertex setting
+
+// ListIntegrationSecrets handles GET /api/projects/:projectName/integration-secrets -> { data: { key: value } }
+func ListIntegrationSecrets(c *gin.Context) {
+	projectName := c.Param("projectName")
+	reqK8s, _ := GetK8sClientsForRequest(c)
+	if reqK8s == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid or missing token"})
+		c.Abort()
+		return
+	}
+
+	const secretName = "ambient-non-vertex-integrations"
+
+	sec, err := reqK8s.CoreV1().Secrets(projectName).Get(c.Request.Context(), secretName, v1.GetOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			c.JSON(http.StatusOK, gin.H{"data": map[string]string{}})
+			return
+		}
+		log.Printf("Failed to get Secret %s/%s: %v", projectName, secretName, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read integration secrets"})
+		return
+	}
+
+	out := map[string]string{}
+	for k, v := range sec.Data {
+		out[k] = string(v)
+	}
+	c.JSON(http.StatusOK, gin.H{"data": out})
+}
+
+// UpdateIntegrationSecrets handles PUT /api/projects/:projectName/integration-secrets { data: { key: value } }
+func UpdateIntegrationSecrets(c *gin.Context) {
+	projectName := c.Param("projectName")
+	reqK8s, _ := GetK8sClientsForRequest(c)
+	if reqK8s == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid or missing token"})
+		c.Abort()
+		return
+	}
+
+	var req struct {
+		Data map[string]string `json:"data" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	const secretName = "ambient-non-vertex-integrations"
+
+	sec, err := reqK8s.CoreV1().Secrets(projectName).Get(c.Request.Context(), secretName, v1.GetOptions{})
+	if errors.IsNotFound(err) {
+		newSec := &corev1.Secret{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      secretName,
+				Namespace: projectName,
+				Labels:    map[string]string{"app": "ambient-integration-secrets"},
+				Annotations: map[string]string{
+					"ambient-code.io/runner-secret": "true",
+				},
+			},
+			Type:       corev1.SecretTypeOpaque,
+			StringData: req.Data,
+		}
+		if _, err := reqK8s.CoreV1().Secrets(projectName).Create(c.Request.Context(), newSec, v1.CreateOptions{}); err != nil {
+			log.Printf("Failed to create Secret %s/%s: %v", projectName, secretName, err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create integration secrets"})
+			return
+		}
+	} else if err != nil {
+		log.Printf("Failed to get Secret %s/%s: %v", projectName, secretName, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read integration secrets"})
+		return
+	} else {
+		sec.Type = corev1.SecretTypeOpaque
+		sec.Data = map[string][]byte{}
+		for k, v := range req.Data {
+			sec.Data[k] = []byte(v)
+		}
+		if _, err := reqK8s.CoreV1().Secrets(projectName).Update(c.Request.Context(), sec, v1.UpdateOptions{}); err != nil {
+			log.Printf("Failed to update Secret %s/%s: %v", projectName, secretName, err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update integration secrets"})
+			return
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "integration secrets updated"})
 }

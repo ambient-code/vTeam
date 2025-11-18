@@ -1,10 +1,11 @@
-# Fork PR Support: This workflow now supports pull requests from forked repositories
-# See: https://github.com/anthropics/claude-code-action/issues/339
-# 
-# Three fixes applied:
-# 1. Checkout fork repository (head.repo.full_name)
-# 2. Add github_token to bypass OIDC authentication issues
-# 3. Add allowed_non_write_users to permit fork contributors
+
+# Claude Code Review with Fork Support
+#
+# Uses default workflow token for GitHub operations (comments appear from github-actions[bot])
+# Supports fork PRs and automatically minimizes old review comments
+#
+# Required GitHub Secret:
+# - CLAUDE_CODE_OAUTH_TOKEN: OAuth token for Claude Code
 
 name: Claude Code Review
 
@@ -14,13 +15,6 @@ on:
 
 jobs:
   claude-review:
-    # Optional: Filter by PR author to limit review scope
-    # Uncomment to only run on specific contributors:
-    # if: |
-    #   github.event.pull_request.user.login == 'external-contributor' ||
-    #   github.event.pull_request.user.login == 'new-developer' ||
-    #   github.event.pull_request.author_association == 'FIRST_TIME_CONTRIBUTOR'
-
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -30,32 +24,134 @@ jobs:
       actions: read
 
     steps:
-      - name: Checkout PR head (fork-compatible)
+      - name: Checkout PR head
         uses: actions/checkout@v5
         with:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
 
+      - name: Minimize old Claude review comments
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          REPO="${{ github.repository }}"
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+
+          echo "Finding previous Claude Code Review comments to minimize..."
+          
+          # Get all comment IDs from github-actions[bot] with "Claude Code Review" at the start
+          # Using startswith() to avoid matching code blocks or inline mentions
+          COMMENT_IDS=$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" \
+            --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | startswith("# Claude Code Review"))) | .node_id')
+          
+          if [ -z "$COMMENT_IDS" ]; then
+            echo "No old Claude Code Review comments found"
+            exit 0
+          fi
+          
+          # Minimize each comment with error handling
+          # Use here-string to avoid subshell variable scoping issues with pipe
+          COUNT=0
+          ERRORS=0
+          while read -r id; do
+            if [ -n "$id" ]; then
+              if gh api graphql -f query='mutation($id: ID!) { minimizeComment(input: {subjectId: $id, classifier: OUTDATED}) { minimizedComment { isMinimized } } }' -f id="$id" 2>&1; then
+                echo "✓ Minimized $id"
+                ((COUNT++))
+              else
+                echo "✗ Failed to minimize $id" >&2
+                ((ERRORS++))
+              fi
+            fi
+          done <<< "$COMMENT_IDS"
+          
+          echo "Minimized $COUNT comment(s), $ERRORS error(s)"
       - name: Run Claude Code Review
         id: claude-review
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}  # Fix for OIDC authentication issues with forks
-          allowed_non_write_users: '*'  # Allow fork contributors to trigger reviews (safe for read-only review workflows)
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          allowed_non_write_users: '*'
+          claude_args: |
+            --allowedTools "Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh issue list:*)"
           prompt: |
-            Please review this pull request and provide feedback on:
-            - Code quality and best practices
-            - Potential bugs or issues
-            - Performance considerations
-            - Security concerns
-            - Test coverage
-
-            Use the repository's CLAUDE.md for guidance on style and conventions. Be constructive and helpful in your feedback.
-
-            Use `gh pr comment` with your Bash tool to leave your review as a comment on the PR.
-
-          # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
-          # or https://docs.anthropic.com/en/docs/claude-code/sdk#command-line for available options
-          claude_args: '--allowed-tools "Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*)"'
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+            
+            Perform a comprehensive code review with the following focus areas:
+            
+            1. **Code Quality & Best Practices**
+               - Follow repository's CLAUDE.md guidelines
+               - Clean code principles and design patterns
+               - Proper error handling and edge cases
+               - Code readability and maintainability
+               - TypeScript/Go best practices (see CLAUDE.md)
+            
+            2. **Security**
+               - Potential security vulnerabilities
+               - Input validation and sanitization
+               - Authentication/authorization logic
+               - Sensitive data handling
+               - API security concerns
+            
+            3. **Performance**
+               - Performance bottlenecks
+               - Database query efficiency
+               - Memory leaks or resource issues
+               - React rendering optimizations
+               - API response times
+            
+            4. **Testing**
+               - Test coverage adequacy
+               - Test quality and edge cases
+               - Missing test scenarios
+               - Integration test needs
+            
+            5. **Architecture & Design**
+               - Component structure and organization
+               - API design and contracts
+               - State management patterns
+               - Separation of concerns
+            
+            6. **Documentation**
+               - Code comments and clarity
+               - README updates for new features
+               - API documentation accuracy
+               - Type definitions completeness
+            
+            ---
+            
+            **Review Instructions:**
+            
+            - Use `gh pr comment` for the review comment with this format:
+            
+            # Claude Code Review
+            
+            ## Summary
+            [Brief overview and overall assessment]
+            
+            ## Issues by Severity
+            Categorize findings by severity (omit empty sections):
+            
+            ### 🚫 Blocker Issues
+            [Must fix before merge - security vulnerabilities, breaking changes, data loss risks]
+            
+            ### 🔴 Critical Issues  
+            [Should fix before merge - major bugs, performance issues, significant security concerns]
+            
+            ### 🟡 Major Issues
+            [Important to address - code quality, maintainability, test coverage gaps]
+            
+            ### 🔵 Minor Issues
+            [Nice-to-have - style, minor optimizations, documentation]
+            
+            ## Positive Highlights
+            [Things done well]
+            
+            ## Recommendations
+            [Prioritized action items]
+            
+            Focus on substance. Be constructive and specific.

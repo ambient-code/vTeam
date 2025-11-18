@@ -18,6 +18,9 @@ type EnvConfig = {
   // Version information (public, optional)
   VTEAM_VERSION?: string;
 
+  // Feedback URL (public, optional)
+  FEEDBACK_URL?: string;
+
   // OpenShift identity (server-side only, optional)
   OC_TOKEN?: string;
   OC_USER?: string;
@@ -58,6 +61,7 @@ export const env: EnvConfig = {
   BACKEND_URL: getEnv('BACKEND_URL', 'http://localhost:8080/api'),
   GITHUB_APP_SLUG: getEnv('GITHUB_APP_SLUG', 'ambient-code-vteam'),
   VTEAM_VERSION: getOptionalEnv('VTEAM_VERSION') || 'latest',
+  FEEDBACK_URL: getOptionalEnv('FEEDBACK_URL'),
   OC_TOKEN: getOptionalEnv('OC_TOKEN'),
   OC_USER: getOptionalEnv('OC_USER'),
   OC_EMAIL: getOptionalEnv('OC_EMAIL'),
@@ -71,6 +75,7 @@ export const env: EnvConfig = {
 export const publicEnv = {
   GITHUB_APP_SLUG: env.GITHUB_APP_SLUG,
   VTEAM_VERSION: env.VTEAM_VERSION,
+  FEEDBACK_URL: env.FEEDBACK_URL,
 };
 
 /**

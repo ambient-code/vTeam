@@ -1,0 +1,38 @@
+# Override backend ClusterRole for local dev
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: backend-api
+rules:
+# OpenShift Projects (for listing projects)
+- apiGroups: ["project.openshift.io"]
+  resources: ["projects"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+# Namespaces (fallback for project operations)
+- apiGroups: [""]
+  resources: ["namespaces"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+# ServiceAccounts (for access key management)
+- apiGroups: [""]
+  resources: ["serviceaccounts"]
+  verbs: ["get", "list", "patch", "create", "update", "delete"]
+# Token creation for ServiceAccounts
+- apiGroups: [""]
+  resources: ["serviceaccounts/token"]
+  verbs: ["create"]
+# RBAC resources (for permission management)
+- apiGroups: ["rbac.authorization.k8s.io"]
+  resources: ["roles", "rolebindings"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+# vTeam custom resources
+- apiGroups: ["vteam.ambient-code"]
+  resources: ["agenticsessions", "projectsettings"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["vteam.ambient-code"]
+  resources: ["agenticsessions/status", "projectsettings/status"]
+  verbs: ["get", "update", "patch"]
+# Secrets and ConfigMaps
+- apiGroups: [""]
+  resources: ["secrets", "configmaps"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+

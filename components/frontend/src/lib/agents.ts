@@ -140,24 +140,3 @@ function getCategoryForRole(role: string): string {
   if (role.includes("Content") || role.includes("Documentation")) return "Content";
   return "Process & Leadership";
 }
-
-export const WORKFLOW_PHASE_LABELS = {
-  pre: "⏳ Pre",
-  ideate: "💡 Ideate",
-  specify: "📝 Specify",
-  plan: "🗂️ Plan",
-  tasks: "✅ Tasks",
-  implement: "🚧 Implement",
-  review: "👁️ Review",
-  completed: "🎉 Completed"
-};
-
-export const WORKFLOW_PHASE_DESCRIPTIONS = {
-  ideate: "Collaboratively ideate and define the high-level RFE in rfe.md",
-  specify: "Create comprehensive specifications from different perspectives",
-  plan: "Generate detailed implementation plans with technical approach",
-  tasks: "Break down features into actionable development tasks",
-  implement: "Start implementation session to begin coding based on tasks",
-  review: "Review and finalize all artifacts before implementation",
-  completed: "All phases complete, artifacts pushed to repository"
-};

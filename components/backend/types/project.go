@@ -1,6 +1,6 @@
 package types
 
-// Project management types
+// AmbientProject represents project management types.
 type AmbientProject struct {
 	Name              string            `json:"name"`                  // Kubernetes namespace name
 	DisplayName       string            `json:"displayName"`           // OpenShift display name (empty for k8s)

@@ -1,0 +1,61 @@
+# Patch to add OAuth proxy sidecar to frontend deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+spec:
+  template:
+    spec:
+      containers:
+      # OAuth proxy sidecar
+      - name: oauth-proxy
+        image: quay.io/openshift/origin-oauth-proxy:4.14
+        args:
+        - --http-address=:8443
+        - --https-address=
+        - --provider=openshift
+        - --upstream=http://localhost:3000
+        - --client-id=ambient-frontend
+        - --client-secret-file=/etc/oauth/config/client-secret
+        - --cookie-secret-file=/etc/oauth/config/cookie_secret
+        - --cookie-expire=23h0m0s
+        - --pass-access-token
+        - --scope=user:full
+        - --openshift-delegate-urls={"/":{"resource":"projects","verb":"list"}}
+        - --skip-auth-regex=^/metrics
+        ports:
+        - containerPort: 8443
+          name: dashboard-ui
+        livenessProbe:
+          httpGet:
+            path: /oauth/healthz
+            port: dashboard-ui
+            scheme: HTTP
+          initialDelaySeconds: 30
+          timeoutSeconds: 1
+          periodSeconds: 5
+          successThreshold: 1
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /oauth/healthz
+            port: dashboard-ui
+            scheme: HTTP
+          initialDelaySeconds: 5
+          timeoutSeconds: 1
+          periodSeconds: 5
+          successThreshold: 1
+          failureThreshold: 3
+        volumeMounts:
+        - mountPath: /etc/oauth/config
+          name: oauth-config
+        - mountPath: /etc/tls/private
+          name: proxy-tls
+      volumes:
+      - name: oauth-config
+        secret:
+          secretName: frontend-oauth-config
+      - name: proxy-tls
+        secret:
+          secretName: dashboard-proxy-tls
+

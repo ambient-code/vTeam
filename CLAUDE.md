@@ -29,6 +29,7 @@ Pod Runs Claude CLI → Results Stored in CR → UI Displays Progress
 ### Quick Start - Local Development
 
 **Single command setup with OpenShift Local (CRC):**
+
 ```bash
 # Prerequisites: brew install crc
 # Get free Red Hat pull secret from console.redhat.com/openshift/create/local
@@ -38,6 +39,7 @@ make dev-start
 ```
 
 **Hot-reloading development:**
+
 ```bash
 # Terminal 1
 DEV_MODE=true make dev-start
@@ -87,92 +89,22 @@ cp env.example .env
 make clean
 ```
 
-### Backend Development (Go)
+### Component Development
+
+See component-specific documentation for detailed development commands:
+
+- **Backend** (`components/backend/README.md`): Go API development, testing, linting
+- **Frontend** (`components/frontend/README.md`): NextJS development, see also `DESIGN_GUIDELINES.md`
+- **Operator** (`components/operator/README.md`): Operator development, watch patterns
+- **Claude Code Runner** (`components/runners/claude-code-runner/README.md`): Python runner development
+
+**Common commands**:
 
 ```bash
-cd components/backend
-
-# Build
-make build
-
-# Run locally
-make run
-
-# Run with hot-reload (requires: go install github.com/cosmtrek/air@latest)
-make dev
-
-# Testing
-make test              # Unit + contract tests
-make test-unit         # Unit tests only
-make test-contract     # Contract tests only
-make test-integration  # Integration tests (requires k8s cluster)
-make test-permissions  # RBAC/permission tests
-make test-coverage     # Generate coverage report
-
-# Linting
-make fmt               # Format code
-make vet               # Run go vet
-make lint              # golangci-lint (install with make install-tools)
-
-# Dependencies
-make deps              # Download dependencies
-make deps-update       # Update dependencies
-make deps-verify       # Verify dependencies
-
-# Environment check
-make check-env         # Verify Go, kubectl, docker installed
-```
-
-### Frontend Development (NextJS)
-
-```bash
-cd components/frontend
-
-# Install dependencies
-npm install
-
-# Development server
-npm run dev
-
-# Build
-npm run build
-
-# Production server
-npm start
-
-# Linting
-npm run lint
-```
-
-### Operator Development (Go)
-
-```bash
-cd components/operator
-
-# Build
-go build -o operator .
-
-# Run locally (requires k8s access and CRDs installed)
-go run .
-
-# Testing
-go test ./... -v
-```
-
-### Claude Code Runner (Python)
-
-```bash
-cd components/runners/claude-code-runner
-
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate
-
-# Install dependencies (prefer uv)
-uv pip install -e .
-
-# Run locally (for testing)
-python -m claude_code_runner
+make build-all         # Build all components
+make deploy            # Deploy to cluster
+make test              # Run tests
+make lint              # Lint code
 ```
 
 ### Documentation
@@ -238,6 +170,7 @@ The platform defines three primary CRDs:
 ### Multi-Repo Support
 
 AgenticSessions support operating on multiple repositories simultaneously:
+
 - Each repo has required `input` (URL, branch) and optional `output` (fork/target) configuration
 - `mainRepoIndex` specifies which repo is the Claude working directory (default: 0)
 - Per-repo status tracking: `pushed` or `abandoned`
@@ -250,6 +183,7 @@ AgenticSessions support operating on multiple repositories simultaneously:
 ### Backend API Structure
 
 The Go backend (`components/backend/`) implements:
+
 - **Project-scoped endpoints**: `/api/projects/:project/*` for namespaced resources
 - **Multi-tenant isolation**: Each project maps to a Kubernetes namespace
 - **WebSocket support**: Real-time session updates via `websocket_messaging.go`
@@ -257,6 +191,7 @@ The Go backend (`components/backend/`) implements:
 - **RBAC integration**: OpenShift OAuth for authentication
 
 Main handler logic in `handlers.go` (3906 lines) manages:
+
 - Project CRUD operations
 - AgenticSession lifecycle
 - ProjectSettings management
@@ -265,6 +200,7 @@ Main handler logic in `handlers.go` (3906 lines) manages:
 ### Operator Reconciliation Loop
 
 The Kubernetes operator (`components/operator/`) watches for:
+
 - AgenticSession creation/updates → spawns Jobs with runner pods
 - Job completion → updates CR status with results
 - Timeout handling and cleanup
@@ -272,6 +208,7 @@ The Kubernetes operator (`components/operator/`) watches for:
 ### Runner Execution
 
 The Claude Code runner (`components/runners/claude-code-runner/`) provides:
+
 - Claude Code SDK integration (`claude-code-sdk>=0.0.23`)
 - Workspace synchronization via PVC proxy
 - Multi-agent collaboration capabilities
@@ -280,31 +217,36 @@ The Claude Code runner (`components/runners/claude-code-runner/`) provides:
 ## Configuration Standards
 
 ### Python
+
 - **Virtual environments**: Always use `python -m venv venv` or `uv venv`
 - **Package manager**: Prefer `uv` over `pip`
-- **Formatting**: black (88 char line length, double quotes)
+- **Formatting**: black (double quotes)
 - **Import sorting**: isort with black profile
-- **Linting**: flake8 with line length 88, ignore E203,W503
+- **Linting**: flake8 (ignore E203, W503)
 
 ### Go
+
 - **Formatting**: `go fmt ./...` (enforced)
 - **Linting**: golangci-lint (install via `make install-tools`)
 - **Testing**: Table-driven tests with subtests
 - **Error handling**: Explicit error returns, no panic in production code
 
 ### Container Images
+
 - **Default registry**: `quay.io/ambient_code`
 - **Image tags**: Component-specific (vteam_frontend, vteam_backend, vteam_operator, vteam_claude_runner)
 - **Platform**: Default `linux/amd64`, ARM64 supported via `PLATFORM=linux/arm64`
 - **Build tool**: Docker or Podman (`CONTAINER_ENGINE=podman`)
 
 ### Git Workflow
+
 - **Default branch**: `main`
 - **Feature branches**: Required for development
 - **Commit style**: Conventional commits (squashed on merge)
 - **Branch verification**: Always check current branch before file modifications
 
 ### Kubernetes/OpenShift
+
 - **Default namespace**: `ambient-code` (production), `vteam-dev` (local dev)
 - **CRD group**: `vteam.ambient-code`
 - **API version**: `v1alpha1` (current)
@@ -348,6 +290,7 @@ The Claude Code runner (`components/runners/claude-code-runner/`) provides:
 ### Package Organization
 
 **Backend Structure** (`components/backend/`):
+
 ```
 backend/
 ├── handlers/          # HTTP handlers grouped by resource
@@ -369,6 +312,7 @@ backend/
 ```
 
 **Operator Structure** (`components/operator/`):
+
 ```
 operator/
 ├── internal/
@@ -380,6 +324,7 @@ operator/
 ```
 
 **Rules**:
+
 - Handlers contain HTTP/watch logic ONLY
 - Types are pure data structures
 - Business logic in separate service packages
@@ -388,6 +333,7 @@ operator/
 ### Kubernetes Client Patterns
 
 **User-Scoped Clients** (for API operations):
+
 ```go
 // ALWAYS use for user-initiated operations (list, get, create, update, delete)
 reqK8s, reqDyn := GetK8sClientsForRequest(c)
@@ -401,6 +347,7 @@ list, err := reqDyn.Resource(gvr).Namespace(project).List(ctx, v1.ListOptions{})
 ```
 
 **Backend Service Account Clients** (limited use cases):
+
 ```go
 // ONLY use for:
 // 1. Writing CRs after validation (handlers/sessions.go:417)
@@ -411,6 +358,7 @@ created, err := DynamicClient.Resource(gvr).Namespace(project).Create(ctx, obj, 
 ```
 
 **Never**:
+
 - ❌ Fall back to service account when user token is invalid
 - ❌ Use service account for list/get operations on behalf of users
 - ❌ Skip RBAC checks by using elevated permissions
@@ -418,6 +366,7 @@ created, err := DynamicClient.Resource(gvr).Namespace(project).Create(ctx, obj, 
 ### Error Handling Patterns
 
 **Handler Errors**:
+
 ```go
 // Pattern 1: Resource not found
 if errors.IsNotFound(err) {
@@ -440,6 +389,7 @@ if err := updateStatus(...); err != nil {
 ```
 
 **Operator Errors**:
+
 ```go
 // Pattern 1: Resource deleted during processing (non-fatal)
 if errors.IsNotFound(err) {
@@ -459,6 +409,7 @@ if err != nil {
 ```
 
 **Never**:
+
 - ❌ Silent failures (always log errors)
 - ❌ Generic error messages ("operation failed")
 - ❌ Retrying indefinitely without backoff
@@ -466,6 +417,7 @@ if err != nil {
 ### Resource Management
 
 **OwnerReferences Pattern**:
+
 ```go
 // Always set owner when creating child resources
 ownerRef := v1.OwnerReference{
@@ -489,6 +441,7 @@ job := &batchv1.Job{
 ```
 
 **Cleanup Patterns**:
+
 ```go
 // Rely on OwnerReferences for automatic cleanup, but delete explicitly when needed
 policy := v1.DeletePropagationBackground
@@ -504,6 +457,7 @@ if err != nil && !errors.IsNotFound(err) {
 ### Security Patterns
 
 **Token Handling**:
+
 ```go
 // Extract token from Authorization header
 rawAuth := c.GetHeader("Authorization")
@@ -519,6 +473,7 @@ log.Printf("Processing request with token (len=%d)", len(token))
 ```
 
 **RBAC Enforcement**:
+
 ```go
 // Always check permissions before operations
 ssar := &authv1.SelfSubjectAccessReview{
@@ -539,6 +494,7 @@ if err != nil || !res.Status.Allowed {
 ```
 
 **Container Security**:
+
 ```go
 // Always set SecurityContext for Job pods
 SecurityContext: &corev1.SecurityContext{
@@ -553,6 +509,7 @@ SecurityContext: &corev1.SecurityContext{
 ### API Design Patterns
 
 **Project-Scoped Endpoints**:
+
 ```go
 // Standard pattern: /api/projects/:projectName/resource
 r.GET("/api/projects/:projectName/agentic-sessions", ValidateProjectContext(), ListSessions)
@@ -566,6 +523,7 @@ r.GET("/api/projects/:projectName/agentic-sessions/:sessionName", ValidateProjec
 ```
 
 **Middleware Chain**:
+
 ```go
 // Order matters: Recovery → Logging → CORS → Identity → Validation → Handler
 r.Use(gin.Recovery())
@@ -576,6 +534,7 @@ r.Use(ValidateProjectContext())       // RBAC check
 ```
 
 **Response Patterns**:
+
 ```go
 // Success with data
 c.JSON(http.StatusOK, gin.H{"items": sessions})
@@ -593,6 +552,7 @@ c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
 ### Operator Patterns
 
 **Watch Loop with Reconnection**:
+
 ```go
 func WatchAgenticSessions() {
     gvr := types.GetAgenticSessionResource()
@@ -625,6 +585,7 @@ func WatchAgenticSessions() {
 ```
 
 **Reconciliation Pattern**:
+
 ```go
 func handleEvent(obj *unstructured.Unstructured) error {
     name := obj.GetName()
@@ -661,6 +622,7 @@ func handleEvent(obj *unstructured.Unstructured) error {
 ```
 
 **Status Updates** (use UpdateStatus subresource):
+
 ```go
 func updateAgenticSessionStatus(namespace, name string, updates map[string]interface{}) error {
     gvr := types.GetAgenticSessionResource()
@@ -690,6 +652,7 @@ func updateAgenticSessionStatus(namespace, name string, updates map[string]inter
 ```
 
 **Goroutine Monitoring**:
+
 ```go
 // Start background monitoring (operator/internal/handlers/sessions.go:477)
 go monitorJob(jobName, sessionName, namespace)
@@ -740,6 +703,7 @@ Before committing backend or operator code, verify:
 - [ ] **Code Quality**: Ran all linting checks locally (see below)
 
 **Run these commands before committing:**
+
 ```bash
 # Backend
 cd components/backend
@@ -755,6 +719,7 @@ golangci-lint run
 ```
 
 **Auto-format code:**
+
 ```bash
 gofmt -w components/backend components/operator
 ```
@@ -764,6 +729,7 @@ gofmt -w components/backend components/operator
 ### Common Mistakes to Avoid
 
 **Backend**:
+
 - ❌ Using service account client for user operations (always use user token)
 - ❌ Not checking if user-scoped client creation succeeded
 - ❌ Logging full token values (use `len(token)` instead)
@@ -774,6 +740,7 @@ gofmt -w components/backend components/operator
 - ❌ Exposing internal error details to API responses (use generic messages)
 
 **Operator**:
+
 - ❌ Not reconnecting watch on channel close
 - ❌ Processing events without verifying resource still exists
 - ❌ Updating status on main object instead of /status subresource
@@ -788,6 +755,7 @@ gofmt -w components/backend components/operator
 Study these files to understand established patterns:
 
 **Backend**:
+
 - `components/backend/handlers/sessions.go` - Complete session lifecycle, user/SA client usage
 - `components/backend/handlers/middleware.go` - Auth patterns, token extraction, RBAC
 - `components/backend/handlers/helpers.go` - Utility functions (StringPtr, BoolPtr)
@@ -796,6 +764,7 @@ Study these files to understand established patterns:
 - `components/backend/routes.go` - HTTP route definitions and registration
 
 **Operator**:
+
 - `components/operator/internal/handlers/sessions.go` - Watch loop, reconciliation, status updates
 - `components/operator/internal/config/config.go` - K8s client initialization
 - `components/operator/internal/types/resources.go` - GVR definitions
@@ -804,67 +773,14 @@ Study these files to understand established patterns:
 ## GitHub Actions CI/CD
 
 ### Component Build Pipeline (`.github/workflows/components-build-deploy.yml`)
+
 - **Change detection**: Only builds modified components (frontend, backend, operator, claude-runner)
 - **Multi-platform builds**: linux/amd64 and linux/arm64
 - **Registry**: Pushes to `quay.io/ambient_code` on main branch
 - **PR builds**: Build-only, no push on pull requests
 
-### Go Linting Pipeline (`.github/workflows/go-lint.yml`)
-Enforces Go code quality standards for backend and operator components:
-
-**Triggers**:
-- Pull requests to `main`
-- Pushes to `main`
-- Manual workflow dispatch
-
-**Features**:
-- **Smart change detection**: Only runs when Go files are modified (`components/backend/**/*.go`, `components/operator/**/*.go`)
-- **Parallel execution**: Backend and operator lint jobs run concurrently
-- **Three-stage validation**:
-  1. `gofmt -l .` - Ensures all code is properly formatted
-  2. `go vet ./...` - Detects suspicious constructs
-  3. `golangci-lint run` - Comprehensive linting with 15+ linters
-
-**Configuration**:
-- Backend: `components/backend/.golangci.yml`
-- Operator: `components/operator/.golangci.yml`
-
-**Enabled Linters**:
-- `govet` - Reports suspicious constructs
-- `ineffassign` - Detect ineffectual assignments
-- `staticcheck` - Advanced static analysis (all checks except SA1019 deprecation warnings)
-- `unused` - Check for unused constants, variables, functions
-- `misspell` - Find commonly misspelled words
-
-**Disabled Linters**:
-- `errcheck` - Too many false positives with defer cleanup patterns
-
-**staticcheck Configuration**:
-- Only SA1019 (deprecation warnings) is excluded
-- All code quality checks (QF*) are enabled and enforced
-- All style checks (ST*) are enabled and enforced
-
-**Local Testing** (run before committing):
-```bash
-# Backend
-cd components/backend
-gofmt -l .                    # Check formatting
-go vet ./...                  # Run go vet
-golangci-lint run            # Run full linting suite
-
-# Operator
-cd components/operator
-gofmt -l .
-go vet ./...
-golangci-lint run
-```
-
-**Installation**:
-```bash
-go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
-```
-
 ### Other Workflows
+
 - **claude.yml**: Claude Code integration
 - **test-local-dev.yml**: Local development environment validation
 - **dependabot-auto-merge.yml**: Automated dependency updates
@@ -872,7 +788,75 @@ go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
 
 ## Testing Strategy
 
+### E2E Tests (Cypress + Kind)
+
+**Purpose**: Automated end-to-end testing of the complete vTeam stack in a Kubernetes environment.
+
+**Location**: `e2e/`
+
+**Quick Start**:
+
+```bash
+make e2e-test CONTAINER_ENGINE=podman  # Or docker
+```
+
+**What Gets Tested**:
+
+- ✅ Full vTeam deployment in kind (Kubernetes in Docker)
+- ✅ Frontend UI rendering and navigation
+- ✅ Backend API connectivity
+- ✅ Project creation workflow (main user journey)
+- ✅ Authentication with ServiceAccount tokens
+- ✅ Ingress routing
+- ✅ All pods deploy and become ready
+
+**What Doesn't Get Tested**:
+
+- ❌ OAuth proxy flow (uses direct token auth for simplicity)
+- ❌ Session pod execution (requires Anthropic API key)
+- ❌ Multi-user scenarios
+
+**Test Suite** (`e2e/cypress/e2e/vteam.cy.ts`):
+
+1. UI loads with token authentication
+2. Navigate to new project page
+3. Create a new project
+4. List created projects
+5. Backend API cluster-info endpoint
+
+**CI Integration**: Tests run automatically on all PRs via GitHub Actions (`.github/workflows/e2e.yml`)
+
+**Key Implementation Details**:
+
+- **Architecture**: Frontend without oauth-proxy, direct token injection via environment variables
+- **Authentication**: Test user ServiceAccount with cluster-admin permissions
+- **Token Handling**: Frontend deployment includes `OC_TOKEN`, `OC_USER`, `OC_EMAIL` env vars
+- **Podman Support**: Auto-detects runtime, uses ports 8080/8443 for rootless Podman
+- **Ingress**: Standard nginx-ingress with path-based routing
+
+**Adding New Tests**:
+
+```typescript
+it('should test new feature', () => {
+  cy.visit('/some-page')
+  cy.contains('Expected Content').should('be.visible')
+  cy.get('#button').click()
+  // Auth header automatically injected via beforeEach interceptor
+})
+```
+
+**Debugging Tests**:
+
+```bash
+cd e2e
+source .env.test
+CYPRESS_TEST_TOKEN="$TEST_TOKEN" CYPRESS_BASE_URL="http://vteam.local:8080" npm run test:headed
+```
+
+**Documentation**: See `e2e/README.md` and `docs/testing/e2e-guide.md` for comprehensive testing guide.
+
 ### Backend Tests (Go)
+
 - **Unit tests** (`tests/unit/`): Isolated component logic
 - **Contract tests** (`tests/contract/`): API contract validation
 - **Integration tests** (`tests/integration/`): End-to-end with real k8s cluster
@@ -881,16 +865,19 @@ go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
   - Permission tests validate RBAC boundaries
 
 ### Frontend Tests (NextJS)
-- Jest for component testing
-- Cypress for e2e testing (when configured)
+
+- Jest for component testing (when configured)
+- Cypress for e2e testing (see E2E Tests section above)
 
 ### Operator Tests (Go)
+
 - Controller reconciliation logic tests
 - CRD validation tests
 
 ## Documentation Structure
 
 The MkDocs site (`mkdocs.yml`) provides:
+
 - **User Guide**: Getting started, RFE creation, agent framework, configuration
 - **Developer Guide**: Setup, architecture, plugin development, API reference, testing
 - **Labs**: Hands-on exercises (basic → advanced → production)
@@ -902,24 +889,28 @@ The MkDocs site (`mkdocs.yml`) provides:
 ### Director Training Labs
 
 Special lab track for leadership training located in `docs/labs/director-training/`:
+
 - Structured exercises for understanding the vTeam system from a strategic perspective
 - Validation reports for tracking completion and understanding
 
 ## Production Considerations
 
 ### Security
+
 - **API keys**: Store in Kubernetes Secrets, managed via ProjectSettings CR
 - **RBAC**: Namespace-scoped isolation prevents cross-project access
 - **OAuth integration**: OpenShift OAuth for cluster-based authentication (see `docs/OPENSHIFT_OAUTH.md`)
 - **Network policies**: Component isolation and secure communication
 
 ### Monitoring
+
 - **Health endpoints**: `/health` on backend API
 - **Logs**: Structured logging with OpenShift integration
 - **Metrics**: Prometheus-compatible (when configured)
 - **Events**: Kubernetes events for operator actions
 
 ### Scaling
+
 - **Horizontal Pod Autoscaling**: Configure based on CPU/memory
 - **Job concurrency**: Operator manages concurrent session execution
 - **Resource limits**: Set appropriate requests/limits per component
@@ -929,127 +920,25 @@ Special lab track for leadership training located in `docs/labs/director-trainin
 
 ## Frontend Development Standards
 
-**IMPORTANT**: When working on frontend code in `components/frontend/`, you MUST follow these strict guidelines. See `components/frontend/DESIGN_GUIDELINES.md` for complete details.
+**See `components/frontend/DESIGN_GUIDELINES.md` for complete frontend development patterns.**
 
-### Critical Rules (Never Violate)
+### Critical Rules (Quick Reference)
 
-1. **Zero `any` Types**
-   - FORBIDDEN: `data: any`, `Control<any>` without eslint-disable
-   - REQUIRED: Use proper types, `unknown`, or generic constraints
-   - Exception: Add `// eslint-disable-next-line @typescript-eslint/no-explicit-any` ONLY when truly necessary
-
-2. **Shadcn UI Components Only**
-   - FORBIDDEN: Creating custom UI from scratch with raw divs/buttons
-   - REQUIRED: Use `@/components/ui/*` Shadcn components as foundation
-   - Example: `import { Button } from '@/components/ui/button'`
-
-3. **React Query for ALL Data Operations**
-   - FORBIDDEN: Manual `fetch()` calls in components, manual loading states
-   - REQUIRED: Use React Query hooks from `@/services/queries/*`
-   - Example: `const { data } = useProjects()`, `mutation.mutate(data)`
-
-4. **Use `type` over `interface`**
-   - FORBIDDEN: `interface ButtonProps { ... }`
-   - REQUIRED: `type ButtonProps = { ... }`
-
-5. **Service Layer Architecture**
-   - API functions in `src/services/api/*.ts`
-   - React Query hooks in `src/services/queries/*.ts`
-   - No direct fetch() in components (except API routes)
-
-### File Organization
-
-**Component Colocation Rule**: Single-use components MUST be colocated with their page. Reusable components go in `src/components/`.
-
-```
-✅ CORRECT:
-src/app/projects/[name]/sessions/[sessionName]/
-├── page.tsx
-├── loading.tsx
-├── error.tsx
-├── components/          # Only used in this page
-│   ├── session-header.tsx
-│   └── message-list.tsx
-└── hooks/               # Only used in this page
-
-src/components/
-├── ui/                  # Shadcn components
-├── empty-state.tsx     # Reusable across app
-└── breadcrumbs.tsx     # Reusable across app
-
-❌ WRONG:
-src/components/
-├── session-header.tsx  # Should be colocated
-└── message-list.tsx    # Should be colocated
-```
-
-### Next.js App Router Requirements
-
-Every route MUST have:
-- `page.tsx` - Main page component
-- `loading.tsx` - Loading UI with Skeleton components
-- `error.tsx` - Error boundary with user-friendly message
-- `not-found.tsx` - 404 UI (for dynamic routes)
-
-### UX Standards (Always Required)
-
-1. **Button States**: ALL buttons must show loading state during async operations
-   ```tsx
-   <Button disabled={mutation.isPending}>
-     {mutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-     {mutation.isPending ? 'Creating...' : 'Create'}
-   </Button>
-   ```
-
-2. **Empty States**: ALL lists must have empty states
-   ```tsx
-   if (!projects?.length) {
-     return <EmptyState title="No projects yet" ... />;
-   }
-   ```
-
-3. **Breadcrumbs**: All nested pages must display breadcrumbs
-
-4. **Loading States**: Use Skeleton components, NOT spinners
-
-### Component Development Rules
-
-- **Size Limit**: Components over 200 lines MUST be broken down
-- **Extract Logic**: Repeated logic MUST be extracted into custom hooks
-- **TypeScript Strict**: No `any` types, proper type safety throughout
-
-### React Query Patterns
-
-**Query Keys**: Use structured query keys with a key factory
-```tsx
-const projectKeys = {
-  all: ['projects'] as const,
-  lists: () => [...projectKeys.all, 'list'] as const,
-  detail: (name: string) => [...projectKeys.all, 'detail', name] as const,
-};
-```
-
-**Mutations**: All mutations MUST invalidate relevant queries
-```tsx
-export function useCreateProject() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (data) => projectsApi.create(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: projectKeys.lists() });
-    },
-  });
-}
-```
+1. **Zero `any` Types** - Use proper types, `unknown`, or generic constraints
+2. **Shadcn UI Components Only** - Use `@/components/ui/*` components, no custom UI from scratch
+3. **React Query for ALL Data Operations** - Use hooks from `@/services/queries/*`, no manual `fetch()`
+4. **Use `type` over `interface`** - Always prefer `type` for type definitions
+5. **Colocate Single-Use Components** - Keep page-specific components with their pages
 
 ### Pre-Commit Checklist for Frontend
 
 Before committing frontend code:
+
 - [ ] Zero `any` types (or justified with eslint-disable)
 - [ ] All UI uses Shadcn components
 - [ ] All data operations use React Query
 - [ ] Components under 200 lines
-- [ ] Single-use components colocated
+- [ ] Single-use components colocated with their pages
 - [ ] All buttons have loading states
 - [ ] All lists have empty states
 - [ ] All nested pages have breadcrumbs
@@ -1057,22 +946,9 @@ Before committing frontend code:
 - [ ] `npm run build` passes with 0 errors, 0 warnings
 - [ ] All types use `type` instead of `interface`
 
-### Common Mistakes to Avoid
-
-1. Using `any` type → Use proper types or `unknown`
-2. Creating custom UI components → Use Shadcn components
-3. fetch() in components → Use React Query hooks
-4. Manual loading states → Use mutation.isPending
-5. Missing empty states → Add EmptyState component
-6. Large components → Break down into smaller ones
-7. No error boundaries → Add error.tsx to routes
-8. Using `interface` → Use `type` instead
-9. Components in wrong location → Colocate single-use components
-
 ### Reference Files
 
 - `components/frontend/DESIGN_GUIDELINES.md` - Detailed patterns and examples
 - `components/frontend/COMPONENT_PATTERNS.md` - Architecture patterns
-- `components/frontend/CLEANUP_CHECKLIST.md` - Migration status
 - `components/frontend/src/components/ui/` - Available Shadcn components
 - `components/frontend/src/services/` - API service layer examples

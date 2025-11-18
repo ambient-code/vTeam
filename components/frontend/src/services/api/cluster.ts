@@ -7,10 +7,11 @@ import { apiClient } from './client';
 
 export type ClusterInfo = {
   isOpenShift: boolean;
+  vertexEnabled: boolean;
 };
 
 /**
- * Get cluster information (OpenShift vs vanilla Kubernetes)
+ * Get cluster information (OpenShift vs vanilla Kubernetes, Vertex AI status)
  * This endpoint does not require authentication
  */
 export async function getClusterInfo(): Promise<ClusterInfo> {

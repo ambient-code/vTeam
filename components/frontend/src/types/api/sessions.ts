@@ -62,6 +62,11 @@ export type AgenticSessionSpec = {
   interactive?: boolean;
   repos?: SessionRepo[];
   mainRepoIndex?: number;
+  activeWorkflow?: {
+    gitUrl: string;
+    branch: string;
+    path?: string;
+  };
 };
 
 export type AgenticSessionStatus = {

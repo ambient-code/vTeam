@@ -23,9 +23,11 @@ type AgenticSessionSpec struct {
 	// Multi-repo support (unified mapping)
 	Repos         []SessionRepoMapping `json:"repos,omitempty"`
 	MainRepoIndex *int                 `json:"mainRepoIndex,omitempty"`
+	// Active workflow for dynamic workflow switching
+	ActiveWorkflow *WorkflowSelection `json:"activeWorkflow,omitempty"`
 }
 
-// Named repository types for multi-repo session support
+// NamedGitRepo represents named repository types for multi-repo session support.
 type NamedGitRepo struct {
 	URL    string  `json:"url"`
 	Branch *string `json:"branch,omitempty"`
@@ -36,7 +38,7 @@ type OutputNamedGitRepo struct {
 	Branch *string `json:"branch,omitempty"`
 }
 
-// Unified session repo mapping
+// SessionRepoMapping is a unified session repo mapping.
 type SessionRepoMapping struct {
 	Input  NamedGitRepo        `json:"input"`
 	Output *OutputNamedGitRepo `json:"output,omitempty"`
@@ -97,4 +99,11 @@ type CloneAgenticSessionRequest struct {
 	TargetSessionName string `json:"targetSessionName,omitempty"`
 	DisplayName       string `json:"displayName,omitempty"`
 	Prompt            string `json:"prompt,omitempty"`
+}
+
+// WorkflowSelection represents a workflow to load into the session
+type WorkflowSelection struct {
+	GitURL string `json:"gitUrl" binding:"required"`
+	Branch string `json:"branch,omitempty"`
+	Path   string `json:"path,omitempty"`
 }

@@ -1,3 +1,4 @@
+// Package git provides Git repository operations including cloning, forking, and PR creation.
 package git
 
 import (
@@ -17,7 +18,6 @@ import (
 	"strings"
 	"time"
 
-	"k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
@@ -42,37 +42,6 @@ type DiffSummary struct {
 	TotalRemoved int `json:"total_removed"`
 	FilesAdded   int `json:"files_added"`
 	FilesRemoved int `json:"files_removed"`
-}
-
-// getProjectSettings retrieves the ProjectSettings CR for a project using the provided dynamic client
-func getProjectSettings(ctx context.Context, dynClient dynamic.Interface, projectName string) (*ProjectSettings, error) {
-	if dynClient == nil {
-		return &ProjectSettings{}, nil
-	}
-
-	if GetProjectSettingsResource == nil {
-		return &ProjectSettings{}, nil
-	}
-
-	gvr := GetProjectSettingsResource()
-	obj, err := dynClient.Resource(gvr).Namespace(projectName).Get(ctx, "projectsettings", v1.GetOptions{})
-	if err != nil {
-		if errors.IsNotFound(err) {
-			return &ProjectSettings{}, nil
-		}
-		return nil, fmt.Errorf("failed to get ProjectSettings: %w", err)
-	}
-
-	settings := &ProjectSettings{}
-	if obj != nil {
-		if spec, ok := obj.Object["spec"].(map[string]interface{}); ok {
-			if v, ok := spec["runnerSecretsName"].(string); ok {
-				settings.RunnerSecret = strings.TrimSpace(v)
-			}
-		}
-	}
-
-	return settings, nil
 }
 
 // GetGitHubToken tries to get a GitHub token from GitHub App first, then falls back to project runner secret
@@ -104,47 +73,39 @@ func GetGitHubToken(ctx context.Context, k8sClient *kubernetes.Clientset, dynCli
 		}
 	}
 
-	// Fall back to project runner secret GIT_TOKEN
+	// Fall back to project integration secret GITHUB_TOKEN (hardcoded secret name)
 	if k8sClient == nil {
-		log.Printf("Cannot read runner secret: k8s client is nil")
-		return "", fmt.Errorf("no GitHub credentials available. Either connect GitHub App or configure GIT_TOKEN in project runner secret")
+		log.Printf("Cannot read integration secret: k8s client is nil")
+		return "", fmt.Errorf("no GitHub credentials available. Either connect GitHub App or configure GITHUB_TOKEN in integration secrets")
 	}
 
-	settings, err := getProjectSettings(ctx, dynClient, project)
+	const secretName = "ambient-non-vertex-integrations"
 
-	// Default to "ambient-runner-secrets" if not configured
-	secretName := "ambient-runner-secrets"
-	if err != nil {
-		log.Printf("Failed to get ProjectSettings for %s (using default secret name): %v", project, err)
-	} else if settings != nil && settings.RunnerSecret != "" {
-		secretName = settings.RunnerSecret
-	}
-
-	log.Printf("Attempting to read GIT_TOKEN from secret %s/%s", project, secretName)
+	log.Printf("Attempting to read GITHUB_TOKEN from secret %s/%s", project, secretName)
 
 	secret, err := k8sClient.CoreV1().Secrets(project).Get(ctx, secretName, v1.GetOptions{})
 	if err != nil {
-		log.Printf("Failed to get runner secret %s/%s: %v", project, secretName, err)
-		return "", fmt.Errorf("no GitHub credentials available. Either connect GitHub App or configure GIT_TOKEN in project runner secret")
+		log.Printf("Failed to get integration secret %s/%s: %v", project, secretName, err)
+		return "", fmt.Errorf("no GitHub credentials available. Either connect GitHub App or configure GITHUB_TOKEN in integration secrets")
 	}
 
 	if secret.Data == nil {
 		log.Printf("Secret %s/%s exists but Data is nil", project, secretName)
-		return "", fmt.Errorf("no GitHub credentials available. Either connect GitHub App or configure GIT_TOKEN in project runner secret")
+		return "", fmt.Errorf("no GitHub credentials available. Either connect GitHub App or configure GITHUB_TOKEN in integration secrets")
 	}
 
-	token, ok := secret.Data["GIT_TOKEN"]
+	token, ok := secret.Data["GITHUB_TOKEN"]
 	if !ok {
-		log.Printf("Secret %s/%s exists but has no GIT_TOKEN key (available keys: %v)", project, secretName, getSecretKeys(secret.Data))
-		return "", fmt.Errorf("no GitHub credentials available. Either connect GitHub App or configure GIT_TOKEN in project runner secret")
+		log.Printf("Secret %s/%s exists but has no GITHUB_TOKEN key (available keys: %v)", project, secretName, getSecretKeys(secret.Data))
+		return "", fmt.Errorf("no GitHub credentials available. Either connect GitHub App or configure GITHUB_TOKEN in integration secrets")
 	}
 
 	if len(token) == 0 {
-		log.Printf("Secret %s/%s has GIT_TOKEN key but value is empty", project, secretName)
-		return "", fmt.Errorf("no GitHub credentials available. Either connect GitHub App or configure GIT_TOKEN in project runner secret")
+		log.Printf("Secret %s/%s has GITHUB_TOKEN key but value is empty", project, secretName)
+		return "", fmt.Errorf("no GitHub credentials available. Either connect GitHub App or configure GITHUB_TOKEN in integration secrets")
 	}
 
-	log.Printf("Using GIT_TOKEN from project runner secret %s/%s", project, secretName)
+	log.Printf("Using GITHUB_TOKEN from integration secret %s/%s", project, secretName)
 	return string(token), nil
 }
 
@@ -303,23 +264,6 @@ func PerformRepoSeeding(ctx context.Context, wf Workflow, branchName, githubToke
 
 	if branchName == "" {
 		return false, fmt.Errorf("branchName is required")
-	}
-
-	// Validate push access to spec repo before starting
-	log.Printf("Validating push access to spec repo: %s", umbrellaRepo.GetURL())
-	if err := validatePushAccess(ctx, umbrellaRepo.GetURL(), githubToken); err != nil {
-		return false, fmt.Errorf("spec repo access validation failed: %w", err)
-	}
-
-	// Validate push access to all supporting repos before starting
-	supportingRepos := wf.GetSupportingRepos()
-	if len(supportingRepos) > 0 {
-		log.Printf("Validating push access to %d supporting repos", len(supportingRepos))
-		for i, repo := range supportingRepos {
-			if err := validatePushAccess(ctx, repo.GetURL(), githubToken); err != nil {
-				return false, fmt.Errorf("supporting repo #%d (%s) access validation failed: %w", i+1, repo.GetURL(), err)
-			}
-		}
 	}
 
 	umbrellaDir, err := os.MkdirTemp("", "umbrella-*")
@@ -634,7 +578,8 @@ func PerformRepoSeeding(ctx context.Context, wf Workflow, branchName, githubToke
 	log.Printf("Successfully seeded umbrella repo on branch %s", branchName)
 
 	// Create feature branch in all supporting repos
-	// Note: we already validated push access to all repos above, so any failure here is unexpected
+	// Push access will be validated by the actual git operations - if they fail, we'll get a clear error
+	supportingRepos := wf.GetSupportingRepos()
 	if len(supportingRepos) > 0 {
 		log.Printf("Creating feature branch %s in %d supporting repos", branchName, len(supportingRepos))
 		for i, repo := range supportingRepos {
@@ -994,73 +939,6 @@ func CheckBranchExists(ctx context.Context, repoURL, branchName, githubToken str
 	return false, fmt.Errorf("GitHub API error: %s (body: %s)", resp.Status, string(body))
 }
 
-// validatePushAccess checks if the user has push access to a repository via GitHub API
-func validatePushAccess(ctx context.Context, repoURL, githubToken string) error {
-	owner, repo, err := ParseGitHubURL(repoURL)
-	if err != nil {
-		return fmt.Errorf("invalid repository URL: %w", err)
-	}
-
-	// Use GitHub API to check repository permissions
-	log.Printf("Validating push access to %s with token (len=%d)", repoURL, len(githubToken))
-	apiURL := fmt.Sprintf("https://api.github.com/repos/%s/%s", owner, repo)
-
-	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
-	}
-
-	req.Header.Set("Authorization", "Bearer "+githubToken)
-	req.Header.Set("Accept", "application/vnd.github.v3+json")
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to check repository access: %w", err)
-	}
-	defer resp.Body.Close()
-
-	// Read response body once
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("failed to read response body: %w", err)
-	}
-
-	if resp.StatusCode == http.StatusNotFound {
-		return fmt.Errorf("repository %s/%s not found or you don't have access to it", owner, repo)
-	}
-
-	if resp.StatusCode == http.StatusTooManyRequests {
-		resetTime := resp.Header.Get("X-RateLimit-Reset")
-		if resetTime != "" {
-			return fmt.Errorf("GitHub API rate limit exceeded. Rate limit will reset at %s. Please try again later", resetTime)
-		}
-		return fmt.Errorf("GitHub API rate limit exceeded. Please try again later")
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("GitHub API error: %s (body: %s)", resp.Status, string(body))
-	}
-
-	// Parse response to check permissions
-
-	var repoInfo struct {
-		Permissions struct {
-			Push bool `json:"push"`
-		} `json:"permissions"`
-	}
-
-	if err := json.Unmarshal(body, &repoInfo); err != nil {
-		return fmt.Errorf("failed to parse repository info: %w (body: %s)", err, string(body))
-	}
-
-	if !repoInfo.Permissions.Push {
-		return fmt.Errorf("you don't have push access to %s. Please fork the repository or use a repository you have write access to", repoURL)
-	}
-
-	log.Printf("Validated push access to %s", repoURL)
-	return nil
-}
-
 // createBranchInRepo creates a feature branch in a supporting repository
 // Follows the same pattern as umbrella repo seeding but without adding files
 // Note: This function assumes push access has already been validated by the caller
@@ -1122,7 +1000,8 @@ func createBranchInRepo(ctx context.Context, repo GitRepo, branchName, githubTok
 		return fmt.Errorf("failed to set remote URL: %w (output: %s)", err, string(out))
 	}
 
-	cmd = exec.CommandContext(ctx, "git", "-C", repoDir, "push", "-u", "origin", branchName)
+	// Push using HEAD:branchName refspec to ensure the newly created local branch is pushed
+	cmd = exec.CommandContext(ctx, "git", "-C", repoDir, "push", "-u", "origin", fmt.Sprintf("HEAD:%s", branchName))
 	if out, err := cmd.CombinedOutput(); err != nil {
 		// Check if it's a permission error
 		errMsg := string(out)
@@ -1134,4 +1013,312 @@ func createBranchInRepo(ctx context.Context, repo GitRepo, branchName, githubTok
 
 	log.Printf("Successfully created and pushed branch '%s' in %s", branchName, repoURL)
 	return nil
+}
+
+// InitRepo initializes a new git repository
+func InitRepo(ctx context.Context, repoDir string) error {
+	cmd := exec.CommandContext(ctx, "git", "init")
+	cmd.Dir = repoDir
+
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to init git repo: %w (output: %s)", err, string(out))
+	}
+
+	// Configure default user if not set
+	cmd = exec.CommandContext(ctx, "git", "config", "user.name", "Ambient Code Bot")
+	cmd.Dir = repoDir
+	_ = cmd.Run() // Best effort
+
+	cmd = exec.CommandContext(ctx, "git", "config", "user.email", "bot@ambient-code.local")
+	cmd.Dir = repoDir
+	_ = cmd.Run() // Best effort
+
+	return nil
+}
+
+// ConfigureRemote adds or updates a git remote
+func ConfigureRemote(ctx context.Context, repoDir, remoteName, remoteURL string) error {
+	// Try to remove existing remote first
+	cmd := exec.CommandContext(ctx, "git", "remote", "remove", remoteName)
+	cmd.Dir = repoDir
+	_ = cmd.Run() // Ignore error if remote doesn't exist
+
+	// Add the remote
+	cmd = exec.CommandContext(ctx, "git", "remote", "add", remoteName, remoteURL)
+	cmd.Dir = repoDir
+
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to add remote: %w (output: %s)", err, string(out))
+	}
+
+	return nil
+}
+
+// MergeStatus contains information about merge conflict status
+type MergeStatus struct {
+	CanMergeClean      bool     `json:"canMergeClean"`
+	LocalChanges       int      `json:"localChanges"`
+	RemoteCommitsAhead int      `json:"remoteCommitsAhead"`
+	ConflictingFiles   []string `json:"conflictingFiles"`
+	RemoteBranchExists bool     `json:"remoteBranchExists"`
+}
+
+// CheckMergeStatus checks if local and remote can merge cleanly
+func CheckMergeStatus(ctx context.Context, repoDir, branch string) (*MergeStatus, error) {
+	if branch == "" {
+		branch = "main"
+	}
+
+	status := &MergeStatus{
+		ConflictingFiles: []string{},
+	}
+
+	run := func(args ...string) (string, error) {
+		cmd := exec.CommandContext(ctx, args[0], args[1:]...)
+		cmd.Dir = repoDir
+		var stdout bytes.Buffer
+		cmd.Stdout = &stdout
+		if err := cmd.Run(); err != nil {
+			return stdout.String(), err
+		}
+		return stdout.String(), nil
+	}
+
+	// Fetch remote branch
+	_, err := run("git", "fetch", "origin", branch)
+	if err != nil {
+		// Remote branch doesn't exist yet
+		status.RemoteBranchExists = false
+		status.CanMergeClean = true
+		return status, nil
+	}
+	status.RemoteBranchExists = true
+
+	// Count local uncommitted changes
+	statusOut, _ := run("git", "status", "--porcelain")
+	status.LocalChanges = len(strings.Split(strings.TrimSpace(statusOut), "\n"))
+	if strings.TrimSpace(statusOut) == "" {
+		status.LocalChanges = 0
+	}
+
+	// Count commits on remote but not local
+	countOut, _ := run("git", "rev-list", "--count", "HEAD..origin/"+branch)
+	fmt.Sscanf(strings.TrimSpace(countOut), "%d", &status.RemoteCommitsAhead)
+
+	// Test merge to detect conflicts (dry run)
+	mergeBase, err := run("git", "merge-base", "HEAD", "origin/"+branch)
+	if err != nil {
+		// No common ancestor - unrelated histories
+		// This is NOT a conflict - we can merge with --allow-unrelated-histories
+		// which is already used in PullRepo and SyncRepo
+		status.CanMergeClean = true
+		status.ConflictingFiles = []string{}
+		return status, nil
+	}
+
+	// Use git merge-tree to simulate merge without touching working directory
+	mergeTreeOut, err := run("git", "merge-tree", strings.TrimSpace(mergeBase), "HEAD", "origin/"+branch)
+	if err == nil && strings.TrimSpace(mergeTreeOut) != "" {
+		// Check for conflict markers in output
+		if strings.Contains(mergeTreeOut, "<<<<<<<") {
+			status.CanMergeClean = false
+			// Parse conflicting files from merge-tree output
+			for _, line := range strings.Split(mergeTreeOut, "\n") {
+				if strings.HasPrefix(line, "--- a/") || strings.HasPrefix(line, "+++ b/") {
+					file := strings.TrimPrefix(strings.TrimPrefix(line, "--- a/"), "+++ b/")
+					if file != "" && !contains(status.ConflictingFiles, file) {
+						status.ConflictingFiles = append(status.ConflictingFiles, file)
+					}
+				}
+			}
+		} else {
+			status.CanMergeClean = true
+		}
+	} else {
+		status.CanMergeClean = true
+	}
+
+	return status, nil
+}
+
+// PullRepo pulls changes from remote branch
+func PullRepo(ctx context.Context, repoDir, branch string) error {
+	if branch == "" {
+		branch = "main"
+	}
+
+	cmd := exec.CommandContext(ctx, "git", "pull", "--allow-unrelated-histories", "origin", branch)
+	cmd.Dir = repoDir
+
+	if out, err := cmd.CombinedOutput(); err != nil {
+		outStr := string(out)
+		if strings.Contains(outStr, "CONFLICT") {
+			return fmt.Errorf("merge conflicts detected: %s", outStr)
+		}
+		return fmt.Errorf("failed to pull: %w (output: %s)", err, outStr)
+	}
+
+	log.Printf("Successfully pulled from origin/%s", branch)
+	return nil
+}
+
+// PushToRepo pushes local commits to specified branch
+func PushToRepo(ctx context.Context, repoDir, branch, commitMessage string) error {
+	if branch == "" {
+		branch = "main"
+	}
+
+	run := func(args ...string) (string, error) {
+		cmd := exec.CommandContext(ctx, args[0], args[1:]...)
+		cmd.Dir = repoDir
+		var stdout bytes.Buffer
+		cmd.Stdout = &stdout
+		cmd.Stderr = &stdout
+		err := cmd.Run()
+		return stdout.String(), err
+	}
+
+	// Ensure we're on the correct branch (create if needed)
+	// This handles fresh git init repos that don't have a branch yet
+	if _, err := run("git", "checkout", "-B", branch); err != nil {
+		return fmt.Errorf("failed to checkout branch: %w", err)
+	}
+
+	// Stage all changes
+	if _, err := run("git", "add", "."); err != nil {
+		return fmt.Errorf("failed to stage changes: %w", err)
+	}
+
+	// Commit if there are changes
+	if out, err := run("git", "commit", "-m", commitMessage); err != nil {
+		if !strings.Contains(out, "nothing to commit") {
+			return fmt.Errorf("failed to commit: %w", err)
+		}
+	}
+
+	// Push to branch
+	if out, err := run("git", "push", "-u", "origin", branch); err != nil {
+		return fmt.Errorf("failed to push: %w (output: %s)", err, out)
+	}
+
+	log.Printf("Successfully pushed to origin/%s", branch)
+	return nil
+}
+
+// CreateBranch creates a new branch and pushes it to remote
+func CreateBranch(ctx context.Context, repoDir, branchName string) error {
+	run := func(args ...string) (string, error) {
+		cmd := exec.CommandContext(ctx, args[0], args[1:]...)
+		cmd.Dir = repoDir
+		var stdout bytes.Buffer
+		cmd.Stdout = &stdout
+		cmd.Stderr = &stdout
+		err := cmd.Run()
+		return stdout.String(), err
+	}
+
+	// Create and checkout new branch
+	if _, err := run("git", "checkout", "-b", branchName); err != nil {
+		return fmt.Errorf("failed to create branch: %w", err)
+	}
+
+	// Push to remote using HEAD:branchName refspec
+	if out, err := run("git", "push", "-u", "origin", fmt.Sprintf("HEAD:%s", branchName)); err != nil {
+		return fmt.Errorf("failed to push new branch: %w (output: %s)", err, out)
+	}
+
+	log.Printf("Successfully created and pushed branch %s", branchName)
+	return nil
+}
+
+// ListRemoteBranches lists all branches in the remote repository
+func ListRemoteBranches(ctx context.Context, repoDir string) ([]string, error) {
+	cmd := exec.CommandContext(ctx, "git", "ls-remote", "--heads", "origin")
+	cmd.Dir = repoDir
+
+	var stdout bytes.Buffer
+	cmd.Stdout = &stdout
+
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("failed to list remote branches: %w", err)
+	}
+
+	branches := []string{}
+	for _, line := range strings.Split(stdout.String(), "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		// Format: "commit-hash refs/heads/branch-name"
+		parts := strings.Fields(line)
+		if len(parts) >= 2 {
+			ref := parts[1]
+			branchName := strings.TrimPrefix(ref, "refs/heads/")
+			branches = append(branches, branchName)
+		}
+	}
+
+	return branches, nil
+}
+
+// SyncRepo commits, pulls, and pushes changes
+func SyncRepo(ctx context.Context, repoDir, commitMessage, branch string) error {
+	if branch == "" {
+		branch = "main"
+	}
+
+	// Stage all changes
+	cmd := exec.CommandContext(ctx, "git", "add", ".")
+	cmd.Dir = repoDir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to stage changes: %w (output: %s)", err, string(out))
+	}
+
+	// Commit changes (only if there are changes)
+	cmd = exec.CommandContext(ctx, "git", "commit", "-m", commitMessage)
+	cmd.Dir = repoDir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		// Check if error is "nothing to commit"
+		outStr := string(out)
+		if !strings.Contains(outStr, "nothing to commit") && !strings.Contains(outStr, "no changes added") {
+			return fmt.Errorf("failed to commit: %w (output: %s)", err, outStr)
+		}
+		// Nothing to commit is not an error
+		log.Printf("SyncRepo: nothing to commit in %s", repoDir)
+	}
+
+	// Pull with rebase to sync with remote
+	cmd = exec.CommandContext(ctx, "git", "pull", "--rebase", "origin", branch)
+	cmd.Dir = repoDir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		outStr := string(out)
+		// Check if it's just "no tracking information" (first push)
+		if !strings.Contains(outStr, "no tracking information") && !strings.Contains(outStr, "couldn't find remote ref") {
+			return fmt.Errorf("failed to pull: %w (output: %s)", err, outStr)
+		}
+		log.Printf("SyncRepo: pull skipped (no remote tracking): %s", outStr)
+	}
+
+	// Push to remote
+	cmd = exec.CommandContext(ctx, "git", "push", "-u", "origin", branch)
+	cmd.Dir = repoDir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		outStr := string(out)
+		if strings.Contains(outStr, "Permission denied") || strings.Contains(outStr, "403") {
+			return fmt.Errorf("permission denied: no push access to remote")
+		}
+		return fmt.Errorf("failed to push: %w (output: %s)", err, outStr)
+	}
+
+	log.Printf("Successfully synchronized %s to %s", repoDir, branch)
+	return nil
+}
+
+// Helper function to check if string slice contains a value
+func contains(slice []string, str string) bool {
+	for _, s := range slice {
+		if s == str {
+			return true
+		}
+	}
+	return false
 }

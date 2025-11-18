@@ -1,3 +1,4 @@
+// Package services provides reusable infrastructure services for the operator.
 package services
 
 import (

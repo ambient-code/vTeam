@@ -7,7 +7,6 @@ export * from './client';
 export * as clusterApi from './cluster';
 export * as projectsApi from './projects';
 export * as sessionsApi from './sessions';
-export * as rfeApi from './rfe';
 export * as githubApi from './github';
 export * as keysApi from './keys';
 export * as repoApi from './repo';

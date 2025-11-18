@@ -66,8 +66,8 @@ Before starting Lab 1, ensure you have:
 
 ```bash
 # Clone repository
-git clone https://github.com/ambient-code/vTeam.git
-cd vTeam
+git clone https://github.com/ambient-code/platform.git
+cd platform
 
 # Start local development environment (OpenShift Local/CRC)
 make dev-start
@@ -120,8 +120,8 @@ After completing Lab 1, you should be able to:
 
 ### Community Support
 
-- **Questions about labs**: [GitHub Discussions](https://github.com/ambient-code/vTeam/discussions)
-- **Bug reports**: [GitHub Issues](https://github.com/ambient-code/vTeam/issues)
+- **Questions about labs**: [GitHub Discussions](https://github.com/ambient-code/platform/discussions)
+- **Bug reports**: [GitHub Issues](https://github.com/ambient-code/platform/issues)
 - **Lab improvements**: Submit pull requests with your suggestions
 
 ## Next Steps After Lab 1

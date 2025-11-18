@@ -1,0 +1,54 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: agentic-operator
+rules:
+# AgenticSession custom resources (read-only + status updates)
+- apiGroups: ["vteam.ambient-code"]
+  resources: ["agenticsessions"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["vteam.ambient-code"]
+  resources: ["agenticsessions/status"]
+  verbs: ["update"]
+# ProjectSettings custom resources (create + read + status updates)
+- apiGroups: ["vteam.ambient-code"]
+  resources: ["projectsettings"]
+  verbs: ["get", "list", "watch", "create"]
+- apiGroups: ["vteam.ambient-code"]
+  resources: ["projectsettings/status"]
+  verbs: ["update"]
+# Namespaces (read-only for managed namespace detection)
+- apiGroups: [""]
+  resources: ["namespaces"]
+  verbs: ["get", "list", "watch"]
+# Jobs (create and monitor for session execution)
+- apiGroups: ["batch"]
+  resources: ["jobs"]
+  verbs: ["get", "list", "watch", "create", "delete"]
+# Pods (for getting logs from failed jobs)
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list", "watch", "delete"]
+- apiGroups: [""]
+  resources: ["pods/log"]
+  verbs: ["get"]
+# PersistentVolumeClaims (create workspace PVCs)
+- apiGroups: [""]
+  resources: ["persistentvolumeclaims"]
+  verbs: ["get", "list", "create", "delete"]
+# Services (create per-namespace content services)
+- apiGroups: [""]
+  resources: ["services"]
+  verbs: ["get", "list", "watch", "create", "delete"]
+# Deployments (create per-namespace content services)
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["get", "list", "watch", "create"]
+# RoleBindings (create group access bindings)
+- apiGroups: ["rbac.authorization.k8s.io"]
+  resources: ["rolebindings"]
+  verbs: ["get", "create"]
+# Secrets (for copying ambient-vertex to job namespaces) Without this we cannot copy secrets to the session namespaces
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get", "create", "delete", "update"]
