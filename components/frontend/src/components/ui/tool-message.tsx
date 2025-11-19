@@ -34,13 +34,39 @@ const formatToolName = (toolName?: string) => {
     .join(" ");
 };
 
+const redactSecrets = (text: string): string => {
+  if (!text) return text;
+
+  // Redact GitHub tokens (ghs_, ghp_, gho_, ghu_ prefixes)
+  text = text.replace(/gh[pousr]_[a-zA-Z0-9]{36,255}/g, 'gh*_***REDACTED***');
+
+  // Redact x-access-token: patterns in URLs
+  text = text.replace(/x-access-token:[^@\s]+@/g, 'x-access-token:***REDACTED***@');
+
+  // Redact oauth tokens in URLs
+  text = text.replace(/oauth2:[^@\s]+@/g, 'oauth2:***REDACTED***@');
+
+  // Redact basic auth credentials in URLs
+  text = text.replace(/:\/\/[^:@\s]+:[^@\s]+@/g, '://***REDACTED***@');
+
+  // Redact Authorization header values (Bearer, token, etc.)
+  text = text.replace(/(Authorization["\s:]+)(Bearer\s+|token\s+)?([a-zA-Z0-9_\-\.]+)/gi, '$1$2***REDACTED***');
+
+  // Redact common API key patterns
+  text = text.replace(/(["\s])(sk-[a-zA-Z0-9]{20,})/g, '$1***REDACTED***');
+  text = text.replace(/(["\s])(api[_-]?key["\s:]+)([a-zA-Z0-9_\-\.]+)/gi, '$1$2***REDACTED***');
+
+  return text;
+};
+
 const formatToolInput = (input?: string) => {
   if (!input) return "{}";
   try {
     const parsed = JSON.parse(input);
-    return JSON.stringify(parsed, null, 2);
+    const formatted = JSON.stringify(parsed, null, 2);
+    return redactSecrets(formatted);
   } catch {
-    return input;
+    return redactSecrets(input);
   }
 };
 
@@ -145,7 +171,7 @@ const getColorClassesForName = (name: string) => {
 
 const extractTextFromResultContent = (content: unknown): string => {
   try {
-    if (typeof content === "string") return content;
+    if (typeof content === "string") return redactSecrets(content);
     if (Array.isArray(content)) {
       const texts = content
         .map((item) => {
@@ -155,7 +181,7 @@ const extractTextFromResultContent = (content: unknown): string => {
           return "";
         })
         .filter(Boolean);
-      if (texts.length) return texts.join("\n\n");
+      if (texts.length) return redactSecrets(texts.join("\n\n"));
     }
     if (content && typeof content === "object") {
       // Some schemas nest under content: []
@@ -169,12 +195,12 @@ const extractTextFromResultContent = (content: unknown): string => {
             return "";
           })
           .filter(Boolean);
-        if (texts.length) return texts.join("\n\n");
+        if (texts.length) return redactSecrets(texts.join("\n\n"));
       }
     }
-    return JSON.stringify(content ?? "");
+    return redactSecrets(JSON.stringify(content ?? ""));
   } catch {
-    return String(content ?? "");
+    return redactSecrets(String(content ?? ""));
   }
 };
 
@@ -347,11 +373,11 @@ export const ToolMessage = React.forwardRef<HTMLDivElement, ToolMessageProps>(
                         >
                           <ExpandableMarkdown
                             className="prose-sm"
-                            content={
+                            content={redactSecrets(
                               typeof toolResultBlock?.content === "string"
                                 ? (toolResultBlock?.content as string)
                                 : JSON.stringify(toolResultBlock?.content ?? "")
-                            }
+                            )}
                           />
                         </div>
                       </div>
