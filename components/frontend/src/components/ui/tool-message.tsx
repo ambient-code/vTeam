@@ -34,27 +34,49 @@ const formatToolName = (toolName?: string) => {
     .join(" ");
 };
 
-const redactSecrets = (text: string): string => {
-  if (!text) return text;
+/**
+ * Redacts sensitive tokens and credentials from text for safe display in the UI.
+ *
+ * IMPORTANT: Keep these patterns in sync with:
+ * - Backend: components/backend/server/server.go (query string redaction)
+ * - Runner: components/runners/claude-code-runner/wrapper.py (_redact_secrets)
+ *
+ * When adding new patterns, update all three locations.
+ *
+ * @param text - The text to redact secrets from (accepts null/undefined for safety)
+ * @returns The text with all sensitive values replaced with redaction markers, or empty string if input is null/undefined
+ *
+ * @example
+ * redactSecrets('Token: ghp_abc123...')
+ * // Returns: 'Token: gh*_[REDACTED]'
+ *
+ * @example
+ * redactSecrets('curl -H "Authorization: Bearer sk-proj-1234567890123456789012345678901234567890"')
+ * // Returns: 'curl -H "Authorization: Bearer [REDACTED]"'
+ */
+const redactSecrets = (text: string | null | undefined): string => {
+  if (!text) return '';
 
   // Redact GitHub tokens (ghs_, ghp_, gho_, ghu_ prefixes)
-  text = text.replace(/gh[pousr]_[a-zA-Z0-9]{36,255}/g, 'gh*_***REDACTED***');
+  text = text.replace(/gh[pousr]_[a-zA-Z0-9]{36,255}/g, 'gh*_[REDACTED]');
 
   // Redact x-access-token: patterns in URLs
-  text = text.replace(/x-access-token:[^@\s]+@/g, 'x-access-token:***REDACTED***@');
+  text = text.replace(/x-access-token:[^@\s]+@/g, 'x-access-token:[REDACTED]@');
 
   // Redact oauth tokens in URLs
-  text = text.replace(/oauth2:[^@\s]+@/g, 'oauth2:***REDACTED***@');
+  text = text.replace(/oauth2:[^@\s]+@/g, 'oauth2:[REDACTED]@');
 
   // Redact basic auth credentials in URLs
-  text = text.replace(/:\/\/[^:@\s]+:[^@\s]+@/g, '://***REDACTED***@');
+  text = text.replace(/:\/\/[^:@\s]+:[^@\s]+@/g, '://[REDACTED]@');
 
-  // Redact Authorization header values (Bearer, token, etc.)
-  text = text.replace(/(Authorization["\s:]+)(Bearer\s+|token\s+)?([a-zA-Z0-9_\-\.]+)/gi, '$1$2***REDACTED***');
+  // Redact Authorization header values (Bearer, token, etc.) - minimum 20 chars to avoid false positives
+  text = text.replace(/(Authorization["\s:]+)(Bearer\s+|token\s+)?([a-zA-Z0-9_\-\.]{20,})/gi, '$1$2[REDACTED]');
 
-  // Redact common API key patterns
-  text = text.replace(/(["\s])(sk-[a-zA-Z0-9]{20,})/g, '$1***REDACTED***');
-  text = text.replace(/(["\s])(api[_-]?key["\s:]+)([a-zA-Z0-9_\-\.]+)/gi, '$1$2***REDACTED***');
+  // Redact common API key patterns (sk-* prefix) - handle start of string, quotes, colons, equals
+  text = text.replace(/(^|["\s:=])(sk-[a-zA-Z0-9]{20,})/g, '$1[REDACTED]');
+
+  // Redact api_key or api-key patterns - handle start of string and various separators
+  text = text.replace(/(^|["\s])(api[_-]?key["\s:=]+)([a-zA-Z0-9_\-\.]{20,})/gi, '$1$2[REDACTED]');
 
   return text;
 };
