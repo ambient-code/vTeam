@@ -53,73 +53,73 @@ export function SessionDetailsModal({
         <div className="space-y-4">
           <div className="space-y-3">
             <div className="flex items-start gap-3">
-              <span className="font-semibold text-gray-700 min-w-[100px]">Status:</span>
+              <span className="font-semibold text-foreground/80 min-w-[100px]">Status:</span>
               <Badge className={getPhaseColor(session.status?.phase || "Pending")}>
                 {session.status?.phase || "Pending"}
               </Badge>
             </div>
             
             <div className="flex items-start gap-3">
-              <span className="font-semibold text-gray-700 min-w-[100px]">Model:</span>
-              <span className="text-gray-900">{session.spec.llmSettings.model}</span>
+              <span className="font-semibold text-foreground/80 min-w-[100px]">Model:</span>
+              <span className="text-foreground">{session.spec.llmSettings.model}</span>
             </div>
             
             <div className="flex items-start gap-3">
-              <span className="font-semibold text-gray-700 min-w-[100px]">Temperature:</span>
-              <span className="text-gray-900">{session.spec.llmSettings.temperature}</span>
+              <span className="font-semibold text-foreground/80 min-w-[100px]">Temperature:</span>
+              <span className="text-foreground">{session.spec.llmSettings.temperature}</span>
             </div>
             
             <div className="flex items-start gap-3">
-              <span className="font-semibold text-gray-700 min-w-[100px]">Mode:</span>
-              <span className="text-gray-900">{session.spec?.interactive ? "Interactive" : "Headless"}</span>
+              <span className="font-semibold text-foreground/80 min-w-[100px]">Mode:</span>
+              <span className="text-foreground">{session.spec?.interactive ? "Interactive" : "Headless"}</span>
             </div>
             
             {session.status?.startTime && (
               <div className="flex items-start gap-3">
-                <span className="font-semibold text-gray-700 min-w-[100px]">Started:</span>
-                <span className="text-gray-900">{format(new Date(session.status.startTime), "PPp")}</span>
+                <span className="font-semibold text-foreground/80 min-w-[100px]">Started:</span>
+                <span className="text-foreground">{format(new Date(session.status.startTime), "PPp")}</span>
               </div>
             )}
             
             <div className="flex items-start gap-3">
-              <span className="font-semibold text-gray-700 min-w-[100px]">Duration:</span>
-              <span className="text-gray-900">{typeof durationMs === "number" ? formatDuration(durationMs) : "-"}</span>
+              <span className="font-semibold text-foreground/80 min-w-[100px]">Duration:</span>
+              <span className="text-foreground">{typeof durationMs === "number" ? formatDuration(durationMs) : "-"}</span>
             </div>
             
             {k8sResources?.pvcName && (
               <div className="flex items-start gap-3">
-                <span className="font-semibold text-gray-700 min-w-[100px]">PVC:</span>
-                <span className="text-gray-900 font-mono break-all">{k8sResources.pvcName}</span>
+                <span className="font-semibold text-foreground/80 min-w-[100px]">PVC:</span>
+                <span className="text-foreground font-mono break-all">{k8sResources.pvcName}</span>
               </div>
             )}
             
             {k8sResources?.pvcSize && (
               <div className="flex items-start gap-3">
-                <span className="font-semibold text-gray-700 min-w-[100px]">PVC Size:</span>
-                <span className="text-gray-900">{k8sResources.pvcSize}</span>
+                <span className="font-semibold text-foreground/80 min-w-[100px]">PVC Size:</span>
+                <span className="text-foreground">{k8sResources.pvcSize}</span>
               </div>
             )}
             
             {session.status?.jobName && (
               <div className="flex items-start gap-3">
-                <span className="font-semibold text-gray-700 min-w-[100px]">K8s Job:</span>
-                <span className="text-gray-900 font-mono break-all">{session.status.jobName}</span>
+                <span className="font-semibold text-foreground/80 min-w-[100px]">K8s Job:</span>
+                <span className="text-foreground font-mono break-all">{session.status.jobName}</span>
               </div>
             )}
             
             <div className="flex items-start gap-3">
-              <span className="font-semibold text-gray-700 min-w-[100px]">Messages:</span>
-              <span className="text-gray-900">{messageCount}</span>
+              <span className="font-semibold text-foreground/80 min-w-[100px]">Messages:</span>
+              <span className="text-foreground">{messageCount}</span>
             </div>
           </div>
           
           {session.spec.prompt && (
             <div className="pt-2">
               <div className="mb-2">
-                <span className="font-semibold text-gray-700">Session prompt:</span>
+                <span className="font-semibold text-foreground/80">Session prompt:</span>
               </div>
-              <div className="max-h-[200px] overflow-y-auto p-4 bg-gray-50 rounded-md border border-gray-200">
-                <p className="whitespace-pre-wrap text-sm text-gray-800 leading-relaxed">{session.spec.prompt}</p>
+              <div className="max-h-[200px] overflow-y-auto p-4 bg-muted/50 rounded-md border border-gray-200">
+                <p className="whitespace-pre-wrap text-sm text-foreground leading-relaxed">{session.spec.prompt}</p>
               </div>
             </div>
           )}

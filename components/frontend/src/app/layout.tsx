@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { Navigation } from "@/components/navigation";
 import { QueryProvider } from "@/components/providers/query-provider";
+import { ThemeProvider } from "@/components/providers/theme-provider";
 import { Toaster } from "@/components/ui/toaster";
 import { env } from "@/lib/env";
 
@@ -27,11 +28,18 @@ export default function RootLayout({
         <meta name="backend-ws-base" content={wsBase} />
       </head>
       <body className={`${inter.className} min-h-screen flex flex-col`} suppressHydrationWarning>
-        <QueryProvider>
-          <Navigation feedbackUrl={feedbackUrl} />
-          <main className="flex-1 bg-background overflow-auto">{children}</main>
-          <Toaster />
-        </QueryProvider>
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+        >
+          <QueryProvider>
+            <Navigation feedbackUrl={feedbackUrl} />
+            <main className="flex-1 bg-background overflow-auto">{children}</main>
+            <Toaster />
+          </QueryProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

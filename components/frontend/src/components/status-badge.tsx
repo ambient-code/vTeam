@@ -42,42 +42,42 @@ const STATUS_CONFIG: Record<
   }
 > = {
   success: {
-    color: 'bg-green-100 text-green-800 border-green-200',
+    color: 'bg-green-100 text-green-800 border-green-200 dark:bg-green-700 dark:text-white dark:border-green-700',
     icon: CheckCircle2,
     label: 'Success',
   },
   error: {
-    color: 'bg-red-100 text-red-800 border-red-200',
+    color: 'bg-red-100 text-red-800 border-red-200 dark:bg-red-700 dark:text-white dark:border-red-700',
     icon: XCircle,
     label: 'Error',
   },
   warning: {
-    color: 'bg-yellow-100 text-yellow-800 border-yellow-200',
+    color: 'bg-yellow-100 text-yellow-800 border-yellow-200 dark:bg-yellow-600 dark:text-white dark:border-yellow-600',
     icon: AlertCircle,
     label: 'Warning',
   },
   info: {
-    color: 'bg-blue-100 text-blue-800 border-blue-200',
+    color: 'bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-600 dark:text-white dark:border-blue-600',
     icon: AlertCircle,
     label: 'Info',
   },
   pending: {
-    color: 'bg-gray-100 text-gray-800 border-gray-200',
+    color: 'bg-muted text-foreground border-border dark:bg-slate-600 dark:text-white dark:border-slate-600',
     icon: Clock,
     label: 'Pending',
   },
   running: {
-    color: 'bg-blue-100 text-blue-800 border-blue-200',
+    color: 'bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-600 dark:text-white dark:border-blue-600',
     icon: Loader2,
     label: 'Running',
   },
   stopped: {
-    color: 'bg-gray-100 text-gray-800 border-gray-200',
+    color: 'bg-muted text-foreground border-border dark:bg-slate-600 dark:text-white dark:border-slate-600',
     icon: Square,
     label: 'Stopped',
   },
   default: {
-    color: 'bg-gray-100 text-gray-800 border-gray-200',
+    color: 'bg-muted text-foreground border-border dark:bg-slate-600 dark:text-white dark:border-slate-600',
     icon: AlertCircle,
     label: 'Unknown',
   },

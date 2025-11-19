@@ -51,7 +51,7 @@ export function K8sResourceTree({
     if (lower.includes('succeeded') || lower.includes('completed')) return 'bg-green-100 text-green-800 border-green-300';
     if (lower.includes('failed') || lower.includes('error')) return 'bg-red-100 text-red-800 border-red-300';
     if (lower.includes('waiting') || lower.includes('pending')) return 'bg-yellow-100 text-yellow-800 border-yellow-300';
-    return 'bg-gray-100 text-gray-800 border-gray-300';
+    return 'bg-muted text-foreground border-border';
   };
 
   const getStatusIcon = (status: string) => {
@@ -76,10 +76,10 @@ export function K8sResourceTree({
           </DialogHeader>
           <div className="space-y-2">
             {events.length === 0 ? (
-              <p className="text-sm text-gray-500">No events</p>
+              <p className="text-sm text-muted-foreground">No events</p>
             ) : (
               events.map((event, idx) => (
-                <div key={idx} className="text-xs font-mono bg-gray-50 p-2 rounded border">
+                <div key={idx} className="text-xs font-mono bg-muted/50 p-2 rounded border">
                   {event}
                 </div>
               ))
@@ -97,7 +97,7 @@ export function K8sResourceTree({
           <CardTitle className="text-sm">Kubernetes Resources</CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-gray-500">No job information available</p>
+          <p className="text-sm text-muted-foreground">No job information available</p>
         </CardContent>
       </Card>
     );
@@ -114,12 +114,12 @@ export function K8sResourceTree({
           <div className="flex items-center gap-2">
             <button
               onClick={() => setExpandedJob(!expandedJob)}
-              className="p-0 hover:bg-gray-100 rounded transition-colors"
+              className="p-0 hover:bg-muted rounded transition-colors"
             >
               {expandedJob ? (
-                <ChevronDown className="w-4 h-4 text-gray-500" />
+                <ChevronDown className="w-4 h-4 text-muted-foreground" />
               ) : (
-                <ChevronRight className="w-4 h-4 text-gray-500" />
+                <ChevronRight className="w-4 h-4 text-muted-foreground" />
               )}
             </button>
             <Badge variant="outline" className="text-xs">
@@ -142,12 +142,12 @@ export function K8sResourceTree({
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => setExpandedPods({ ...expandedPods, [pod.name]: !expandedPods[pod.name] })}
-                      className="p-0 hover:bg-gray-100 rounded transition-colors"
+                      className="p-0 hover:bg-muted rounded transition-colors"
                     >
                       {expandedPods[pod.name] ? (
-                        <ChevronDown className="w-4 h-4 text-gray-500" />
+                        <ChevronDown className="w-4 h-4 text-muted-foreground" />
                       ) : (
-                        <ChevronRight className="w-4 h-4 text-gray-500" />
+                        <ChevronRight className="w-4 h-4 text-muted-foreground" />
                       )}
                     </button>
                     <Badge variant="outline" className="text-xs">
@@ -181,10 +181,10 @@ export function K8sResourceTree({
                             <span className="ml-1">{container.state}</span>
                           </Badge>
                           {container.exitCode !== undefined && (
-                            <span className="text-xs text-gray-500">Exit: {container.exitCode}</span>
+                            <span className="text-xs text-muted-foreground">Exit: {container.exitCode}</span>
                           )}
                           {container.reason && (
-                            <span className="text-xs text-gray-500">({container.reason})</span>
+                            <span className="text-xs text-muted-foreground">({container.reason})</span>
                           )}
                         </div>
                       ))}
@@ -204,7 +204,7 @@ export function K8sResourceTree({
                   <Badge className={`text-xs ${pvcExists ? 'bg-green-100 text-green-800 border-green-300' : 'bg-red-100 text-red-800 border-red-300'}`}>
                     {pvcExists ? 'Exists' : 'Not Found'}
                   </Badge>
-                  {pvcSize && <span className="text-xs text-gray-500">{pvcSize}</span>}
+                  {pvcSize && <span className="text-xs text-muted-foreground">{pvcSize}</span>}
                 </div>
               )}
             </div>

@@ -60,7 +60,7 @@ const DialogContent = React.forwardRef<
         <div
           ref={ref}
           className={cn(
-            "w-full max-w-lg bg-white rounded-lg border shadow-lg p-6 relative",
+            "w-full max-w-lg bg-card rounded-lg border shadow-lg p-6 relative",
             className
           )}
           {...props}
@@ -131,7 +131,7 @@ const DialogDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <p
     ref={ref}
-    className={cn("text-sm text-gray-600", className)}
+    className={cn("text-sm text-muted-foreground", className)}
     {...props}
   />
 ));

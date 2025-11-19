@@ -216,7 +216,7 @@ export function CreateWorkspaceDialog({
                   className={nameError ? "border-red-500" : ""}
                 />
                 {nameError && <p className="text-sm text-red-600">{nameError}</p>}
-                <p className="text-sm text-gray-600">
+                <p className="text-sm text-muted-foreground">
                   Lowercase alphanumeric with hyphens.
                 </p>
               </div>

@@ -73,14 +73,14 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
   
   const getStatusColor = (status: string) => {
     const lower = status.toLowerCase();
-    if (lower.includes('running') || lower.includes('active')) return 'bg-blue-100 text-blue-800 border-blue-300';
-    if (lower.includes('succeeded') || lower.includes('completed')) return 'bg-green-100 text-green-800 border-green-300';
-    if (lower.includes('failed') || lower.includes('error')) return 'bg-red-100 text-red-800 border-red-300';
-    if (lower.includes('waiting') || lower.includes('pending')) return 'bg-yellow-100 text-yellow-800 border-yellow-300';
-    if (lower.includes('terminating')) return 'bg-purple-100 text-purple-800 border-purple-300';
-    if (lower.includes('notfound') || lower.includes('not found')) return 'bg-orange-100 text-orange-800 border-orange-300';
-    if (lower.includes('terminated')) return 'bg-gray-100 text-gray-800 border-gray-300';
-    return 'bg-gray-100 text-gray-800 border-gray-300';
+    if (lower.includes('running') || lower.includes('active')) return 'bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-600 dark:text-white dark:border-blue-600';
+    if (lower.includes('succeeded') || lower.includes('completed')) return 'bg-green-100 text-green-800 border-green-300 dark:bg-green-700 dark:text-white dark:border-green-700';
+    if (lower.includes('failed') || lower.includes('error')) return 'bg-red-100 text-red-800 border-red-300 dark:bg-red-700 dark:text-white dark:border-red-700';
+    if (lower.includes('waiting') || lower.includes('pending')) return 'bg-yellow-100 text-yellow-800 border-yellow-300 dark:bg-yellow-600 dark:text-white dark:border-yellow-600';
+    if (lower.includes('terminating')) return 'bg-purple-100 text-purple-800 border-purple-300 dark:bg-purple-600 dark:text-white dark:border-purple-600';
+    if (lower.includes('notfound') || lower.includes('not found')) return 'bg-orange-100 text-orange-800 border-orange-300 dark:bg-orange-600 dark:text-white dark:border-orange-600';
+    if (lower.includes('terminated')) return 'bg-muted text-foreground border-border dark:bg-slate-600 dark:text-white dark:border-slate-600';
+    return 'bg-muted text-foreground border-border dark:bg-slate-600 dark:text-white dark:border-slate-600';
   };
   
   return (
@@ -131,15 +131,15 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
               <div className="space-y-2 text-sm">
                 <div className="flex items-center gap-2">
                   <Badge variant="outline" className="text-xs">{latestLiveMessage.type}</Badge>
-                  <span className="text-xs text-gray-500">{new Date(latestLiveMessage.timestamp).toLocaleTimeString()}</span>
+                  <span className="text-xs text-muted-foreground">{new Date(latestLiveMessage.timestamp).toLocaleTimeString()}</span>
                 </div>
                 <div className="relative max-h-40 overflow-hidden">
-                  <pre className="whitespace-pre-wrap break-words bg-gray-50 rounded p-2 text-xs text-gray-800">{JSON.stringify(latestLiveMessage.payload, null, 2)}</pre>
+                  <pre className="whitespace-pre-wrap break-words bg-muted/50 rounded p-2 text-xs text-foreground">{JSON.stringify(latestLiveMessage.payload, null, 2)}</pre>
                   <div className="absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-white to-transparent pointer-events-none" />
                 </div>
               </div>
             ) : (
-              <div className="text-sm text-gray-500">No messages yet</div>
+              <div className="text-sm text-muted-foreground">No messages yet</div>
             )}
           </CardContent>
         </Card>
@@ -182,7 +182,7 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                         <p className="font-semibold">K8s Job</p>
                         <div className="flex items-center gap-2">
                           <p className="text-muted-foreground font-mono text-xs">{session.status.jobName}</p>
-                          <Badge variant="outline" className={session.spec?.interactive ? "bg-green-50 text-green-700 border-green-200" : "bg-gray-50 text-gray-700 border-gray-200"}>
+                          <Badge variant="outline" className={session.spec?.interactive ? "bg-green-50 text-green-700 border-green-200" : "bg-muted/50 text-foreground/80 border-gray-200"}>
                             {session.spec?.interactive ? "Interactive" : "Headless"}
                           </Badge>
                         </div>
@@ -240,10 +240,10 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                               <span className="font-mono text-xs">{k8sResources.pvcName}</span>
                             );
                           })()}
-                          <Badge className={`text-xs ${k8sResources.pvcExists ? 'bg-green-100 text-green-800 border-green-300' : 'bg-red-100 text-red-800 border-red-300'}`}>
+                          <Badge className={`text-xs ${k8sResources.pvcExists ? 'bg-green-100 text-green-800 border-green-300 dark:bg-green-700 dark:text-white dark:border-green-700' : 'bg-red-100 text-red-800 border-red-300 dark:bg-red-700 dark:text-white dark:border-red-700'}`}>
                             {k8sResources.pvcExists ? 'Exists' : 'Not Found'}
                           </Badge>
-                          {k8sResources.pvcSize && <span className="text-xs text-gray-500">{k8sResources.pvcSize}</span>}
+                          {k8sResources.pvcSize && <span className="text-xs text-muted-foreground">{k8sResources.pvcSize}</span>}
                         </div>
                       )}
                       
@@ -301,10 +301,10 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                                     {container.state}
                                   </Badge>
                                   {container.exitCode !== undefined && (
-                                    <span className="text-xs text-gray-500">Exit: {container.exitCode}</span>
+                                    <span className="text-xs text-muted-foreground">Exit: {container.exitCode}</span>
                                   )}
                                   {container.reason && (
-                                    <span className="text-xs text-gray-500">({container.reason})</span>
+                                    <span className="text-xs text-muted-foreground">({container.reason})</span>
                                   )}
                                 </div>
                               ))}
@@ -399,10 +399,10 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                                           {container.state}
                                         </Badge>
                                         {container.exitCode !== undefined && (
-                                          <span className="text-xs text-gray-500">Exit: {container.exitCode}</span>
+                                          <span className="text-xs text-muted-foreground">Exit: {container.exitCode}</span>
                                         )}
                                         {container.reason && (
-                                          <span className="text-xs text-gray-500">({container.reason})</span>
+                                          <span className="text-xs text-muted-foreground">({container.reason})</span>
                                         )}
                                       </div>
                                     ))}

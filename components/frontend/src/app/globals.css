@@ -125,5 +125,9 @@
 /* Thin scrollbar styling */
 .scrollbar-thin {
   scrollbar-width: thin;
-  scrollbar-color: #d1d5db #f3f4f6;
+  scrollbar-color: hsl(var(--muted-foreground)) hsl(var(--muted));
+}
+
+.dark .scrollbar-thin {
+  scrollbar-color: hsl(var(--muted-foreground)) hsl(var(--background));
 }

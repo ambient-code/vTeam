@@ -34,13 +34,13 @@ const defaultComponents: Components = {
   } & React.HTMLAttributes<HTMLElement>) => {
     return inline ? (
       <code
-        className="bg-gray-100 px-1 py-0.5 rounded text-xs"
+        className="bg-muted px-1 py-0.5 rounded text-xs"
         {...(props as React.HTMLAttributes<HTMLElement>)}
       >
         {children}
       </code>
     ) : (
-      <pre className="bg-gray-800 text-gray-100 p-2 rounded text-xs overflow-x-auto">
+      <pre className="bg-slate-950 dark:bg-black text-slate-50 p-2 rounded text-xs overflow-x-auto">
         <code
           className={className}
           {...(props as React.HTMLAttributes<HTMLElement>)}
@@ -51,16 +51,16 @@ const defaultComponents: Components = {
     );
   },
   p: ({ children }) => (
-    <p className="text-gray-600 leading-relaxed mb-2 text-sm">{children}</p>
+    <p className="text-muted-foreground leading-relaxed mb-2 text-sm">{children}</p>
   ),
   h1: ({ children }) => (
-    <h1 className="text-lg font-bold text-gray-800 mb-2">{children}</h1>
+    <h1 className="text-lg font-bold text-foreground mb-2">{children}</h1>
   ),
   h2: ({ children }) => (
-    <h2 className="text-md font-semibold text-gray-800 mb-2">{children}</h2>
+    <h2 className="text-md font-semibold text-foreground mb-2">{children}</h2>
   ),
   h3: ({ children }) => (
-    <h3 className="text-sm font-medium text-gray-800 mb-1">{children}</h3>
+    <h3 className="text-sm font-medium text-foreground mb-1">{children}</h3>
   ),
 };
 
@@ -144,7 +144,7 @@ export const LoadingDots = () => {
           fill="#3b82f6"
         />
       </svg>
-      <span className="ml-2 text-xs text-gray-400">{LOADING_MESSAGES[messageIndex]}</span>
+      <span className="ml-2 text-xs text-muted-foreground/60">{LOADING_MESSAGES[messageIndex]}</span>
     </div>
   );
 };
@@ -183,7 +183,7 @@ export const Message = React.forwardRef<HTMLDivElement, MessageProps>(
 
           {/* Message Content */}
           <div className="flex-1 min-w-0">
-            <div className={cn(borderless ? "p-0" : "bg-white rounded-lg border shadow-sm p-3")}> 
+            <div className={cn(borderless ? "p-0" : "bg-card rounded-lg border shadow-sm p-3")}> 
               {/* Header */}
               <div className={cn("flex items-center", borderless ? "mb-1" : "mb-2")}> 
                 <Badge
@@ -195,10 +195,10 @@ export const Message = React.forwardRef<HTMLDivElement, MessageProps>(
               </div>
 
               {/* Content */}
-              <div className="text-sm text-gray-800">
+              <div className="text-sm text-foreground">
                 {isLoading ? (
                   <div>
-                    <div className="text-sm text-gray-600 mb-2">{content}</div>
+                    <div className="text-sm text-muted-foreground mb-2">{content}</div>
                     <LoadingDots />
                   </div>
                 ) : (

@@ -54,13 +54,13 @@ export function WorkflowsAccordion({
   const isSessionStopped = sessionPhase === 'Stopped' || sessionPhase === 'Error' || sessionPhase === 'Completed';
 
   return (
-    <AccordionItem value="workflows" className="border rounded-lg px-3 bg-white">
+    <AccordionItem value="workflows" className="border rounded-lg px-3 bg-card">
       <AccordionTrigger className="text-base font-semibold hover:no-underline py-3">
         <div className="flex items-center gap-2">
           <Workflow className="h-4 w-4" />
           <span>Workflows</span>
           {activeWorkflow && !isExpanded && (
-            <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+            <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 dark:bg-green-950/50 dark:text-green-300 dark:border-green-800">
               {ootbWorkflows.find(w => w.id === activeWorkflow)?.name || "Custom Workflow"}
             </Badge>
           )}
@@ -296,7 +296,7 @@ export function WorkflowsAccordion({
                                     <Popover>
                                       <PopoverTrigger asChild>
                                         <button
-                                          className="p-0.5 hover:bg-gray-100 rounded flex-shrink-0"
+                                          className="p-0.5 hover:bg-muted rounded flex-shrink-0"
                                           onClick={(e) => {
                                             e.preventDefault();
                                             e.stopPropagation();

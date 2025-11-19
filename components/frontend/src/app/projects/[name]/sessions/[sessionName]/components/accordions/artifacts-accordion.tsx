@@ -34,7 +34,7 @@ export function ArtifactsAccordion({
   onNavigateBack,
 }: ArtifactsAccordionProps) {
   return (
-    <AccordionItem value="artifacts" className="border rounded-lg px-3 bg-white">
+    <AccordionItem value="artifacts" className="border rounded-lg px-3 bg-card">
       <AccordionTrigger className="text-base font-semibold hover:no-underline py-3">
         <div className="flex items-center gap-2">
           <NotepadText className="h-4 w-4" />

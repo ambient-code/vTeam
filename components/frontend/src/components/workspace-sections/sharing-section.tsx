@@ -148,10 +148,10 @@ export function SharingSection({ projectName }: SharingSectionProps) {
   return (
     <>
       {!isAdmin && (
-        <Card className="mb-6 border-blue-200 bg-blue-50">
+        <Card className="mb-6 border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/50">
           <CardContent className="pt-6 flex items-center gap-2">
-            <Info className="w-4 h-4 text-blue-600" />
-            <p className="text-blue-700">
+            <Info className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+            <p className="text-blue-700 dark:text-blue-300">
               You have {userRole || 'view'} access. Only admins can grant or revoke permissions.
             </p>
           </CardContent>

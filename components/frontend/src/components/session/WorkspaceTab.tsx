@@ -79,7 +79,7 @@ const WorkspaceTab: React.FC<WorkspaceTabProps> = ({ session, wsLoading, wsUnava
                   PVC
                 </Badge>
                 <span className="font-mono text-xs text-muted-foreground">{k8sResources.pvcName}</span>
-                <Badge className={`text-xs ${k8sResources.pvcExists ? 'bg-green-100 text-green-800 border-green-300' : 'bg-red-100 text-red-800 border-red-300'}`}>
+                <Badge className={`text-xs ${k8sResources.pvcExists ? 'bg-green-100 text-green-800 border-green-300 dark:bg-green-700 dark:text-white dark:border-green-700' : 'bg-red-100 text-red-800 border-red-300 dark:bg-red-700 dark:text-white dark:border-red-700'}`}>
                   {k8sResources.pvcExists ? 'Exists' : 'Not Found'}
                 </Badge>
                 {k8sResources.pvcSize && (
@@ -122,7 +122,7 @@ const WorkspaceTab: React.FC<WorkspaceTabProps> = ({ session, wsLoading, wsUnava
                   </div>
                 </div>
                 <textarea
-                  className="w-full h-[60vh] bg-gray-900 text-gray-100 p-4 rounded overflow-auto text-sm font-mono"
+                  className="w-full h-[60vh] bg-slate-950 dark:bg-black text-slate-50 p-4 rounded overflow-auto text-sm font-mono"
                   value={wsFileContent}
                   onChange={(e) => setWsFileContent(e.target.value)}
                 />

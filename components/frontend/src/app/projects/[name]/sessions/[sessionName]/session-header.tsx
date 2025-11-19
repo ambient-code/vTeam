@@ -61,9 +61,9 @@ export function SessionHeader({
             </Badge>
           </h1>
           {session.spec.displayName && (
-            <div className="text-sm text-gray-500">{session.metadata.name}</div>
+            <div className="text-sm text-muted-foreground">{session.metadata.name}</div>
           )}
-          <div className="text-xs text-gray-500 mt-3">
+          <div className="text-xs text-muted-foreground mt-3">
             <span>Started {started || formatDistanceToNow(new Date(session.metadata.creationTimestamp), { addSuffix: true })}</span>
             <span className="mx-1">•</span>
             <button 
