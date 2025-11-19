@@ -59,12 +59,28 @@ jobs:
       - name: Run TypeScript type check
         run: |
           cd components/frontend
+          # Clean .next to avoid stale type definitions from previous builds
+          # Next.js post-install generates types that may reference non-existent files
+          rm -rf .next
           npx tsc --noEmit
 
       - name: Build check
         run: |
           cd components/frontend
           npm run build
+
+      - name: Run tests with coverage
+        run: |
+          cd components/frontend
+          npm run test:coverage
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./components/frontend/coverage/lcov.info
+          flags: frontend
+          name: frontend-coverage
 
   lint-summary:
     runs-on: ubuntu-latest

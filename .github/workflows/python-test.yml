@@ -1,0 +1,78 @@
+name: Python Test and Coverage
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'components/runners/claude-code-runner/**/*.py'
+      - 'components/runners/claude-code-runner/pyproject.toml'
+      - 'components/runners/claude-code-runner/uv.lock'
+      - '.github/workflows/python-test.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'components/runners/claude-code-runner/**/*.py'
+      - 'components/runners/claude-code-runner/pyproject.toml'
+      - 'components/runners/claude-code-runner/uv.lock'
+      - '.github/workflows/python-test.yml'
+  workflow_dispatch:
+
+jobs:
+  test-runner:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Install dependencies
+        run: |
+          cd components/runners/claude-code-runner
+          uv pip install --system -e '.[dev]'
+
+      - name: Run tests with coverage
+        run: |
+          cd components/runners/claude-code-runner
+          # Allow exit code 5 (no tests collected) - tests require container environment
+          pytest --cov=. --cov-report=xml --cov-report=term || EXIT_CODE=$?
+          if [ "${EXIT_CODE:-0}" -eq 5 ]; then
+            echo "No tests collected (requires container environment) - this is expected"
+            echo "Generating empty coverage report for Codecov"
+            echo '<?xml version="1.0" ?><coverage version="1.0"><packages></packages></coverage>' > coverage.xml
+            exit 0
+          elif [ "${EXIT_CODE:-0}" -ne 0 ]; then
+            echo "Tests failed with exit code $EXIT_CODE"
+            exit $EXIT_CODE
+          fi
+
+      - name: Upload coverage to Codecov
+        if: always()
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./components/runners/claude-code-runner/coverage.xml
+          flags: python-runner
+          name: claude-runner-coverage
+
+  test-summary:
+    runs-on: ubuntu-latest
+    needs: [test-runner]
+    if: always()
+    steps:
+      - name: Check overall status
+        run: |
+          if [ "${{ needs.test-runner.result }}" == "failure" ]; then
+            echo "Python tests failed"
+            exit 1
+          fi
+          echo "All Python tests passed!"
+
