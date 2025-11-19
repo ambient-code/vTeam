@@ -4,8 +4,7 @@ import React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Brain, Clock, RefreshCw, Sparkle, ExternalLink, Box, Container, HardDrive } from "lucide-react";
-import { format } from "date-fns";
+import { Brain, Clock, RefreshCw, ExternalLink, Box, Container, HardDrive } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { AgenticSession } from "@/types/agentic-session";
 import type { SessionMessage } from "@/types";
@@ -70,6 +69,8 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
   const [expandedPods, setExpandedPods] = React.useState<Record<string, boolean>>({});
   
   const projectNamespace = session.metadata?.namespace || '';
+  const startTime = session.status?.startTime ? new Date(session.status.startTime) : null;
+  const completionTime = session.status?.completionTime ? new Date(session.status.completionTime) : null;
   
   const getStatusColor = (status: string) => {
     const lower = status.toLowerCase();
@@ -95,7 +96,7 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
           </CardHeader>
           <CardContent>
             {(() => {
-              const promptText = session.spec.prompt || "";
+              const promptText = session.spec.initialPrompt || "";
               const promptIsLong = promptText.length > 400;
               return (
                 <>
@@ -159,35 +160,22 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                 <div>
                   <div className="text-xs font-semibold text-muted-foreground mb-2">Runtime</div>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {session.status.message && (
-                      <div>
-                        <p className="font-semibold">Status</p>
-                        <p className="text-muted-foreground">{session.status.message}</p>
-                      </div>
-                    )}
-                    {session.status.startTime && (
-                      <div>
-                        <p className="font-semibold">Started</p>
-                        <p className="text-muted-foreground">{format(new Date(session.status.startTime), "PPp")}</p>
-                      </div>
-                    )}
-                    {session.status.completionTime && (
-                      <div>
-                        <p className="font-semibold">Completed</p>
-                        <p className="text-muted-foreground">{format(new Date(session.status.completionTime), "PPp")}</p>
-                      </div>
-                    )}
-                    {session.status.jobName && (
-                      <div>
-                        <p className="font-semibold">K8s Job</p>
-                        <div className="flex items-center gap-2">
-                          <p className="text-muted-foreground font-mono text-xs">{session.status.jobName}</p>
-                          <Badge variant="outline" className={session.spec?.interactive ? "bg-green-50 text-green-700 border-green-200" : "bg-gray-50 text-gray-700 border-gray-200"}>
-                            {session.spec?.interactive ? "Interactive" : "Headless"}
-                          </Badge>
-                        </div>
-                      </div>
-                    )}
+                    <div>
+                      <p className="font-semibold">Phase</p>
+                      <p className="text-muted-foreground">{session.status?.phase ?? "Unknown"}</p>
+                    </div>
+                    <div>
+                      <p className="font-semibold">Started</p>
+                      <p className="text-muted-foreground">
+                        {startTime ? startTime.toLocaleString() : "Not available"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="font-semibold">Completed</p>
+                      <p className="text-muted-foreground">
+                        {completionTime ? completionTime.toLocaleString() : "In progress"}
+                      </p>
+                    </div>
                   </div>
                 </div>
 
@@ -441,12 +429,9 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                   {session.spec.repos && session.spec.repos.length > 0 ? (
                     <div className="space-y-2">
                       {session.spec.repos.map((repo, idx) => {
-                        const isMain = session.spec.mainRepoIndex === idx;
-                        // Use the actual output branch, or default to sessions/{sessionName}
-                        const outBranch = repo.output?.branch && repo.output.branch.trim() && repo.output.branch !== 'auto' 
-                          ? repo.output.branch 
-                          : `sessions/${session.metadata.name}`;
-                        const compareUrl = buildGithubCompareUrl(repo.input.url, repo.input.branch || 'main', repo.output?.url, outBranch);
+                        const isMain = idx === 0; // First repo is always the working directory
+                        const branch = repo.branch || 'main';
+                        const compareUrl = buildGithubCompareUrl(repo.url, branch, repo.url, branch);
                         
                         // Check if temp pod is running and ready
                         const tempPod = k8sResources?.pods?.find(p => p.isTempPod);
@@ -457,25 +442,9 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                         return (
                           <div key={idx} className="flex items-center gap-2 text-sm font-mono">
                             {isMain && <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded font-sans">MAIN</span>}
-                            <span className="text-muted-foreground break-all">{repo.input.url}</span>
-                            <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded font-sans">{repo.input.branch || "main"}</span>
-                            <span className="text-muted-foreground">→</span>
-                            <span className="text-muted-foreground break-all">{repo.output?.url || "(no push)"}</span>
-                            {repo.output?.url && (
-                              <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded font-sans">{repo.output?.branch || (
-                                <div className="flex items-center gap-1">
-                                <Sparkle
-                                className="h-3 w-3 text-muted-foreground"
-                                />
-                                auto
-                                </div>
-                               )}</span>
-                            )}
-                            {repo.status && (
-                              <span className="text-xs px-2 py-0.5 rounded font-sans border border-muted-foreground/20">
-                                {repo.status}
-                              </span>
-                            )}
+                            <span className="text-muted-foreground break-all">{repo.url}</span>
+                            <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded font-sans">{repo.branch || "main"}</span>
+                            {/* repo.status removed from simplified repo structure */}
                             <span className="flex-1" />
                             
                             {!tempPodReady ? (
@@ -483,7 +452,7 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                                 (read-only - temp service not running)
                               </span>
                             ) : !hasChanges ? (
-                              repo.status === 'pushed' && compareUrl ? (
+                              compareUrl ? (
                                 <a 
                                   href={compareUrl} 
                                   target="_blank" 
@@ -510,7 +479,7 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                                 )}
                               </span>
                             )}
-                            {hasChanges && compareUrl && repo.status === 'pushed' ? (
+                            {hasChanges && compareUrl ? (
                               <a 
                                 href={compareUrl} 
                                 target="_blank" 
@@ -522,7 +491,7 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                               </a>
                             ) : null}
                             {hasChanges && tempPodReady && (
-                              repo.output?.url ? (
+                              repo.url ? (
                                 <div className="flex items-center gap-2">
                                   <Button size="sm" variant="secondary" onClick={() => onPush(idx)} disabled={!tempPodReady}>{busyRepo[idx] === 'push' ? 'Pushing…' : 'Push'}</Button>
                                   <Button size="sm" variant="outline" onClick={() => onAbandon(idx)} disabled={!tempPodReady}>{busyRepo[idx] === 'abandon' ? 'Abandoning…' : 'Abandon'}</Button>

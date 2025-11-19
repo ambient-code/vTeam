@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Loader2 } from "lucide-react";
 import { useForm, useFieldArray } from "react-hook-form";
@@ -23,7 +23,7 @@ import { useCreateSession } from "@/services/queries/use-sessions";
 
 const formSchema = z
   .object({
-    prompt: z.string(),
+    initialPrompt: z.string(),
     model: z.string().min(1, "Please select a model"),
     temperature: z.number().min(0).max(2),
     maxTokens: z.number().min(100).max(8000),
@@ -32,24 +32,21 @@ const formSchema = z
     // Unified multi-repo array
     repos: z
       .array(z.object({
-        input: z.object({ url: z.string().url(), branch: z.string().optional() }),
-        output: z.object({ url: z.string().url().optional().or(z.literal("")), branch: z.string().optional() }).optional(),
+        url: z.string().url(),
+        branch: z.string().optional(),
       }))
       .optional()
       .default([]),
-    mainRepoIndex: z.number().optional().default(0),
     // Runner behavior
     autoPushOnComplete: z.boolean().default(false),
-    // storage paths are not user-configurable anymore
-    agentPersona: z.string().optional(),
   })
   .superRefine((data, ctx) => {
     const isInteractive = Boolean(data.interactive);
-    const promptLength = (data.prompt || "").trim().length;
+    const promptLength = (data.initialPrompt || "").trim().length;
     if (!isInteractive && promptLength < 10) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ["prompt"],
+        path: ["initialPrompt"],
         message: "Prompt must be at least 10 characters long",
       });
     }
@@ -59,12 +56,10 @@ type FormValues = z.input<typeof formSchema>;
 
 export default function NewProjectSessionPage({ params }: { params: Promise<{ name: string }> }) {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [projectName, setProjectName] = useState<string>("");
-  const [prefillWorkspacePath, setPrefillWorkspacePath] = useState<string | undefined>(undefined);
   const [editingRepoIndex, setEditingRepoIndex] = useState<number | null>(null);
   const [repoDialogOpen, setRepoDialogOpen] = useState(false);
-  const [tempRepo, setTempRepo] = useState<{ input: { url: string; branch: string }; output?: { url: string; branch: string } }>({ input: { url: "", branch: "main" } });
+  const [tempRepo, setTempRepo] = useState<{ url: string; branch?: string }>({ url: "", branch: "main" });
 
   // React Query hooks
   const createSessionMutation = useCreateSession();
@@ -73,29 +68,22 @@ export default function NewProjectSessionPage({ params }: { params: Promise<{ na
     params.then(({ name }) => setProjectName(name));
   }, [params]);
 
-  useEffect(() => {
-    const ws = searchParams?.get("workspacePath");
-    if (ws) setPrefillWorkspacePath(ws);
-  }, [searchParams]);
-
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      prompt: "",
+      initialPrompt: "",
       model: "claude-sonnet-4-5",
       temperature: 0.7,
       maxTokens: 4000,
       timeout: 300,
       interactive: false,
       autoPushOnComplete: false,
-      agentPersona: "",
       repos: [],
-      mainRepoIndex: 0,
     },
   });
 
   // Field arrays for multi-repo configuration
-  const { fields: reposFields, append: appendRepo, remove: removeRepo, update: updateRepo } = useFieldArray({ control: form.control, name: "repos" });
+  const { append: appendRepo, remove: removeRepo, update: updateRepo } = useFieldArray({ control: form.control, name: "repos" });
 
   // Watch interactive to adjust prompt field hints
   const isInteractive = form.watch("interactive");
@@ -107,11 +95,11 @@ export default function NewProjectSessionPage({ params }: { params: Promise<{ na
   const onSubmit = async (values: FormValues) => {
     if (!projectName) return;
 
-    const promptToSend = values.interactive && !values.prompt.trim()
+    const promptToSend = values.interactive && !values.initialPrompt.trim()
       ? "Greet the user and briefly explain the workspace capabilities: they can select workflows, add code repositories for context, use commands, and you'll help with software engineering tasks. Keep it friendly and concise."
-      : values.prompt;
+      : values.initialPrompt;
     const request: CreateAgenticSessionRequest = {
-      prompt: promptToSend,
+      initialPrompt: promptToSend,
       llmSettings: {
         model: values.model,
         temperature: values.temperature,
@@ -122,10 +110,6 @@ export default function NewProjectSessionPage({ params }: { params: Promise<{ na
       autoPushOnComplete: values.autoPushOnComplete,
       };
 
-      if (prefillWorkspacePath) {
-        request.workspacePath = prefillWorkspacePath;
-      }
-
       // Apply labels if projectName is present
       if (projectName) {
         request.labels = {
@@ -135,20 +119,10 @@ export default function NewProjectSessionPage({ params }: { params: Promise<{ na
       }
 
 
-      // Multi-repo configuration
-      type RepoConfig = { input: { url: string; branch?: string }; output?: { url: string; branch?: string } };
-      const repos = (values.repos as RepoConfig[] | undefined) || [];
-      if (Array.isArray(repos) && repos.length > 0) {
-        const filteredRepos = repos.filter(r => r && r.input && r.input.url);
-        (request as CreateAgenticSessionRequest & { repos?: RepoConfig[]; mainRepoIndex?: number }).repos = filteredRepos;
-        (request as CreateAgenticSessionRequest & { repos?: RepoConfig[]; mainRepoIndex?: number }).mainRepoIndex = values.mainRepoIndex || 0;
-
-        // Ensure runner env receives repos JSON + main repo index for immediate compatibility
-        request.environmentVariables = {
-          ...(request.environmentVariables || {}),
-          REPOS_JSON: JSON.stringify(filteredRepos),
-          MAIN_REPO_INDEX: String(values.mainRepoIndex || 0),
-        };
+      // Multi-repo configuration (simplified format)
+      const repos = (values.repos || []).filter(r => r && r.url);
+      if (repos.length > 0) {
+        request.repos = repos;
       }
 
     createSessionMutation.mutate(
@@ -208,7 +182,7 @@ export default function NewProjectSessionPage({ params }: { params: Promise<{ na
               {!isInteractive && (
                 <FormField
                   control={form.control}
-                  name="prompt"
+                  name="initialPrompt"
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Agentic Prompt</FormLabel>
@@ -235,29 +209,23 @@ export default function NewProjectSessionPage({ params }: { params: Promise<{ na
 
               {/* Repositories (Optional) */}
               <RepositoryList
-                repos={(form.watch("repos") || []) as Array<{ input: { url: string; branch: string }; output?: { url: string; branch: string } }>}
-                mainRepoIndex={form.watch("mainRepoIndex") || 0}
+                repos={(form.watch("repos") || []) as Array<{ url: string; branch?: string }>}
                 onAddRepo={() => {
-                  setTempRepo({ input: { url: "", branch: "main" } });
+                  setTempRepo({ url: "", branch: "main" });
                   setEditingRepoIndex(null);
                   setRepoDialogOpen(true);
                 }}
                 onEditRepo={(index) => {
-                  const repo = form.getValues(`repos.${index}`) as { input: { url: string; branch: string }; output?: { url: string; branch: string } } | undefined;
+                  const repo = form.getValues(`repos.${index}`) as { url: string; branch?: string } | undefined;
                   if (repo) {
-                    setTempRepo(repo);
+                    setTempRepo({ url: repo.url, branch: repo.branch || "main" });
                     setEditingRepoIndex(index);
                     setRepoDialogOpen(true);
                   }
                 }}
                 onRemoveRepo={(index) => {
                   removeRepo(index);
-                  const currentMain = form.getValues("mainRepoIndex") || 0;
-                  if (currentMain >= reposFields.length - 1) {
-                    form.setValue("mainRepoIndex", Math.max(0, reposFields.length - 2));
-                  }
                 }}
-                onSetMainRepo={(index) => form.setValue("mainRepoIndex", index)}
               />
 
               <RepositoryDialog
@@ -266,7 +234,7 @@ export default function NewProjectSessionPage({ params }: { params: Promise<{ na
                 repo={tempRepo}
                 onRepoChange={setTempRepo}
                 onSave={() => {
-                  if (!tempRepo.input.url) return;
+                  if (!tempRepo.url) return;
                   if (editingRepoIndex !== null) {
                     updateRepo(editingRepoIndex, tempRepo);
                   } else {

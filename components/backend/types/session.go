@@ -10,7 +10,7 @@ type AgenticSession struct {
 }
 
 type AgenticSessionSpec struct {
-	Prompt               string             `json:"prompt" binding:"required"`
+	InitialPrompt        string             `json:"initialPrompt,omitempty"`
 	Interactive          bool               `json:"interactive,omitempty"`
 	DisplayName          string             `json:"displayName"`
 	LLMSettings          LLMSettings        `json:"llmSettings"`
@@ -20,66 +20,44 @@ type AgenticSessionSpec struct {
 	ResourceOverrides    *ResourceOverrides `json:"resourceOverrides,omitempty"`
 	EnvironmentVariables map[string]string  `json:"environmentVariables,omitempty"`
 	Project              string             `json:"project,omitempty"`
-	// Multi-repo support (unified mapping)
-	Repos         []SessionRepoMapping `json:"repos,omitempty"`
-	MainRepoIndex *int                 `json:"mainRepoIndex,omitempty"`
+	// Multi-repo support
+	Repos []SimpleRepo `json:"repos,omitempty"`
 	// Active workflow for dynamic workflow switching
 	ActiveWorkflow *WorkflowSelection `json:"activeWorkflow,omitempty"`
 }
 
-// NamedGitRepo represents named repository types for multi-repo session support.
-type NamedGitRepo struct {
+// SimpleRepo represents a simplified repository configuration
+type SimpleRepo struct {
 	URL    string  `json:"url"`
 	Branch *string `json:"branch,omitempty"`
-}
-
-type OutputNamedGitRepo struct {
-	URL    string  `json:"url"`
-	Branch *string `json:"branch,omitempty"`
-}
-
-// SessionRepoMapping is a unified session repo mapping.
-type SessionRepoMapping struct {
-	Input  NamedGitRepo        `json:"input"`
-	Output *OutputNamedGitRepo `json:"output,omitempty"`
-	Status *string             `json:"status,omitempty"`
 }
 
 type AgenticSessionStatus struct {
-	Phase          string  `json:"phase,omitempty"`
-	Message        string  `json:"message,omitempty"`
-	StartTime      *string `json:"startTime,omitempty"`
-	CompletionTime *string `json:"completionTime,omitempty"`
-	JobName        string  `json:"jobName,omitempty"`
-	StateDir       string  `json:"stateDir,omitempty"`
-	// Result summary fields from runner
-	Subtype      string                 `json:"subtype,omitempty"`
-	IsError      bool                   `json:"is_error,omitempty"`
-	NumTurns     int                    `json:"num_turns,omitempty"`
-	SessionID    string                 `json:"session_id,omitempty"`
-	TotalCostUSD *float64               `json:"total_cost_usd,omitempty"`
-	Usage        map[string]interface{} `json:"usage,omitempty"`
-	Result       *string                `json:"result,omitempty"`
+	ObservedGeneration int64               `json:"observedGeneration,omitempty"`
+	Phase              string              `json:"phase,omitempty"`
+	StartTime          *string             `json:"startTime,omitempty"`
+	CompletionTime     *string             `json:"completionTime,omitempty"`
+	ReconciledRepos    []ReconciledRepo    `json:"reconciledRepos,omitempty"`
+	ReconciledWorkflow *ReconciledWorkflow `json:"reconciledWorkflow,omitempty"`
+	SDKSessionID       string              `json:"sdkSessionId,omitempty"`
+	SDKRestartCount    int                 `json:"sdkRestartCount,omitempty"`
+	Conditions         []Condition         `json:"conditions,omitempty"`
 }
 
 type CreateAgenticSessionRequest struct {
-	Prompt          string       `json:"prompt" binding:"required"`
+	InitialPrompt   string       `json:"initialPrompt,omitempty"`
 	DisplayName     string       `json:"displayName,omitempty"`
 	LLMSettings     *LLMSettings `json:"llmSettings,omitempty"`
 	Timeout         *int         `json:"timeout,omitempty"`
 	Interactive     *bool        `json:"interactive,omitempty"`
-	WorkspacePath   string       `json:"workspacePath,omitempty"`
 	ParentSessionID string       `json:"parent_session_id,omitempty"`
-	// Multi-repo support (unified mapping)
-	Repos                []SessionRepoMapping `json:"repos,omitempty"`
-	MainRepoIndex        *int                 `json:"mainRepoIndex,omitempty"`
-	AutoPushOnComplete   *bool                `json:"autoPushOnComplete,omitempty"`
-	UserContext          *UserContext         `json:"userContext,omitempty"`
-	BotAccount           *BotAccountRef       `json:"botAccount,omitempty"`
-	ResourceOverrides    *ResourceOverrides   `json:"resourceOverrides,omitempty"`
-	EnvironmentVariables map[string]string    `json:"environmentVariables,omitempty"`
-	Labels               map[string]string    `json:"labels,omitempty"`
-	Annotations          map[string]string    `json:"annotations,omitempty"`
+	// Multi-repo support
+	Repos                []SimpleRepo      `json:"repos,omitempty"`
+	AutoPushOnComplete   *bool             `json:"autoPushOnComplete,omitempty"`
+	UserContext          *UserContext      `json:"userContext,omitempty"`
+	EnvironmentVariables map[string]string `json:"environmentVariables,omitempty"`
+	Labels               map[string]string `json:"labels,omitempty"`
+	Annotations          map[string]string `json:"annotations,omitempty"`
 }
 
 type CloneSessionRequest struct {
@@ -88,17 +66,17 @@ type CloneSessionRequest struct {
 }
 
 type UpdateAgenticSessionRequest struct {
-	Prompt      *string      `json:"prompt,omitempty"`
-	DisplayName *string      `json:"displayName,omitempty"`
-	Timeout     *int         `json:"timeout,omitempty"`
-	LLMSettings *LLMSettings `json:"llmSettings,omitempty"`
+	InitialPrompt *string      `json:"initialPrompt,omitempty"`
+	DisplayName   *string      `json:"displayName,omitempty"`
+	Timeout       *int         `json:"timeout,omitempty"`
+	LLMSettings   *LLMSettings `json:"llmSettings,omitempty"`
 }
 
 type CloneAgenticSessionRequest struct {
 	TargetProject     string `json:"targetProject,omitempty"`
 	TargetSessionName string `json:"targetSessionName,omitempty"`
 	DisplayName       string `json:"displayName,omitempty"`
-	Prompt            string `json:"prompt,omitempty"`
+	InitialPrompt     string `json:"initialPrompt,omitempty"`
 }
 
 // WorkflowSelection represents a workflow to load into the session
@@ -106,4 +84,32 @@ type WorkflowSelection struct {
 	GitURL string `json:"gitUrl" binding:"required"`
 	Branch string `json:"branch,omitempty"`
 	Path   string `json:"path,omitempty"`
+}
+
+// ReconciledRepo captures reconciliation state for a repository
+type ReconciledRepo struct {
+	URL      string  `json:"url"`
+	Branch   string  `json:"branch"`
+	Name     string  `json:"name,omitempty"`
+	Status   string  `json:"status,omitempty"`
+	ClonedAt *string `json:"clonedAt,omitempty"`
+}
+
+// ReconciledWorkflow captures reconciliation state for the active workflow
+type ReconciledWorkflow struct {
+	GitURL    string  `json:"gitUrl"`
+	Branch    string  `json:"branch"`
+	Path      string  `json:"path,omitempty"`
+	Status    string  `json:"status,omitempty"`
+	AppliedAt *string `json:"appliedAt,omitempty"`
+}
+
+// Condition mirrors metav1.Condition for API transport
+type Condition struct {
+	Type               string `json:"type"`
+	Status             string `json:"status"`
+	Reason             string `json:"reason,omitempty"`
+	Message            string `json:"message,omitempty"`
+	LastTransitionTime string `json:"lastTransitionTime,omitempty"`
+	ObservedGeneration int64  `json:"observedGeneration,omitempty"`
 }

@@ -7,10 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
 type Repository = {
-  input: {
-    url: string;
-    branch?: string;
-  };
+  url: string;
+  branch?: string;
 };
 
 type RepositoriesAccordionProps = {
@@ -71,7 +69,7 @@ export function RepositoriesAccordion({
           ) : (
             <div className="space-y-2">
               {repositories.map((repo, idx) => {
-                const repoName = repo.input.url.split('/').pop()?.replace('.git', '') || `repo-${idx}`;
+                const repoName = repo.url.split('/').pop()?.replace('.git', '') || `repo-${idx}`;
                 const isRemoving = removingRepo === repoName;
                 
                 return (
@@ -79,7 +77,7 @@ export function RepositoriesAccordion({
                     <GitBranch className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-medium truncate">{repoName}</div>
-                      <div className="text-xs text-muted-foreground truncate">{repo.input.url}</div>
+                      <div className="text-xs text-muted-foreground truncate">{repo.url}</div>
                     </div>
                     <Button 
                       variant="ghost"

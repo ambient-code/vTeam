@@ -1,6 +1,5 @@
 "use client";
 
-import { format } from 'date-fns';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import type { AgenticSession } from '@/types/agentic-session';
@@ -74,12 +73,7 @@ export function SessionDetailsModal({
               <span className="text-gray-900">{session.spec?.interactive ? "Interactive" : "Headless"}</span>
             </div>
             
-            {session.status?.startTime && (
-              <div className="flex items-start gap-3">
-                <span className="font-semibold text-gray-700 min-w-[100px]">Started:</span>
-                <span className="text-gray-900">{format(new Date(session.status.startTime), "PPp")}</span>
-              </div>
-            )}
+            {/* startTime removed from simplified status */}
             
             <div className="flex items-start gap-3">
               <span className="font-semibold text-gray-700 min-w-[100px]">Duration:</span>
@@ -100,12 +94,7 @@ export function SessionDetailsModal({
               </div>
             )}
             
-            {session.status?.jobName && (
-              <div className="flex items-start gap-3">
-                <span className="font-semibold text-gray-700 min-w-[100px]">K8s Job:</span>
-                <span className="text-gray-900 font-mono break-all">{session.status.jobName}</span>
-              </div>
-            )}
+            {/* jobName removed from simplified status */}
             
             <div className="flex items-start gap-3">
               <span className="font-semibold text-gray-700 min-w-[100px]">Messages:</span>
@@ -113,13 +102,38 @@ export function SessionDetailsModal({
             </div>
           </div>
           
-          {session.spec.prompt && (
+          {session.spec.initialPrompt && (
             <div className="pt-2">
               <div className="mb-2">
                 <span className="font-semibold text-gray-700">Session prompt:</span>
               </div>
               <div className="max-h-[200px] overflow-y-auto p-4 bg-gray-50 rounded-md border border-gray-200">
-                <p className="whitespace-pre-wrap text-sm text-gray-800 leading-relaxed">{session.spec.prompt}</p>
+                <p className="whitespace-pre-wrap text-sm text-gray-800 leading-relaxed">{session.spec.initialPrompt}</p>
+              </div>
+            </div>
+          )}
+
+          {session.status?.conditions && session.status.conditions.length > 0 && (
+            <div className="pt-4">
+              <div className="text-xs uppercase tracking-wide text-gray-500 mb-2">Reconciliation Conditions</div>
+              <div className="space-y-2">
+                {session.status.conditions.map((condition, index) => (
+                  <div key={`${condition.type}-${index}`} className="rounded border px-3 py-2 text-sm">
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold">{condition.type}</span>
+                      <span className={`text-xs ${condition.status === "True" ? "text-green-600" : condition.status === "False" ? "text-red-600" : "text-yellow-600"}`}>
+                        {condition.status}
+                      </span>
+                    </div>
+                    <div className="text-xs text-gray-500">{condition.reason || "No reason provided"}</div>
+                    {condition.message && (
+                      <div className="text-sm text-gray-700 mt-1">{condition.message}</div>
+                    )}
+                    {condition.lastTransitionTime && (
+                      <div className="text-xs text-gray-400 mt-1">Updated {new Date(condition.lastTransitionTime).toLocaleString()}</div>
+                    )}
+                  </div>
+                ))}
               </div>
             </div>
           )}

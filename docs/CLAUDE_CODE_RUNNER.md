@@ -240,7 +240,7 @@ Both headless and interactive sessions can be continued after completion:
 ## Configuration
 
 ### Environment Variables
-- `PROMPT`: Initial user prompt for the session
+- `INITIAL_PROMPT`: Initial user prompt for the session (formerly `PROMPT`)
 - `INTERACTIVE`: Enable chat mode (`"true"`, `"1"`, `"yes"`)
 - `CLAUDE_PERMISSION_MODE`: Claude Code permission mode (default: `"acceptEdits"`)
 - `GIT_USER_NAME` / `GIT_USER_EMAIL`: Git configuration

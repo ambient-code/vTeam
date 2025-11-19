@@ -65,9 +65,6 @@ export default function ProjectSessionDetailPage({
   const [sessionName, setSessionName] = useState<string>("");
   const [chatInput, setChatInput] = useState("");
   const [backHref, setBackHref] = useState<string | null>(null);
-  const [contentPodSpawning, setContentPodSpawning] = useState(false);
-  const [contentPodReady, setContentPodReady] = useState(false);
-  const [contentPodError, setContentPodError] = useState<string | null>(null);
   const [openAccordionItems, setOpenAccordionItems] = useState<string[]>(["workflows"]);
   const [contextModalOpen, setContextModalOpen] = useState(false);
   const [repoChanging, setRepoChanging] = useState(false);
@@ -115,7 +112,7 @@ export default function ProjectSessionDetailPage({
   
   // Repo management mutations
   const addRepoMutation = useMutation({
-    mutationFn: async (repo: { url: string; branch: string; output?: { url: string; branch: string } }) => {
+    mutationFn: async (repo: { url: string; branch: string }) => {
       setRepoChanging(true);
       const response = await fetch(
         `/api/projects/${projectName}/agentic-sessions/${sessionName}/repos`,
@@ -311,7 +308,7 @@ export default function ProjectSessionDetailPage({
     
     if (session?.spec?.repos) {
       session.spec.repos.forEach((repo, idx) => {
-        const repoName = repo.input.url.split('/').pop()?.replace('.git', '') || `repo-${idx}`;
+        const repoName = repo.url.split('/').pop()?.replace('.git', '') || `repo-${idx}`;
         options.push({
           type: 'repo',
           name: repoName,
@@ -436,86 +433,8 @@ export default function ProjectSessionDetailPage({
     );
   };
 
-  // Auto-spawn content pod on completed session
-  const sessionCompleted = (
-    session?.status?.phase === 'Completed' ||
-    session?.status?.phase === 'Failed' ||
-    session?.status?.phase === 'Stopped'
-  );
-
-  useEffect(() => {
-    if (sessionCompleted && !contentPodReady && !contentPodSpawning && !contentPodError) {
-      spawnContentPodAsync();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionCompleted, contentPodReady, contentPodSpawning, contentPodError]);
-
-  const spawnContentPodAsync = async () => {
-    if (!projectName || !sessionName) return;
-    
-    setContentPodSpawning(true);
-    setContentPodError(null);
-    
-    try {
-      const { spawnContentPod, getContentPodStatus } = await import('@/services/api/sessions');
-      
-      const spawnResult = await spawnContentPod(projectName, sessionName);
-      
-      if (spawnResult.status === 'exists' && spawnResult.ready) {
-        setContentPodReady(true);
-        setContentPodSpawning(false);
-        setContentPodError(null);
-        return;
-      }
-      
-      let attempts = 0;
-      const maxAttempts = 30;
-      
-      const pollInterval = setInterval(async () => {
-        attempts++;
-        
-        try {
-          const status = await getContentPodStatus(projectName, sessionName);
-          
-          if (status.ready) {
-            clearInterval(pollInterval);
-            setContentPodReady(true);
-            setContentPodSpawning(false);
-            setContentPodError(null);
-            successToast('Workspace viewer ready');
-          }
-          
-          if (attempts >= maxAttempts) {
-            clearInterval(pollInterval);
-            setContentPodSpawning(false);
-            const errorMsg = 'Workspace viewer failed to start within 30 seconds';
-            setContentPodError(errorMsg);
-            errorToast(errorMsg);
-          }
-        } catch {
-          if (attempts >= maxAttempts) {
-            clearInterval(pollInterval);
-            setContentPodSpawning(false);
-            const errorMsg = 'Workspace viewer failed to start';
-            setContentPodError(errorMsg);
-            errorToast(errorMsg);
-          }
-        }
-      }, 1000);
-      
-    } catch (error) {
-      setContentPodSpawning(false);
-      const errorMsg = error instanceof Error ? error.message : 'Failed to spawn workspace viewer';
-      setContentPodError(errorMsg);
-      errorToast(errorMsg);
-    }
-  };
-
-  const durationMs = useMemo(() => {
-    const start = session?.status?.startTime ? new Date(session.status.startTime).getTime() : undefined;
-    const end = session?.status?.completionTime ? new Date(session.status.completionTime).getTime() : Date.now();
-    return start ? Math.max(0, end - start) : undefined;
-  }, [session?.status?.startTime, session?.status?.completionTime]);
+  // Duration calculation removed - startTime/completionTime no longer in status
+  const durationMs = undefined;
 
   // Loading state
   if (isLoading || !projectName || !sessionName) {

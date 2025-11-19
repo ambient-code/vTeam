@@ -1,4 +1,4 @@
-export type AgenticSessionPhase = "Pending" | "Creating" | "Running" | "Completed" | "Failed" | "Stopped" | "Error";
+export type AgenticSessionPhase = "Pending" | "Creating" | "Running" | "Stopping" | "Stopped" | "Completed" | "Failed";
 
 export type LLMSettings = {
 	model: string;
@@ -12,23 +12,14 @@ export type GitRepository = {
     branch?: string;
 };
 
-// Unified multi-repo session mapping
-export type SessionRepoInput = {
-    url: string;
-    branch?: string;
-};
-export type SessionRepoOutput = {
-    url: string;
-    branch?: string;
-};
+// Simplified multi-repo session mapping
 export type SessionRepo = {
-    input: SessionRepoInput;
-    output?: SessionRepoOutput;
-    status?: "pushed" | "abandoned";
+    url: string;
+    branch?: string;
 };
 
 export type AgenticSessionSpec = {
-	prompt: string;
+	initialPrompt?: string;
 	llmSettings: LLMSettings;
 	timeout: number;
 	displayName?: string;
@@ -36,13 +27,37 @@ export type AgenticSessionSpec = {
 	interactive?: boolean;
 	// Multi-repo support
 	repos?: SessionRepo[];
-	mainRepoIndex?: number;
 	// Active workflow for dynamic workflow switching
 	activeWorkflow?: {
 		gitUrl: string;
 		branch: string;
 		path?: string;
 	};
+};
+
+export type ReconciledRepo = {
+	url: string;
+	branch: string;
+	name?: string;
+	status?: "Cloning" | "Ready" | "Failed";
+	clonedAt?: string;
+};
+
+export type ReconciledWorkflow = {
+	gitUrl: string;
+	branch: string;
+	path?: string;
+	status?: "Cloning" | "Active" | "Failed";
+	appliedAt?: string;
+};
+
+export type SessionCondition = {
+	type: string;
+	status: "True" | "False" | "Unknown";
+	reason?: string;
+	message?: string;
+	lastTransitionTime?: string;
+	observedGeneration?: number;
 };
 
 // -----------------------------
@@ -129,21 +144,15 @@ export type ResultMessage = {
 export type MessageObject = Message;
 
 export type AgenticSessionStatus = {
+	observedGeneration?: number;
 	phase: AgenticSessionPhase;
-	message?: string;
 	startTime?: string;
 	completionTime?: string;
-	jobName?: string;
-  	// Storage & counts (align with CRD)
-  	stateDir?: string;
-	// Runner result summary fields
-	subtype?: string;
-	is_error?: boolean;
-	num_turns?: number;
-	session_id?: string;
-	total_cost_usd?: number | null;
-	usage?: Record<string, unknown> | null;
-	result?: string | null;
+	reconciledRepos?: ReconciledRepo[];
+	reconciledWorkflow?: ReconciledWorkflow;
+	sdkSessionId?: string;
+	sdkRestartCount?: number;
+	conditions?: SessionCondition[];
 };
 
 export type AgenticSession = {
@@ -160,7 +169,7 @@ export type AgenticSession = {
 };
 
 export type CreateAgenticSessionRequest = {
-	prompt: string;
+	initialPrompt?: string;
 	llmSettings?: Partial<LLMSettings>;
 	displayName?: string;
 	timeout?: number;
@@ -168,10 +177,8 @@ export type CreateAgenticSessionRequest = {
 	parent_session_id?: string;
   	environmentVariables?: Record<string, string>;
 	interactive?: boolean;
-	workspacePath?: string;
 	// Multi-repo support
 	repos?: SessionRepo[];
-	mainRepoIndex?: number;
 	autoPushOnComplete?: boolean;
 	labels?: Record<string, string>;
 	annotations?: Record<string, string>;

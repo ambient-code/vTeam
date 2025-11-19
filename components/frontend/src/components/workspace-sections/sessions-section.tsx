@@ -164,11 +164,8 @@ export function SessionsSection({ projectName }: SessionsSectionProps) {
                           formatDistanceToNow(new Date(session.metadata.creationTimestamp), { addSuffix: true })}
                       </TableCell>
                       <TableCell className="hidden xl:table-cell">
-                        {session.status?.total_cost_usd ? (
-                          <span className="text-sm font-mono">${session.status.total_cost_usd.toFixed(4)}</span>
-                        ) : (
-                          <span className="text-sm text-gray-400">—</span>
-                        )}
+                        {/* total_cost_usd removed from simplified status */}
+                        <span className="text-sm text-gray-400">—</span>
                       </TableCell>
                       <TableCell>
                         {isActionPending ? (
