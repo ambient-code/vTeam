@@ -9,6 +9,22 @@ import type { Components } from "react-markdown";
 
 export type MessageRole = "bot" | "user";
 
+const formatTimestamp = (timestamp?: string): string => {
+  if (!timestamp) return "";
+  try {
+    const date = new Date(timestamp);
+    const year = date.getUTCFullYear();
+    const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+    const day = String(date.getUTCDate()).padStart(2, "0");
+    const hours = String(date.getUTCHours()).padStart(2, "0");
+    const minutes = String(date.getUTCMinutes()).padStart(2, "0");
+    const seconds = String(date.getUTCSeconds()).padStart(2, "0");
+    return `${year}-${month}-${day} @ ${hours}:${minutes}:${seconds}`;
+  } catch {
+    return "";
+  }
+};
+
 export type MessageProps = {
   role: MessageRole;
   content: string;
@@ -19,6 +35,7 @@ export type MessageProps = {
   components?: Components;
   borderless?: boolean;
   actions?: React.ReactNode;
+  timestamp?: string;
 };
 
 const defaultComponents: Components = {
@@ -151,13 +168,14 @@ export const LoadingDots = () => {
 
 export const Message = React.forwardRef<HTMLDivElement, MessageProps>(
   (
-    { role, content, isLoading, className, components, borderless, actions, ...props },
+    { role, content, isLoading, className, components, borderless, actions, timestamp, ...props },
     ref
   ) => {
     const isBot = role === "bot";
     const avatarBg = isBot ? "bg-blue-600" : "bg-green-600";
     const avatarText = isBot ? "AI" : "U";
     const displayName = isBot ? "Claude AI" : "User";
+    const formattedTimestamp = formatTimestamp(timestamp);
 
     const avatar = (
       <div className="flex-shrink-0">
@@ -183,15 +201,20 @@ export const Message = React.forwardRef<HTMLDivElement, MessageProps>(
 
           {/* Message Content */}
           <div className="flex-1 min-w-0">
-            <div className={cn(borderless ? "p-0" : "bg-white rounded-lg border shadow-sm p-3")}> 
+            <div className={cn(borderless ? "p-0" : "bg-white rounded-lg border shadow-sm p-3")}>
               {/* Header */}
-              <div className={cn("flex items-center", borderless ? "mb-1" : "mb-2")}> 
+              <div className={cn("flex items-center gap-2", borderless ? "mb-1" : "mb-2")}>
                 <Badge
                   variant="outline"
                   className={cn("text-xs", isLoading && "animate-pulse")}
                 >
                   {displayName}
                 </Badge>
+                {formattedTimestamp && (
+                  <span className="text-xs text-muted-foreground">
+                    {formattedTimestamp}
+                  </span>
+                )}
               </div>
 
               {/* Content */}

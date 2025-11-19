@@ -16,11 +16,28 @@ import ReactMarkdown from "react-markdown";
 import type { Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 
+const formatTimestamp = (timestamp?: string): string => {
+  if (!timestamp) return "";
+  try {
+    const date = new Date(timestamp);
+    const year = date.getUTCFullYear();
+    const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+    const day = String(date.getUTCDate()).padStart(2, "0");
+    const hours = String(date.getUTCHours()).padStart(2, "0");
+    const minutes = String(date.getUTCMinutes()).padStart(2, "0");
+    const seconds = String(date.getUTCSeconds()).padStart(2, "0");
+    return `${year}-${month}-${day} @ ${hours}:${minutes}:${seconds}`;
+  } catch {
+    return "";
+  }
+};
+
 export type ToolMessageProps = {
   toolUseBlock?: ToolUseBlock;
   resultBlock?: ToolResultBlock;
   className?: string;
   borderless?: boolean;
+  timestamp?: string;
 };
 
 const formatToolName = (toolName?: string) => {
@@ -179,7 +196,7 @@ const extractTextFromResultContent = (content: unknown): string => {
 };
 
 export const ToolMessage = React.forwardRef<HTMLDivElement, ToolMessageProps>(
-  ({ toolUseBlock, resultBlock, className, borderless, ...props }, ref) => {
+  ({ toolUseBlock, resultBlock, className, borderless, timestamp, ...props }, ref) => {
     const [isExpanded, setIsExpanded] = useState(false);
 
     const toolResultBlock = resultBlock;
@@ -191,6 +208,7 @@ export const ToolMessage = React.forwardRef<HTMLDivElement, ToolMessageProps>(
     const isLoading = isToolCall; // Tool call without result is loading
     const isError = toolResultBlock?.is_error === true;
     const isSuccess = isToolResult && !isError;
+    const formattedTimestamp = formatTimestamp(timestamp);
 
     // Subagent detection and data
     const inputData = (toolUseBlock?.input ?? undefined) as unknown as Record<string, unknown> | undefined;
@@ -260,7 +278,7 @@ export const ToolMessage = React.forwardRef<HTMLDivElement, ToolMessageProps>(
                   )}
 
                   {/* Tool Name */}
-                  <div className="flex-1 flex items-center min-h-0">
+                  <div className="flex-1 flex items-center gap-2 min-h-0">
                     <Badge
                       variant="outline"
                       className={cn(
@@ -275,6 +293,11 @@ export const ToolMessage = React.forwardRef<HTMLDivElement, ToolMessageProps>(
                     >
                       {isSubagent ? displayName : (isLoading ? "Calling" : "Called") + " " + displayName}
                     </Badge>
+                    {formattedTimestamp && (
+                      <span className="text-xs text-muted-foreground">
+                        {formattedTimestamp}
+                      </span>
+                    )}
                   </div>
 
                   {/* Expand/Collapse Icon */}
