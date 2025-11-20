@@ -12,6 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { getK8sResourceStatusColor, STATUS_COLORS } from '@/lib/status-colors';
 
 type K8sResourceTreeProps = {
   jobName?: string;
@@ -44,15 +45,6 @@ export function K8sResourceTree({
 }: K8sResourceTreeProps) {
   const [expandedJob, setExpandedJob] = useState(true);
   const [expandedPods, setExpandedPods] = useState<Record<string, boolean>>({});
-
-  const getStatusColor = (status: string) => {
-    const lower = status.toLowerCase();
-    if (lower.includes('running') || lower.includes('active')) return 'bg-blue-100 text-blue-800 border-blue-300';
-    if (lower.includes('succeeded') || lower.includes('completed')) return 'bg-green-100 text-green-800 border-green-300';
-    if (lower.includes('failed') || lower.includes('error')) return 'bg-red-100 text-red-800 border-red-300';
-    if (lower.includes('waiting') || lower.includes('pending')) return 'bg-yellow-100 text-yellow-800 border-yellow-300';
-    return 'bg-muted text-foreground border-border';
-  };
 
   const getStatusIcon = (status: string) => {
     const lower = status.toLowerCase();
@@ -127,7 +119,7 @@ export function K8sResourceTree({
               Job
             </Badge>
             <span className="text-sm font-mono">{jobName}</span>
-            <Badge className={`text-xs ${getStatusColor(jobStatus)}`}>
+            <Badge className={`text-xs ${getK8sResourceStatusColor(jobStatus)}`}>
               {getStatusIcon(jobStatus)}
               <span className="ml-1">{jobStatus}</span>
             </Badge>
@@ -157,7 +149,7 @@ export function K8sResourceTree({
                     <span className="text-sm font-mono truncate max-w-xs" title={pod.name}>
                       {pod.name}
                     </span>
-                    <Badge className={`text-xs ${getStatusColor(pod.phase)}`}>
+                    <Badge className={`text-xs ${getK8sResourceStatusColor(pod.phase)}`}>
                       {getStatusIcon(pod.phase)}
                       <span className="ml-1">{pod.phase}</span>
                     </Badge>
@@ -176,7 +168,7 @@ export function K8sResourceTree({
                             Container
                           </Badge>
                           <span className="text-sm font-mono">{container.name}</span>
-                          <Badge className={`text-xs ${getStatusColor(container.state)}`}>
+                          <Badge className={`text-xs ${getK8sResourceStatusColor(container.state)}`}>
                             {getStatusIcon(container.state)}
                             <span className="ml-1">{container.state}</span>
                           </Badge>
@@ -201,7 +193,7 @@ export function K8sResourceTree({
                     PVC
                   </Badge>
                   <span className="text-sm font-mono">{pvcName}</span>
-                  <Badge className={`text-xs ${pvcExists ? 'bg-green-100 text-green-800 border-green-300 dark:bg-green-700 dark:text-white dark:border-green-700' : 'bg-red-100 text-red-800 border-red-300 dark:bg-red-700 dark:text-white dark:border-red-700'}`}>
+                  <Badge className={`text-xs ${pvcExists ? STATUS_COLORS.success : STATUS_COLORS.error}`}>
                     {pvcExists ? 'Exists' : 'Not Found'}
                   </Badge>
                   {pvcSize && <span className="text-xs text-muted-foreground">{pvcSize}</span>}

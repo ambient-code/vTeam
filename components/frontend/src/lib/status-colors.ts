@@ -51,3 +51,44 @@ export function getSessionPhaseColor(phase: string): string {
   const key = SESSION_PHASE_TO_STATUS[phase.toLowerCase()] || 'default';
   return STATUS_COLORS[key];
 }
+
+/**
+ * Get status color for Kubernetes resource statuses
+ * Handles Job, Pod, Container, and other K8s resource states
+ */
+export function getK8sResourceStatusColor(status: string): string {
+  const lower = status.toLowerCase();
+
+  // Running/Active states
+  if (lower.includes('running') || lower.includes('active')) {
+    return STATUS_COLORS.running;
+  }
+
+  // Success states
+  if (lower.includes('succeeded') || lower.includes('completed')) {
+    return STATUS_COLORS.success;
+  }
+
+  // Error states
+  if (lower.includes('failed') || lower.includes('error')) {
+    return STATUS_COLORS.error;
+  }
+
+  // Waiting/Pending states
+  if (lower.includes('waiting') || lower.includes('pending')) {
+    return STATUS_COLORS.warning;
+  }
+
+  // Terminating states
+  if (lower.includes('terminating') || lower.includes('terminated')) {
+    return STATUS_COLORS.stopped;
+  }
+
+  // Not found states
+  if (lower.includes('notfound') || lower.includes('not found')) {
+    return STATUS_COLORS.warning;
+  }
+
+  // Default
+  return STATUS_COLORS.default;
+}

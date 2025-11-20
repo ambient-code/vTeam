@@ -15,9 +15,24 @@ import {
 export function ThemeToggle() {
   const { setTheme, theme } = useTheme()
   const [announcement, setAnnouncement] = React.useState("")
+  const timeoutRef = React.useRef<NodeJS.Timeout | null>(null)
+
+  // Cleanup timeout on unmount
+  React.useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current)
+      }
+    }
+  }, [])
 
   const handleThemeChange = (newTheme: string) => {
     setTheme(newTheme)
+
+    // Clear any existing timeout
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current)
+    }
 
     // Create accessible announcement for screen readers
     let message = ""
@@ -29,8 +44,13 @@ export function ThemeToggle() {
     }
 
     setAnnouncement(message)
-    // Clear announcement after it's been read
-    setTimeout(() => setAnnouncement(""), 1000)
+
+    // Clear announcement after sufficient time for screen readers (3 seconds)
+    // This ensures screen readers have time to queue and announce the message
+    timeoutRef.current = setTimeout(() => {
+      setAnnouncement("")
+      timeoutRef.current = null
+    }, 3000)
   }
 
   return (

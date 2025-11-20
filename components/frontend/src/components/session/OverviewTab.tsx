@@ -9,6 +9,7 @@ import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import type { AgenticSession } from "@/types/agentic-session";
 import type { SessionMessage } from "@/types";
+import { getK8sResourceStatusColor } from "@/lib/status-colors";
 
 type Props = {
   session: AgenticSession;
@@ -68,21 +69,9 @@ const getOpenShiftConsoleUrl = (namespace: string, resourceType: 'Job' | 'Pod' |
 export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromptExpanded, latestLiveMessage, diffTotals, onPush, onAbandon, busyRepo, buildGithubCompareUrl, onRefreshDiff, k8sResources }) => {
   const [refreshingDiff, setRefreshingDiff] = React.useState(false);
   const [expandedPods, setExpandedPods] = React.useState<Record<string, boolean>>({});
-  
+
   const projectNamespace = session.metadata?.namespace || '';
-  
-  const getStatusColor = (status: string) => {
-    const lower = status.toLowerCase();
-    if (lower.includes('running') || lower.includes('active')) return 'bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-600 dark:text-white dark:border-blue-600';
-    if (lower.includes('succeeded') || lower.includes('completed')) return 'bg-green-100 text-green-800 border-green-300 dark:bg-green-700 dark:text-white dark:border-green-700';
-    if (lower.includes('failed') || lower.includes('error')) return 'bg-red-100 text-red-800 border-red-300 dark:bg-red-700 dark:text-white dark:border-red-700';
-    if (lower.includes('waiting') || lower.includes('pending')) return 'bg-yellow-100 text-yellow-800 border-yellow-300 dark:bg-yellow-600 dark:text-white dark:border-yellow-600';
-    if (lower.includes('terminating')) return 'bg-purple-100 text-purple-800 border-purple-300 dark:bg-purple-600 dark:text-white dark:border-purple-600';
-    if (lower.includes('notfound') || lower.includes('not found')) return 'bg-orange-100 text-orange-800 border-orange-300 dark:bg-orange-600 dark:text-white dark:border-orange-600';
-    if (lower.includes('terminated')) return 'bg-muted text-foreground border-border dark:bg-slate-600 dark:text-white dark:border-slate-600';
-    return 'bg-muted text-foreground border-border dark:bg-slate-600 dark:text-white dark:border-slate-600';
-  };
-  
+
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -280,7 +269,7 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                                 </span>
                               );
                             })()}
-                            <Badge className={`text-xs ${getStatusColor(pod.phase)}`}>
+                            <Badge className={`text-xs ${getK8sResourceStatusColor(pod.phase)}`}>
                               {pod.phase}
                             </Badge>
                             <Badge variant="outline" className="text-xs bg-purple-50 text-purple-700 border-purple-200">
@@ -297,7 +286,7 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                                     <Box className="w-3 h-3 mr-1" />
                                     {container.name}
                                   </Badge>
-                                  <Badge className={`text-xs ${getStatusColor(container.state)}`}>
+                                  <Badge className={`text-xs ${getK8sResourceStatusColor(container.state)}`}>
                                     {container.state}
                                   </Badge>
                                   {container.exitCode !== undefined && (
@@ -337,7 +326,7 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                               <span className="font-mono text-xs">{k8sResources.jobName}</span>
                             );
                           })()}
-                          <Badge className={`text-xs ${getStatusColor(k8sResources.jobStatus || 'Unknown')}`}>
+                          <Badge className={`text-xs ${getK8sResourceStatusColor(k8sResources.jobStatus || 'Unknown')}`}>
                             {k8sResources.jobStatus || 'Unknown'}
                           </Badge>
                         </div>
@@ -377,7 +366,7 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                                       </span>
                                     );
                                   })()}
-                                  <Badge className={`text-xs ${getStatusColor(pod.phase)}`}>
+                                  <Badge className={`text-xs ${getK8sResourceStatusColor(pod.phase)}`}>
                                     {pod.phase}
                                   </Badge>
                                   {pod.isTempPod && (
@@ -395,7 +384,7 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                                           <Box className="w-3 h-3 mr-1" />
                                           {container.name}
                                         </Badge>
-                                        <Badge className={`text-xs ${getStatusColor(container.state)}`}>
+                                        <Badge className={`text-xs ${getK8sResourceStatusColor(container.state)}`}>
                                           {container.state}
                                         </Badge>
                                         {container.exitCode !== undefined && (
