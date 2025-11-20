@@ -30,10 +30,25 @@ export default function RootLayout({
       <head>
         <meta name="backend-ws-base" content={wsBase} />
         {/*
-          Blocking script to prevent FOUC (Flash of Unstyled Content)
-          This runs before any CSS or React hydration, ensuring the correct theme
-          class is applied immediately based on user's stored preference or system setting.
-          Must be inline and blocking to execute before first paint.
+          FOUC Prevention - Blocking Script (Pre-Hydration)
+
+          This script runs BEFORE React hydration to prevent Flash of Unstyled Content.
+          It sets the initial theme state synchronously during HTML parsing.
+
+          Why this is needed:
+          1. Executes before CSS loads and before React hydration
+          2. Prevents visible flash when switching from light to dark (or vice versa)
+          3. Sets both 'dark' class AND 'data-hljs-theme' attribute immediately
+
+          Works in tandem with SyntaxThemeProvider:
+          - This script: Initial page load (pre-hydration) ← You are here
+          - SyntaxThemeProvider: Runtime theme changes (post-hydration)
+
+          Both set the same attributes but at different lifecycle stages:
+          - Blocking script: Runs during HTML parsing (before first paint)
+          - SyntaxThemeProvider: Runs after React hydration (responds to theme toggle)
+
+          This duplication is intentional and necessary for a flicker-free experience.
         */}
         <script
           dangerouslySetInnerHTML={{
@@ -53,6 +68,7 @@ export default function RootLayout({
                   }
 
                   // Set attribute for syntax highlighting (our custom implementation)
+                  // NOTE: SyntaxThemeProvider will update this reactively after hydration
                   document.documentElement.setAttribute('data-hljs-theme', effectiveTheme);
                 } catch (e) {
                   // Graceful degradation: if script fails, React will set theme after hydration
