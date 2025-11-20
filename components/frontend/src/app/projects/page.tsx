@@ -74,7 +74,7 @@ export default function ProjectsPage() {
         <div className="container mx-auto p-6">
           <div className="flex items-center justify-center h-64">
             <RefreshCw className="h-8 w-8 animate-spin" />
-            <span className="ml-2">Loading workspaces...</span>
+            <span className="ml-2 text-foreground">Loading workspaces...</span>
           </div>
         </div>
       </div>
@@ -184,11 +184,16 @@ export default function ProjectsPage() {
                           </span>
                         </TableCell>
                         <TableCell className="hidden lg:table-cell">
-                          {project.creationTimestamp &&
-                            formatDistanceToNow(
-                              new Date(project.creationTimestamp),
-                              { addSuffix: true }
-                            )}
+                          {project.creationTimestamp ? (
+                            <span>
+                              {formatDistanceToNow(
+                                new Date(project.creationTimestamp),
+                                { addSuffix: true }
+                              )}
+                            </span>
+                          ) : (
+                            <span>—</span>
+                          )}
                         </TableCell>
                         <TableCell>
                           <Button
