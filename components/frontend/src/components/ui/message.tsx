@@ -40,7 +40,7 @@ const defaultComponents: Components = {
         {children}
       </code>
     ) : (
-      <pre className="bg-slate-950 dark:bg-black text-slate-50 p-2 rounded text-xs overflow-x-auto">
+      <pre className="bg-muted text-foreground p-2 rounded text-xs overflow-x-auto border">
         <code
           className={className}
           {...(props as React.HTMLAttributes<HTMLElement>)}
@@ -96,7 +96,7 @@ export const LoadingDots = () => {
         height="8"
         viewBox="0 0 24 8"
         xmlns="http://www.w3.org/2000/svg"
-        className="mr-2"
+        className="mr-2 text-primary"
       >
         <style>
           {`
@@ -127,21 +127,21 @@ export const LoadingDots = () => {
           cx="4"
           cy="4"
           r="3"
-          fill="#3b82f6"
+          fill="currentColor"
         />
         <circle
           className="loading-dot loading-dot-2"
           cx="12"
           cy="4"
           r="3"
-          fill="#3b82f6"
+          fill="currentColor"
         />
         <circle
           className="loading-dot loading-dot-3"
           cx="20"
           cy="4"
           r="3"
-          fill="#3b82f6"
+          fill="currentColor"
         />
       </svg>
       <span className="ml-2 text-xs text-muted-foreground/60">{LOADING_MESSAGES[messageIndex]}</span>
