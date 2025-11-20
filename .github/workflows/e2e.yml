@@ -65,53 +65,29 @@ jobs:
         echo "Building images from PR code..."
         echo "======================================"
 
-        # Build frontend image (if changed or use latest)
-        if [ "${{ needs.detect-changes.outputs.frontend }}" == "true" ]; then
-          echo "Building frontend (changed)..."
-          docker build --no-cache -t quay.io/ambient_code/vteam_frontend:e2e-test \
-            -f components/frontend/Dockerfile \
-            components/frontend
-        else
-          echo "Frontend unchanged, pulling latest..."
-          docker pull quay.io/ambient_code/vteam_frontend:latest
-          docker tag quay.io/ambient_code/vteam_frontend:latest quay.io/ambient_code/vteam_frontend:e2e-test
-        fi
+        # ALWAYS build frontend from source with --no-cache to ensure fresh builds
+        echo "Building frontend from source..."
+        docker build --no-cache -t quay.io/ambient_code/vteam_frontend:e2e-test \
+          -f components/frontend/Dockerfile \
+          components/frontend
 
-        # Build backend image (if changed or use latest)
-        if [ "${{ needs.detect-changes.outputs.backend }}" == "true" ]; then
-          echo "Building backend (changed)..."
-          docker build --no-cache -t quay.io/ambient_code/vteam_backend:e2e-test \
-            -f components/backend/Dockerfile \
-            components/backend
-        else
-          echo "Backend unchanged, pulling latest..."
-          docker pull quay.io/ambient_code/vteam_backend:latest
-          docker tag quay.io/ambient_code/vteam_backend:latest quay.io/ambient_code/vteam_backend:e2e-test
-        fi
+        # ALWAYS build backend from source with --no-cache
+        echo "Building backend from source..."
+        docker build --no-cache -t quay.io/ambient_code/vteam_backend:e2e-test \
+          -f components/backend/Dockerfile \
+          components/backend
 
-        # Build operator image (if changed or use latest)
-        if [ "${{ needs.detect-changes.outputs.operator }}" == "true" ]; then
-          echo "Building operator (changed)..."
-          docker build --no-cache -t quay.io/ambient_code/vteam_operator:e2e-test \
-            -f components/operator/Dockerfile \
-            components/operator
-        else
-          echo "Operator unchanged, pulling latest..."
-          docker pull quay.io/ambient_code/vteam_operator:latest
-          docker tag quay.io/ambient_code/vteam_operator:latest quay.io/ambient_code/vteam_operator:e2e-test
-        fi
+        # ALWAYS build operator from source with --no-cache
+        echo "Building operator from source..."
+        docker build --no-cache -t quay.io/ambient_code/vteam_operator:e2e-test \
+          -f components/operator/Dockerfile \
+          components/operator
 
-        # Build claude-code-runner image (if changed or use latest)
-        if [ "${{ needs.detect-changes.outputs.claude-runner }}" == "true" ]; then
-          echo "Building claude-code-runner (changed)..."
-          docker build --no-cache -t quay.io/ambient_code/vteam_claude_runner:e2e-test \
-            -f components/runners/claude-code-runner/Dockerfile \
-            components/runners
-        else
-          echo "Claude-runner unchanged, pulling latest..."
-          docker pull quay.io/ambient_code/vteam_claude_runner:latest
-          docker tag quay.io/ambient_code/vteam_claude_runner:latest quay.io/ambient_code/vteam_claude_runner:e2e-test
-        fi
+        # ALWAYS build claude-code-runner from source with --no-cache
+        echo "Building claude-code-runner from source..."
+        docker build --no-cache -t quay.io/ambient_code/vteam_claude_runner:e2e-test \
+          -f components/runners/claude-code-runner/Dockerfile \
+          components/runners
 
         echo ""
         echo "✅ All images ready"
