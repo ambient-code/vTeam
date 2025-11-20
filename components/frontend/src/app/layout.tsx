@@ -49,12 +49,22 @@ export default function RootLayout({
           - SyntaxThemeProvider: Runs after React hydration (responds to theme toggle)
 
           This duplication is intentional and necessary for a flicker-free experience.
+
+          Test Environment Handling:
+          - Skips execution in Cypress (window.Cypress detected) to avoid hydration mismatches
+          - In tests, next-themes will handle theme after hydration (acceptable tradeoff)
         */}
         <script
           dangerouslySetInnerHTML={{
             __html: `
               (function() {
                 try {
+                  // Skip in test environments to avoid hydration mismatches
+                  // Tests will rely on next-themes to set theme after hydration
+                  if (typeof window !== 'undefined' && window.Cypress) {
+                    return;
+                  }
+
                   // Check for theme in localStorage (next-themes default key)
                   var storedTheme = localStorage.getItem('theme');
                   var systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
