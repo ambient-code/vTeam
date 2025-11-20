@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useMemo, useState } from 'react';
-import { Eye, Edit, Shield, Users, User as UserIcon, Plus, RefreshCw, Loader2, Trash2, Info } from 'lucide-react';
+import { Users, User as UserIcon, Plus, RefreshCw, Loader2, Trash2, Info } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -16,30 +16,7 @@ import { DestructiveConfirmationDialog } from '@/components/confirmation-dialog'
 import { useProjectPermissions, useAddProjectPermission, useRemoveProjectPermission } from '@/services/queries';
 import { successToast, errorToast } from '@/hooks/use-toast';
 import type { PermissionRole, SubjectType } from '@/types/project';
-
-const ROLE_DEFINITIONS = {
-  view: {
-    label: 'View',
-    description: 'Can see sessions and duplicate to their own workspace',
-    permissions: ['sessions:read', 'sessions:duplicate'] as const,
-    color: 'bg-blue-100 text-blue-800',
-    icon: Eye,
-  },
-  edit: {
-    label: 'Edit',
-    description: 'Can create sessions in the workspace',
-    permissions: ['sessions:read', 'sessions:create', 'sessions:duplicate'] as const,
-    color: 'bg-green-100 text-green-800',
-    icon: Edit,
-  },
-  admin: {
-    label: 'Admin',
-    description: 'Full workspace management access',
-    permissions: ['*'] as const,
-    color: 'bg-purple-100 text-purple-800',
-    icon: Shield,
-  },
-} as const;
+import { ROLE_DEFINITIONS } from '@/lib/role-colors';
 
 type GrantPermissionForm = {
   subjectType: SubjectType;
@@ -150,8 +127,8 @@ export function SharingSection({ projectName }: SharingSectionProps) {
       {!isAdmin && (
         <Card className="mb-6 border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/50">
           <CardContent className="pt-6 flex items-center gap-2">
-            <Info className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-            <p className="text-blue-700 dark:text-blue-300 dark:text-blue-300">
+            <Info className="w-4 h-4 text-link" />
+            <p className="text-blue-700 dark:text-blue-300">
               You have {userRole || 'view'} access. Only admins can grant or revoke permissions.
             </p>
           </CardContent>

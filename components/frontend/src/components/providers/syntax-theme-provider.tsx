@@ -3,26 +3,22 @@
 import { useEffect } from "react"
 import { useTheme } from "next-themes"
 
+/**
+ * Manages highlight.js theme by toggling CSS classes on the document element.
+ * The actual theme stylesheets are imported in globals.css to ensure they're
+ * bundled locally from node_modules/highlight.js rather than loaded from CDN.
+ */
 export function SyntaxThemeProvider() {
   const { resolvedTheme } = useTheme()
 
   useEffect(() => {
-    // Remove any existing highlight.js theme stylesheets
-    const existingLinks = document.querySelectorAll('link[data-hljs-theme]')
-    existingLinks.forEach(link => link.remove())
-
-    // Add the appropriate theme based on current mode
-    const link = document.createElement('link')
-    link.rel = 'stylesheet'
-    link.setAttribute('data-hljs-theme', 'true')
-
+    // Add a data attribute to the root element to indicate which hljs theme to use
+    // This is used in globals.css to conditionally apply the appropriate theme
     if (resolvedTheme === 'dark') {
-      link.href = 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css'
+      document.documentElement.setAttribute('data-hljs-theme', 'dark')
     } else {
-      link.href = 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css'
+      document.documentElement.setAttribute('data-hljs-theme', 'light')
     }
-
-    document.head.appendChild(link)
   }, [resolvedTheme])
 
   return null

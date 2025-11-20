@@ -1,6 +1,9 @@
 /**
  * Centralized status color configuration
  * Single source of truth for status badge colors across the application
+ *
+ * Uses CSS custom properties defined in globals.css for theme consistency.
+ * The design system automatically handles light/dark mode transitions.
  */
 
 export type StatusColorKey =
@@ -14,18 +17,18 @@ export type StatusColorKey =
   | 'default';
 
 /**
- * Status color configuration
- * Uses pastel backgrounds in light mode, solid backgrounds in dark mode
+ * Status color configuration using semantic design tokens
+ * Automatically adapts to light/dark mode via CSS custom properties
  */
 export const STATUS_COLORS: Record<StatusColorKey, string> = {
-  success: 'bg-green-100 text-green-800 border-green-200 dark:bg-green-700 dark:text-white dark:border-green-700',
-  error: 'bg-red-100 text-red-800 border-red-200 dark:bg-red-700 dark:text-white dark:border-red-700',
-  warning: 'bg-yellow-100 text-yellow-800 border-yellow-200 dark:bg-yellow-600 dark:text-white dark:border-yellow-600',
-  info: 'bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-600 dark:text-white dark:border-blue-600',
-  pending: 'bg-muted text-foreground border-border dark:bg-slate-600 dark:text-white dark:border-slate-600',
-  running: 'bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-600 dark:text-white dark:border-blue-600',
-  stopped: 'bg-muted text-foreground border-border dark:bg-slate-600 dark:text-white dark:border-slate-600',
-  default: 'bg-muted text-foreground border-border dark:bg-slate-600 dark:text-white dark:border-slate-600',
+  success: 'bg-status-success text-status-success-foreground border-status-success-border',
+  error: 'bg-status-error text-status-error-foreground border-status-error-border',
+  warning: 'bg-status-warning text-status-warning-foreground border-status-warning-border',
+  info: 'bg-status-info text-status-info-foreground border-status-info-border',
+  pending: 'bg-muted text-muted-foreground border-border',
+  running: 'bg-status-info text-status-info-foreground border-status-info-border',
+  stopped: 'bg-muted text-muted-foreground border-border',
+  default: 'bg-muted text-muted-foreground border-border',
 };
 
 /**

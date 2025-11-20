@@ -657,7 +657,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chat
                           {" "}
                           <button
                             onClick={onContinue}
-                            className="text-blue-600 dark:text-blue-400 hover:underline font-medium"
+                            className="text-link hover:underline font-medium"
                           >
                             Resume this session
                           </button>

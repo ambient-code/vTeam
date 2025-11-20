@@ -107,7 +107,7 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                   </div>
                   {promptIsLong && (
                     <button
-                      className="mt-2 text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                      className="mt-2 text-xs text-link hover:underline"
                       onClick={() => setPromptExpanded(!promptExpanded)}
                       aria-expanded={promptExpanded}
                       aria-controls="initial-prompt"
@@ -231,7 +231,7 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                                 href={consoleUrl}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="font-mono text-xs text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 hover:underline flex items-center gap-1"
+                                className="font-mono text-xs text-link hover:text-link-hover hover:underline flex items-center gap-1"
                               >
                                 {k8sResources.pvcName}
                                 <ExternalLink className="w-3 h-3" />
@@ -253,7 +253,7 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                           <div className="flex items-center gap-2">
                             <button
                               onClick={() => setExpandedPods(prev => ({ ...prev, [pod.name]: !prev[pod.name] }))}
-                              className="text-xs text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
+                              className="text-xs text-link hover:underline flex items-center gap-1"
                             >
                               {expandedPods[pod.name] ? 'Hide' : 'Show'}
                             </button>
@@ -268,7 +268,7 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                                   href={consoleUrl}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="font-mono text-xs text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 hover:underline flex items-center gap-1 truncate max-w-[250px]"
+                                  className="font-mono text-xs text-link hover:text-link-hover hover:underline flex items-center gap-1 truncate max-w-[250px]"
                                   title={pod.name}
                                 >
                                   {pod.name}
@@ -328,7 +328,7 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                                 href={consoleUrl}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="font-mono text-xs text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 hover:underline flex items-center gap-1"
+                                className="font-mono text-xs text-link hover:text-link-hover hover:underline flex items-center gap-1"
                               >
                                 {k8sResources.jobName}
                                 <ExternalLink className="w-3 h-3" />
@@ -350,7 +350,7 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                                 <div className="flex items-center gap-2">
                                   <button
                                     onClick={() => setExpandedPods(prev => ({ ...prev, [pod.name]: !prev[pod.name] }))}
-                                    className="text-xs text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
+                                    className="text-xs text-link hover:underline flex items-center gap-1"
                                   >
                                     {expandedPods[pod.name] ? 'Hide' : 'Show'}
                                   </button>
@@ -365,7 +365,7 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                                         href={consoleUrl}
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        className="font-mono text-xs text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 hover:underline flex items-center gap-1 truncate max-w-[200px]"
+                                        className="font-mono text-xs text-link hover:text-link-hover hover:underline flex items-center gap-1 truncate max-w-[200px]"
                                         title={pod.name}
                                       >
                                         {pod.name}
@@ -488,7 +488,7 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                                   href={compareUrl} 
                                   target="_blank" 
                                   rel="noreferrer" 
-                                  className="flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                                  className="flex items-center gap-1 text-xs text-link hover:underline"
                                 >
                                   Compare
                                   <ExternalLink className="h-3 w-3" />
@@ -515,7 +515,7 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                                 href={compareUrl} 
                                 target="_blank" 
                                 rel="noreferrer" 
-                                className="flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                                className="flex items-center gap-1 text-xs text-link hover:underline"
                               >
                                 Compare
                                 <ExternalLink className="h-3 w-3" />

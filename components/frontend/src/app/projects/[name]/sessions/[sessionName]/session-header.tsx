@@ -68,7 +68,7 @@ export function SessionHeader({
             <span className="mx-1">•</span>
             <button 
               onClick={() => setDetailsModalOpen(true)}
-              className="text-blue-600 dark:text-blue-400 hover:underline"
+              className="text-link hover:underline"
             >
               View details
             </button>

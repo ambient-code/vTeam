@@ -29,6 +29,39 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <head>
         <meta name="backend-ws-base" content={wsBase} />
+        {/*
+          Blocking script to prevent FOUC (Flash of Unstyled Content)
+          This runs before any CSS or React hydration, ensuring the correct theme
+          class is applied immediately based on user's stored preference or system setting.
+          Must be inline and blocking to execute before first paint.
+        */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function() {
+                try {
+                  // Check for theme in localStorage (next-themes default key)
+                  var storedTheme = localStorage.getItem('theme');
+                  var systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+
+                  // Determine effective theme: use stored preference, fallback to system
+                  var effectiveTheme = storedTheme === 'system' || !storedTheme ? systemTheme : storedTheme;
+
+                  // Apply dark class immediately (before any paint/CSS loading)
+                  if (effectiveTheme === 'dark') {
+                    document.documentElement.classList.add('dark');
+                  }
+
+                  // Set attribute for syntax highlighting (our custom implementation)
+                  document.documentElement.setAttribute('data-hljs-theme', effectiveTheme);
+                } catch (e) {
+                  // Graceful degradation: if script fails, React will set theme after hydration
+                  // This ensures the app still works even if localStorage is blocked or script errors
+                }
+              })();
+            `,
+          }}
+        />
       </head>
       {/* suppressHydrationWarning is needed here as well since ThemeProvider modifies the class attribute */}
       <body className={`${inter.className} min-h-screen flex flex-col`} suppressHydrationWarning>

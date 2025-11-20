@@ -163,7 +163,7 @@ export default function ProjectsPage() {
                         <TableCell className="font-medium min-w-[200px]">
                           <Link
                             href={`/projects/${project.name}`}
-                            className="text-blue-600 dark:text-blue-400 hover:underline hover:text-blue-800 transition-colors block"
+                            className="text-link hover:underline hover:text-link-hover transition-colors block"
                           >
                             <div>
                               <div className="font-medium">
