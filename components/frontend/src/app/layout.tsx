@@ -4,6 +4,7 @@ import "./globals.css";
 import { Navigation } from "@/components/navigation";
 import { QueryProvider } from "@/components/providers/query-provider";
 import { ThemeProvider } from "@/components/providers/theme-provider";
+import { SyntaxThemeProvider } from "@/components/providers/syntax-theme-provider";
 import { Toaster } from "@/components/ui/toaster";
 import { env } from "@/lib/env";
 
@@ -23,10 +24,13 @@ export default function RootLayout({
   const wsBase = env.BACKEND_URL.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:')
   const feedbackUrl = env.FEEDBACK_URL
   return (
+    // suppressHydrationWarning is required for next-themes to prevent hydration mismatch
+    // between server-rendered content and client-side theme application
     <html lang="en" suppressHydrationWarning>
       <head>
         <meta name="backend-ws-base" content={wsBase} />
       </head>
+      {/* suppressHydrationWarning is needed here as well since ThemeProvider modifies the class attribute */}
       <body className={`${inter.className} min-h-screen flex flex-col`} suppressHydrationWarning>
         <ThemeProvider
           attribute="class"
@@ -34,6 +38,7 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
+          <SyntaxThemeProvider />
           <QueryProvider>
             <Navigation feedbackUrl={feedbackUrl} />
             <main className="flex-1 bg-background overflow-auto">{children}</main>

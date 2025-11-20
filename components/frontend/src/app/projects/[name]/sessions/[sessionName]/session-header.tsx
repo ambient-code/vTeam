@@ -138,7 +138,7 @@ export function SessionHeader({
                   <DropdownMenuItem
                     onClick={onDelete}
                     disabled={actionLoading === "deleting"}
-                    className="text-red-600 dark:text-red-400 dark:text-red-400"
+                    className="text-red-600 dark:text-red-400"
                   >
                     <Trash2 className="w-4 h-4 mr-2" />
                     {actionLoading === "deleting" ? "Deleting..." : "Delete"}

@@ -337,7 +337,7 @@ export const ToolMessage = React.forwardRef<HTMLDivElement, ToolMessageProps>(
                     {isToolResult && (
                       <div>
                         <h4 className="text-xs font-medium text-foreground/80 mb-1">
-                          Result {isError && <span className="text-red-600 dark:text-red-400 dark:text-red-400">(Error)</span>}
+                          Result {isError && <span className="text-red-600 dark:text-red-400">(Error)</span>}
                         </h4>
                         <div
                           className={cn(
