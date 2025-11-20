@@ -68,7 +68,7 @@ jobs:
         # Build frontend image (if changed or use latest)
         if [ "${{ needs.detect-changes.outputs.frontend }}" == "true" ]; then
           echo "Building frontend (changed)..."
-          docker build -t quay.io/ambient_code/vteam_frontend:e2e-test \
+          docker build --no-cache -t quay.io/ambient_code/vteam_frontend:e2e-test \
             -f components/frontend/Dockerfile \
             components/frontend
         else
@@ -80,7 +80,7 @@ jobs:
         # Build backend image (if changed or use latest)
         if [ "${{ needs.detect-changes.outputs.backend }}" == "true" ]; then
           echo "Building backend (changed)..."
-          docker build -t quay.io/ambient_code/vteam_backend:e2e-test \
+          docker build --no-cache -t quay.io/ambient_code/vteam_backend:e2e-test \
             -f components/backend/Dockerfile \
             components/backend
         else
@@ -92,7 +92,7 @@ jobs:
         # Build operator image (if changed or use latest)
         if [ "${{ needs.detect-changes.outputs.operator }}" == "true" ]; then
           echo "Building operator (changed)..."
-          docker build -t quay.io/ambient_code/vteam_operator:e2e-test \
+          docker build --no-cache -t quay.io/ambient_code/vteam_operator:e2e-test \
             -f components/operator/Dockerfile \
             components/operator
         else
@@ -104,7 +104,7 @@ jobs:
         # Build claude-code-runner image (if changed or use latest)
         if [ "${{ needs.detect-changes.outputs.claude-runner }}" == "true" ]; then
           echo "Building claude-code-runner (changed)..."
-          docker build -t quay.io/ambient_code/vteam_claude_runner:e2e-test \
+          docker build --no-cache -t quay.io/ambient_code/vteam_claude_runner:e2e-test \
             -f components/runners/claude-code-runner/Dockerfile \
             components/runners
         else
