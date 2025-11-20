@@ -201,7 +201,7 @@ export function K8sResourceTree({
                     PVC
                   </Badge>
                   <span className="text-sm font-mono">{pvcName}</span>
-                  <Badge className={`text-xs ${pvcExists ? 'bg-green-100 text-green-800 border-green-300' : 'bg-red-100 text-red-800 border-red-300'}`}>
+                  <Badge className={`text-xs ${pvcExists ? 'bg-green-100 text-green-800 border-green-300 dark:bg-green-700 dark:text-white dark:border-green-700' : 'bg-red-100 text-red-800 border-red-300 dark:bg-red-700 dark:text-white dark:border-red-700'}`}>
                     {pvcExists ? 'Exists' : 'Not Found'}
                   </Badge>
                   {pvcSize && <span className="text-xs text-muted-foreground">{pvcSize}</span>}

@@ -68,7 +68,7 @@ export function SessionHeader({
             <span className="mx-1">•</span>
             <button 
               onClick={() => setDetailsModalOpen(true)}
-              className="text-blue-600 hover:underline"
+              className="text-blue-600 dark:text-blue-400 hover:underline"
             >
               View details
             </button>
@@ -138,7 +138,7 @@ export function SessionHeader({
                   <DropdownMenuItem
                     onClick={onDelete}
                     disabled={actionLoading === "deleting"}
-                    className="text-red-600"
+                    className="text-red-600 dark:text-red-400 dark:text-red-400"
                   >
                     <Trash2 className="w-4 h-4 mr-2" />
                     {actionLoading === "deleting" ? "Deleting..." : "Delete"}

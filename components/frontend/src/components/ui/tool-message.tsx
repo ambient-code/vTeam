@@ -266,7 +266,7 @@ export const ToolMessage = React.forwardRef<HTMLDivElement, ToolMessageProps>(
                       className={cn(
                         "text-xs",
                         isLoading && "animate-pulse",
-                        isError && "border-red-200 text-red-700",
+                        isError && "border-red-200 text-red-700 dark:text-red-300 dark:text-red-300",
                         isSuccess && "border-green-200 text-green-700",
                         isSubagent && subagentClasses?.badgeBorder,
                         isSubagent && subagentClasses?.badgeText,
@@ -337,7 +337,7 @@ export const ToolMessage = React.forwardRef<HTMLDivElement, ToolMessageProps>(
                     {isToolResult && (
                       <div>
                         <h4 className="text-xs font-medium text-foreground/80 mb-1">
-                          Result {isError && <span className="text-red-600">(Error)</span>}
+                          Result {isError && <span className="text-red-600 dark:text-red-400 dark:text-red-400">(Error)</span>}
                         </h4>
                         <div
                           className={cn(

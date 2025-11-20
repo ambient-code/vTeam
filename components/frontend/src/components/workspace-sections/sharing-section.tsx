@@ -151,7 +151,7 @@ export function SharingSection({ projectName }: SharingSectionProps) {
         <Card className="mb-6 border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/50">
           <CardContent className="pt-6 flex items-center gap-2">
             <Info className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-            <p className="text-blue-700 dark:text-blue-300">
+            <p className="text-blue-700 dark:text-blue-300 dark:text-blue-300">
               You have {userRole || 'view'} access. Only admins can grant or revoke permissions.
             </p>
           </CardContent>
@@ -316,7 +316,7 @@ export function SharingSection({ projectName }: SharingSectionProps) {
                 })}
               </div>
             </div>
-            {grantError && <div className="text-sm text-red-600 bg-red-50 p-2 rounded">{grantError}</div>}
+            {grantError && <div className="text-sm text-red-600 dark:text-red-400 bg-red-50 p-2 rounded">{grantError}</div>}
           </div>
           <DialogFooter>
             <Button

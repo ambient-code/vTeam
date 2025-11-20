@@ -136,7 +136,7 @@ export function SessionsSection({ projectName }: SessionsSectionProps) {
                       <TableCell className="font-medium min-w-[180px]">
                         <Link
                           href={`/projects/${projectName}/sessions/${session.metadata.name}`}
-                          className="text-blue-600 hover:underline hover:text-blue-800 transition-colors block"
+                          className="text-blue-600 dark:text-blue-400 hover:underline hover:text-blue-800 transition-colors block"
                         >
                           <div>
                             <div className="font-medium">{session.spec.displayName || session.metadata.name}</div>

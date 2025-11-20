@@ -550,7 +550,7 @@ export default function ProjectSessionDetailPage({
           <div className="h-full container mx-auto px-6 py-6">
             <Card className="border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950/50">
               <CardContent className="pt-6">
-                <p className="text-red-700 dark:text-red-300">Error: {error instanceof Error ? error.message : "Session not found"}</p>
+                <p className="text-red-700 dark:text-red-300 dark:text-red-300">Error: {error instanceof Error ? error.message : "Session not found"}</p>
               </CardContent>
             </Card>
           </div>
@@ -675,7 +675,7 @@ export default function ProjectSessionDetailPage({
                                         </Badge>
                                       )}
                                       {(gitOps.gitStatus?.totalRemoved ?? 0) > 0 && (
-                                        <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200 dark:bg-red-950/50 dark:text-red-300 dark:border-red-800">
+                                        <Badge variant="outline" className="bg-red-50 text-red-700 dark:text-red-300 border-red-200 dark:bg-red-950/50 dark:text-red-300 dark:border-red-800">
                                           -{gitOps.gitStatus.totalRemoved}
                                         </Badge>
                                       )}
@@ -831,7 +831,7 @@ export default function ProjectSessionDetailPage({
                                         <div className="flex-1" />
                                         
                                         {mergeStatus && !mergeStatus.canMergeClean ? (
-                                          <div className="flex items-center gap-1 text-red-600">
+                                          <div className="flex items-center gap-1 text-red-600 dark:text-red-400 dark:text-red-400">
                                             <X className="h-3 w-3" />
                                             <span className="font-medium">conflict</span>
                                           </div>
@@ -911,7 +911,7 @@ export default function ProjectSessionDetailPage({
                                                 successToast("Git remote disconnected");
                                               }}
                                             >
-                                              <X className="mr-2 h-3 w-3 text-red-600" />
+                                              <X className="mr-2 h-3 w-3 text-red-600 dark:text-red-400 dark:text-red-400" />
                                               Disconnect
                                             </DropdownMenuItem>
                                           </DropdownMenuContent>

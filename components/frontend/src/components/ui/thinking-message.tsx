@@ -28,7 +28,7 @@ export const ThinkingMessage: React.FC<ThinkingMessageProps> = ({ block, classNa
             <div className="flex items-center justify-between mb-2">
               <Badge variant="outline" className="text-xs">Thinking</Badge>
               <button
-                className="text-xs text-blue-600 hover:underline"
+                className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
                 onClick={() => setExpanded((e) => !e)}
               >
                 {expanded ? "Hide" : "Show"} details
