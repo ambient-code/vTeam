@@ -51,7 +51,7 @@ export function SessionHeader({
     : null;
 
   return (
-    <>
+    <div>
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-semibold flex items-center gap-2">
@@ -158,6 +158,6 @@ export function SessionHeader({
         k8sResources={k8sResources}
         messageCount={messageCount}
       />
-    </>
+    </div>
   );
 }
