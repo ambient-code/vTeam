@@ -33,13 +33,13 @@ export function Navigation({ feedbackUrl }: NavigationProps) {
               Ambient Code Platform
             </Link>
             {version && (
-              <a 
+              <a
                 href="https://github.com/ambient-code/platform/releases"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-[0.65rem] text-muted-foreground/60 pb-0.75 hover:text-muted-foreground transition-colors"
               >
-                {version}
+                <span>{version}</span>
               </a>
             )}
           </div>
