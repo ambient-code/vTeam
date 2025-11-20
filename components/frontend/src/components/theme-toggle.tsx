@@ -54,7 +54,7 @@ export function ThemeToggle() {
   }
 
   return (
-    <>
+    <div className="relative">
       {/* ARIA live region for announcing theme changes to screen readers */}
       <div
         role="status"
@@ -108,6 +108,6 @@ export function ThemeToggle() {
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-    </>
+    </div>
   )
 }
