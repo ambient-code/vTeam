@@ -1,0 +1,74 @@
+name: 🧪 Amber Test Coverage Request
+description: Request Amber to add missing tests
+title: "[Amber Tests] "
+labels: ["amber:test-coverage", "testing"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Amber Test Coverage Request
+
+        Use this template to request **test additions** for:
+        - Untested functions/handlers
+        - Low coverage areas
+        - Missing contract tests
+        - Edge case coverage
+
+        Amber will create a PR with new tests following project conventions.
+
+  - type: textarea
+    id: untested-code
+    attributes:
+      label: Untested Code
+      description: What code needs test coverage?
+      placeholder: |
+        File: components/backend/handlers/sessions.go
+        Functions:
+        - CreateSession (line 123)
+        - UpdateSessionStatus (line 456)
+        - ValidateSessionSpec (line 789)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: test-type
+    attributes:
+      label: Test Type
+      description: What kind of tests are needed?
+      options:
+        - Unit Tests
+        - Contract Tests (API endpoints)
+        - Integration Tests
+        - All of the above
+    validations:
+      required: true
+
+  - type: textarea
+    id: test-scenarios
+    attributes:
+      label: Test Scenarios (optional)
+      description: Specific scenarios to test
+      placeholder: |
+        - Happy path: create session with valid spec
+        - Error: create session with missing API key
+        - Edge case: create session with very long prompt
+        - Race condition: concurrent status updates
+
+  - type: input
+    id: target-coverage
+    attributes:
+      label: Target Coverage %
+      description: Desired test coverage percentage
+      placeholder: "60%"
+
+  - type: checkboxes
+    id: confirmation
+    attributes:
+      label: Confirmation
+      options:
+        - label: Tests should follow patterns in CLAUDE.md
+          required: true
+        - label: Table-driven tests for Go, pytest for Python
+          required: true
+        - label: All new tests must pass
+          required: true

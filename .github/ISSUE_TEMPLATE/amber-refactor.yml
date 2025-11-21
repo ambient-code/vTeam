@@ -1,0 +1,78 @@
+name: 🔧 Amber Refactoring Request
+description: Request Amber to perform code refactoring (medium-risk changes)
+title: "[Amber Refactor] "
+labels: ["amber:refactor", "refactoring"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Amber Refactoring Request
+
+        Use this template for **medium-risk refactoring** such as:
+        - Breaking large files into modules
+        - Extracting repeated code patterns
+        - Improving error handling
+        - Replacing deprecated patterns
+
+        Amber will create a PR with the proposed refactoring.
+
+  - type: textarea
+    id: current-state
+    attributes:
+      label: Current State
+      description: Describe the code that needs refactoring
+      placeholder: |
+        File: components/backend/handlers/sessions.go
+        Issue: 3,495 lines, violates Constitution Principle V (max 400 lines)
+    validations:
+      required: true
+
+  - type: textarea
+    id: desired-state
+    attributes:
+      label: Desired State
+      description: What should the code look like after refactoring?
+      placeholder: |
+        Break into modules:
+        - sessions/lifecycle.go (create, delete)
+        - sessions/status.go (status updates)
+        - sessions/jobs.go (job management)
+        - sessions/validation.go (input validation)
+    validations:
+      required: true
+
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Constraints & Requirements
+      description: Any constraints Amber should follow
+      placeholder: |
+        - Must maintain backward compatibility
+        - No breaking changes to API
+        - All existing tests must pass
+        - Follow patterns in CLAUDE.md
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - P0 - Critical (Constitution violation)
+        - P1 - High (Tech debt)
+        - P2 - Medium (Nice to have)
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: confirmation
+    attributes:
+      label: Confirmation
+      options:
+        - label: I have reviewed CLAUDE.md standards
+          required: true
+        - label: Backward compatibility is required
+          required: true
+        - label: I will review the generated PR before merging
+          required: true

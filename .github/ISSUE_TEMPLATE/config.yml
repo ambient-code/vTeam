@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 📚 Amber Automation Documentation
+    url: https://github.com/jeremyeder/platform/blob/main/docs/amber-automation.md
+    about: Complete guide to using Amber for automated issue-to-PR workflows
+  - name: 🚀 Amber Quickstart
+    url: https://github.com/jeremyeder/platform/blob/main/docs/amber-quickstart.md
+    about: Get started with Amber in 5 minutes
+  - name: 💬 Discussions
+    url: https://github.com/jeremyeder/platform/discussions
+    about: Ask questions and discuss ideas with the community
