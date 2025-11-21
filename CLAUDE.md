@@ -793,12 +793,28 @@ Study these files to understand established patterns:
 - **Registry**: Pushes to `quay.io/ambient_code` on main branch
 - **PR builds**: Build-only, no push on pull requests
 
-### Other Workflows
+### Automation Workflows
 
-- **claude.yml**: Claude Code integration
+- **amber-issue-handler.yml**: Amber background agent - automated fixes via GitHub issue labels (`amber:auto-fix`, `amber:refactor`, `amber:test-coverage`) or `/amber execute` command
+- **amber-dependency-sync.yml**: Daily sync of dependency versions to Amber agent knowledge base
+- **claude.yml**: Claude Code integration - responds to `@claude` mentions in issues/PRs
+- **claude-code-review.yml**: Automated code reviews on pull requests
+
+### Code Quality Workflows
+
+- **go-lint.yml**: Go code formatting, vetting, and linting (gofmt, go vet, golangci-lint)
+- **frontend-lint.yml**: Frontend code quality (ESLint, TypeScript checking, build validation)
+
+### Deployment & Testing Workflows
+
+- **prod-release-deploy.yaml**: Production releases with semver versioning and changelog generation
+- **e2e.yml**: End-to-end Cypress testing in kind cluster (see Testing Strategy section)
 - **test-local-dev.yml**: Local development environment validation
-- **dependabot-auto-merge.yml**: Automated dependency updates
-- **project-automation.yml**: GitHub project board automation
+
+### Utility Workflows
+
+- **docs.yml**: Deploy MkDocs documentation to GitHub Pages
+- **dependabot-auto-merge.yml**: Auto-approve and merge Dependabot dependency updates
 
 ## Testing Strategy
 

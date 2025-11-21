@@ -97,18 +97,22 @@ This directory contains automated workflows for the Ambient Code Platform.
 
 ---
 
-### 📋 Project Automation (`project-automation.yml`)
+### 🔄 Amber Dependency Sync (`amber-dependency-sync.yml`)
 
-**Purpose**: Manages GitHub project board automation.
+**Purpose**: Keeps Amber agent's dependency knowledge current.
 
 **Triggers**:
-- Issue/PR status changes
-- Label additions
+- Daily at 7 AM UTC
+- Manual workflow dispatch
 
 **What It Does**:
-- Moves issues between project columns
-- Auto-assigns based on labels
-- Updates project metadata
+1. Extracts dependency versions from go.mod, pyproject.toml, package.json
+2. Updates `agents/amber.md` with current versions
+3. Validates sync accuracy
+4. Validates constitution compliance
+5. Auto-commits changes
+
+**Documentation**: [Amber Automation Guide](../../docs/amber-automation.md)
 
 ---
 
@@ -117,13 +121,96 @@ This directory contains automated workflows for the Ambient Code Platform.
 **Purpose**: Integrates Claude Code with GitHub workflows.
 
 **Triggers**:
-- Push to branches
-- PR creation/updates
+- Issue/PR comments with @claude mentions
+- Issue/PR opened or assigned
 
 **What It Does**:
-- Enables Claude Code suggestions in PRs
-- Provides AI-powered code review
-- Links to Claude Code sessions
+- Enables Claude Code AI assistance in issues/PRs
+- Provides AI-powered code review and suggestions
+- Supports fork-compatible checkouts
+
+---
+
+### 🔍 Claude Code Review (`claude-code-review.yml`)
+
+**Purpose**: Automated code reviews using Claude.
+
+**Triggers**:
+- Pull requests opened or synchronized
+
+**What It Does**:
+1. Checks out PR head (supports forks)
+2. Minimizes old review comments
+3. Runs comprehensive code review
+4. Posts structured review (Blocker/Critical/Major/Minor issues)
+
+**Requirements**:
+- `CLAUDE_CODE_OAUTH_TOKEN` secret configured
+
+---
+
+### 🛠️ Go Lint (`go-lint.yml`)
+
+**Purpose**: Go code quality enforcement.
+
+**Triggers**:
+- Push to main
+- Pull requests affecting Go code
+
+**What It Does**:
+1. Detects changes to backend/operator Go code
+2. Checks gofmt formatting
+3. Runs go vet
+4. Runs golangci-lint
+
+---
+
+### 🎨 Frontend Lint (`frontend-lint.yml`)
+
+**Purpose**: Frontend code quality enforcement.
+
+**Triggers**:
+- Push to main
+- Pull requests affecting TypeScript/JavaScript code
+
+**What It Does**:
+1. Detects changes to frontend code
+2. Runs ESLint
+3. TypeScript type checking
+4. Build validation (`npm run build`)
+
+---
+
+### 🚀 Production Release Deploy (`prod-release-deploy.yaml`)
+
+**Purpose**: Production releases with semver versioning.
+
+**Triggers**:
+- Manual workflow dispatch only
+
+**What It Does**:
+1. Calculates next version (major/minor/patch bump)
+2. Generates changelog from git commits
+3. Creates git tag and GitHub release
+4. Builds all component images with release tag
+5. Deploys to production OpenShift cluster
+
+**Requirements**:
+- `PROD_OPENSHIFT_SERVER` and `PROD_OPENSHIFT_TOKEN` secrets
+
+---
+
+### 📚 Documentation Deploy (`docs.yml`)
+
+**Purpose**: Deploy MkDocs documentation to GitHub Pages.
+
+**Triggers**:
+- Push to main
+- Manual workflow dispatch
+
+**What It Does**:
+1. Builds docs with MkDocs in UBI9 container
+2. Deploys to GitHub Pages
 
 ---
 
@@ -146,6 +233,11 @@ permissions:
 | Secret | Used By | Purpose |
 |--------|---------|---------|
 | `ANTHROPIC_API_KEY` | amber-issue-handler.yml | Claude API access |
+| `CLAUDE_CODE_OAUTH_TOKEN` | claude-code-review.yml | Claude Code action authentication |
+| `QUAY_USERNAME`, `QUAY_PASSWORD` | components-build-deploy.yml, prod-release-deploy.yaml | Quay.io registry access |
+| `REDHAT_USERNAME`, `REDHAT_PASSWORD` | components-build-deploy.yml, prod-release-deploy.yaml | Red Hat registry access |
+| `OPENSHIFT_SERVER`, `OPENSHIFT_TOKEN` | components-build-deploy.yml | OpenShift cluster access (dev) |
+| `PROD_OPENSHIFT_SERVER`, `PROD_OPENSHIFT_TOKEN` | prod-release-deploy.yaml | OpenShift cluster access (prod) |
 | `GITHUB_TOKEN` | All workflows | GitHub API access (auto-provided) |
 
 ### Command Injection Prevention
