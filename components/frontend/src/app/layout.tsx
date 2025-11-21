@@ -31,55 +31,6 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <head>
         <meta name="backend-ws-base" content={wsBase} />
-        {/*
-          FOUC Prevention - Blocking Script (Pre-Hydration)
-
-          This script runs BEFORE React hydration to prevent Flash of Unstyled Content.
-          It sets the initial theme state synchronously during HTML parsing.
-
-          Why this is needed:
-          1. Executes before CSS loads and before React hydration
-          2. Prevents visible flash when switching from light to dark (or vice versa)
-          3. Sets both 'dark' class AND 'data-hljs-theme' attribute immediately
-
-          Works in tandem with SyntaxThemeProvider:
-          - This script: Initial page load (pre-hydration) ← You are here
-          - SyntaxThemeProvider: Runtime theme changes (post-hydration)
-
-          Both set the same attributes but at different lifecycle stages:
-          - Blocking script: Runs during HTML parsing (before first paint)
-          - SyntaxThemeProvider: Runs after React hydration (responds to theme toggle)
-
-          This duplication is intentional and necessary for a flicker-free experience.
-        */}
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              (function() {
-                try {
-                  // Check for theme in localStorage (next-themes default key)
-                  var storedTheme = localStorage.getItem('theme');
-                  var systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-
-                  // Determine effective theme: use stored preference, fallback to system
-                  var effectiveTheme = storedTheme === 'system' || !storedTheme ? systemTheme : storedTheme;
-
-                  // Apply dark class immediately (before any paint/CSS loading)
-                  if (effectiveTheme === 'dark') {
-                    document.documentElement.classList.add('dark');
-                  }
-
-                  // Set attribute for syntax highlighting (our custom implementation)
-                  // NOTE: SyntaxThemeProvider will update this reactively after hydration
-                  document.documentElement.setAttribute('data-hljs-theme', effectiveTheme);
-                } catch (e) {
-                  // Graceful degradation: if script fails, React will set theme after hydration
-                  // This ensures the app still works even if localStorage is blocked or script errors
-                }
-              })();
-            `,
-          }}
-        />
       </head>
       {/* suppressHydrationWarning is needed here as well since ThemeProvider modifies the class attribute */}
       <body className={`${inter.className} min-h-screen flex flex-col`} suppressHydrationWarning>
