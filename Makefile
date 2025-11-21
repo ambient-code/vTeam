@@ -1,4 +1,4 @@
-.PHONY: help setup-env build-all build-frontend build-backend build-operator build-runner deploy clean dev-frontend dev-backend lint test registry-login push-all dev-start dev-stop dev-test dev-logs-operator dev-restart-operator dev-operator-status dev-test-operator e2e-test e2e-setup e2e-clean
+.PHONY: help setup-env build-all build-frontend build-backend build-operator build-runner deploy clean dev-frontend dev-backend lint test registry-login push-all dev-start dev-stop dev-test dev-logs-operator dev-restart-operator dev-operator-status dev-test-operator e2e-test e2e-setup e2e-clean setup-hooks remove-hooks
 
 # Default target
 help: ## Show this help message
@@ -83,8 +83,18 @@ push-all: ## Push all images to registry
 	$(CONTAINER_ENGINE) push $(REGISTRY)/$(OPERATOR_IMAGE)
 	$(CONTAINER_ENGINE) push $(REGISTRY)/$(RUNNER_IMAGE)
 
+# Git hooks for branch protection
+setup-hooks: ## Install git hooks for branch protection
+	@./scripts/install-git-hooks.sh
+
+remove-hooks: ## Remove git hooks
+	@echo "Removing git hooks..."
+	@rm -f .git/hooks/pre-commit
+	@rm -f .git/hooks/pre-push
+	@echo "✅ Git hooks removed"
+
 # Local dev helpers (OpenShift Local/CRC-based)
-dev-start: ## Start local dev (CRC + OpenShift + backend + frontend)
+dev-start: setup-hooks ## Start local dev (CRC + OpenShift + backend + frontend)
 	@bash components/scripts/local-dev/crc-start.sh
 
 dev-stop: ## Stop local dev processes

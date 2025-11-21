@@ -92,6 +92,36 @@ Before contributing, ensure you have:
    git remote add upstream https://github.com/ambient-code/vTeam.git
    ```
 
+### Install Git Hooks (Recommended)
+
+To prevent accidental commits to protected branches (`main`, `master`, `production`), install our git hooks:
+
+```bash
+make setup-hooks
+```
+
+Or run the installation script directly:
+
+```bash
+./scripts/install-git-hooks.sh
+```
+
+**What the hooks do:**
+
+- **pre-commit** - Blocks commits to `main`/`master`/`production` branches
+- **pre-push** - Blocks pushes to `main`/`master`/`production` branches
+
+**Hooks are automatically installed** when you run `make dev-start`.
+
+If you need to override the hooks (e.g., for hotfixes):
+
+```bash
+git commit --no-verify -m "hotfix: critical fix"
+git push --no-verify origin main
+```
+
+See [scripts/git-hooks/README.md](scripts/git-hooks/README.md) for more details.
+
 ## Development Workflow
 
 ### 1. Create a Feature Branch

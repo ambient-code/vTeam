@@ -1,0 +1,76 @@
+#!/usr/bin/env python3
+"""
+Git pre-commit hook to enforce feature branch workflow.
+
+Prevents commits to protected branches (main, master, production).
+Developers can override with --no-verify if absolutely necessary.
+"""
+
+import subprocess
+import sys
+from typing import List
+
+
+PROTECTED_BRANCHES: List[str] = ["main", "master", "production"]
+
+SUGGESTED_PREFIXES: List[str] = [
+    "feature/",
+    "fix/",
+    "docs/",
+    "refactor/",
+    "test/",
+    "issue-",
+]
+
+
+def get_current_branch() -> str:
+    """Get the current git branch name."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return result.stdout.strip()
+    except subprocess.CalledProcessError as e:
+        print(f"❌ Failed to detect git branch: {e}")
+        sys.exit(1)
+
+
+def suggest_branch_names() -> str:
+    """Generate helpful branch name suggestions."""
+    suggestions = [
+        "💡 Create a feature branch instead:",
+        "   git checkout -b feature/your-feature-name",
+        "   git checkout -b fix/bug-description",
+        "   git checkout -b issue-123-description",
+        "",
+        "🔧 Or force commit (not recommended):",
+        "   git commit --no-verify -m 'your message'",
+    ]
+    return "\n".join(suggestions)
+
+
+def main() -> int:
+    """
+    Main hook logic.
+
+    Returns:
+        0 if commit should proceed
+        1 if commit should be blocked
+    """
+    current_branch = get_current_branch()
+
+    if current_branch in PROTECTED_BRANCHES:
+        print(f"\n⚠️  Attempting to commit directly to '{current_branch}'")
+        print(f"❌ Direct commits to '{current_branch}' are not allowed.\n")
+        print(suggest_branch_names())
+        return 1
+
+    # Allow commit
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

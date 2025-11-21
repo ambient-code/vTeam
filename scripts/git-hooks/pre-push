@@ -1,0 +1,96 @@
+#!/usr/bin/env python3
+"""
+Git pre-push hook to enforce feature branch workflow.
+
+Prevents pushing directly to protected branches (main, master, production).
+Developers can override with --no-verify if absolutely necessary.
+"""
+
+import subprocess
+import sys
+from typing import List, Tuple
+
+
+PROTECTED_BRANCHES: List[str] = ["main", "master", "production"]
+
+
+def get_current_branch() -> str:
+    """Get the current git branch name."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return result.stdout.strip()
+    except subprocess.CalledProcessError as e:
+        print(f"❌ Failed to detect git branch: {e}")
+        sys.exit(1)
+
+
+def parse_push_info() -> List[Tuple[str, str]]:
+    """
+    Parse git push information from stdin.
+
+    Returns list of (local_ref, remote_ref) tuples.
+    """
+    push_info = []
+    for line in sys.stdin:
+        parts = line.strip().split()
+        if len(parts) >= 2:
+            local_ref = parts[0]  # e.g., refs/heads/main
+            remote_ref = parts[1]  # e.g., refs/heads/main
+            push_info.append((local_ref, remote_ref))
+    return push_info
+
+
+def get_branch_from_ref(ref: str) -> str:
+    """Extract branch name from git ref."""
+    if ref.startswith("refs/heads/"):
+        return ref.replace("refs/heads/", "")
+    return ref
+
+
+def main() -> int:
+    """
+    Main hook logic.
+
+    Returns:
+        0 if push should proceed
+        1 if push should be blocked
+    """
+    current_branch = get_current_branch()
+
+    # Check if current branch is protected
+    if current_branch in PROTECTED_BRANCHES:
+        print(f"\n⚠️  Attempting to push directly to '{current_branch}'")
+        print(f"❌ Direct pushes to '{current_branch}' are not allowed.\n")
+        print("💡 Use the pull request workflow instead:")
+        print("   1. Create a feature branch: git checkout -b feature/your-feature")
+        print("   2. Push your feature branch: git push origin feature/your-feature")
+        print("   3. Open a pull request on GitHub\n")
+        print("🔧 Or force push (not recommended):")
+        print("   git push --no-verify\n")
+        return 1
+
+    # Check push targets from stdin
+    push_info = parse_push_info()
+    for local_ref, remote_ref in push_info:
+        remote_branch = get_branch_from_ref(remote_ref)
+        if remote_branch in PROTECTED_BRANCHES:
+            print(f"\n⚠️  Attempting to push to protected branch '{remote_branch}'")
+            print(f"❌ Direct pushes to '{remote_branch}' are not allowed.\n")
+            print("💡 Use the pull request workflow instead:")
+            print(f"   1. Push to a feature branch: git push origin {current_branch}")
+            print("   2. Open a pull request on GitHub\n")
+            print("🔧 Or force push (not recommended):")
+            print("   git push --no-verify\n")
+            return 1
+
+    # Allow push
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
