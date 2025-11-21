@@ -14,6 +14,20 @@ The **Ambient Code Platform** is an AI automation platform that combines Claude 
 - **Multi-Agent Workflows**: Specialized AI agents model realistic software team dynamics
 - **Kubernetes Native**: Built with Custom Resources, Operators, and proper RBAC for enterprise deployment
 - **Real-time Monitoring**: Live status updates and job execution tracking
+- **🤖 Amber Background Agent**: Automated issue-to-PR workflows via GitHub Actions ([quickstart](docs/amber-quickstart.md))
+
+### Amber: Self-Service Automation
+
+**Amber** is a background agent that handles GitHub issues automatically:
+
+- 🤖 **Auto-Fix**: Create issue with `amber:auto-fix` label → Amber creates PR with linting/formatting fixes
+- 🔧 **Refactoring**: Label issue `amber:refactor` → Amber breaks large files, extracts patterns
+- 🧪 **Test Coverage**: Use `amber:test-coverage` → Amber adds missing tests
+
+**Quick Links**:
+- [5-Minute Quickstart](docs/amber-quickstart.md)
+- [Complete Guide](docs/amber-automation.md)
+- [Create Auto-Fix Issue](../../issues/new?template=amber-auto-fix.yml)
 
 ## Architecture
 

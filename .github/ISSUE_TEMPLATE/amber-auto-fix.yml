@@ -1,0 +1,60 @@
+name: 🤖 Amber Auto-Fix Request
+description: Request Amber to automatically fix linting, formatting, or trivial issues
+title: "[Amber] "
+labels: ["amber:auto-fix", "automation"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Amber Auto-Fix Request
+
+        Use this template to request **low-risk automated fixes** such as:
+        - Code formatting (gofmt, black, prettier)
+        - Unused import removal
+        - Linting violations
+        - Documentation formatting
+
+        Amber will automatically create a PR to address this issue.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Issue Description
+      description: Describe what needs to be fixed
+      placeholder: |
+        Example: "Frontend code has unused imports and doesn't pass eslint checks"
+    validations:
+      required: true
+
+  - type: input
+    id: files
+    attributes:
+      label: Files to Fix (optional)
+      description: Specific files or directories to target
+      placeholder: "components/frontend/src/**/*.tsx"
+
+  - type: dropdown
+    id: fix-type
+    attributes:
+      label: Fix Type
+      description: What kind of fix is needed?
+      options:
+        - Code Formatting
+        - Linting Violations
+        - Unused Imports
+        - Documentation Formatting
+        - All of the above
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: confirmation
+    attributes:
+      label: Confirmation
+      options:
+        - label: I understand this will create an automated PR
+          required: true
+        - label: The changes are low-risk and reversible
+          required: true
+        - label: All tests should continue to pass after fixes
+          required: true

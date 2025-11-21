@@ -1,0 +1,388 @@
+name: Amber Issue-to-PR Handler
+
+on:
+  issues:
+    types: [labeled, opened]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  amber-handler:
+    runs-on: ubuntu-latest
+    # Only run for specific labels or commands
+    if: |
+      (github.event.label.name == 'amber:auto-fix' ||
+       github.event.label.name == 'amber:refactor' ||
+       github.event.label.name == 'amber:test-coverage' ||
+       contains(github.event.comment.body, '/amber execute'))
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine Amber action type
+        id: action-type
+        env:
+          LABEL_NAME: ${{ github.event.label.name }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          # Parse label or comment to determine action
+          if [[ "$LABEL_NAME" == "amber:auto-fix" ]]; then
+            echo "type=auto-fix" >> $GITHUB_OUTPUT
+            echo "severity=low" >> $GITHUB_OUTPUT
+          elif [[ "$LABEL_NAME" == "amber:refactor" ]]; then
+            echo "type=refactor" >> $GITHUB_OUTPUT
+            echo "severity=medium" >> $GITHUB_OUTPUT
+          elif [[ "$LABEL_NAME" == "amber:test-coverage" ]]; then
+            echo "type=test-coverage" >> $GITHUB_OUTPUT
+            echo "severity=medium" >> $GITHUB_OUTPUT
+          elif [[ "$COMMENT_BODY" == *"/amber execute"* ]]; then
+            echo "type=execute-proposal" >> $GITHUB_OUTPUT
+            echo "severity=medium" >> $GITHUB_OUTPUT
+          else
+            echo "type=unknown" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+
+      - name: Extract issue details
+        id: issue-details
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+
+            // Parse issue body for Amber-compatible context
+            const body = issue.body || '';
+
+            // Extract file paths mentioned in issue
+            const filePattern = /(?:File|Path):\s*`?([^\s`]+)`?/gi;
+            const files = [...body.matchAll(filePattern)].map(m => m[1]);
+
+            // Extract specific instructions
+            const instructionPattern = /(?:Instructions?|Task):\s*\n([\s\S]*?)(?:\n#{2,}|\n---|\n\*\*|$)/i;
+            const instructionMatch = body.match(instructionPattern);
+            const instructions = instructionMatch ? instructionMatch[1].trim() : '';
+
+            // Set outputs
+            core.setOutput('issue_number', issue.number);
+            core.setOutput('issue_title', issue.title);
+            core.setOutput('issue_body', body);
+            core.setOutput('files', JSON.stringify(files));
+            core.setOutput('instructions', instructions || issue.title);
+
+            console.log('Parsed issue:', {
+              number: issue.number,
+              title: issue.title,
+              files: files,
+              instructions: instructions || issue.title
+            });
+
+      - name: Install Claude Code CLI
+        run: |
+          # Install Claude Code CLI (adjust version as needed)
+          npm install -g @anthropic-ai/claude-code
+
+          # Verify installation
+          claude-code --version
+
+      - name: Create Amber agent prompt
+        id: create-prompt
+        env:
+          ISSUE_NUMBER: ${{ steps.issue-details.outputs.issue_number }}
+          ISSUE_TITLE: ${{ steps.issue-details.outputs.issue_title }}
+          ISSUE_INSTRUCTIONS: ${{ steps.issue-details.outputs.instructions }}
+          ISSUE_FILES: ${{ steps.issue-details.outputs.files }}
+          ACTION_TYPE: ${{ steps.action-type.outputs.type }}
+          ACTION_SEVERITY: ${{ steps.action-type.outputs.severity }}
+        run: |
+          cat > /tmp/amber-prompt.md <<'EOF'
+          # Amber Agent Task: Issue #${ISSUE_NUMBER}
+
+          **Action Type:** ${ACTION_TYPE}
+          **Severity:** ${ACTION_SEVERITY}
+
+          ## Issue Details
+          **Title:** ${ISSUE_TITLE}
+
+          **Instructions:**
+          ${ISSUE_INSTRUCTIONS}
+
+          **Files to modify (if specified):**
+          ${ISSUE_FILES}
+
+          ## Your Mission
+
+          Based on the action type, perform the following:
+
+          ### For `auto-fix` type:
+          1. Identify the specific linting/formatting issues mentioned
+          2. Run appropriate formatters (gofmt, black, prettier, etc.)
+          3. Fix any trivial issues (unused imports, spacing, etc.)
+          4. Ensure all changes pass existing tests
+          5. Create a clean commit with conventional format
+
+          ### For `refactor` type:
+          1. Analyze the current code structure
+          2. Implement the refactoring as described in the issue
+          3. Ensure backward compatibility (no breaking changes)
+          4. Add/update tests to cover refactored code
+          5. Verify all existing tests still pass
+
+          ### For `test-coverage` type:
+          1. Analyze current test coverage for specified files
+          2. Identify untested code paths
+          3. Write contract tests following project standards (see CLAUDE.md)
+          4. Ensure tests follow table-driven test pattern (Go) or pytest patterns (Python)
+          5. Verify all new tests pass
+
+          ### For `execute-proposal` type:
+          1. Read the full issue body for the proposed implementation
+          2. Execute the changes as specified in the proposal
+          3. Follow the risk assessment and rollback plan provided
+          4. Ensure all testing strategies are implemented
+
+          ## Requirements
+
+          - Follow all standards in `/Users/jeder/repos/platform/CLAUDE.md`
+          - Use conventional commit format: `type(scope): message`
+          - Run all linters BEFORE committing:
+            - Go: `gofmt -w .`, `golangci-lint run`
+            - Python: `black .`, `isort .`, `flake8`
+            - TypeScript: `npm run lint`
+          - Ensure ALL tests pass: `make test`
+          - Create branch following pattern: `amber/issue-${ISSUE_NUMBER}-{description}`
+
+          ## Success Criteria
+
+          - All linters pass with 0 warnings
+          - All existing tests pass
+          - New code follows project conventions
+          - Commit message is clear and follows conventional format
+          - Changes are focused on issue scope (no scope creep)
+
+          ## Output Format
+
+          After completing the work, provide:
+          1. **Summary of changes** (2-3 sentences)
+          2. **Files modified** (list with line count changes)
+          3. **Test results** (pass/fail for each test suite)
+          4. **Linting results** (confirm all pass)
+          5. **Commit SHA**
+
+          Ready to execute!
+          EOF
+
+          # Substitute environment variables
+          envsubst < /tmp/amber-prompt.md > /tmp/amber-prompt-final.md
+          mv /tmp/amber-prompt-final.md /tmp/amber-prompt.md
+
+          echo "prompt_file=/tmp/amber-prompt.md" >> $GITHUB_OUTPUT
+
+      - name: Execute Amber agent via Claude Code
+        id: amber-execute
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          ISSUE_NUMBER: ${{ steps.issue-details.outputs.issue_number }}
+          ISSUE_TITLE: ${{ steps.issue-details.outputs.issue_title }}
+        run: |
+          # Create working directory for Amber
+          WORK_DIR=$(mktemp -d)
+          cd "$WORK_DIR"
+
+          # Clone repository
+          git clone "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" .
+
+          # Configure git
+          git config user.name "Amber Agent"
+          git config user.email "amber@ambient-code.ai"
+
+          # Create feature branch (sanitize title for branch name)
+          SANITIZED_TITLE=$(echo "$ISSUE_TITLE" | tr '[:upper:]' '[:lower:]' | tr -cd '[:alnum:]-' | cut -c1-50)
+          BRANCH_NAME="amber/issue-${ISSUE_NUMBER}-${SANITIZED_TITLE}"
+          git checkout -b "$BRANCH_NAME"
+
+          # Execute Amber using Claude Code SDK/CLI
+          # Note: This requires claude-code to be installed and configured
+
+          # Method 1: Using CLI (if available)
+          if command -v claude-code &> /dev/null; then
+            claude-code --agent Amber --prompt "$(cat /tmp/amber-prompt.md)" --auto-commit
+          else
+            # Method 2: Using Python SDK
+            python3 <<'PYTHON'
+          import os
+          import sys
+          from anthropic import Anthropic
+
+          client = Anthropic(api_key=os.environ['ANTHROPIC_API_KEY'])
+
+          with open('/tmp/amber-prompt.md', 'r') as f:
+              prompt = f.read()
+
+          # Create message with extended thinking
+          response = client.messages.create(
+              model="claude-sonnet-4-5-20250929",
+              max_tokens=16000,
+              thinking={
+                  "type": "enabled",
+                  "budget_tokens": 10000
+              },
+              messages=[{
+                  "role": "user",
+                  "content": prompt
+              }]
+          )
+
+          # Extract response
+          for block in response.content:
+              if hasattr(block, 'text'):
+                  print(block.text)
+
+          # Save execution log
+          with open('/tmp/amber-execution.log', 'w') as f:
+              f.write(str(response))
+          PYTHON
+          fi
+
+          # Check if changes were made
+          if git diff --quiet; then
+            echo "No changes made by Amber"
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Commit changes
+          git add .
+          COMMIT_MESSAGE="fix(amber): address issue #${ISSUE_NUMBER}
+
+          Automated fix by Amber agent for:
+          ${ISSUE_TITLE}
+
+          Action type: ${{ steps.action-type.outputs.type }}
+
+          🤖 Generated with Amber Background Agent
+
+          Resolves: #${ISSUE_NUMBER}"
+
+          git commit -m "$COMMIT_MESSAGE"
+
+          # Push branch
+          git push -u origin "$BRANCH_NAME"
+
+          echo "has_changes=true" >> $GITHUB_OUTPUT
+          echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
+          echo "commit_sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Create Pull Request
+        if: steps.amber-execute.outputs.has_changes == 'true'
+        env:
+          BRANCH_NAME: ${{ steps.amber-execute.outputs.branch_name }}
+          COMMIT_SHA: ${{ steps.amber-execute.outputs.commit_sha }}
+          ISSUE_NUMBER: ${{ steps.issue-details.outputs.issue_number }}
+          ISSUE_TITLE: ${{ steps.issue-details.outputs.issue_title }}
+          ACTION_TYPE: ${{ steps.action-type.outputs.type }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const branchName = process.env.BRANCH_NAME;
+            const commitSha = process.env.COMMIT_SHA;
+            const issueNumber = parseInt(process.env.ISSUE_NUMBER);
+            const issueTitle = process.env.ISSUE_TITLE;
+            const actionType = process.env.ACTION_TYPE;
+            const repository = process.env.GITHUB_REPOSITORY;
+
+            // Create PR
+            const pr = await github.rest.pulls.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `[Amber] Fix: ${issueTitle}`,
+              head: branchName,
+              base: 'main',
+              body: `## Automated Fix by Amber Agent
+
+            This PR addresses issue #${issueNumber} using the Amber background agent.
+
+            ### Changes Summary
+            - **Action Type:** ${actionType}
+            - **Commit:** ${commitSha.substring(0, 7)}
+            - **Triggered by:** Issue label/command
+
+            ### Pre-merge Checklist
+            - [ ] All linters pass
+            - [ ] All tests pass
+            - [ ] Changes follow project conventions (CLAUDE.md)
+            - [ ] No scope creep beyond issue description
+
+            ### Reviewer Notes
+            This PR was automatically generated. Please review:
+            1. Code quality and adherence to standards
+            2. Test coverage for changes
+            3. No unintended side effects
+
+            ---
+            🤖 Generated with [Amber Background Agent](https://github.com/${repository}/blob/main/.claude/amber-config.yml)
+
+            Closes #${issueNumber}`
+            });
+
+            // Add labels
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: pr.data.number,
+              labels: ['amber-generated', 'auto-fix', actionType]
+            });
+
+            // Link PR back to issue
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              body: `🤖 Amber has created a pull request to address this issue: #${pr.data.number}\n\nThe changes are ready for review. All automated checks will run on the PR.`
+            });
+
+            console.log('Created PR:', pr.data.html_url);
+
+      - name: Report failure
+        if: failure()
+        env:
+          ISSUE_NUMBER: ${{ steps.issue-details.outputs.issue_number }}
+          ACTION_TYPE: ${{ steps.action-type.outputs.type }}
+          RUN_ID: ${{ github.run_id }}
+          GITHUB_SERVER_URL: ${{ github.server_url }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issueNumber = parseInt(process.env.ISSUE_NUMBER);
+            const actionType = process.env.ACTION_TYPE;
+            const runId = process.env.RUN_ID;
+            const serverUrl = process.env.GITHUB_SERVER_URL;
+            const repository = process.env.GITHUB_REPOSITORY;
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              body: `⚠️ Amber encountered an error while processing this issue.
+
+            **Action Type:** ${actionType}
+            **Workflow Run:** ${serverUrl}/${repository}/actions/runs/${runId}
+
+            Please review the workflow logs for details. You may need to:
+            1. Check if the issue description provides sufficient context
+            2. Verify the specified files exist
+            3. Ensure the changes are feasible for automation
+
+            Manual intervention may be required for complex changes.`
+            });
