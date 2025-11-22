@@ -1,0 +1,24 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: openwebui
+
+# Resources (base + phase1-specific)
+resources:
+- ../../base
+- secrets.yaml
+- ingress.yaml
+
+# Patches for Phase 1 environment
+patches:
+- path: pvc-patch.yaml
+  target:
+    kind: PersistentVolumeClaim
+    name: openwebui-data-pvc
+
+# Use specific image tags for reproducibility in Phase 1
+images:
+- name: ghcr.io/berriai/litellm
+  newTag: main-latest
+- name: ghcr.io/open-webui/open-webui
+  newTag: main

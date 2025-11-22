@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: litellm
+  labels:
+    app: litellm
+    app.kubernetes.io/name: litellm
+    app.kubernetes.io/component: proxy
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: openwebui
+  labels:
+    app: openwebui
+    app.kubernetes.io/name: openwebui
+    app.kubernetes.io/component: frontend
