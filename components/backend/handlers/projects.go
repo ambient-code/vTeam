@@ -143,8 +143,8 @@ func GetClusterInfo(c *gin.Context) {
 }
 
 // ListProjects handles GET /projects
-// Lists Namespaces (both platforms) using backend SA with label selector,
-// then uses SubjectAccessReview to verify user access to each namespace
+// Uses reverse query approach: finds user's RoleBindings first, then returns matching managed namespaces
+// This scales to thousands of namespaces (O(1) API calls instead of O(N))
 func ListProjects(c *gin.Context) {
 	reqK8s, _ := GetK8sClientsForRequest(c)
 
@@ -165,6 +165,32 @@ func ListProjects(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), defaultK8sTimeout)
 	defer cancel()
 
+	// Get user subject (username or service account)
+	userSubject, err := getUserSubjectFromContext(c)
+	if err != nil {
+		log.Printf("Failed to extract user subject: %v", err)
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Failed to identify user"})
+		return
+	}
+
+	// Get user groups (may be empty)
+	userGroups := []string{}
+	if groups, exists := c.Get("userGroups"); exists {
+		if groupSlice, ok := groups.([]string); ok {
+			userGroups = groupSlice
+		}
+	}
+
+	// Find namespaces where user has access via RoleBindings
+	// This is much faster than checking each namespace individually (reverse query)
+	userNamespaces, err := getUserAccessibleNamespaces(ctx, userSubject, userGroups)
+	if err != nil {
+		log.Printf("Failed to get user accessible namespaces: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list projects"})
+		return
+	}
+
+	// List managed namespaces
 	nsList, err := K8sClientProjects.CoreV1().Namespaces().List(ctx, v1.ListOptions{
 		LabelSelector: "ambient-code.io/managed=true",
 	})
@@ -174,21 +200,89 @@ func ListProjects(c *gin.Context) {
 		return
 	}
 
-	// Filter to only namespaces where user has access
-	// Use SubjectAccessReview - checks ALL RBAC sources (any RoleBinding, group, etc.)
+	// Return intersection: managed namespaces that user has access to
 	for _, ns := range nsList.Items {
-		hasAccess, err := checkUserCanAccessNamespace(reqK8s, ns.Name)
-		if err != nil {
-			log.Printf("Failed to check access for namespace %s: %v", ns.Name, err)
-			continue
-		}
-
-		if hasAccess {
+		if userNamespaces[ns.Name] {
 			projects = append(projects, projectFromNamespace(&ns, isOpenShift))
 		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{"items": projects})
+}
+
+// getUserAccessibleNamespaces finds all namespaces where the user has RBAC permissions
+// Returns a map[namespace]bool for O(1) lookup when filtering managed namespaces
+// This is much faster than O(N) SubjectAccessReviews - typically 2-3 API calls vs 50-1000+
+func getUserAccessibleNamespaces(ctx context.Context, userSubject string, userGroups []string) (map[string]bool, error) {
+	namespaces := make(map[string]bool)
+
+	// Fast path: check if user is cluster-admin (has access to all namespaces)
+	// ClusterRoleBindings with cluster-admin give access to everything
+	clusterRoleBindings, err := K8sClientProjects.RbacV1().ClusterRoleBindings().List(ctx, v1.ListOptions{})
+	if err != nil {
+		log.Printf("Failed to list ClusterRoleBindings: %v", err)
+		// Non-fatal - continue with RoleBinding check
+	} else {
+		for _, crb := range clusterRoleBindings.Items {
+			// Check if this ClusterRoleBinding gives cluster-admin
+			if crb.RoleRef.Name == "cluster-admin" || strings.Contains(crb.RoleRef.Name, "admin") {
+				if subjectMatchesUser(crb.Subjects, userSubject, userGroups) {
+					// User is cluster-admin - return all namespaces
+					log.Printf("User %s has cluster-admin via ClusterRoleBinding %s", userSubject, crb.Name)
+					allNs, err := K8sClientProjects.CoreV1().Namespaces().List(ctx, v1.ListOptions{})
+					if err == nil {
+						for _, ns := range allNs.Items {
+							namespaces[ns.Name] = true
+						}
+						return namespaces, nil
+					}
+				}
+			}
+		}
+	}
+
+	// Normal path: find RoleBindings where user is a subject
+	// This gives us the specific namespaces where user has permissions
+	roleBindings, err := K8sClientProjects.RbacV1().RoleBindings("").List(ctx, v1.ListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list RoleBindings: %w", err)
+	}
+
+	// Extract namespaces from RoleBindings where user or their groups are subjects
+	for _, rb := range roleBindings.Items {
+		if subjectMatchesUser(rb.Subjects, userSubject, userGroups) {
+			namespaces[rb.Namespace] = true
+		}
+	}
+
+	log.Printf("User %s has access to %d namespaces via RoleBindings", userSubject, len(namespaces))
+	return namespaces, nil
+}
+
+// subjectMatchesUser checks if any subject in the list matches the user or their groups
+func subjectMatchesUser(subjects []rbacv1.Subject, userSubject string, userGroups []string) bool {
+	for _, subject := range subjects {
+		// Check direct user/SA match
+		if subject.Kind == "User" && subject.Name == userSubject {
+			return true
+		}
+		if subject.Kind == "ServiceAccount" {
+			// ServiceAccount subject format: system:serviceaccount:namespace:name
+			saSubject := fmt.Sprintf("system:serviceaccount:%s:%s", subject.Namespace, subject.Name)
+			if saSubject == userSubject {
+				return true
+			}
+		}
+		// Check group membership
+		if subject.Kind == "Group" {
+			for _, userGroup := range userGroups {
+				if subject.Name == userGroup {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 // projectFromNamespace converts a Kubernetes Namespace to AmbientProject
