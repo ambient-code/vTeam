@@ -72,21 +72,21 @@ const ExpandableMarkdown: React.FC<ExpandableMarkdownProps> = ({
       children?: React.ReactNode;
     } & React.HTMLAttributes<HTMLElement>) => {
       return inline ? (
-        <code className="bg-gray-100 px-1 py-0.5 rounded text-xs" {...(props as React.HTMLAttributes<HTMLElement>)}>
+        <code className="bg-muted px-1 py-0.5 rounded text-xs" {...(props as React.HTMLAttributes<HTMLElement>)}>
           {children}
         </code>
       ) : (
-        <pre className="bg-gray-800 text-gray-100 p-2 rounded text-xs overflow-x-auto">
+        <pre className="bg-slate-950 dark:bg-black text-slate-50 p-2 rounded text-xs overflow-x-auto">
           <code className={className} {...(props as React.HTMLAttributes<HTMLElement>)}>
             {children}
           </code>
         </pre>
       );
     },
-    p: ({ children }) => <p className="text-gray-600 leading-relaxed mb-2 text-sm">{children}</p>,
-    h1: ({ children }) => <h1 className="text-lg font-bold text-gray-800 mb-2">{children}</h1>,
-    h2: ({ children }) => <h2 className="text-md font-semibold text-gray-800 mb-2">{children}</h2>,
-    h3: ({ children }) => <h3 className="text-sm font-medium text-gray-800 mb-1">{children}</h3>,
+    p: ({ children }) => <p className="text-muted-foreground leading-relaxed mb-2 text-sm">{children}</p>,
+    h1: ({ children }) => <h1 className="text-lg font-bold text-foreground mb-2">{children}</h1>,
+    h2: ({ children }) => <h2 className="text-md font-semibold text-foreground mb-2">{children}</h2>,
+    h3: ({ children }) => <h3 className="text-sm font-medium text-foreground mb-1">{children}</h3>,
   };
 
   return (
@@ -99,7 +99,7 @@ const ExpandableMarkdown: React.FC<ExpandableMarkdownProps> = ({
           <button
             type="button"
             onClick={() => setExpanded(!expanded)}
-            className="text-xs px-2 py-1 rounded border bg-white hover:bg-gray-50 text-gray-700"
+            className="text-xs px-2 py-1 rounded border bg-card hover:bg-muted/50 text-foreground/80"
           >
             {expanded ? "Show less" : "Show more"}
           </button>
@@ -234,7 +234,7 @@ export const ToolMessage = React.forwardRef<HTMLDivElement, ToolMessageProps>(
               {/* Collapsible Header */}
               <div
                 className={cn(
-                  "flex items-center justify-between cursor-pointer hover:bg-gray-50 transition-colors",
+                  "flex items-center justify-between cursor-pointer hover:bg-muted/50 transition-colors",
                   isCompact ? "py-1 px-0" : "p-3"
                 )}
                 onClick={() => setIsExpanded(!isExpanded)}
@@ -266,7 +266,7 @@ export const ToolMessage = React.forwardRef<HTMLDivElement, ToolMessageProps>(
                       className={cn(
                         "text-xs",
                         isLoading && "animate-pulse",
-                        isError && "border-red-200 text-red-700",
+                        isError && "border-red-200 text-red-700 dark:text-red-300 dark:text-red-300",
                         isSuccess && "border-green-200 text-green-700",
                         isSubagent && subagentClasses?.badgeBorder,
                         isSubagent && subagentClasses?.badgeText,
@@ -280,9 +280,9 @@ export const ToolMessage = React.forwardRef<HTMLDivElement, ToolMessageProps>(
                   {/* Expand/Collapse Icon */}
                   <div className="flex-shrink-0">
                     {isExpanded ? (
-                      <ChevronDown className={cn(isCompact ? "w-3 h-3" : "w-4 h-4", "text-gray-400")} />
+                      <ChevronDown className={cn(isCompact ? "w-3 h-3" : "w-4 h-4", "text-muted-foreground/60")} />
                     ) : (
-                      <ChevronRight className={cn(isCompact ? "w-3 h-3" : "w-4 h-4", "text-gray-400")} />
+                      <ChevronRight className={cn(isCompact ? "w-3 h-3" : "w-4 h-4", "text-muted-foreground/60")} />
                     )}
                   </div>
                 </div>
@@ -293,17 +293,17 @@ export const ToolMessage = React.forwardRef<HTMLDivElement, ToolMessageProps>(
                 <div className="px-3 pb-3 space-y-3">
                   <div>
                     {subagentDescription && subagentDescription.trim() ? (
-                      <div className="text-gray-800">
+                      <div className="text-foreground">
                         <ExpandableMarkdown className="prose-sm" content={subagentDescription} />
                       </div>
                     ) : isLoading ? (
-                      <div className="text-gray-500 text-sm italic">
+                      <div className="text-muted-foreground text-sm italic">
                         Working on your request...
                       </div>
                     ) : null}
                     
                     {isLoading && subagentDescription && subagentDescription.trim() && (
-                      <div className="flex items-center gap-2 text-xs text-gray-500 mt-2">
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground mt-2">
                         <Loader2 className="w-3 h-3 animate-bounce" />
                         <span>Waiting for result…</span>
                       </div>
@@ -312,7 +312,7 @@ export const ToolMessage = React.forwardRef<HTMLDivElement, ToolMessageProps>(
 
                   {isExpanded && subagentPrompt && (
                     <div>
-                      <h4 className="text-xs font-medium text-gray-700 mb-1">Prompt</h4>
+                      <h4 className="text-xs font-medium text-foreground/80 mb-1">Prompt</h4>
                       <div className="rounded p-2 overflow-x-auto">
                         <ExpandableMarkdown className="prose-sm" content={subagentPrompt} />
                       </div>
@@ -322,11 +322,11 @@ export const ToolMessage = React.forwardRef<HTMLDivElement, ToolMessageProps>(
               ) : (
                 // Default tool rendering (existing behavior)
                 isExpanded && (
-                  <div className="px-3 pb-3 space-y-3 bg-gray-50">
+                  <div className="px-3 pb-3 space-y-3 bg-muted/50">
                     {toolUseBlock?.input && (
                       <div>
-                        <h4 className="text-xs font-medium text-gray-700 mb-1">Input</h4>
-                        <div className="bg-gray-800 rounded text-xs p-2 overflow-x-auto">
+                        <h4 className="text-xs font-medium text-foreground/80 mb-1">Input</h4>
+                        <div className="bg-slate-950 dark:bg-black rounded text-xs p-2 overflow-x-auto">
                           <pre className="text-gray-100">
                             {formatToolInput(JSON.stringify(toolUseBlock.input))}
                           </pre>
@@ -336,12 +336,12 @@ export const ToolMessage = React.forwardRef<HTMLDivElement, ToolMessageProps>(
 
                     {isToolResult && (
                       <div>
-                        <h4 className="text-xs font-medium text-gray-700 mb-1">
-                          Result {isError && <span className="text-red-600">(Error)</span>}
+                        <h4 className="text-xs font-medium text-foreground/80 mb-1">
+                          Result {isError && <span className="text-red-600 dark:text-red-400">(Error)</span>}
                         </h4>
                         <div
                           className={cn(
-                            "rounded p-2 overflow-x-auto text-gray-800",
+                            "rounded p-2 overflow-x-auto text-foreground",
                             isError && "bg-red-50 border border-red-200"
                           )}
                         >
@@ -387,7 +387,7 @@ export const ToolMessage = React.forwardRef<HTMLDivElement, ToolMessageProps>(
                   </div>
                 </div>
                 <div className="px-3 pb-3">
-                  <div className={cn("rounded p-2 overflow-x-auto text-gray-800")}>
+                  <div className={cn("rounded p-2 overflow-x-auto text-foreground")}>
                     <ExpandableMarkdown className="prose-sm" content={extractTextFromResultContent(toolResultBlock?.content as unknown)} />
                   </div>
                 </div>

@@ -520,7 +520,7 @@ export default function ProjectSessionDetailPage({
   // Loading state
   if (isLoading || !projectName || !sessionName) {
     return (
-      <div className="absolute inset-0 top-16 overflow-hidden bg-[#f8fafc] flex items-center justify-center">
+      <div className="absolute inset-0 top-16 overflow-hidden bg-background flex items-center justify-center">
         <div className="flex items-center">
           <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
           <span className="ml-2">Loading session...</span>
@@ -532,8 +532,8 @@ export default function ProjectSessionDetailPage({
   // Error state
   if (error || !session) {
     return (
-      <div className="absolute inset-0 top-16 overflow-hidden bg-[#f8fafc] flex flex-col">
-        <div className="flex-shrink-0 bg-white border-b">
+      <div className="absolute inset-0 top-16 overflow-hidden bg-background flex flex-col">
+        <div className="flex-shrink-0 bg-card border-b">
           <div className="container mx-auto px-6 py-4">
             <Breadcrumbs
               items={[
@@ -548,9 +548,9 @@ export default function ProjectSessionDetailPage({
         </div>
         <div className="flex-grow overflow-hidden">
           <div className="h-full container mx-auto px-6 py-6">
-            <Card className="border-red-200 bg-red-50">
+            <Card className="border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950/50">
               <CardContent className="pt-6">
-                <p className="text-red-700">Error: {error instanceof Error ? error.message : "Session not found"}</p>
+                <p className="text-red-700 dark:text-red-300">Error: {error instanceof Error ? error.message : "Session not found"}</p>
               </CardContent>
             </Card>
           </div>
@@ -561,9 +561,9 @@ export default function ProjectSessionDetailPage({
 
   return (
     <>
-      <div className="absolute inset-0 top-16 overflow-hidden bg-[#f8fafc] flex flex-col">
+      <div className="absolute inset-0 top-16 overflow-hidden bg-background flex flex-col">
         {/* Fixed header */}
-        <div className="flex-shrink-0 bg-white border-b">
+        <div className="flex-shrink-0 bg-card border-b">
           <div className="container mx-auto px-6 py-4">
             <Breadcrumbs
               items={[
@@ -602,7 +602,7 @@ export default function ProjectSessionDetailPage({
               <div className="w-2/5 flex flex-col min-w-0 relative">
                 {/* Blocking overlay when first message hasn't loaded and session is pending */}
                 {!firstMessageLoaded && session?.status?.phase === 'Pending' && (
-                  <div className="absolute inset-0 bg-white/60 backdrop-blur-sm rounded-lg z-20 flex items-center justify-center">
+                  <div className="absolute inset-0 bg-background/60 backdrop-blur-sm rounded-lg z-20 flex items-center justify-center">
                     <div className="flex flex-col items-center justify-center text-center text-muted-foreground">
                       <LibraryBig className="w-8 h-8 mx-auto mb-2 opacity-50" />
                       <div className="flex items-center gap-2">
@@ -648,7 +648,7 @@ export default function ProjectSessionDetailPage({
                     />
 
                     {/* Experimental - File Explorer */}
-                    <AccordionItem value="experimental" className="border rounded-lg px-3 bg-white">
+                    <AccordionItem value="experimental" className="border rounded-lg px-3 bg-card">
                       <AccordionTrigger className="text-base font-semibold hover:no-underline py-3">
                         <div className="flex items-center gap-2">
                           <Sparkles className="h-4 w-4" />
@@ -670,12 +670,12 @@ export default function ProjectSessionDetailPage({
                                   {gitOps.gitStatus?.hasChanges && (
                                     <div className="flex gap-1 ml-auto mr-2">
                                       {(gitOps.gitStatus?.totalAdded ?? 0) > 0 && (
-                                        <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                                        <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 dark:bg-green-950/50 dark:text-green-300 dark:border-green-800">
                                           +{gitOps.gitStatus.totalAdded}
                                         </Badge>
                                       )}
                                       {(gitOps.gitStatus?.totalRemoved ?? 0) > 0 && (
-                                        <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
+                                        <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200 dark:bg-red-950/50 dark:text-red-300 dark:border-red-800">
                                           -{gitOps.gitStatus.totalRemoved}
                                         </Badge>
                                       )}
@@ -811,8 +811,8 @@ export default function ProjectSessionDetailPage({
                                   
                                   {/* Remote Configuration */}
                                   {!currentRemote ? (
-                                    <div className="border border-blue-200 bg-blue-50 rounded-md px-3 py-2 flex items-center justify-between">
-                                      <span className="text-sm text-blue-800">Set up Git remote for version control</span>
+                                    <div className="border border-blue-200 bg-blue-50 rounded-md px-3 py-2 flex items-center justify-between dark:border-blue-800 dark:bg-blue-950/50">
+                                      <span className="text-sm text-blue-800 dark:text-blue-300">Set up Git remote for version control</span>
                                       <Button onClick={() => setRemoteDialogOpen(true)} size="sm" variant="outline">
                                         <GitBranch className="mr-2 h-3 w-3" />
                                         Configure
@@ -831,7 +831,7 @@ export default function ProjectSessionDetailPage({
                                         <div className="flex-1" />
                                         
                                         {mergeStatus && !mergeStatus.canMergeClean ? (
-                                          <div className="flex items-center gap-1 text-red-600">
+                                          <div className="flex items-center gap-1 text-red-600 dark:text-red-400">
                                             <X className="h-3 w-3" />
                                             <span className="font-medium">conflict</span>
                                           </div>
@@ -911,7 +911,7 @@ export default function ProjectSessionDetailPage({
                                                 successToast("Git remote disconnected");
                                               }}
                                             >
-                                              <X className="mr-2 h-3 w-3 text-red-600" />
+                                              <X className="mr-2 h-3 w-3 text-red-600 dark:text-red-400" />
                                               Disconnect
                                             </DropdownMenuItem>
                                           </DropdownMenuContent>
@@ -936,7 +936,7 @@ export default function ProjectSessionDetailPage({
                   <CardContent className="px-3 pt-3 pb-0 flex-1 flex flex-col overflow-hidden">
                     {/* Workflow activation overlay */}
                     {workflowManagement.workflowActivating && (
-                      <div className="absolute inset-0 bg-white/90 backdrop-blur-sm z-10 flex items-center justify-center rounded-lg">
+                      <div className="absolute inset-0 bg-background/90 backdrop-blur-sm z-10 flex items-center justify-center rounded-lg">
                         <Alert className="max-w-md mx-4">
                           <Loader2 className="h-4 w-4 animate-spin" />
                           <AlertTitle>Activating Workflow...</AlertTitle>
@@ -949,7 +949,7 @@ export default function ProjectSessionDetailPage({
                     
                     {/* Repository change overlay */}
                     {repoChanging && (
-                      <div className="absolute inset-0 bg-white/90 backdrop-blur-sm z-10 flex items-center justify-center rounded-lg">
+                      <div className="absolute inset-0 bg-background/90 backdrop-blur-sm z-10 flex items-center justify-center rounded-lg">
                         <Alert className="max-w-md mx-4">
                           <Loader2 className="h-4 w-4 animate-spin" />
                           <AlertTitle>Updating Repositories...</AlertTitle>
@@ -964,7 +964,7 @@ export default function ProjectSessionDetailPage({
                     
                     {/* Session starting overlay */}
                     {!firstMessageLoaded && session?.status?.phase === 'Pending' && (
-                      <div className="absolute inset-0 bg-white/60 backdrop-blur-sm rounded-lg z-20 flex items-center justify-center">
+                      <div className="absolute inset-0 bg-background/60 backdrop-blur-sm rounded-lg z-20 flex items-center justify-center">
                         <div className="flex flex-col items-center justify-center text-center text-muted-foreground">
                           <MessageSquare className="w-8 h-8 mx-auto mb-2 opacity-50" />
                           <div className="flex items-center gap-2">

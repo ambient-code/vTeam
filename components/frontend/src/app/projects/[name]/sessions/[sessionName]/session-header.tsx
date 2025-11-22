@@ -51,7 +51,7 @@ export function SessionHeader({
     : null;
 
   return (
-    <>
+    <div>
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-semibold flex items-center gap-2">
@@ -61,14 +61,14 @@ export function SessionHeader({
             </Badge>
           </h1>
           {session.spec.displayName && (
-            <div className="text-sm text-gray-500">{session.metadata.name}</div>
+            <div className="text-sm text-muted-foreground">{session.metadata.name}</div>
           )}
-          <div className="text-xs text-gray-500 mt-3">
+          <div className="text-xs text-muted-foreground mt-3">
             <span>Started {started || formatDistanceToNow(new Date(session.metadata.creationTimestamp), { addSuffix: true })}</span>
             <span className="mx-1">•</span>
             <button 
               onClick={() => setDetailsModalOpen(true)}
-              className="text-blue-600 hover:underline"
+              className="text-link hover:underline"
             >
               View details
             </button>
@@ -138,7 +138,7 @@ export function SessionHeader({
                   <DropdownMenuItem
                     onClick={onDelete}
                     disabled={actionLoading === "deleting"}
-                    className="text-red-600"
+                    className="text-red-600 dark:text-red-400"
                   >
                     <Trash2 className="w-4 h-4 mr-2" />
                     {actionLoading === "deleting" ? "Deleting..." : "Delete"}
@@ -158,6 +158,6 @@ export function SessionHeader({
         k8sResources={k8sResources}
         messageCount={messageCount}
       />
-    </>
+    </div>
   );
 }

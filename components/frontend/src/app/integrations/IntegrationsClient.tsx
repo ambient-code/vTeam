@@ -8,9 +8,9 @@ type Props = { appSlug?: string }
 
 export default function IntegrationsClient({ appSlug }: Props) {
   return (
-    <div className="min-h-screen bg-[#f8fafc]">
+    <div className="min-h-screen bg-background">
       {/* Sticky header */}
-      <div className="sticky top-0 z-20 bg-white border-b">
+      <div className="sticky top-0 z-20 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 border-b">
         <div className="container mx-auto px-6 py-6">
           <PageHeader
             title="Integrations"

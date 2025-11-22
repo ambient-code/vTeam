@@ -215,8 +215,8 @@ export function CreateWorkspaceDialog({
                   placeholder="my-research-workspace"
                   className={nameError ? "border-red-500" : ""}
                 />
-                {nameError && <p className="text-sm text-red-600">{nameError}</p>}
-                <p className="text-sm text-gray-600">
+                {nameError && <p className="text-sm text-red-600 dark:text-red-400">{nameError}</p>}
+                <p className="text-sm text-muted-foreground">
                   Lowercase alphanumeric with hyphens.
                 </p>
               </div>
@@ -244,8 +244,8 @@ export function CreateWorkspaceDialog({
           </div>
 
           {error && (
-            <div className="p-4 bg-red-50 border border-red-200 rounded-md">
-              <p className="text-red-700">{error}</p>
+            <div className="p-4 bg-red-50 border border-red-200 rounded-md dark:bg-red-950/50 dark:border-red-800">
+              <p className="text-red-700 dark:text-red-300">{error}</p>
             </div>
           )}
 

@@ -38,7 +38,7 @@ export function RepositoriesAccordion({
   };
 
   return (
-    <AccordionItem value="context" className="border rounded-lg px-3 bg-white">
+    <AccordionItem value="context" className="border rounded-lg px-3 bg-card">
       <AccordionTrigger className="text-base font-semibold hover:no-underline py-3">
         <div className="flex items-center gap-2">
           <Link className="h-4 w-4" />
@@ -59,8 +59,8 @@ export function RepositoriesAccordion({
           {/* Repository List */}
           {repositories.length === 0 ? (
             <div className="text-center py-6">
-              <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-gray-100 mb-2">
-                <Link className="h-5 w-5 text-gray-400" />
+              <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-muted mb-2">
+                <Link className="h-5 w-5 text-muted-foreground/60" />
               </div>
               <p className="text-sm text-muted-foreground mb-3">No context added yet</p>
               <Button size="sm" variant="outline" onClick={onAddRepository}>

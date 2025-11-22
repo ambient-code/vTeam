@@ -73,7 +73,7 @@ export function CommitChangesDialog({
                 <div>Files: {gitStatus.uncommittedFiles ?? 0}</div>
                 <div className="text-green-600">+{gitStatus.totalAdded ?? 0} lines</div>
                 {(gitStatus.totalRemoved ?? 0) > 0 && (
-                  <div className="text-red-600">-{gitStatus.totalRemoved} lines</div>
+                  <div className="text-red-600 dark:text-red-400">-{gitStatus.totalRemoved} lines</div>
                 )}
               </div>
             </div>

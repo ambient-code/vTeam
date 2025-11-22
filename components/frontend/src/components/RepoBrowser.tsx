@@ -151,10 +151,10 @@ export default function RepoBrowser({
           <GitBranch className="w-5 h-5" />
           Spec Repository Browser
         </CardTitle>
-        <div className="flex items-center gap-2 text-sm text-gray-600">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <span>{repoUrl}</span>
           <span>@</span>
-          <span className="font-mono bg-gray-100 px-2 py-1 rounded">
+          <span className="font-mono bg-muted px-2 py-1 rounded">
             {currentRef}
           </span>
         </div>
@@ -185,7 +185,7 @@ export default function RepoBrowser({
                     Size: {formatFileSize(fileContent.size)} | Encoding: {fileContent.encoding}
                   </div>
                 </div>
-                <div className="bg-gray-50 rounded-lg p-4 overflow-auto max-h-[60vh]">
+                <div className="bg-muted/50 rounded-lg p-4 overflow-auto max-h-[60vh]">
                   <pre className="text-sm whitespace-pre-wrap break-words">{fileContent.content}</pre>
                 </div>
               </div>

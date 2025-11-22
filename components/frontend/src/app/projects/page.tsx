@@ -70,11 +70,11 @@ export default function ProjectsPage() {
   // Loading state
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-[#f8fafc]">
+      <div className="min-h-screen bg-background">
         <div className="container mx-auto p-6">
           <div className="flex items-center justify-center h-64">
             <RefreshCw className="h-8 w-8 animate-spin" />
-            <span className="ml-2">Loading workspaces...</span>
+            <span className="ml-2 text-foreground">Loading workspaces...</span>
           </div>
         </div>
       </div>
@@ -82,9 +82,9 @@ export default function ProjectsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#f8fafc]">
+    <div className="min-h-screen bg-background">
       {/* Sticky header */}
-      <div className="sticky top-0 z-20 bg-white border-b">
+      <div className="sticky top-0 z-20 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 border-b">
         <div className="container mx-auto px-6 py-4">
           <PageHeader
             title="Workspaces"
@@ -163,13 +163,13 @@ export default function ProjectsPage() {
                         <TableCell className="font-medium min-w-[200px]">
                           <Link
                             href={`/projects/${project.name}`}
-                            className="text-blue-600 hover:underline hover:text-blue-800 transition-colors block"
+                            className="text-link hover:underline hover:text-link-hover transition-colors block"
                           >
                             <div>
                               <div className="font-medium">
                                 {project.displayName || project.name}
                               </div>
-                              <div className="text-xs text-gray-500 font-normal">
+                              <div className="text-xs text-muted-foreground font-normal">
                                 {project.name}
                               </div>
                             </div>
@@ -184,11 +184,16 @@ export default function ProjectsPage() {
                           </span>
                         </TableCell>
                         <TableCell className="hidden lg:table-cell">
-                          {project.creationTimestamp &&
-                            formatDistanceToNow(
-                              new Date(project.creationTimestamp),
-                              { addSuffix: true }
-                            )}
+                          {project.creationTimestamp ? (
+                            <span>
+                              {formatDistanceToNow(
+                                new Date(project.creationTimestamp),
+                                { addSuffix: true }
+                              )}
+                            </span>
+                          ) : (
+                            <span>—</span>
+                          )}
                         </TableCell>
                         <TableCell>
                           <Button

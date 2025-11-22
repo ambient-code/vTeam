@@ -3,7 +3,7 @@
 import { useCallback, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { formatDistanceToNow } from 'date-fns';
-import { Copy, KeyRound, Loader2, Plus, RefreshCw, Trash2, Eye, Edit, Shield } from 'lucide-react';
+import { Copy, KeyRound, Loader2, Plus, RefreshCw, Trash2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -21,27 +21,7 @@ import { Breadcrumbs } from '@/components/breadcrumbs';
 import { useKeys, useCreateKey, useDeleteKey } from '@/services/queries';
 import { successToast, errorToast } from '@/hooks/use-toast';
 import type { CreateKeyRequest } from '@/services/api/keys';
-
-const ROLE_DEFINITIONS = {
-  view: {
-    label: 'View',
-    description: 'Can see sessions and duplicate to their own project',
-    color: 'bg-blue-100 text-blue-800',
-    icon: Eye,
-  },
-  edit: {
-    label: 'Edit',
-    description: 'Can create sessions in the project',
-    color: 'bg-green-100 text-green-800',
-    icon: Edit,
-  },
-  admin: {
-    label: 'Admin',
-    description: 'Full project management access',
-    color: 'bg-purple-100 text-purple-800',
-    icon: Shield,
-  },
-} as const;
+import { ROLE_DEFINITIONS } from '@/lib/role-colors';
 
 export default function ProjectKeysPage() {
   const params = useParams();

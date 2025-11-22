@@ -81,7 +81,7 @@ function FileTreeItem({ node, selectedPath, onSelect, onToggle, depth = 0 }: Ite
             <Folder className="h-4 w-4 text-blue-600" />
           )
         ) : (
-          <FileText className="h-4 w-4 text-gray-600" />
+          <FileText className="h-4 w-4 text-muted-foreground" />
         )}
 
         <span className={`flex-1 ${isSelected ? "font-medium" : ""}`}>{node.name}</span>

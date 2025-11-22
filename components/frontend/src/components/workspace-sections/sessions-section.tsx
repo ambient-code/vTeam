@@ -136,12 +136,12 @@ export function SessionsSection({ projectName }: SessionsSectionProps) {
                       <TableCell className="font-medium min-w-[180px]">
                         <Link
                           href={`/projects/${projectName}/sessions/${session.metadata.name}`}
-                          className="text-blue-600 hover:underline hover:text-blue-800 transition-colors block"
+                          className="text-link hover:underline hover:text-link-hover transition-colors block"
                         >
                           <div>
                             <div className="font-medium">{session.spec.displayName || session.metadata.name}</div>
                             {session.spec.displayName && (
-                              <div className="text-xs text-gray-500 font-normal">{session.metadata.name}</div>
+                              <div className="text-xs text-muted-foreground font-normal">{session.metadata.name}</div>
                             )}
                           </div>
                         </Link>
@@ -150,12 +150,12 @@ export function SessionsSection({ projectName }: SessionsSectionProps) {
                         <SessionPhaseBadge phase={phase} />
                       </TableCell>
                       <TableCell>
-                        <span className="text-xs px-2 py-1 rounded border bg-gray-50">
+                        <span className="text-xs px-2 py-1 rounded border bg-muted/50">
                           {session.spec?.interactive ? 'Interactive' : 'Headless'}
                         </span>
                       </TableCell>
                       <TableCell className="hidden md:table-cell">
-                        <span className="text-sm text-gray-600 truncate max-w-[120px] block">
+                        <span className="text-sm text-muted-foreground truncate max-w-[120px] block">
                           {session.spec.llmSettings.model}
                         </span>
                       </TableCell>
@@ -167,7 +167,7 @@ export function SessionsSection({ projectName }: SessionsSectionProps) {
                         {session.status?.total_cost_usd ? (
                           <span className="text-sm font-mono">${session.status.total_cost_usd.toFixed(4)}</span>
                         ) : (
-                          <span className="text-sm text-gray-400">—</span>
+                          <span className="text-sm text-muted-foreground/60">—</span>
                         )}
                       </TableCell>
                       <TableCell>

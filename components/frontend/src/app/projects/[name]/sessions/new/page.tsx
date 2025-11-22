@@ -300,8 +300,8 @@ export default function NewProjectSessionPage({ params }: { params: Promise<{ na
               {/* Storage paths are managed automatically by the backend/operator */}
 
               {createSessionMutation.isError && (
-                <div className="bg-red-50 border border-red-200 rounded-md p-3">
-                  <p className="text-red-700 text-sm">{createSessionMutation.error?.message || "Failed to create session"}</p>
+                <div className="bg-red-50 border border-red-200 rounded-md p-3 dark:bg-red-950/50 dark:border-red-800">
+                  <p className="text-red-700 dark:text-red-300 text-sm dark:text-red-300">{createSessionMutation.error?.message || "Failed to create session"}</p>
                 </div>
               )}
 

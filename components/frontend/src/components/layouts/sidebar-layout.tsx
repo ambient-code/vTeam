@@ -52,16 +52,16 @@ export function MobileSidebar({ sidebar, open, onOpenChange }: MobileSidebarProp
   if (!open) return null;
 
   return (
-    <>
+    <div className="md:hidden">
       <div
-        className="fixed inset-0 z-40 bg-black/50 md:hidden"
+        className="fixed inset-0 z-40 bg-black/50"
         onClick={() => onOpenChange(false)}
       />
-      <aside className="fixed inset-y-0 left-0 z-50 w-64 bg-background border-r md:hidden">
+      <aside className="fixed inset-y-0 left-0 z-50 w-64 bg-background border-r">
         <div className="h-full overflow-y-auto">
           {sidebar}
         </div>
       </aside>
-    </>
+    </div>
   );
 }

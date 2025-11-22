@@ -41,7 +41,7 @@ export default function GitHubSetupPage() {
       {error ? (
         <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>
       ) : (
-        <div className="text-sm text-gray-700">{message}</div>
+        <div className="text-sm text-foreground/80">{message}</div>
       )}
       <div className="mt-4">
         <Button variant="ghost" onClick={() => window.location.replace('/integrations')}>Back to Integrations</Button>

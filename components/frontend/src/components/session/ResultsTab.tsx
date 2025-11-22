@@ -34,7 +34,7 @@ const ResultsTab: React.FC<Props> = ({ result, meta, components }) => {
       </CardHeader>
       <CardContent>
         {result ? (
-          <div className="bg-white rounded-lg prose prose-sm max-w-none prose-headings:text-gray-900 prose-p:text-gray-700 prose-strong:text-gray-900 prose-code:bg-gray-100 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-pre:bg-gray-900 prose-pre:text-gray-100">
+          <div className="bg-card rounded-lg prose prose-sm max-w-none prose-headings:text-foreground prose-p:text-foreground/80 prose-strong:text-foreground prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-pre:bg-slate-950 prose-pre:dark:bg-black prose-pre:text-slate-50">
             <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]} components={components}>
               {result}
             </ReactMarkdown>
@@ -42,7 +42,7 @@ const ResultsTab: React.FC<Props> = ({ result, meta, components }) => {
         ) : null}
 
         {meta ? (
-          <div className="mt-4 border rounded-md p-3 bg-white">
+          <div className="mt-4 border rounded-md p-3 bg-card">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
               {typeof meta.subtype === 'string' && meta.subtype ? (
                 <div>
@@ -85,7 +85,7 @@ const ResultsTab: React.FC<Props> = ({ result, meta, components }) => {
             {meta.usage ? (
               <div className="mt-3">
                 <div className="text-xs text-muted-foreground mb-1">Usage</div>
-                <pre className="bg-gray-900 text-gray-100 rounded p-3 text-xs overflow-auto"><code>{JSON.stringify(meta.usage, null, 2)}</code></pre>
+                <pre className="bg-slate-950 dark:bg-black text-slate-50 rounded p-3 text-xs overflow-auto"><code>{JSON.stringify(meta.usage, null, 2)}</code></pre>
               </div>
             ) : null}
           </div>

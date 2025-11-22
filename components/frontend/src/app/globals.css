@@ -1,6 +1,6 @@
 @import "tailwindcss";
 @import "tw-animate-css";
-@import "highlight.js/styles/github-dark.css";
+@import "../styles/syntax-highlighting.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -38,6 +38,26 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+  --color-status-success: var(--status-success);
+  --color-status-success-foreground: var(--status-success-foreground);
+  --color-status-success-border: var(--status-success-border);
+  --color-status-error: var(--status-error);
+  --color-status-error-foreground: var(--status-error-foreground);
+  --color-status-error-border: var(--status-error-border);
+  --color-status-warning: var(--status-warning);
+  --color-status-warning-foreground: var(--status-warning-foreground);
+  --color-status-warning-border: var(--status-warning-border);
+  --color-status-info: var(--status-info);
+  --color-status-info-foreground: var(--status-info-foreground);
+  --color-status-info-border: var(--status-info-border);
+  --color-link: var(--link);
+  --color-link-hover: var(--link-hover);
+  --color-role-view: var(--role-view);
+  --color-role-view-foreground: var(--role-view-foreground);
+  --color-role-edit: var(--role-edit);
+  --color-role-edit-foreground: var(--role-edit-foreground);
+  --color-role-admin: var(--role-admin);
+  --color-role-admin-foreground: var(--role-admin-foreground);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -77,6 +97,32 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+
+  /* Status badge semantic colors - Light theme (pastel backgrounds) */
+  --status-success: oklch(0.95 0.05 145);
+  --status-success-foreground: oklch(0.35 0.15 145);
+  --status-success-border: oklch(0.85 0.08 145);
+  --status-error: oklch(0.95 0.05 27);
+  --status-error-foreground: oklch(0.45 0.2 27);
+  --status-error-border: oklch(0.85 0.08 27);
+  --status-warning: oklch(0.95 0.1 85);
+  --status-warning-foreground: oklch(0.4 0.15 85);
+  --status-warning-border: oklch(0.85 0.12 85);
+  --status-info: oklch(0.95 0.05 240);
+  --status-info-foreground: oklch(0.45 0.15 240);
+  --status-info-border: oklch(0.85 0.08 240);
+
+  /* Semantic link colors - Light theme */
+  --link: oklch(0.45 0.15 240);           /* Blue link color */
+  --link-hover: oklch(0.35 0.18 240);     /* Darker blue on hover */
+
+  /* Role badge colors - Light theme (pastel backgrounds) */
+  --role-view: oklch(0.95 0.05 240);           /* Blue for view role */
+  --role-view-foreground: oklch(0.45 0.15 240);
+  --role-edit: oklch(0.95 0.05 145);           /* Green for edit role */
+  --role-edit-foreground: oklch(0.35 0.15 145);
+  --role-admin: oklch(0.95 0.1 290);           /* Purple for admin role */
+  --role-admin-foreground: oklch(0.4 0.15 290);
 }
 
 .dark {
@@ -111,6 +157,32 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+
+  /* Status badge semantic colors - Dark theme (solid backgrounds with white text) */
+  --status-success: oklch(0.35 0.15 145);
+  --status-success-foreground: oklch(0.985 0 0);
+  --status-success-border: oklch(0.35 0.15 145);
+  --status-error: oklch(0.45 0.2 27);
+  --status-error-foreground: oklch(0.985 0 0);
+  --status-error-border: oklch(0.45 0.2 27);
+  --status-warning: oklch(0.5 0.15 85);
+  --status-warning-foreground: oklch(0.985 0 0);
+  --status-warning-border: oklch(0.5 0.15 85);
+  --status-info: oklch(0.5 0.15 240);
+  --status-info-foreground: oklch(0.985 0 0);
+  --status-info-border: oklch(0.5 0.15 240);
+
+  /* Semantic link colors - Dark theme */
+  --link: oklch(0.65 0.15 240);           /* Lighter blue for dark mode */
+  --link-hover: oklch(0.75 0.12 240);     /* Even lighter on hover */
+
+  /* Role badge colors - Dark theme (solid backgrounds with white text) */
+  --role-view: oklch(0.5 0.15 240);           /* Solid blue for view role */
+  --role-view-foreground: oklch(0.985 0 0);
+  --role-edit: oklch(0.35 0.15 145);          /* Solid green for edit role */
+  --role-edit-foreground: oklch(0.985 0 0);
+  --role-admin: oklch(0.5 0.15 290);          /* Solid purple for admin role */
+  --role-admin-foreground: oklch(0.985 0 0);
 }
 
 @layer base {
@@ -122,8 +194,47 @@
   }
 }
 
-/* Thin scrollbar styling */
+/* Thin scrollbar styling - Cross-browser support */
 .scrollbar-thin {
+  /* Firefox */
   scrollbar-width: thin;
-  scrollbar-color: #d1d5db #f3f4f6;
+  scrollbar-color: hsl(var(--muted-foreground)) hsl(var(--muted));
+}
+
+.dark .scrollbar-thin {
+  /* Firefox dark mode */
+  scrollbar-color: hsl(var(--muted-foreground)) hsl(var(--background));
+}
+
+/* WebKit browsers (Chrome, Safari, Edge) */
+.scrollbar-thin::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: hsl(var(--muted));
+  border-radius: 4px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground));
+  border-radius: 4px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--foreground));
+}
+
+/* WebKit dark mode */
+.dark .scrollbar-thin::-webkit-scrollbar-track {
+  background: hsl(var(--background));
+}
+
+.dark .scrollbar-thin::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground));
+}
+
+.dark .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--foreground));
 }

@@ -9,6 +9,7 @@ import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import type { AgenticSession } from "@/types/agentic-session";
 import type { SessionMessage } from "@/types";
+import { getK8sResourceStatusColor } from "@/lib/status-colors";
 
 type Props = {
   session: AgenticSession;
@@ -68,21 +69,9 @@ const getOpenShiftConsoleUrl = (namespace: string, resourceType: 'Job' | 'Pod' |
 export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromptExpanded, latestLiveMessage, diffTotals, onPush, onAbandon, busyRepo, buildGithubCompareUrl, onRefreshDiff, k8sResources }) => {
   const [refreshingDiff, setRefreshingDiff] = React.useState(false);
   const [expandedPods, setExpandedPods] = React.useState<Record<string, boolean>>({});
-  
+
   const projectNamespace = session.metadata?.namespace || '';
-  
-  const getStatusColor = (status: string) => {
-    const lower = status.toLowerCase();
-    if (lower.includes('running') || lower.includes('active')) return 'bg-blue-100 text-blue-800 border-blue-300';
-    if (lower.includes('succeeded') || lower.includes('completed')) return 'bg-green-100 text-green-800 border-green-300';
-    if (lower.includes('failed') || lower.includes('error')) return 'bg-red-100 text-red-800 border-red-300';
-    if (lower.includes('waiting') || lower.includes('pending')) return 'bg-yellow-100 text-yellow-800 border-yellow-300';
-    if (lower.includes('terminating')) return 'bg-purple-100 text-purple-800 border-purple-300';
-    if (lower.includes('notfound') || lower.includes('not found')) return 'bg-orange-100 text-orange-800 border-orange-300';
-    if (lower.includes('terminated')) return 'bg-gray-100 text-gray-800 border-gray-300';
-    return 'bg-gray-100 text-gray-800 border-gray-300';
-  };
-  
+
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -107,7 +96,7 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                   </div>
                   {promptIsLong && (
                     <button
-                      className="mt-2 text-xs text-blue-600 hover:underline"
+                      className="mt-2 text-xs text-link hover:underline"
                       onClick={() => setPromptExpanded(!promptExpanded)}
                       aria-expanded={promptExpanded}
                       aria-controls="initial-prompt"
@@ -131,15 +120,15 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
               <div className="space-y-2 text-sm">
                 <div className="flex items-center gap-2">
                   <Badge variant="outline" className="text-xs">{latestLiveMessage.type}</Badge>
-                  <span className="text-xs text-gray-500">{new Date(latestLiveMessage.timestamp).toLocaleTimeString()}</span>
+                  <span className="text-xs text-muted-foreground">{new Date(latestLiveMessage.timestamp).toLocaleTimeString()}</span>
                 </div>
                 <div className="relative max-h-40 overflow-hidden">
-                  <pre className="whitespace-pre-wrap break-words bg-gray-50 rounded p-2 text-xs text-gray-800">{JSON.stringify(latestLiveMessage.payload, null, 2)}</pre>
+                  <pre className="whitespace-pre-wrap break-words bg-muted/50 rounded p-2 text-xs text-foreground">{JSON.stringify(latestLiveMessage.payload, null, 2)}</pre>
                   <div className="absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-white to-transparent pointer-events-none" />
                 </div>
               </div>
             ) : (
-              <div className="text-sm text-gray-500">No messages yet</div>
+              <div className="text-sm text-muted-foreground">No messages yet</div>
             )}
           </CardContent>
         </Card>
@@ -182,7 +171,7 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                         <p className="font-semibold">K8s Job</p>
                         <div className="flex items-center gap-2">
                           <p className="text-muted-foreground font-mono text-xs">{session.status.jobName}</p>
-                          <Badge variant="outline" className={session.spec?.interactive ? "bg-green-50 text-green-700 border-green-200" : "bg-gray-50 text-gray-700 border-gray-200"}>
+                          <Badge variant="outline" className={session.spec?.interactive ? "bg-green-50 text-green-700 border-green-200" : "bg-muted/50 text-foreground/80 border-gray-200"}>
                             {session.spec?.interactive ? "Interactive" : "Headless"}
                           </Badge>
                         </div>
@@ -231,7 +220,7 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                                 href={consoleUrl}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="font-mono text-xs text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1"
+                                className="font-mono text-xs text-link hover:text-link-hover hover:underline flex items-center gap-1"
                               >
                                 {k8sResources.pvcName}
                                 <ExternalLink className="w-3 h-3" />
@@ -240,10 +229,10 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                               <span className="font-mono text-xs">{k8sResources.pvcName}</span>
                             );
                           })()}
-                          <Badge className={`text-xs ${k8sResources.pvcExists ? 'bg-green-100 text-green-800 border-green-300' : 'bg-red-100 text-red-800 border-red-300'}`}>
+                          <Badge className={`text-xs ${k8sResources.pvcExists ? 'bg-green-100 text-green-800 border-green-300 dark:bg-green-700 dark:text-white dark:border-green-700' : 'bg-red-100 text-red-800 border-red-300 dark:bg-red-700 dark:text-white dark:border-red-700'}`}>
                             {k8sResources.pvcExists ? 'Exists' : 'Not Found'}
                           </Badge>
-                          {k8sResources.pvcSize && <span className="text-xs text-gray-500">{k8sResources.pvcSize}</span>}
+                          {k8sResources.pvcSize && <span className="text-xs text-muted-foreground">{k8sResources.pvcSize}</span>}
                         </div>
                       )}
                       
@@ -253,7 +242,7 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                           <div className="flex items-center gap-2">
                             <button
                               onClick={() => setExpandedPods(prev => ({ ...prev, [pod.name]: !prev[pod.name] }))}
-                              className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+                              className="text-xs text-link hover:underline flex items-center gap-1"
                             >
                               {expandedPods[pod.name] ? 'Hide' : 'Show'}
                             </button>
@@ -268,7 +257,7 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                                   href={consoleUrl}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="font-mono text-xs text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1 truncate max-w-[250px]"
+                                  className="font-mono text-xs text-link hover:text-link-hover hover:underline flex items-center gap-1 truncate max-w-[250px]"
                                   title={pod.name}
                                 >
                                   {pod.name}
@@ -280,7 +269,7 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                                 </span>
                               );
                             })()}
-                            <Badge className={`text-xs ${getStatusColor(pod.phase)}`}>
+                            <Badge className={`text-xs ${getK8sResourceStatusColor(pod.phase)}`}>
                               {pod.phase}
                             </Badge>
                             <Badge variant="outline" className="text-xs bg-purple-50 text-purple-700 border-purple-200">
@@ -297,14 +286,14 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                                     <Box className="w-3 h-3 mr-1" />
                                     {container.name}
                                   </Badge>
-                                  <Badge className={`text-xs ${getStatusColor(container.state)}`}>
+                                  <Badge className={`text-xs ${getK8sResourceStatusColor(container.state)}`}>
                                     {container.state}
                                   </Badge>
                                   {container.exitCode !== undefined && (
-                                    <span className="text-xs text-gray-500">Exit: {container.exitCode}</span>
+                                    <span className="text-xs text-muted-foreground">Exit: {container.exitCode}</span>
                                   )}
                                   {container.reason && (
-                                    <span className="text-xs text-gray-500">({container.reason})</span>
+                                    <span className="text-xs text-muted-foreground">({container.reason})</span>
                                   )}
                                 </div>
                               ))}
@@ -328,7 +317,7 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                                 href={consoleUrl}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="font-mono text-xs text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1"
+                                className="font-mono text-xs text-link hover:text-link-hover hover:underline flex items-center gap-1"
                               >
                                 {k8sResources.jobName}
                                 <ExternalLink className="w-3 h-3" />
@@ -337,7 +326,7 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                               <span className="font-mono text-xs">{k8sResources.jobName}</span>
                             );
                           })()}
-                          <Badge className={`text-xs ${getStatusColor(k8sResources.jobStatus || 'Unknown')}`}>
+                          <Badge className={`text-xs ${getK8sResourceStatusColor(k8sResources.jobStatus || 'Unknown')}`}>
                             {k8sResources.jobStatus || 'Unknown'}
                           </Badge>
                         </div>
@@ -350,7 +339,7 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                                 <div className="flex items-center gap-2">
                                   <button
                                     onClick={() => setExpandedPods(prev => ({ ...prev, [pod.name]: !prev[pod.name] }))}
-                                    className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+                                    className="text-xs text-link hover:underline flex items-center gap-1"
                                   >
                                     {expandedPods[pod.name] ? 'Hide' : 'Show'}
                                   </button>
@@ -365,7 +354,7 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                                         href={consoleUrl}
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        className="font-mono text-xs text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1 truncate max-w-[200px]"
+                                        className="font-mono text-xs text-link hover:text-link-hover hover:underline flex items-center gap-1 truncate max-w-[200px]"
                                         title={pod.name}
                                       >
                                         {pod.name}
@@ -377,11 +366,11 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                                       </span>
                                     );
                                   })()}
-                                  <Badge className={`text-xs ${getStatusColor(pod.phase)}`}>
+                                  <Badge className={`text-xs ${getK8sResourceStatusColor(pod.phase)}`}>
                                     {pod.phase}
                                   </Badge>
                                   {pod.isTempPod && (
-                                    <Badge variant="outline" className="text-xs bg-purple-50 text-purple-700 border-purple-200">
+                                    <Badge variant="outline" className="text-xs bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/50 dark:text-purple-300 dark:border-purple-800">
                                       Workspace viewer
                                     </Badge>
                                   )}
@@ -395,14 +384,14 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                                           <Box className="w-3 h-3 mr-1" />
                                           {container.name}
                                         </Badge>
-                                        <Badge className={`text-xs ${getStatusColor(container.state)}`}>
+                                        <Badge className={`text-xs ${getK8sResourceStatusColor(container.state)}`}>
                                           {container.state}
                                         </Badge>
                                         {container.exitCode !== undefined && (
-                                          <span className="text-xs text-gray-500">Exit: {container.exitCode}</span>
+                                          <span className="text-xs text-muted-foreground">Exit: {container.exitCode}</span>
                                         )}
                                         {container.reason && (
-                                          <span className="text-xs text-gray-500">({container.reason})</span>
+                                          <span className="text-xs text-muted-foreground">({container.reason})</span>
                                         )}
                                       </div>
                                     ))}
@@ -488,7 +477,7 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                                   href={compareUrl} 
                                   target="_blank" 
                                   rel="noreferrer" 
-                                  className="flex items-center gap-1 text-xs text-blue-600 hover:underline"
+                                  className="flex items-center gap-1 text-xs text-link hover:underline"
                                 >
                                   Compare
                                   <ExternalLink className="h-3 w-3" />
@@ -499,12 +488,12 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                             ) : (
                               <span className="flex items-center gap-2">
                                 {br.total_added > 0 && (
-                                  <span className="text-xs px-1 py-0.5 rounded border bg-green-50 text-green-700 border-green-200">
+                                  <span className="text-xs px-1 py-0.5 rounded border bg-green-50 text-green-700 border-green-200 dark:bg-green-950/50 dark:text-green-300 dark:border-green-800">
                                     +{br.total_added}
                                   </span>
                                 )}
                                 {br.total_removed > 0 && (
-                                  <span className="text-xs px-1 py-0.5 rounded border bg-red-50 text-red-700 border-red-200">
+                                  <span className="text-xs px-1 py-0.5 rounded border bg-red-50 text-red-700 border-red-200 dark:bg-red-950/50 dark:text-red-300 dark:border-red-800">
                                     -{br.total_removed}
                                   </span>
                                 )}
@@ -515,7 +504,7 @@ export const OverviewTab: React.FC<Props> = ({ session, promptExpanded, setPromp
                                 href={compareUrl} 
                                 target="_blank" 
                                 rel="noreferrer" 
-                                className="flex items-center gap-1 text-xs text-blue-600 hover:underline"
+                                className="flex items-center gap-1 text-xs text-link hover:underline"
                               >
                                 Compare
                                 <ExternalLink className="h-3 w-3" />

@@ -6,6 +6,7 @@
 import * as React from 'react';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { STATUS_COLORS, type StatusColorKey } from '@/lib/status-colors';
 import {
   CheckCircle2,
   XCircle,
@@ -36,48 +37,39 @@ export type StatusBadgeProps = {
 const STATUS_CONFIG: Record<
   StatusVariant,
   {
-    color: string;
     icon: React.ComponentType<{ className?: string }>;
     label: string;
   }
 > = {
   success: {
-    color: 'bg-green-100 text-green-800 border-green-200',
     icon: CheckCircle2,
     label: 'Success',
   },
   error: {
-    color: 'bg-red-100 text-red-800 border-red-200',
     icon: XCircle,
     label: 'Error',
   },
   warning: {
-    color: 'bg-yellow-100 text-yellow-800 border-yellow-200',
     icon: AlertCircle,
     label: 'Warning',
   },
   info: {
-    color: 'bg-blue-100 text-blue-800 border-blue-200',
     icon: AlertCircle,
     label: 'Info',
   },
   pending: {
-    color: 'bg-gray-100 text-gray-800 border-gray-200',
     icon: Clock,
     label: 'Pending',
   },
   running: {
-    color: 'bg-blue-100 text-blue-800 border-blue-200',
     icon: Loader2,
     label: 'Running',
   },
   stopped: {
-    color: 'bg-gray-100 text-gray-800 border-gray-200',
     icon: Square,
     label: 'Stopped',
   },
   default: {
-    color: 'bg-gray-100 text-gray-800 border-gray-200',
     icon: AlertCircle,
     label: 'Unknown',
   },
@@ -90,15 +82,23 @@ export function StatusBadge({
   className,
   pulse = false,
 }: StatusBadgeProps) {
-  const normalizedStatus = (status.toLowerCase() as StatusVariant) || 'default';
-  const config = STATUS_CONFIG[normalizedStatus] || STATUS_CONFIG.default;
+  const lowerStatus = status.toLowerCase();
+  // Validate status is a known variant before casting
+  const normalizedStatus: StatusVariant =
+    (lowerStatus in STATUS_CONFIG)
+      ? (lowerStatus as StatusVariant)
+      : 'default';
+  const config = STATUS_CONFIG[normalizedStatus];
   const Icon = config.icon;
   const displayLabel = label || config.label;
+
+  // Get color from centralized configuration
+  const colorClasses = STATUS_COLORS[normalizedStatus as StatusColorKey] || STATUS_COLORS.default;
 
   return (
     <Badge
       variant="outline"
-      className={cn('flex items-center gap-1.5 font-medium', config.color, className)}
+      className={cn('flex items-center gap-1.5 font-medium', colorClasses, className)}
     >
       {showIcon && (
         <Icon

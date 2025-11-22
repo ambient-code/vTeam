@@ -293,7 +293,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chat
 
       {/* Settings for non-interactive sessions with messages */}
       {!isInteractive && filteredMessages.length > 0 && (
-        <div className="sticky bottom-0 border-t bg-gray-50">
+        <div className="sticky bottom-0 border-t bg-muted/50">
           <div className="p-3">
             <div className="flex items-center gap-2">
               <DropdownMenu>
@@ -318,7 +318,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chat
       )}
 
       {showChatInterface && (
-        <div className="sticky bottom-0 bg-white">
+        <div className="sticky bottom-0 bg-card">
           <div className="px-2 pt-2 pb-0 space-y-1.5">
               <div className="relative">
                 <textarea
@@ -372,7 +372,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chat
                 {autocompleteOpen && (
                   <div 
                     ref={autocompleteRef}
-                    className="absolute z-[100] bg-white border-2 border-blue-500 rounded-md shadow-lg max-h-60 overflow-y-auto w-80"
+                    className="absolute z-[100] bg-card border-2 border-blue-500 rounded-md shadow-lg max-h-60 overflow-y-auto w-80"
                     style={{
                       bottom: '100%',
                       left: '0px',
@@ -396,7 +396,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chat
                             className={`px-3 py-2 cursor-pointer border-b last:border-b-0 ${
                               index === autocompleteSelectedIndex
                                 ? 'bg-blue-50'
-                                : 'hover:bg-gray-50'
+                                : 'hover:bg-muted/50'
                             }`}
                             onClick={() => handleAutocompleteSelect(agent)}
                             onMouseEnter={() => setAutocompleteSelectedIndex(index)}
@@ -419,7 +419,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chat
                             className={`px-3 py-2 cursor-pointer border-b last:border-b-0 ${
                               index === autocompleteSelectedIndex
                                 ? 'bg-blue-50'
-                                : 'hover:bg-gray-50'
+                                : 'hover:bg-muted/50'
                             }`}
                             onClick={() => handleAutocompleteSelect(cmd)}
                             onMouseEnter={() => setAutocompleteSelectedIndex(index)}
@@ -628,7 +628,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chat
       )}
 
       {isInteractive && !showChatInterface && streamMessages.length > 0 && (
-        <div className="sticky bottom-0 border-t bg-gray-50">
+        <div className="sticky bottom-0 border-t bg-muted/50">
           <div className="p-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -657,7 +657,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chat
                           {" "}
                           <button
                             onClick={onContinue}
-                            className="text-blue-600 hover:underline font-medium"
+                            className="text-link hover:underline font-medium"
                           >
                             Resume this session
                           </button>

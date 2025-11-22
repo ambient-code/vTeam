@@ -20,7 +20,7 @@ export const SystemMessage: React.FC<SystemMessageProps> = ({ data, className })
   // Compact style: Just small grey text, no card, no avatar
   return (
     <div className={cn("my-1 px-2", className)}>
-      <p className="text-xs text-gray-400 italic">
+      <p className="text-xs text-muted-foreground/60 italic">
         {text}
       </p>
     </div>

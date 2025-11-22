@@ -1,0 +1,213 @@
+/**
+ * Syntax highlighting themes for highlight.js
+ * Bundled locally to avoid external CDN dependencies and security risks
+ *
+ * Themes copied from highlight.js v11.11.1
+ * - Light: github.css (https://github.com/highlightjs/highlight.js)
+ * - Dark: github-dark.css
+ *
+ * Uses data-hljs-theme attribute set by SyntaxThemeProvider to switch between themes
+ */
+
+/* Common base styles */
+pre code.hljs {
+  display: block;
+  overflow-x: auto;
+  padding: 1em;
+}
+
+code.hljs {
+  padding: 3px 5px;
+}
+
+/*
+ * Light theme (GitHub style)
+ * Default theme applied when data-hljs-theme is not "dark"
+ */
+:root:not([data-hljs-theme="dark"]) .hljs {
+  color: #24292e;
+  background: #fff;
+}
+
+:root:not([data-hljs-theme="dark"]) .hljs-doctag,
+:root:not([data-hljs-theme="dark"]) .hljs-keyword,
+:root:not([data-hljs-theme="dark"]) .hljs-meta .hljs-keyword,
+:root:not([data-hljs-theme="dark"]) .hljs-template-tag,
+:root:not([data-hljs-theme="dark"]) .hljs-template-variable,
+:root:not([data-hljs-theme="dark"]) .hljs-type,
+:root:not([data-hljs-theme="dark"]) .hljs-variable.language_ {
+  color: #d73a49;
+}
+
+:root:not([data-hljs-theme="dark"]) .hljs-title,
+:root:not([data-hljs-theme="dark"]) .hljs-title.class_,
+:root:not([data-hljs-theme="dark"]) .hljs-title.class_.inherited__,
+:root:not([data-hljs-theme="dark"]) .hljs-title.function_ {
+  color: #6f42c1;
+}
+
+:root:not([data-hljs-theme="dark"]) .hljs-attr,
+:root:not([data-hljs-theme="dark"]) .hljs-attribute,
+:root:not([data-hljs-theme="dark"]) .hljs-literal,
+:root:not([data-hljs-theme="dark"]) .hljs-meta,
+:root:not([data-hljs-theme="dark"]) .hljs-number,
+:root:not([data-hljs-theme="dark"]) .hljs-operator,
+:root:not([data-hljs-theme="dark"]) .hljs-selector-attr,
+:root:not([data-hljs-theme="dark"]) .hljs-selector-class,
+:root:not([data-hljs-theme="dark"]) .hljs-selector-id,
+:root:not([data-hljs-theme="dark"]) .hljs-variable {
+  color: #005cc5;
+}
+
+:root:not([data-hljs-theme="dark"]) .hljs-meta .hljs-string,
+:root:not([data-hljs-theme="dark"]) .hljs-regexp,
+:root:not([data-hljs-theme="dark"]) .hljs-string {
+  color: #032f62;
+}
+
+:root:not([data-hljs-theme="dark"]) .hljs-built_in,
+:root:not([data-hljs-theme="dark"]) .hljs-symbol {
+  color: #e36209;
+}
+
+:root:not([data-hljs-theme="dark"]) .hljs-code,
+:root:not([data-hljs-theme="dark"]) .hljs-comment,
+:root:not([data-hljs-theme="dark"]) .hljs-formula {
+  color: #6a737d;
+}
+
+:root:not([data-hljs-theme="dark"]) .hljs-name,
+:root:not([data-hljs-theme="dark"]) .hljs-quote,
+:root:not([data-hljs-theme="dark"]) .hljs-selector-pseudo,
+:root:not([data-hljs-theme="dark"]) .hljs-selector-tag {
+  color: #22863a;
+}
+
+:root:not([data-hljs-theme="dark"]) .hljs-subst {
+  color: #24292e;
+}
+
+:root:not([data-hljs-theme="dark"]) .hljs-section {
+  color: #005cc5;
+  font-weight: 700;
+}
+
+:root:not([data-hljs-theme="dark"]) .hljs-bullet {
+  color: #735c0f;
+}
+
+:root:not([data-hljs-theme="dark"]) .hljs-emphasis {
+  color: #24292e;
+  font-style: italic;
+}
+
+:root:not([data-hljs-theme="dark"]) .hljs-strong {
+  color: #24292e;
+  font-weight: 700;
+}
+
+:root:not([data-hljs-theme="dark"]) .hljs-addition {
+  color: #22863a;
+  background-color: #f0fff4;
+}
+
+:root:not([data-hljs-theme="dark"]) .hljs-deletion {
+  color: #b31d28;
+  background-color: #ffeef0;
+}
+
+/*
+ * Dark theme (GitHub Dark style)
+ * Applied when data-hljs-theme="dark"
+ */
+[data-hljs-theme="dark"] .hljs {
+  color: #c9d1d9;
+  background: #0d1117;
+}
+
+[data-hljs-theme="dark"] .hljs-doctag,
+[data-hljs-theme="dark"] .hljs-keyword,
+[data-hljs-theme="dark"] .hljs-meta .hljs-keyword,
+[data-hljs-theme="dark"] .hljs-template-tag,
+[data-hljs-theme="dark"] .hljs-template-variable,
+[data-hljs-theme="dark"] .hljs-type,
+[data-hljs-theme="dark"] .hljs-variable.language_ {
+  color: #ff7b72;
+}
+
+[data-hljs-theme="dark"] .hljs-title,
+[data-hljs-theme="dark"] .hljs-title.class_,
+[data-hljs-theme="dark"] .hljs-title.class_.inherited__,
+[data-hljs-theme="dark"] .hljs-title.function_ {
+  color: #d2a8ff;
+}
+
+[data-hljs-theme="dark"] .hljs-attr,
+[data-hljs-theme="dark"] .hljs-attribute,
+[data-hljs-theme="dark"] .hljs-literal,
+[data-hljs-theme="dark"] .hljs-meta,
+[data-hljs-theme="dark"] .hljs-number,
+[data-hljs-theme="dark"] .hljs-operator,
+[data-hljs-theme="dark"] .hljs-selector-attr,
+[data-hljs-theme="dark"] .hljs-selector-class,
+[data-hljs-theme="dark"] .hljs-selector-id,
+[data-hljs-theme="dark"] .hljs-variable {
+  color: #79c0ff;
+}
+
+[data-hljs-theme="dark"] .hljs-meta .hljs-string,
+[data-hljs-theme="dark"] .hljs-regexp,
+[data-hljs-theme="dark"] .hljs-string {
+  color: #a5d6ff;
+}
+
+[data-hljs-theme="dark"] .hljs-built_in,
+[data-hljs-theme="dark"] .hljs-symbol {
+  color: #ffa657;
+}
+
+[data-hljs-theme="dark"] .hljs-code,
+[data-hljs-theme="dark"] .hljs-comment,
+[data-hljs-theme="dark"] .hljs-formula {
+  color: #8b949e;
+}
+
+[data-hljs-theme="dark"] .hljs-name,
+[data-hljs-theme="dark"] .hljs-quote,
+[data-hljs-theme="dark"] .hljs-selector-pseudo,
+[data-hljs-theme="dark"] .hljs-selector-tag {
+  color: #7ee787;
+}
+
+[data-hljs-theme="dark"] .hljs-subst {
+  color: #c9d1d9;
+}
+
+[data-hljs-theme="dark"] .hljs-section {
+  color: #1f6feb;
+  font-weight: 700;
+}
+
+[data-hljs-theme="dark"] .hljs-bullet {
+  color: #f2cc60;
+}
+
+[data-hljs-theme="dark"] .hljs-emphasis {
+  color: #c9d1d9;
+  font-style: italic;
+}
+
+[data-hljs-theme="dark"] .hljs-strong {
+  color: #c9d1d9;
+  font-weight: 700;
+}
+
+[data-hljs-theme="dark"] .hljs-addition {
+  color: #aff5b4;
+  background-color: #033a16;
+}
+
+[data-hljs-theme="dark"] .hljs-deletion {
+  color: #ffdcd7;
+  background-color: #67060c;
+}

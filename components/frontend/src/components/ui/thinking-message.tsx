@@ -24,11 +24,11 @@ export const ThinkingMessage: React.FC<ThinkingMessageProps> = ({ block, classNa
         </div>
 
         <div className="flex-1 min-w-0">
-          <div className="bg-white rounded-lg border shadow-sm p-3">
+          <div className="bg-card rounded-lg border shadow-sm p-3">
             <div className="flex items-center justify-between mb-2">
               <Badge variant="outline" className="text-xs">Thinking</Badge>
               <button
-                className="text-xs text-blue-600 hover:underline"
+                className="text-xs text-link hover:underline"
                 onClick={() => setExpanded((e) => !e)}
               >
                 {expanded ? "Hide" : "Show"} details
@@ -36,7 +36,7 @@ export const ThinkingMessage: React.FC<ThinkingMessageProps> = ({ block, classNa
             </div>
 
             {!expanded && (
-              <div className="flex items-center text-gray-600 text-xs">
+              <div className="flex items-center text-muted-foreground text-xs">
                 <Loader2 className="w-3 h-3 mr-2 animate-spin" /> Hidden reasoning available
               </div>
             )}
@@ -44,10 +44,10 @@ export const ThinkingMessage: React.FC<ThinkingMessageProps> = ({ block, classNa
             {expanded && (
               <div className="space-y-3">
                   <div className="text-xs">
-                    <div className="mb-1 text-gray-600">
+                    <div className="mb-1 text-muted-foreground">
                       <span className="font-semibold">Signature:</span> {block.signature}
                     </div>
-                    <pre className="bg-gray-50 border rounded p-2 whitespace-pre-wrap break-words text-gray-800">
+                    <pre className="bg-muted/50 border rounded p-2 whitespace-pre-wrap break-words text-foreground">
                       {block.thinking}
                     </pre>
                   </div>
