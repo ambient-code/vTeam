@@ -57,6 +57,32 @@ spec:
             configMapKeyRef:
               name: operator-config
               key: GOOGLE_APPLICATION_CREDENTIALS
+        # Platform-wide Langfuse observability configuration
+        # All LANGFUSE_* config stored in ambient-admin-langfuse-secret (platform-admin managed)
+        - name: LANGFUSE_ENABLED
+          valueFrom:
+            secretKeyRef:
+              name: ambient-admin-langfuse-secret
+              key: LANGFUSE_ENABLED
+              optional: true  # Optional: defaults to false if secret doesn't exist
+        - name: LANGFUSE_HOST
+          valueFrom:
+            secretKeyRef:
+              name: ambient-admin-langfuse-secret
+              key: LANGFUSE_HOST
+              optional: true  # Optional: only needed if Langfuse enabled
+        - name: LANGFUSE_PUBLIC_KEY
+          valueFrom:
+            secretKeyRef:
+              name: ambient-admin-langfuse-secret
+              key: LANGFUSE_PUBLIC_KEY
+              optional: true  # Optional: only needed if Langfuse enabled
+        - name: LANGFUSE_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: ambient-admin-langfuse-secret
+              key: LANGFUSE_SECRET_KEY
+              optional: true  # Optional: only needed if Langfuse enabled
         resources:
           requests:
             cpu: 50m

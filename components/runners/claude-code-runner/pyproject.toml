@@ -11,15 +11,22 @@ dependencies = [
   "requests>=2.31.0",
   "aiohttp>=3.8.0",
   "pyjwt>=2.8.0",
-  "anthropic[vertex]>=0.68.0",
-  "claude-agent-sdk>=0.1.4",
+  "anthropic[vertex]==0.73.0",  # Pin to working version (0.74.0+ untested)
+  "claude-agent-sdk==0.1.6",    # Pin to working version (0.1.7+ untested)
+  "langfuse>=3.0.0",
 ]
 
 [tool.uv]
 dev-dependencies = [
   "pytest>=7.4.0",
   "pytest-asyncio>=0.21.0",
+  "pytest-cov>=4.1.0",
+  "ruff>=0.1.0",
+  "black>=23.0.0",
 ]
+
+[tool.setuptools]
+py-modules = ["wrapper", "observability", "security_utils"]
 
 [build-system]
 requires = ["setuptools>=61.0"]

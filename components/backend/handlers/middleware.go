@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -29,6 +30,25 @@ var (
 	BoolPtr   = func(b bool) *bool { return &b }
 	StringPtr = func(s string) *string { return &s }
 )
+
+// Kubernetes DNS-1123 label validation (namespace, service account names)
+// Must be lowercase alphanumeric or '-', max 63 chars, start/end with alphanumeric
+// Regex allows single char (e.g., "a") or multi-char with optional middle section
+var kubernetesNameRegex = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`)
+
+// isValidKubernetesName validates that a string is a valid Kubernetes DNS-1123 label
+// Returns false if:
+//   - name is empty (prevents empty string injection)
+//   - name exceeds 63 characters
+//   - name contains invalid characters (not lowercase alphanumeric or '-')
+//   - name starts or ends with '-' (enforced by regex)
+func isValidKubernetesName(name string) bool {
+	// Explicit length check: reject empty strings and names > 63 chars
+	if len(name) == 0 || len(name) > 63 {
+		return false
+	}
+	return kubernetesNameRegex.MatchString(name)
+}
 
 // ContentListItem represents a content list item for file browsing
 type ContentListItem struct {
@@ -248,6 +268,17 @@ func ValidateProjectContext() gin.HandlerFunc {
 		}
 		if projectHeader == "" {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Project is required in path /api/projects/:projectName or X-OpenShift-Project header"})
+			c.Abort()
+			return
+		}
+
+		// Validate namespace name to prevent injection attacks
+		// Kubernetes namespace names must be valid DNS-1123 labels:
+		// - lowercase alphanumeric plus '-'
+		// - max 63 characters
+		// - start and end with alphanumeric
+		if !isValidKubernetesName(projectHeader) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid project name format"})
 			c.Abort()
 			return
 		}

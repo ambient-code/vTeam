@@ -19,8 +19,11 @@ from urllib import request as _urllib_request, error as _urllib_error
 sys.path.insert(0, '/app/runner-shell')
 
 from runner_shell.core.shell import RunnerShell
-from runner_shell.core.protocol import MessageType, SessionStatus, PartialInfo
+from runner_shell.core.protocol import MessageType, PartialInfo
 from runner_shell.core.context import RunnerContext
+
+# NOTE: ObservabilityManager is imported lazily inside _run_claude_agent_sdk()
+# to avoid potential import-time conflicts with claude_agent_sdk
 
 
 class ClaudeCodeAdapter:
@@ -44,6 +47,43 @@ class ClaudeCodeAdapter:
         await self._initialize_workflow_if_set()
         # Validate prerequisite files exist for phase-based commands
         await self._validate_prerequisites()
+
+    @staticmethod
+    def _sanitize_user_context(user_id: str, user_name: str) -> tuple[str, str]:
+        """Validate and sanitize user context fields to prevent injection attacks.
+
+        Returns:
+            Tuple of (sanitized_user_id, sanitized_user_name)
+        """
+        # Validate user_id: alphanumeric, dash, underscore, at sign only
+        # Max 255 characters (email addresses can be up to 254 chars)
+        if user_id:
+            user_id = str(user_id).strip()
+            if len(user_id) > 255:
+                logging.warning(f"User ID exceeds max length (255), truncating: {len(user_id)} chars")
+                user_id = user_id[:255]
+            # Remove any characters that could cause injection issues
+            import re
+            sanitized_id = re.sub(r'[^a-zA-Z0-9@._-]', '', user_id)
+            if sanitized_id != user_id:
+                logging.warning(f"User ID contained invalid characters, sanitized from {len(user_id)} to {len(sanitized_id)} chars")
+            user_id = sanitized_id
+
+        # Validate user_name: printable ASCII, no control characters
+        # Max 255 characters
+        if user_name:
+            user_name = str(user_name).strip()
+            if len(user_name) > 255:
+                logging.warning(f"User name exceeds max length (255), truncating: {len(user_name)} chars")
+                user_name = user_name[:255]
+            # Remove control characters and non-printable characters
+            import re
+            sanitized_name = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', user_name)
+            if sanitized_name != user_name:
+                logging.warning(f"User name contained control characters, sanitized from {len(user_name)} to {len(sanitized_name)} chars")
+            user_name = sanitized_name
+
+        return user_id, user_name
 
     async def run(self):
         """Run the Claude Code CLI session."""
@@ -213,6 +253,23 @@ class ClaudeCodeAdapter:
 
             # NOW we can safely import the SDK with the correct environment set
             from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
+
+            # Import observability AFTER SDK to avoid potential conflicts
+            # Langfuse SDK might import anthropic which could interfere with claude_agent_sdk
+            from observability import ObservabilityManager
+
+            # Extract and sanitize user context for observability (used by Langfuse)
+            # This prevents trace poisoning, log injection, and other security issues
+            raw_user_id = os.getenv('USER_ID', '').strip()
+            raw_user_name = os.getenv('USER_NAME', '').strip()
+            user_id, user_name = self._sanitize_user_context(raw_user_id, raw_user_name)
+
+            # Initialize observability (Langfuse)
+            obs = ObservabilityManager(session_id=self.context.session_id, user_id=user_id, user_name=user_name)
+            await obs.initialize(
+                prompt=prompt,
+                namespace=self.context.get_env('AGENTIC_SESSION_NAMESPACE', 'unknown')
+            )
 
             # Check if continuing from previous session
             # If PARENT_SESSION_ID is set, use SDK's built-in resume functionality
@@ -384,11 +441,13 @@ class ClaudeCodeAdapter:
                 pass
             # Model settings from both legacy and LLM_* envs
             model = self.context.get_env('LLM_MODEL')
+            configured_model = model or 'claude-3-5-sonnet-20241022'  # Default model for tracking
             if model:
                 try:
                     # Map Anthropic API model names to Vertex AI model names if using Vertex
                     if use_vertex:
                         model = self._map_to_vertex_model(model)
+                        configured_model = model  # Track the mapped model name
                         logging.info(f"Mapped to Vertex AI model: {model}")
                     options.model = model  # type: ignore[attr-defined]
                 except Exception:
@@ -464,6 +523,8 @@ class ClaudeCodeAdapter:
                                     {"tool": tool_name, "input": tool_input, "id": tool_id},
                                 )
                                 self._turn_count += 1
+                                # Track tool use in observability
+                                obs.track_tool_use(tool_name, tool_id, tool_input)
                             elif isinstance(block, ToolResultBlock):
                                 tool_use_id = getattr(block, 'tool_use_id', None)
                                 content = getattr(block, 'content', None)
@@ -480,11 +541,16 @@ class ClaudeCodeAdapter:
                                         }
                                     },
                                 )
+                                # Track tool result in observability
+                                obs.track_tool_result(tool_use_id, content if content is not None else result_text, is_error or False)
                                 if interactive:
                                     await self.shell._send_message(MessageType.WAITING_FOR_INPUT, {})
                                 self._turn_count += 1
                             elif isinstance(block, ThinkingBlock):
                                 await self._send_log({"level": "debug", "message": "Model is reasoning..."})
+                        # Track generation in observability (only for AssistantMessage)
+                        if isinstance(message, AssistantMessage):
+                            obs.track_generation(message, configured_model, self._turn_count)
                     elif isinstance(message, (SystemMessage)):
                         text = getattr(message, 'text', None)
                         if text:
@@ -536,7 +602,7 @@ class ClaudeCodeAdapter:
                         logging.info("No initial prompt - Claude will greet based on system prompt")
                 else:
                     logging.info("Skipping prompts - SDK resuming with full context")
-                
+
                 # Mark that first run is complete
                 self._first_run = False
 
@@ -589,6 +655,9 @@ class ClaudeCodeAdapter:
             # Note: All output is streamed via WebSocket, not collected here
             await self._check_pr_intent("")
 
+            # Finalize observability (end spans and flush)
+            await obs.finalize(result_payload)
+
             # Return success - result_payload may be None if SDK didn't send ResultMessage
             # (which can happen legitimately for some operations like git push)
             return {
@@ -600,6 +669,9 @@ class ClaudeCodeAdapter:
             }
         except Exception as e:
             logging.error(f"Failed to run Claude Code SDK: {e}")
+            # Clean up observability spans on error path
+            if 'obs' in locals():
+                await obs.cleanup_on_error(e)
             return {
                 "success": False,
                 "error": str(e)

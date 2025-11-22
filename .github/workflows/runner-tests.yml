@@ -1,0 +1,53 @@
+name: Claude Code Runner Tests
+
+on:
+  pull_request:
+    paths:
+      - 'components/runners/claude-code-runner/**'
+      - '.github/workflows/runner-tests.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'components/runners/claude-code-runner/**'
+      - '.github/workflows/runner-tests.yml'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: components/runners/claude-code-runner
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install pytest pytest-asyncio pytest-cov
+
+      - name: Run unit tests for observability and security_utils
+        run: |
+          # Only run standalone unit tests that don't require runner_shell runtime
+          # (test_model_mapping.py and test_wrapper_vertex.py require full runtime environment)
+          pytest tests/test_observability.py tests/test_security_utils.py -v --tb=short --color=yes
+
+      - name: Run tests with coverage
+        run: |
+          pytest tests/test_observability.py tests/test_security_utils.py --cov=observability --cov=security_utils --cov-report=term-missing --cov-report=xml
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./components/runners/claude-code-runner/coverage.xml
+          flags: runner
+          name: claude-code-runner
+          fail_ci_if_error: false
