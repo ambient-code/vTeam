@@ -602,10 +602,10 @@ export default function ProjectSessionDetailPage({
 
         {/* Main content area */}
         <div className="flex-grow overflow-hidden">
-          <div className="h-full container mx-auto px-6 py-6">
+          <div className="h-full">
             <div className="h-full flex gap-6">
               {/* Left Column - Accordions */}
-              <div className="w-2/5 flex flex-col min-w-0 relative">
+              <div className="flex-[0_0_400px] min-w-[350px] max-w-[500px] flex flex-col sticky top-0 self-start h-[calc(100vh-8rem)] overflow-y-auto pt-6 pl-6">
                 {/* Blocking overlay when first message hasn't loaded and session is pending */}
                 {!firstMessageLoaded && session?.status?.phase === 'Pending' && (
                   <div className="absolute inset-0 bg-background/60 backdrop-blur-sm rounded-lg z-20 flex items-center justify-center">
@@ -619,7 +619,7 @@ export default function ProjectSessionDetailPage({
                     </div>
                   </div>
                 )}
-                <div className={`overflow-y-auto flex-grow pb-6 ${!firstMessageLoaded && session?.status?.phase === 'Pending' ? 'pointer-events-none opacity-50' : ''}`}>
+                <div className={`flex-grow pb-6 ${!firstMessageLoaded && session?.status?.phase === 'Pending' ? 'pointer-events-none opacity-50' : ''}`}>
                   <Accordion type="multiple" value={openAccordionItems} onValueChange={setOpenAccordionItems} className="w-full space-y-3">
                     <WorkflowsAccordion
                       sessionPhase={session?.status?.phase}
@@ -937,8 +937,8 @@ export default function ProjectSessionDetailPage({
               </div>
 
               {/* Right Column - Messages */}
-              <div className="flex-1 flex flex-col min-w-0">
-                <Card className="relative flex-1 flex flex-col overflow-hidden py-4">
+              <div className="flex-1 min-w-0 flex flex-col">
+                <Card className="relative flex-1 flex flex-col overflow-hidden pb-4 border-0 rounded-none">
                   <CardContent className="px-3 pt-3 pb-0 flex-1 flex flex-col overflow-hidden">
                     {/* Workflow activation overlay */}
                     {workflowManagement.workflowActivating && (

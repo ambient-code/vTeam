@@ -319,7 +319,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chat
 
       {showChatInterface && (
         <div className="sticky bottom-0 bg-card">
-          <div className="px-2 pt-2 pb-0 space-y-1.5">
+          <div className="px-2 pt-2 pb-0 space-y-1.5 max-w-[90%] mx-auto mb-4">
               <div className="relative">
                 <textarea
                   ref={textareaRef}
