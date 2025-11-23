@@ -45,8 +45,18 @@ type GitLabStatusResponse struct {
 	GitLabUserID string `json:"gitlabUserId,omitempty"`
 }
 
-// ConnectGitLab handles POST /auth/gitlab/connect
+// ConnectGitLab handles POST /projects/:projectName/auth/gitlab/connect
 func (h *GitLabAuthHandler) ConnectGitLab(c *gin.Context) {
+	// Get project from URL parameter
+	project := c.Param("projectName")
+	if project == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Project name is required",
+			"statusCode": http.StatusBadRequest,
+		})
+		return
+	}
+
 	var req ConnectGitLabRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -80,11 +90,30 @@ func (h *GitLabAuthHandler) ConnectGitLab(c *gin.Context) {
 		return
 	}
 
-	// Store GitLab connection
+	// RBAC: Verify user can create/update secrets in this project
+	reqK8s, _ := GetK8sClientsForRequest(c)
+	if reqK8s == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "Invalid or missing token",
+			"statusCode": http.StatusUnauthorized,
+		})
+		return
+	}
+
 	ctx := c.Request.Context()
+	if err := ValidateSecretAccess(ctx, reqK8s, project, "create"); err != nil {
+		gitlab.LogError("RBAC check failed for user %s in project %s: %v", userIDStr, project, err)
+		c.JSON(http.StatusForbidden, gin.H{
+			"error":      "Insufficient permissions to manage GitLab credentials",
+			"statusCode": http.StatusForbidden,
+		})
+		return
+	}
+
+	// Store GitLab connection (now project-scoped)
 	connection, err := h.connectionManager.StoreGitLabConnection(ctx, userIDStr, req.PersonalAccessToken, req.InstanceURL)
 	if err != nil {
-		gitlab.LogError("Failed to store GitLab connection for user %s: %v", userIDStr, err)
+		gitlab.LogError("Failed to store GitLab connection for user %s in project %s: %v", userIDStr, project, err)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error":      err.Error(),
 			"statusCode": http.StatusInternalServerError,
@@ -98,12 +127,22 @@ func (h *GitLabAuthHandler) ConnectGitLab(c *gin.Context) {
 		Username:     connection.Username,
 		InstanceURL:  connection.InstanceURL,
 		Connected:    true,
-		Message:      "GitLab account connected successfully",
+		Message:      "GitLab account connected successfully to project " + project,
 	})
 }
 
-// GetGitLabStatus handles GET /auth/gitlab/status
+// GetGitLabStatus handles GET /projects/:projectName/auth/gitlab/status
 func (h *GitLabAuthHandler) GetGitLabStatus(c *gin.Context) {
+	// Get project from URL parameter
+	project := c.Param("projectName")
+	if project == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Project name is required",
+			"statusCode": http.StatusBadRequest,
+		})
+		return
+	}
+
 	// Get user ID from context
 	userID, exists := c.Get("userID")
 	if !exists {
@@ -123,11 +162,30 @@ func (h *GitLabAuthHandler) GetGitLabStatus(c *gin.Context) {
 		return
 	}
 
-	// Get connection status
+	// RBAC: Verify user can read secrets in this project
+	reqK8s, _ := GetK8sClientsForRequest(c)
+	if reqK8s == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "Invalid or missing token",
+			"statusCode": http.StatusUnauthorized,
+		})
+		return
+	}
+
 	ctx := c.Request.Context()
+	if err := ValidateSecretAccess(ctx, reqK8s, project, "get"); err != nil {
+		gitlab.LogError("RBAC check failed for user %s in project %s: %v", userIDStr, project, err)
+		c.JSON(http.StatusForbidden, gin.H{
+			"error":      "Insufficient permissions to read GitLab credentials",
+			"statusCode": http.StatusForbidden,
+		})
+		return
+	}
+
+	// Get connection status (project-scoped)
 	status, err := h.connectionManager.GetConnectionStatus(ctx, userIDStr)
 	if err != nil {
-		gitlab.LogError("Failed to get GitLab status for user %s: %v", userIDStr, err)
+		gitlab.LogError("Failed to get GitLab status for user %s in project %s: %v", userIDStr, project, err)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error":      "Failed to retrieve GitLab connection status",
 			"statusCode": http.StatusInternalServerError,
@@ -150,8 +208,18 @@ func (h *GitLabAuthHandler) GetGitLabStatus(c *gin.Context) {
 	})
 }
 
-// DisconnectGitLab handles POST /auth/gitlab/disconnect
+// DisconnectGitLab handles POST /projects/:projectName/auth/gitlab/disconnect
 func (h *GitLabAuthHandler) DisconnectGitLab(c *gin.Context) {
+	// Get project from URL parameter
+	project := c.Param("projectName")
+	if project == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Project name is required",
+			"statusCode": http.StatusBadRequest,
+		})
+		return
+	}
+
 	// Get user ID from context
 	userID, exists := c.Get("userID")
 	if !exists {
@@ -171,10 +239,29 @@ func (h *GitLabAuthHandler) DisconnectGitLab(c *gin.Context) {
 		return
 	}
 
-	// Delete GitLab connection
+	// RBAC: Verify user can update secrets in this project
+	reqK8s, _ := GetK8sClientsForRequest(c)
+	if reqK8s == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "Invalid or missing token",
+			"statusCode": http.StatusUnauthorized,
+		})
+		return
+	}
+
 	ctx := c.Request.Context()
+	if err := ValidateSecretAccess(ctx, reqK8s, project, "update"); err != nil {
+		gitlab.LogError("RBAC check failed for user %s in project %s: %v", userIDStr, project, err)
+		c.JSON(http.StatusForbidden, gin.H{
+			"error":      "Insufficient permissions to manage GitLab credentials",
+			"statusCode": http.StatusForbidden,
+		})
+		return
+	}
+
+	// Delete GitLab connection (project-scoped)
 	if err := h.connectionManager.DeleteGitLabConnection(ctx, userIDStr); err != nil {
-		gitlab.LogError("Failed to disconnect GitLab for user %s: %v", userIDStr, err)
+		gitlab.LogError("Failed to disconnect GitLab for user %s in project %s: %v", userIDStr, project, err)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error":      "Failed to disconnect GitLab account",
 			"statusCode": http.StatusInternalServerError,
@@ -183,27 +270,75 @@ func (h *GitLabAuthHandler) DisconnectGitLab(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"message":   "GitLab account disconnected successfully",
+		"message":   "GitLab account disconnected successfully from project " + project,
 		"connected": false,
 	})
 }
 
-// Global wrapper functions for routes
+// Global wrapper functions for routes (now project-scoped)
 
-// ConnectGitLabGlobal is the global handler for POST /auth/gitlab/connect
+// ConnectGitLabGlobal is the global handler for POST /projects/:projectName/auth/gitlab/connect
 func ConnectGitLabGlobal(c *gin.Context) {
-	handler := NewGitLabAuthHandler(K8sClient, Namespace)
+	// Get project from URL parameter - this is the namespace where tokens will be stored
+	project := c.Param("projectName")
+	if project == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Project name is required"})
+		return
+	}
+
+	// Get user-scoped K8s client (RBAC enforcement)
+	reqK8s, _ := GetK8sClientsForRequest(c)
+	if reqK8s == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid or missing token"})
+		c.Abort()
+		return
+	}
+
+	// Create handler with user-scoped client (multi-tenant isolation)
+	handler := NewGitLabAuthHandler(reqK8s, project)
 	handler.ConnectGitLab(c)
 }
 
-// GetGitLabStatusGlobal is the global handler for GET /auth/gitlab/status
+// GetGitLabStatusGlobal is the global handler for GET /projects/:projectName/auth/gitlab/status
 func GetGitLabStatusGlobal(c *gin.Context) {
-	handler := NewGitLabAuthHandler(K8sClient, Namespace)
+	// Get project from URL parameter
+	project := c.Param("projectName")
+	if project == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Project name is required"})
+		return
+	}
+
+	// Get user-scoped K8s client (RBAC enforcement)
+	reqK8s, _ := GetK8sClientsForRequest(c)
+	if reqK8s == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid or missing token"})
+		c.Abort()
+		return
+	}
+
+	// Create handler with user-scoped client
+	handler := NewGitLabAuthHandler(reqK8s, project)
 	handler.GetGitLabStatus(c)
 }
 
-// DisconnectGitLabGlobal is the global handler for POST /auth/gitlab/disconnect
+// DisconnectGitLabGlobal is the global handler for POST /projects/:projectName/auth/gitlab/disconnect
 func DisconnectGitLabGlobal(c *gin.Context) {
-	handler := NewGitLabAuthHandler(K8sClient, Namespace)
+	// Get project from URL parameter
+	project := c.Param("projectName")
+	if project == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Project name is required"})
+		return
+	}
+
+	// Get user-scoped K8s client (RBAC enforcement)
+	reqK8s, _ := GetK8sClientsForRequest(c)
+	if reqK8s == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid or missing token"})
+		c.Abort()
+		return
+	}
+
+	// Create handler with user-scoped client
+	handler := NewGitLabAuthHandler(reqK8s, project)
 	handler.DisconnectGitLab(c)
 }

@@ -120,14 +120,12 @@ func GetGitLabToken(ctx context.Context, k8sClient *kubernetes.Clientset, projec
 		return "", fmt.Errorf("no GitLab credentials available. Please connect your GitLab account")
 	}
 
-	// GitLab tokens are stored in the backend namespace (not project namespace)
-	// Get the backend namespace from server configuration
-	backendNamespace := GetBackendNamespace()
-
-	secret, err := k8sClient.CoreV1().Secrets(backendNamespace).Get(ctx, "gitlab-user-tokens", v1.GetOptions{})
+	// GitLab tokens are stored in the project namespace (multi-tenant isolation)
+	// This matches the GitHub PAT pattern using ambient-non-vertex-integrations
+	secret, err := k8sClient.CoreV1().Secrets(project).Get(ctx, "gitlab-user-tokens", v1.GetOptions{})
 	if err != nil {
-		log.Printf("Failed to get gitlab-user-tokens secret in %s: %v", backendNamespace, err)
-		return "", fmt.Errorf("no GitLab credentials available. Please connect your GitLab account")
+		log.Printf("Failed to get gitlab-user-tokens secret in %s: %v", project, err)
+		return "", fmt.Errorf("no GitLab credentials available. Please connect your GitLab account in this project")
 	}
 
 	if secret.Data == nil {

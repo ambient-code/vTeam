@@ -1,12 +1,16 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"math"
 	"time"
 
+	authv1 "k8s.io/api/authorization/v1"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/kubernetes"
 )
 
 // GetProjectSettingsResource returns the GroupVersionResource for ProjectSettings
@@ -42,4 +46,30 @@ func RetryWithBackoff(maxRetries int, initialDelay, maxDelay time.Duration, oper
 		}
 	}
 	return fmt.Errorf("operation failed after %d retries: %w", maxRetries, lastErr)
+}
+
+// ValidateSecretAccess checks if the user has permission to perform the given verb on secrets
+// Returns an error if the user lacks the required permission
+func ValidateSecretAccess(ctx context.Context, k8sClient *kubernetes.Clientset, namespace, verb string) error {
+	ssar := &authv1.SelfSubjectAccessReview{
+		Spec: authv1.SelfSubjectAccessReviewSpec{
+			ResourceAttributes: &authv1.ResourceAttributes{
+				Group:     "", // core API group for secrets
+				Resource:  "secrets",
+				Verb:      verb, // "create", "get", "update", "delete"
+				Namespace: namespace,
+			},
+		},
+	}
+
+	res, err := k8sClient.AuthorizationV1().SelfSubjectAccessReviews().Create(ctx, ssar, v1.CreateOptions{})
+	if err != nil {
+		return fmt.Errorf("RBAC check failed: %w", err)
+	}
+
+	if !res.Status.Allowed {
+		return fmt.Errorf("user not allowed to %s secrets in namespace %s", verb, namespace)
+	}
+
+	return nil
 }

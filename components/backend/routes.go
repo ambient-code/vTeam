@@ -97,17 +97,17 @@ func registerRoutes(r *gin.Engine) {
 			projectGroup.PUT("/runner-secrets", handlers.UpdateRunnerSecrets)
 			projectGroup.GET("/integration-secrets", handlers.ListIntegrationSecrets)
 			projectGroup.PUT("/integration-secrets", handlers.UpdateIntegrationSecrets)
+
+			// GitLab authentication endpoints (project-scoped)
+			projectGroup.POST("/auth/gitlab/connect", handlers.ConnectGitLabGlobal)
+			projectGroup.GET("/auth/gitlab/status", handlers.GetGitLabStatusGlobal)
+			projectGroup.POST("/auth/gitlab/disconnect", handlers.DisconnectGitLabGlobal)
 		}
 
 		api.POST("/auth/github/install", handlers.LinkGitHubInstallationGlobal)
 		api.GET("/auth/github/status", handlers.GetGitHubStatusGlobal)
 		api.POST("/auth/github/disconnect", handlers.DisconnectGitHubGlobal)
 		api.GET("/auth/github/user/callback", handlers.HandleGitHubUserOAuthCallback)
-
-		// GitLab authentication endpoints
-		api.POST("/auth/gitlab/connect", handlers.ConnectGitLabGlobal)
-		api.GET("/auth/gitlab/status", handlers.GetGitLabStatusGlobal)
-		api.POST("/auth/gitlab/disconnect", handlers.DisconnectGitLabGlobal)
 
 		// Cluster info endpoint (public, no auth required)
 		api.GET("/cluster-info", handlers.GetClusterInfo)
