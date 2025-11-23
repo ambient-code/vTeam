@@ -19,6 +19,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Label } from "@/components/ui/label";
 import { Breadcrumbs } from "@/components/breadcrumbs";
 import { SessionHeader } from "./session-header";
+import { getPhaseColor } from "@/utils/session-helpers";
 
 // Extracted components
 import { AddContextModal } from "./components/modals/add-context-modal";
@@ -565,32 +566,37 @@ export default function ProjectSessionDetailPage({
         {/* Fixed header */}
         <div className="flex-shrink-0 bg-card border-b">
           <div className="container mx-auto px-6 py-4">
-            <Breadcrumbs
-              items={[
-                { label: 'Workspaces', href: '/projects' },
-                { label: projectName, href: `/projects/${projectName}` },
-                { label: 'Sessions', href: `/projects/${projectName}/sessions` },
-                { label: session.spec.displayName || session.metadata.name },
-              ]}
-              className="mb-4"
-            />
-            <SessionHeader
-              session={session}
-              projectName={projectName}
-              actionLoading={
-                stopMutation.isPending ? "stopping" :
-                deleteMutation.isPending ? "deleting" :
-                continueMutation.isPending ? "resuming" :
-                null
-              }
-              onRefresh={refetchSession}
-              onStop={handleStop}
-              onContinue={handleContinue}
-              onDelete={handleDelete}
-              durationMs={durationMs}
-              k8sResources={k8sResources}
-              messageCount={messages.length}
-            />
+            <div className="flex items-center justify-between">
+              <Breadcrumbs
+                items={[
+                  { label: 'Workspaces', href: '/projects' },
+                  { label: projectName, href: `/projects/${projectName}` },
+                  { label: 'Sessions', href: `/projects/${projectName}/sessions` },
+                  { 
+                    label: session.spec.displayName || session.metadata.name,
+                    rightIcon: <Badge className={getPhaseColor(session.status?.phase || "Pending")}>{session.status?.phase || "Pending"}</Badge>
+                  },
+                ]}
+              />
+              <SessionHeader
+                session={session}
+                projectName={projectName}
+                actionLoading={
+                  stopMutation.isPending ? "stopping" :
+                  deleteMutation.isPending ? "deleting" :
+                  continueMutation.isPending ? "resuming" :
+                  null
+                }
+                onRefresh={refetchSession}
+                onStop={handleStop}
+                onContinue={handleContinue}
+                onDelete={handleDelete}
+                durationMs={durationMs}
+                k8sResources={k8sResources}
+                messageCount={messages.length}
+                renderMode="kebab-only"
+              />
+            </div>
           </div>
         </div>
 

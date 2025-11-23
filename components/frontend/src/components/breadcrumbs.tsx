@@ -14,6 +14,7 @@ export type BreadcrumbItem = {
   label: string;
   href?: string;
   icon?: React.ReactNode;
+  rightIcon?: React.ReactNode;
 };
 
 export type BreadcrumbsProps = {
@@ -53,6 +54,7 @@ export function Breadcrumbs({
                 >
                   {item.icon}
                   {item.label}
+                  {item.rightIcon}
                 </span>
               ) : (
                 <Link
@@ -61,6 +63,7 @@ export function Breadcrumbs({
                 >
                   {item.icon}
                   {item.label}
+                  {item.rightIcon}
                 </Link>
               )}
             </li>
@@ -136,6 +139,7 @@ export function CompactBreadcrumbs({ items, className }: BreadcrumbsProps) {
               <span className="flex items-center gap-1.5 font-medium text-foreground" aria-current="page">
                 {allItems[allItems.length - 1].icon}
                 {allItems[allItems.length - 1].label}
+                {allItems[allItems.length - 1].rightIcon}
               </span>
             </li>
           </>
