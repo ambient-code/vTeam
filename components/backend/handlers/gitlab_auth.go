@@ -1,7 +1,10 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
+	"net/url"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"k8s.io/client-go/kubernetes"
@@ -45,6 +48,54 @@ type GitLabStatusResponse struct {
 	GitLabUserID string `json:"gitlabUserId,omitempty"`
 }
 
+// validateGitLabInput validates GitLab connection request input
+func validateGitLabInput(instanceURL, token string) error {
+	// Validate instance URL
+	if instanceURL != "" {
+		parsedURL, err := url.Parse(instanceURL)
+		if err != nil {
+			return fmt.Errorf("invalid instance URL format")
+		}
+
+		// Require HTTPS for security
+		if parsedURL.Scheme != "https" {
+			return fmt.Errorf("instance URL must use HTTPS")
+		}
+
+		// Validate hostname is not empty
+		if parsedURL.Host == "" {
+			return fmt.Errorf("instance URL must have a valid hostname")
+		}
+
+		// Prevent common injection attempts
+		if strings.Contains(parsedURL.Host, "@") {
+			return fmt.Errorf("instance URL hostname cannot contain '@'")
+		}
+	}
+
+	// Validate token length (GitLab PATs are 20 chars, but allow for future changes)
+	// Min: 20 chars, Max: 255 chars (reasonable upper bound)
+	if len(token) < 20 {
+		return fmt.Errorf("token must be at least 20 characters")
+	}
+	if len(token) > 255 {
+		return fmt.Errorf("token must not exceed 255 characters")
+	}
+
+	// Validate token contains only valid characters (alphanumeric and some special chars)
+	// GitLab tokens use: a-z, A-Z, 0-9, -, _
+	for _, char := range token {
+		if !((char >= 'a' && char <= 'z') ||
+			(char >= 'A' && char <= 'Z') ||
+			(char >= '0' && char <= '9') ||
+			char == '-' || char == '_') {
+			return fmt.Errorf("token contains invalid characters")
+		}
+	}
+
+	return nil
+}
+
 // ConnectGitLab handles POST /projects/:projectName/auth/gitlab/connect
 func (h *GitLabAuthHandler) ConnectGitLab(c *gin.Context) {
 	// Get project from URL parameter
@@ -69,6 +120,15 @@ func (h *GitLabAuthHandler) ConnectGitLab(c *gin.Context) {
 	// Default to GitLab.com if no instance URL provided
 	if req.InstanceURL == "" {
 		req.InstanceURL = "https://gitlab.com"
+	}
+
+	// Validate input
+	if err := validateGitLabInput(req.InstanceURL, req.PersonalAccessToken); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      fmt.Sprintf("Invalid input: %v", err),
+			"statusCode": http.StatusBadRequest,
+		})
+		return
 	}
 
 	// Get user ID from context (set by authentication middleware)

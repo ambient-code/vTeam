@@ -5,12 +5,20 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
+	"os"
+	"strconv"
 	"time"
 
 	"ambient-code-backend/types"
 	"github.com/google/uuid"
+)
+
+const (
+	// DefaultMaxPaginationPages is the default limit for pagination loops
+	DefaultMaxPaginationPages = 100
 )
 
 // Client represents a GitLab API client
@@ -238,11 +246,25 @@ func (c *Client) GetBranches(ctx context.Context, projectID string, page, perPag
 	return branches, pagination, nil
 }
 
+// getMaxPaginationPages returns the configured maximum pagination pages
+// Can be overridden via GITLAB_MAX_PAGINATION_PAGES environment variable
+func getMaxPaginationPages() int {
+	if envVal := os.Getenv("GITLAB_MAX_PAGINATION_PAGES"); envVal != "" {
+		if val, err := strconv.Atoi(envVal); err == nil && val > 0 {
+			return val
+		}
+		log.Printf("Warning: Invalid GITLAB_MAX_PAGINATION_PAGES value '%s', using default %d", envVal, DefaultMaxPaginationPages)
+	}
+	return DefaultMaxPaginationPages
+}
+
 // GetAllBranches retrieves all branches across all pages
+// Pagination limit can be configured via GITLAB_MAX_PAGINATION_PAGES environment variable
 func (c *Client) GetAllBranches(ctx context.Context, projectID string) ([]types.GitLabBranch, error) {
 	var allBranches []types.GitLabBranch
 	page := 1
 	perPage := 100
+	maxPages := getMaxPaginationPages()
 
 	for {
 		branches, pagination, err := c.GetBranches(ctx, projectID, page, perPage)
@@ -259,9 +281,15 @@ func (c *Client) GetAllBranches(ctx context.Context, projectID string) ([]types.
 
 		page = pagination.NextPage
 
-		// Safety limit to prevent infinite loops
-		if page > 100 {
-			return nil, fmt.Errorf("exceeded pagination limit (100 pages)")
+		// Safety limit to prevent infinite loops (configurable)
+		if page > maxPages {
+			log.Printf("Warning: Repository %s has more than %d pages of branches, truncating results", projectID, maxPages)
+			return allBranches, fmt.Errorf("exceeded pagination limit (%d pages). Increase GITLAB_MAX_PAGINATION_PAGES if needed", maxPages)
+		}
+
+		// Log warning when approaching limit
+		if page > maxPages-10 {
+			log.Printf("Warning: Pagination for repository %s is approaching limit (page %d/%d)", projectID, page, maxPages)
 		}
 	}
 

@@ -747,11 +747,24 @@ func PerformRepoSeeding(ctx context.Context, wf Workflow, branchName, token, age
 	return branchExistsRemotely, nil
 }
 
+// sanitizeURLForError removes credentials from a URL for safe error logging
+func sanitizeURLForError(rawURL string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		// If URL can't be parsed, just return a generic message
+		return "[invalid URL format]"
+	}
+	// Remove any embedded credentials
+	u.User = nil
+	return u.String()
+}
+
 // InjectGitHubToken injects a GitHub token into a git URL for authentication
 func InjectGitHubToken(gitURL, token string) (string, error) {
 	u, err := url.Parse(gitURL)
 	if err != nil {
-		return "", fmt.Errorf("invalid git URL: %w", err)
+		// Sanitize URL before including in error message
+		return "", fmt.Errorf("invalid git URL (%s): %w", sanitizeURLForError(gitURL), err)
 	}
 
 	if u.Scheme != "https" {
@@ -766,7 +779,8 @@ func InjectGitHubToken(gitURL, token string) (string, error) {
 func InjectGitLabToken(gitURL, token string) (string, error) {
 	u, err := url.Parse(gitURL)
 	if err != nil {
-		return "", fmt.Errorf("invalid git URL: %w", err)
+		// Sanitize URL before including in error message
+		return "", fmt.Errorf("invalid git URL (%s): %w", sanitizeURLForError(gitURL), err)
 	}
 
 	if u.Scheme != "https" {
