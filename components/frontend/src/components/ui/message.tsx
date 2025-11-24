@@ -193,7 +193,7 @@ export const Message = React.forwardRef<HTMLDivElement, MessageProps>(
     )
 
     return (
-      <div ref={ref} className={cn("mb-4", className)} {...props}>
+      <div ref={ref} className={cn("mb-4", isBot && "mt-2", className)} {...props}>
         <div className={cn("flex space-x-3", isBot ? "items-start" : "items-center justify-end")}>
           {/* Avatar */}
          {isBot ? avatar : null}
