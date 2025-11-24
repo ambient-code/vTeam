@@ -30,7 +30,8 @@ export function Navigation({ feedbackUrl }: NavigationProps) {
         <div className="flex h-16 items-center justify-between gap-4">
           <div className="flex items-end gap-2">
             <Link href="/" className="text-xl font-bold">
-              Ambient Code Platform
+              <span className="hidden md:inline">Ambient Code Platform</span>
+              <span className="md:hidden">ACP</span>
             </Link>
             {version && (
               <a

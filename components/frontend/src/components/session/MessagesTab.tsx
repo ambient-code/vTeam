@@ -408,7 +408,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chat
                             key={agent.id}
                             className={`px-3 py-2 cursor-pointer border-b last:border-b-0 ${
                               index === autocompleteSelectedIndex
-                                ? 'bg-blue-50'
+                                ? 'bg-accent text-accent-foreground'
                                 : 'hover:bg-muted/50'
                             }`}
                             onClick={() => handleAutocompleteSelect(agent)}
@@ -431,7 +431,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chat
                             key={cmd.id}
                             className={`px-3 py-2 cursor-pointer border-b last:border-b-0 ${
                               index === autocompleteSelectedIndex
-                                ? 'bg-blue-50'
+                                ? 'bg-accent text-accent-foreground'
                                 : 'hover:bg-muted/50'
                             }`}
                             onClick={() => handleAutocompleteSelect(cmd)}

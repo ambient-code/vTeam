@@ -60,7 +60,7 @@ const defaultComponents: Components = {
     );
   },
   p: ({ children }) => (
-    <p className="text-muted-foreground leading-relaxed mb-2 text-sm">{children}</p>
+    <p className="text-muted-foreground leading-relaxed mb-0 text-sm">{children}</p>
   ),
   h1: ({ children }) => (
     <h1 className="text-lg font-bold text-foreground mb-2">{children}</h1>
@@ -175,7 +175,6 @@ export const Message = React.forwardRef<HTMLDivElement, MessageProps>(
     const isBot = role === "bot";
     const avatarBg = isBot ? "bg-blue-600" : "bg-green-600";
     const avatarText = isBot ? "AI" : "U";
-    const displayName = isBot ? "Claude AI" : "User";
 
     const avatar = (
       <div className="flex-shrink-0">
@@ -195,7 +194,7 @@ export const Message = React.forwardRef<HTMLDivElement, MessageProps>(
 
     return (
       <div ref={ref} className={cn("mb-4", className)} {...props}>
-        <div className={cn("flex items-start space-x-3", !isBot && "justify-end")}>
+        <div className={cn("flex space-x-3", isBot ? "items-start" : "items-center justify-end")}>
           {/* Avatar */}
          {isBot ? avatar : null}
 

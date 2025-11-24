@@ -18,8 +18,11 @@ import {
   Download,
   LibraryBig,
   MessageSquare,
+  SlidersHorizontal,
+  ArrowLeft,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { cn } from "@/lib/utils";
 
 // Custom components
 import MessagesTab from "@/components/session/MessagesTab";
@@ -121,6 +124,7 @@ export default function ProjectSessionDetailPage({
   const [contextModalOpen, setContextModalOpen] = useState(false);
   const [repoChanging, setRepoChanging] = useState(false);
   const [firstMessageLoaded, setFirstMessageLoaded] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // Directory browser state (unified for artifacts, repos, and workflow)
   const [selectedDirectory, setSelectedDirectory] = useState<DirectoryOption>({
@@ -695,60 +699,127 @@ export default function ProjectSessionDetailPage({
         {/* Fixed header */}
         <div className="flex-shrink-0 bg-card border-b">
           <div className="px-6 py-4">
-            <div className="flex items-center justify-between">
-              <Breadcrumbs
-                items={[
-                  { label: "Workspaces", href: "/projects" },
-                  { label: projectName, href: `/projects/${projectName}` },
-                  {
-                    label: "Sessions",
-                    href: `/projects/${projectName}/sessions`,
-                  },
-                  {
-                    label: session.spec.displayName || session.metadata.name,
-                    rightIcon: (
-                      <Badge
-                        className={getPhaseColor(
-                          session.status?.phase || "Pending",
-                        )}
-                      >
-                        {session.status?.phase || "Pending"}
-                      </Badge>
-                    ),
-                  },
-                ]}
-              />
-              <SessionHeader
-                session={session}
-                projectName={projectName}
-                actionLoading={
-                  stopMutation.isPending
-                    ? "stopping"
-                    : deleteMutation.isPending
-                      ? "deleting"
-                      : continueMutation.isPending
-                        ? "resuming"
-                        : null
-                }
-                onRefresh={refetchSession}
-                onStop={handleStop}
-                onContinue={handleContinue}
-                onDelete={handleDelete}
-                durationMs={durationMs}
-                k8sResources={k8sResources}
-                messageCount={messages.length}
-                renderMode="kebab-only"
-              />
+            <div className="space-y-3 md:space-y-0">
+              {/* Top row: Back button / Breadcrumb + Kebab menu */}
+              <div className="flex items-center justify-between">
+                {/* Mobile: Back button + Session name */}
+                <div className="flex items-center gap-3 md:hidden">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => router.push(`/projects/${projectName}/sessions`)}
+                    className="h-8 w-8 p-0"
+                  >
+                    <ArrowLeft className="h-4 w-4" />
+                  </Button>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium truncate max-w-[150px]">
+                      {session.spec.displayName || session.metadata.name}
+                    </span>
+                    <Badge
+                      className={getPhaseColor(
+                        session.status?.phase || "Pending",
+                      )}
+                    >
+                      {session.status?.phase || "Pending"}
+                    </Badge>
+                  </div>
+                </div>
+
+                {/* Desktop: Full breadcrumb */}
+                <div className="hidden md:block">
+                  <Breadcrumbs
+                    items={[
+                      { label: "Workspaces", href: "/projects" },
+                      { label: projectName, href: `/projects/${projectName}` },
+                      {
+                        label: "Sessions",
+                        href: `/projects/${projectName}/sessions`,
+                      },
+                      {
+                        label: session.spec.displayName || session.metadata.name,
+                        rightIcon: (
+                          <Badge
+                            className={getPhaseColor(
+                              session.status?.phase || "Pending",
+                            )}
+                          >
+                            {session.status?.phase || "Pending"}
+                          </Badge>
+                        ),
+                      },
+                    ]}
+                  />
+                </div>
+
+                {/* Kebab menu (both mobile and desktop) */}
+                <SessionHeader
+                  session={session}
+                  projectName={projectName}
+                  actionLoading={
+                    stopMutation.isPending
+                      ? "stopping"
+                      : deleteMutation.isPending
+                        ? "deleting"
+                        : continueMutation.isPending
+                          ? "resuming"
+                          : null
+                  }
+                  onRefresh={refetchSession}
+                  onStop={handleStop}
+                  onContinue={handleContinue}
+                  onDelete={handleDelete}
+                  durationMs={durationMs}
+                  k8sResources={k8sResources}
+                  messageCount={messages.length}
+                  renderMode="kebab-only"
+                />
+              </div>
             </div>
           </div>
+        </div>
+
+        {/* Mobile: Options menu button (below header border) */}
+        <div className="md:hidden px-6 py-1 bg-card border-b">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            className="h-8 w-8 p-0"
+          >
+            <SlidersHorizontal className="h-4 w-4" />
+          </Button>
         </div>
 
         {/* Main content area */}
         <div className="flex-grow overflow-hidden bg-card">
           <div className="h-full">
             <div className="h-full flex gap-6">
+              {/* Mobile sidebar overlay */}
+              {mobileMenuOpen && (
+                <div 
+                  className="fixed inset-0 bg-background/80 backdrop-blur-sm z-40 md:hidden"
+                  onClick={() => setMobileMenuOpen(false)}
+                />
+              )}
+
               {/* Left Column - Accordions */}
-              <div className="flex-[0_0_400px] min-w-[350px] max-w-[500px] flex flex-col sticky top-0 self-start h-[calc(100vh-8rem)] overflow-y-auto pt-6 pl-6 bg-card">
+              <div className={cn(
+                "flex-[0_0_400px] min-w-[350px] max-w-[500px] flex flex-col sticky top-0 self-start h-[calc(100vh-8rem)] overflow-y-auto pt-6 pl-6 pr-6 bg-card",
+                "md:flex md:pr-0",
+                mobileMenuOpen ? "fixed left-0 top-16 z-50 shadow-lg" : "hidden"
+              )}>
+                {/* Mobile close button */}
+                <div className="md:hidden flex justify-end mb-4">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="h-8 w-8 p-0"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
                 {/* Blocking overlay when first message hasn't loaded and session is pending */}
                 {!firstMessageLoaded &&
                   session?.status?.phase === "Pending" && (
@@ -1185,8 +1256,8 @@ export default function ProjectSessionDetailPage({
 
               {/* Right Column - Messages */}
               <div className="flex-1 min-w-0 flex flex-col">
-                <Card className="relative flex-1 flex flex-col overflow-hidden pb-4 border-0 rounded-none border-l">
-                  <CardContent className="px-3 pt-3 pb-0 flex-1 flex flex-col overflow-hidden">
+                <Card className="relative flex-1 flex flex-col overflow-hidden py-0 border-0 rounded-none md:border-l">
+                  <CardContent className="px-3 pt-0 pb-0 flex-1 flex flex-col overflow-hidden">
                     {/* Workflow activation overlay */}
                     {workflowManagement.workflowActivating && (
                       <div className="absolute inset-0 bg-background/90 backdrop-blur-sm z-10 flex items-center justify-center rounded-lg">

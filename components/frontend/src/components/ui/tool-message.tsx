@@ -216,8 +216,8 @@ export const ToolMessage = React.forwardRef<HTMLDivElement, ToolMessageProps>(
                 </span>
               </div>
             ) : (
-              <div className="w-6 h-6 rounded-full flex items-center justify-center bg-purple-600">
-                <Cog className="w-3 h-3 text-white" />
+              <div className="w-8 h-8 rounded-full flex items-center justify-center bg-purple-600">
+                <Cog className="w-4 h-4 text-white" />
               </div>
             )}
           </div>
