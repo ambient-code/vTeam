@@ -104,9 +104,9 @@ export function WorkflowsAccordion({
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">
-                        <div className="flex flex-col items-start gap-0.5 py-1">
+                        <div className="flex flex-col items-start gap-0.5 py-1 max-w-[400px]">
                           <span>General chat</span>
-                          <span className="text-xs text-muted-foreground font-normal">
+                          <span className="text-xs text-muted-foreground font-normal line-clamp-2">
                             A general chat session with no structured workflow.
                           </span>
                         </div>
@@ -117,9 +117,9 @@ export function WorkflowsAccordion({
                           value={workflow.id}
                           disabled={!workflow.enabled}
                         >
-                          <div className="flex flex-col items-start gap-0.5 py-1">
+                          <div className="flex flex-col items-start gap-0.5 py-1 max-w-[400px]">
                             <span>{workflow.name}</span>
-                            <span className="text-xs text-muted-foreground font-normal">
+                            <span className="text-xs text-muted-foreground font-normal line-clamp-2">
                               {workflow.description}
                             </span>
                           </div>
@@ -127,9 +127,9 @@ export function WorkflowsAccordion({
                       ))}
                       <SelectSeparator />
                       <SelectItem value="custom">
-                        <div className="flex flex-col items-start gap-0.5 py-1">
+                        <div className="flex flex-col items-start gap-0.5 py-1 max-w-[400px]">
                           <span>Custom workflow...</span>
-                          <span className="text-xs text-muted-foreground font-normal">
+                          <span className="text-xs text-muted-foreground font-normal line-clamp-2">
                             Load a workflow from a custom Git repository
                           </span>
                         </div>

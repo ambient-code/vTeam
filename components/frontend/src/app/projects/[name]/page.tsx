@@ -2,11 +2,12 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
-import { Star, Settings, Users, RefreshCw } from 'lucide-react';
+import { Star, Settings, Users, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { PageHeader } from '@/components/page-header';
 import { Breadcrumbs } from '@/components/breadcrumbs';
 
@@ -48,8 +49,13 @@ export default function ProjectDetailsPage() {
     return (
       <div className="container mx-auto p-6">
         <div className="flex items-center justify-center h-64">
-          <RefreshCw className="animate-spin h-8 w-8" />
-          <span className="ml-2">Loading workspace...</span>
+          <Alert className="max-w-md mx-4">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            <AlertTitle>Loading Workspace...</AlertTitle>
+            <AlertDescription>
+              <p>Please wait while the workspace is loading...</p>
+            </AlertDescription>
+          </Alert>
         </div>
       </div>
     );
@@ -58,25 +64,31 @@ export default function ProjectDetailsPage() {
   return (
     <div className="min-h-screen bg-background">
       {/* Sticky header */}
-      <div className="sticky top-0 z-20 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 border-b">
-        <div className="container mx-auto px-6 py-4">
+      <div className="sticky top-0 z-20 bg-card border-b">
+        <div className="px-6 py-4">
           <Breadcrumbs
             items={[
               { label: 'Workspaces', href: '/projects' },
               { label: projectName },
             ]}
-            className="mb-4"
-          />
-          <PageHeader
-            title={project?.displayName || projectName}
-            description={project?.description || 'Workspace details and configuration'}
           />
         </div>
       </div>
 
       <div className="container mx-auto p-0">
+        {/* Title and Description */}
+        <div className="px-6 pt-6 pb-4">
+          <PageHeader
+            title={project?.displayName || projectName}
+            description={project?.description || 'Workspace details and configuration'}
+          />
+        </div>
+
+        {/* Divider */}
+        <hr className="border-t mx-6 mb-6" />
+
         {/* Content */}
-        <div className="px-6 pt-4 flex gap-6">
+        <div className="px-6 flex gap-6">
           {/* Sidebar Navigation */}
           <aside className="w-56 shrink-0">
             <Card>

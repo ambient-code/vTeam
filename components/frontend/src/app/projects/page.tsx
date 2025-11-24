@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
-import { Plus, RefreshCw, Trash2, FolderOpen } from 'lucide-react';
+import { Plus, RefreshCw, Trash2, FolderOpen, Loader2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -13,6 +13,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
   Table,
   TableBody,
@@ -73,8 +74,13 @@ export default function ProjectsPage() {
       <div className="min-h-screen bg-background">
         <div className="container mx-auto p-6">
           <div className="flex items-center justify-center h-64">
-            <RefreshCw className="h-8 w-8 animate-spin" />
-            <span className="ml-2 text-foreground">Loading workspaces...</span>
+            <Alert className="max-w-md mx-4">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <AlertTitle>Loading Workspaces...</AlertTitle>
+              <AlertDescription>
+                <p>Gathering information on existing workspaces.</p>
+              </AlertDescription>
+            </Alert>
           </div>
         </div>
       </div>
