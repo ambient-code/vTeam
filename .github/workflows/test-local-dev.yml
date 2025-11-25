@@ -103,47 +103,47 @@ jobs:
       if: always()
       run: |
         echo "=== Namespace ==="
-        kubectl get namespace ambient-code || true
+        kubectl get namespace ambient-code 2>&1 || echo "(Namespace not found - may not have been created)"
         
         echo ""
         echo "=== Deployments ==="
-        kubectl get deployments -n ambient-code -o wide || true
+        kubectl get deployments -n ambient-code -o wide 2>&1 || echo "(No deployments found or namespace does not exist)"
         
         echo ""
         echo "=== ReplicaSets ==="
-        kubectl get replicasets -n ambient-code -o wide || true
+        kubectl get replicasets -n ambient-code -o wide 2>&1 || echo "(No replicasets found or namespace does not exist)"
         
         echo ""
         echo "=== Pods ==="
-        kubectl get pods -n ambient-code -o wide || true
+        kubectl get pods -n ambient-code -o wide 2>&1 || echo "(No pods found or namespace does not exist)"
         
         echo ""
         echo "=== Services ==="
-        kubectl get svc -n ambient-code || true
+        kubectl get svc -n ambient-code 2>&1 || echo "(No services found or namespace does not exist)"
         
         echo ""
         echo "=== Ingress ==="
-        kubectl get ingress -n ambient-code || true
+        kubectl get ingress -n ambient-code 2>&1 || echo "(No ingress found or namespace does not exist)"
         
         echo ""
         echo "=== CRDs ==="
-        kubectl get crd | grep vteam || true
+        kubectl get crd 2>&1 | grep vteam || echo "(No vteam CRDs found)"
         
         echo ""
         echo "=== Events (last 30) ==="
-        kubectl get events -n ambient-code --sort-by='.lastTimestamp' | tail -30 || true
+        kubectl get events -n ambient-code --sort-by='.lastTimestamp' 2>&1 | tail -30 || echo "(No events found or namespace does not exist)"
         
         echo ""
         echo "=== Deployment describe (if no pods) ==="
         if ! kubectl get pods -n ambient-code 2>/dev/null | grep -q "backend-api\|frontend\|agentic-operator"; then
           echo "No pods found - describing deployments for details:"
-          kubectl describe deployment backend-api -n ambient-code 2>/dev/null | tail -50 || true
-          kubectl describe deployment frontend -n ambient-code 2>/dev/null | tail -50 || true
-          kubectl describe deployment agentic-operator -n ambient-code 2>/dev/null | tail -50 || true
+          kubectl describe deployment backend-api -n ambient-code 2>&1 | tail -50 || echo "(backend-api deployment not found)"
+          kubectl describe deployment frontend -n ambient-code 2>&1 | tail -50 || echo "(frontend deployment not found)"
+          kubectl describe deployment agentic-operator -n ambient-code 2>&1 | tail -50 || echo "(agentic-operator deployment not found)"
         fi
     
     - name: Cleanup
       if: always()
       run: |
         echo "Cleaning up using Makefile..."
-        make local-clean || true
+        make local-clean 2>&1 || echo "(Cleanup failed or cluster already removed)"
