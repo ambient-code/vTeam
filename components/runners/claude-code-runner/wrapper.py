@@ -1822,8 +1822,6 @@ class ClaudeCodeAdapter:
         The .mcp.json file should be located at:
         /app/claude-runner/.mcp.json (in the container)
 
-        Only allows http and sse type MCP servers.
-
         Returns the parsed MCP servers configuration dict, or None if not found.
         """
         try:
@@ -1835,12 +1833,7 @@ class ClaudeCodeAdapter:
                 with open(runner_mcp_file, 'r') as f:
                     config = _json.load(f)
                     all_servers = config.get('mcpServers', {})
-                    filtered_servers = self._filter_mcp_servers(all_servers)
-                    if filtered_servers:
-                        logging.info(f"MCP servers loaded: {list(filtered_servers.keys())}")
-                        return filtered_servers
-                    logging.info("No valid MCP servers found after filtering")
-                    return None
+                    return all_servers
             else:
                 logging.info("No .mcp.json file found in runner directory")
                 return None
