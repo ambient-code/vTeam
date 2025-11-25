@@ -116,7 +116,7 @@ export async function buildForwardHeadersAsync(request: Request, extra?: Record<
     if (!headers['X-Forwarded-User']) headers['X-Forwarded-User'] = mockUser;
     if (!headers['X-Forwarded-Preferred-Username']) headers['X-Forwarded-Preferred-Username'] = mockUser;
     if (!headers['X-Forwarded-Email']) headers['X-Forwarded-Email'] = `${mockUser}@local.dev`;
-    if (!headers['X-Forwarded-Access-Token']) headers['X-Forwarded-Access-Token'] = 'mock-token-local-dev';
+    if (!headers['X-Forwarded-Access-Token']) headers['X-Forwarded-Access-Token'] = 'mock-token-for-local-dev';
     return headers;
   }
 
