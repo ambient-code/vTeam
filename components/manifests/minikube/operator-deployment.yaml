@@ -20,9 +20,14 @@ spec:
         runAsNonRoot: true
         runAsUser: 1000
         fsGroup: 1000
+      volumes:
+      - name: vertex-key
+        secret:
+          secretName: ambient-vertex
+          optional: true
       containers:
       - name: agentic-operator
-        image: vteam-operator:latest
+        image: localhost/vteam-operator:latest
         imagePullPolicy: Never
         securityContext:
           allowPrivilegeEscalation: false
@@ -30,6 +35,10 @@ spec:
             drop:
             - ALL
           readOnlyRootFilesystem: false
+        volumeMounts:
+        - name: vertex-key
+          mountPath: /app/vertex
+          readOnly: true
         env:
         - name: NAMESPACE
           valueFrom:
@@ -42,11 +51,14 @@ spec:
         - name: BACKEND_API_URL
           value: "http://backend-service:8080/api"
         - name: AMBIENT_CODE_RUNNER_IMAGE
-          value: "vteam-claude-runner:latest"
+          value: "localhost/vteam-claude-runner:latest"
         - name: CONTENT_SERVICE_IMAGE
-          value: "vteam-backend:latest"
+          value: "localhost/vteam-backend:latest"
         - name: IMAGE_PULL_POLICY
           value: "Never"
+        envFrom:
+        - configMapRef:
+            name: operator-config
         resources:
           requests:
             cpu: 50m

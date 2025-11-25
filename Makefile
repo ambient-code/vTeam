@@ -1,4 +1,4 @@
-.PHONY: help build-all build-frontend build-backend build-operator build-runner deploy clean registry-login push-all local-up local-down local-clean local-status local-rebuild local-reload-backend local-reload-frontend local-reload-operator test-all local-test-dev local-test-quick local-logs local-logs-backend local-logs-frontend local-logs-operator local-shell local-shell-frontend local-test local-url local-port-forward local-troubleshoot check-minikube check-kubectl dev-test-operator e2e-test e2e-setup e2e-clean validate-makefile lint-makefile check-shell makefile-health
+.PHONY: help build-all build-frontend build-backend build-operator build-runner deploy clean registry-login push-all local-up local-down local-clean local-status local-rebuild local-reload-backend local-reload-frontend local-reload-operator test-all local-test-dev local-test-quick local-logs local-logs-backend local-logs-frontend local-logs-operator local-shell local-shell-frontend local-test local-url local-port-forward local-stop-port-forward local-troubleshoot check-minikube check-kubectl dev-test-operator e2e-test e2e-setup e2e-clean validate-makefile lint-makefile check-shell makefile-health _create-operator-config _auto-port-forward _show-access-info _build-and-load
 
 # Default target
 .DEFAULT_GOAL := help
@@ -14,7 +14,7 @@ REGISTRY ?= quay.io/your-org
 FRONTEND_IMAGE ?= vteam-frontend:latest
 BACKEND_IMAGE ?= vteam-backend:latest
 OPERATOR_IMAGE ?= vteam-operator:latest
-RUNNER_IMAGE ?= vteam-runner:latest
+RUNNER_IMAGE ?= vteam-claude-runner:latest
 
 # Colors for output
 COLOR_RESET := \033[0m
@@ -103,7 +103,7 @@ local-up: check-minikube check-kubectl ## Start local development environment (m
 	@echo "$(COLOR_BOLD)🚀 Starting Ambient Code Platform Local Environment$(COLOR_RESET)"
 	@echo ""
 	@echo "$(COLOR_BLUE)▶$(COLOR_RESET) Step 1/8: Starting minikube..."
-	@minikube start --memory=4096 --cpus=2 2>/dev/null || \
+	@minikube start --driver=podman --memory=4096 --cpus=2 --kubernetes-version=v1.28.3 --container-runtime=cri-o 2>/dev/null || \
 		(minikube status >/dev/null 2>&1 && echo "$(COLOR_GREEN)✓$(COLOR_RESET) Minikube already running") || \
 		(echo "$(COLOR_RED)✗$(COLOR_RESET) Failed to start minikube" && exit 1)
 	@echo "$(COLOR_BLUE)▶$(COLOR_RESET) Step 2/8: Enabling addons..."
@@ -119,10 +119,12 @@ local-up: check-minikube check-kubectl ## Start local development environment (m
 	@kubectl apply -f components/manifests/minikube/local-dev-rbac.yaml >/dev/null 2>&1 || true
 	@echo "$(COLOR_BLUE)▶$(COLOR_RESET) Step 6/8: Creating storage..."
 	@kubectl apply -f components/manifests/base/workspace-pvc.yaml -n $(NAMESPACE) >/dev/null 2>&1 || true
+	@echo "$(COLOR_BLUE)▶$(COLOR_RESET) Step 6.5/8: Configuring operator..."
+	@$(MAKE) --no-print-directory _create-operator-config
 	@echo "$(COLOR_BLUE)▶$(COLOR_RESET) Step 7/8: Deploying services..."
 	@kubectl apply -f components/manifests/minikube/backend-deployment.yaml >/dev/null 2>&1
 	@kubectl apply -f components/manifests/minikube/backend-service.yaml >/dev/null 2>&1
-	@kubectl apply -f components/manifests/minikube/frontend-deployment-dev.yaml >/dev/null 2>&1
+	@kubectl apply -f components/manifests/minikube/frontend-deployment.yaml >/dev/null 2>&1
 	@kubectl apply -f components/manifests/minikube/frontend-service.yaml >/dev/null 2>&1
 	@kubectl apply -f components/manifests/minikube/operator-deployment.yaml >/dev/null 2>&1
 	@echo "$(COLOR_BLUE)▶$(COLOR_RESET) Step 8/8: Setting up ingress..."
@@ -133,6 +135,7 @@ local-up: check-minikube check-kubectl ## Start local development environment (m
 	@echo "$(COLOR_GREEN)✓ Ambient Code Platform is starting up!$(COLOR_RESET)"
 	@echo ""
 	@$(MAKE) --no-print-directory _show-access-info
+	@$(MAKE) --no-print-directory _auto-port-forward
 	@echo ""
 	@echo "$(COLOR_YELLOW)⚠  Next steps:$(COLOR_RESET)"
 	@echo "  • Wait ~30s for pods to be ready"
@@ -141,12 +144,14 @@ local-up: check-minikube check-kubectl ## Start local development environment (m
 
 local-down: check-kubectl ## Stop Ambient Code Platform (keep minikube running)
 	@echo "$(COLOR_BLUE)▶$(COLOR_RESET) Stopping Ambient Code Platform..."
+	@$(MAKE) --no-print-directory local-stop-port-forward
 	@kubectl delete namespace $(NAMESPACE) --ignore-not-found=true --timeout=60s
 	@echo "$(COLOR_GREEN)✓$(COLOR_RESET) Ambient Code Platform stopped (minikube still running)"
 	@echo "  To stop minikube: $(COLOR_BOLD)make local-clean$(COLOR_RESET)"
 
 local-clean: check-minikube ## Delete minikube cluster completely
 	@echo "$(COLOR_BLUE)▶$(COLOR_RESET) Deleting minikube cluster..."
+	@$(MAKE) --no-print-directory local-stop-port-forward
 	@minikube delete
 	@echo "$(COLOR_GREEN)✓$(COLOR_RESET) Minikube cluster deleted"
 
@@ -173,26 +178,57 @@ local-rebuild: ## Rebuild and reload all components
 local-reload-backend: ## Rebuild and reload backend only
 	@echo "$(COLOR_BLUE)▶$(COLOR_RESET) Rebuilding backend..."
 	@cd components/backend && $(CONTAINER_ENGINE) build -t $(BACKEND_IMAGE) . >/dev/null 2>&1
-	@minikube image load $(BACKEND_IMAGE) >/dev/null 2>&1
+	@$(CONTAINER_ENGINE) tag $(BACKEND_IMAGE) localhost/$(BACKEND_IMAGE) 2>/dev/null || true
+	@$(CONTAINER_ENGINE) save -o /tmp/backend-reload.tar localhost/$(BACKEND_IMAGE)
+	@minikube image load /tmp/backend-reload.tar >/dev/null 2>&1
+	@rm -f /tmp/backend-reload.tar
 	@echo "$(COLOR_BLUE)▶$(COLOR_RESET) Restarting backend..."
 	@kubectl rollout restart deployment/backend-api -n $(NAMESPACE) >/dev/null 2>&1
 	@kubectl rollout status deployment/backend-api -n $(NAMESPACE) --timeout=60s
 	@echo "$(COLOR_GREEN)✓$(COLOR_RESET) Backend reloaded"
+	@OS=$$(uname -s); \
+	if [ "$$OS" = "Darwin" ] && [ "$(CONTAINER_ENGINE)" = "podman" ]; then \
+		echo "$(COLOR_BLUE)▶$(COLOR_RESET) Restarting backend port forward..."; \
+		if [ -f /tmp/ambient-code/port-forward-backend.pid ]; then \
+			kill $$(cat /tmp/ambient-code/port-forward-backend.pid) 2>/dev/null || true; \
+		fi; \
+		kubectl port-forward -n $(NAMESPACE) svc/backend-service 8080:8080 > /tmp/ambient-code/port-forward-backend.log 2>&1 & \
+		echo $$! > /tmp/ambient-code/port-forward-backend.pid; \
+		sleep 2; \
+		echo "$(COLOR_GREEN)✓$(COLOR_RESET) Backend port forward restarted"; \
+	fi
 
 local-reload-frontend: ## Rebuild and reload frontend only
 	@echo "$(COLOR_BLUE)▶$(COLOR_RESET) Rebuilding frontend..."
-	@cd components/frontend && $(CONTAINER_ENGINE) build -t vteam-frontend-dev:latest -f Dockerfile.dev . >/dev/null 2>&1
-	@minikube image load vteam-frontend-dev:latest >/dev/null 2>&1
+	@cd components/frontend && $(CONTAINER_ENGINE) build -t $(FRONTEND_IMAGE) . >/dev/null 2>&1
+	@$(CONTAINER_ENGINE) tag $(FRONTEND_IMAGE) localhost/$(FRONTEND_IMAGE) 2>/dev/null || true
+	@$(CONTAINER_ENGINE) save -o /tmp/frontend-reload.tar localhost/$(FRONTEND_IMAGE)
+	@minikube image load /tmp/frontend-reload.tar >/dev/null 2>&1
+	@rm -f /tmp/frontend-reload.tar
 	@echo "$(COLOR_BLUE)▶$(COLOR_RESET) Restarting frontend..."
 	@kubectl rollout restart deployment/frontend -n $(NAMESPACE) >/dev/null 2>&1
 	@kubectl rollout status deployment/frontend -n $(NAMESPACE) --timeout=60s
 	@echo "$(COLOR_GREEN)✓$(COLOR_RESET) Frontend reloaded"
+	@OS=$$(uname -s); \
+	if [ "$$OS" = "Darwin" ] && [ "$(CONTAINER_ENGINE)" = "podman" ]; then \
+		echo "$(COLOR_BLUE)▶$(COLOR_RESET) Restarting frontend port forward..."; \
+		if [ -f /tmp/ambient-code/port-forward-frontend.pid ]; then \
+			kill $$(cat /tmp/ambient-code/port-forward-frontend.pid) 2>/dev/null || true; \
+		fi; \
+		kubectl port-forward -n $(NAMESPACE) svc/frontend-service 3000:3000 > /tmp/ambient-code/port-forward-frontend.log 2>&1 & \
+		echo $$! > /tmp/ambient-code/port-forward-frontend.pid; \
+		sleep 2; \
+		echo "$(COLOR_GREEN)✓$(COLOR_RESET) Frontend port forward restarted"; \
+	fi
 
 
 local-reload-operator: ## Rebuild and reload operator only
 	@echo "$(COLOR_BLUE)▶$(COLOR_RESET) Rebuilding operator..."
 	@cd components/operator && $(CONTAINER_ENGINE) build -t $(OPERATOR_IMAGE) . >/dev/null 2>&1
-	@minikube image load $(OPERATOR_IMAGE) >/dev/null 2>&1
+	@$(CONTAINER_ENGINE) tag $(OPERATOR_IMAGE) localhost/$(OPERATOR_IMAGE) 2>/dev/null || true
+	@$(CONTAINER_ENGINE) save -o /tmp/operator-reload.tar localhost/$(OPERATOR_IMAGE)
+	@minikube image load /tmp/operator-reload.tar >/dev/null 2>&1
+	@rm -f /tmp/operator-reload.tar
 	@echo "$(COLOR_BLUE)▶$(COLOR_RESET) Restarting operator..."
 	@kubectl rollout restart deployment/agentic-operator -n $(NAMESPACE) >/dev/null 2>&1
 	@kubectl rollout status deployment/agentic-operator -n $(NAMESPACE) --timeout=60s
@@ -373,12 +409,30 @@ check-kubectl: ## Check if kubectl is installed
 		(echo "$(COLOR_RED)✗$(COLOR_RESET) kubectl not found. Install: https://kubernetes.io/docs/tasks/tools/" && exit 1)
 
 _build-and-load: ## Internal: Build and load images
+	@echo "  Building backend..."
 	@$(CONTAINER_ENGINE) build -t $(BACKEND_IMAGE) components/backend >/dev/null 2>&1
-	@$(CONTAINER_ENGINE) build -t vteam-frontend-dev:latest -f components/frontend/Dockerfile.dev components/frontend >/dev/null 2>&1
+	@echo "  Building frontend..."
+	@$(CONTAINER_ENGINE) build -t $(FRONTEND_IMAGE) components/frontend >/dev/null 2>&1
+	@echo "  Building operator..."
 	@$(CONTAINER_ENGINE) build -t $(OPERATOR_IMAGE) components/operator >/dev/null 2>&1
-	@minikube image load $(BACKEND_IMAGE) >/dev/null 2>&1
-	@minikube image load vteam-frontend-dev:latest >/dev/null 2>&1
-	@minikube image load $(OPERATOR_IMAGE) >/dev/null 2>&1
+	@echo "  Building runner..."
+	@$(CONTAINER_ENGINE) build -t $(RUNNER_IMAGE) -f components/runners/claude-code-runner/Dockerfile components/runners >/dev/null 2>&1
+	@echo "  Tagging images with localhost prefix..."
+	@$(CONTAINER_ENGINE) tag $(BACKEND_IMAGE) localhost/$(BACKEND_IMAGE) 2>/dev/null || true
+	@$(CONTAINER_ENGINE) tag $(FRONTEND_IMAGE) localhost/$(FRONTEND_IMAGE) 2>/dev/null || true
+	@$(CONTAINER_ENGINE) tag $(OPERATOR_IMAGE) localhost/$(OPERATOR_IMAGE) 2>/dev/null || true
+	@$(CONTAINER_ENGINE) tag $(RUNNER_IMAGE) localhost/$(RUNNER_IMAGE) 2>/dev/null || true
+	@echo "  Loading images into minikube..."
+	@mkdir -p /tmp/minikube-images
+	@$(CONTAINER_ENGINE) save -o /tmp/minikube-images/backend.tar localhost/$(BACKEND_IMAGE)
+	@$(CONTAINER_ENGINE) save -o /tmp/minikube-images/frontend.tar localhost/$(FRONTEND_IMAGE)
+	@$(CONTAINER_ENGINE) save -o /tmp/minikube-images/operator.tar localhost/$(OPERATOR_IMAGE)
+	@$(CONTAINER_ENGINE) save -o /tmp/minikube-images/runner.tar localhost/$(RUNNER_IMAGE)
+	@minikube image load /tmp/minikube-images/backend.tar >/dev/null 2>&1
+	@minikube image load /tmp/minikube-images/frontend.tar >/dev/null 2>&1
+	@minikube image load /tmp/minikube-images/operator.tar >/dev/null 2>&1
+	@minikube image load /tmp/minikube-images/runner.tar >/dev/null 2>&1
+	@rm -rf /tmp/minikube-images
 	@echo "$(COLOR_GREEN)✓$(COLOR_RESET) Images built and loaded"
 
 _restart-all: ## Internal: Restart all deployments
@@ -388,18 +442,118 @@ _restart-all: ## Internal: Restart all deployments
 
 _show-access-info: ## Internal: Show access information
 	@echo "$(COLOR_BOLD)🌐 Access URLs:$(COLOR_RESET)"
-	@MINIKUBE_IP=$$(minikube ip 2>/dev/null) && \
-		echo "  Frontend: $(COLOR_BLUE)http://$$MINIKUBE_IP:30030$(COLOR_RESET)" && \
-		echo "  Backend:  $(COLOR_BLUE)http://$$MINIKUBE_IP:30080$(COLOR_RESET)" || \
-		echo "  $(COLOR_RED)✗$(COLOR_RESET) Cannot get minikube IP"
-	@echo ""
-	@echo "$(COLOR_BOLD)Alternative:$(COLOR_RESET) Port forward for localhost access"
-	@echo "  Run: $(COLOR_BOLD)make local-port-forward$(COLOR_RESET)"
-	@echo "  Then access:"
-	@echo "    Frontend: $(COLOR_BLUE)http://localhost:3000$(COLOR_RESET)"
-	@echo "    Backend:  $(COLOR_BLUE)http://localhost:8080$(COLOR_RESET)"
+	@OS=$$(uname -s); \
+	if [ "$$OS" = "Darwin" ] && [ "$(CONTAINER_ENGINE)" = "podman" ]; then \
+		echo "  $(COLOR_YELLOW)Note:$(COLOR_RESET) Port forwarding will start automatically"; \
+		echo "  Once pods are ready, access at:"; \
+		echo "     Frontend: $(COLOR_BLUE)http://localhost:3000$(COLOR_RESET)"; \
+		echo "     Backend:  $(COLOR_BLUE)http://localhost:8080$(COLOR_RESET)"; \
+		echo ""; \
+		echo "  $(COLOR_BOLD)To manage port forwarding:$(COLOR_RESET)"; \
+		echo "    Stop:    $(COLOR_BOLD)make local-stop-port-forward$(COLOR_RESET)"; \
+		echo "    Restart: $(COLOR_BOLD)make local-port-forward$(COLOR_RESET)"; \
+	else \
+		MINIKUBE_IP=$$(minikube ip 2>/dev/null) && \
+			echo "  Frontend: $(COLOR_BLUE)http://$$MINIKUBE_IP:30030$(COLOR_RESET)" && \
+			echo "  Backend:  $(COLOR_BLUE)http://$$MINIKUBE_IP:30080$(COLOR_RESET)" || \
+			echo "  $(COLOR_RED)✗$(COLOR_RESET) Cannot get minikube IP"; \
+		echo ""; \
+		echo "$(COLOR_BOLD)Alternative:$(COLOR_RESET) Port forward for localhost access"; \
+		echo "  Run: $(COLOR_BOLD)make local-port-forward$(COLOR_RESET)"; \
+		echo "  Then access:"; \
+		echo "    Frontend: $(COLOR_BLUE)http://localhost:3000$(COLOR_RESET)"; \
+		echo "    Backend:  $(COLOR_BLUE)http://localhost:8080$(COLOR_RESET)"; \
+	fi
 	@echo ""
 	@echo "$(COLOR_YELLOW)⚠  SECURITY NOTE:$(COLOR_RESET) Authentication is DISABLED for local development."
+
+_create-operator-config: ## Internal: Create operator config from environment variables
+	@VERTEX_PROJECT_ID=$${ANTHROPIC_VERTEX_PROJECT_ID:-""}; \
+	VERTEX_KEY_FILE=$${GOOGLE_APPLICATION_CREDENTIALS:-""}; \
+	ADC_FILE="$$HOME/.config/gcloud/application_default_credentials.json"; \
+	CLOUD_REGION=$${CLOUD_ML_REGION:-"global"}; \
+	USE_VERTEX="0"; \
+	AUTH_METHOD="none"; \
+	if [ -n "$$VERTEX_PROJECT_ID" ]; then \
+		if [ -n "$$VERTEX_KEY_FILE" ] && [ -f "$$VERTEX_KEY_FILE" ]; then \
+			USE_VERTEX="1"; \
+			AUTH_METHOD="service-account"; \
+			echo "  $(COLOR_GREEN)✓$(COLOR_RESET) Found Vertex AI config (service account)"; \
+			echo "    Project: $$VERTEX_PROJECT_ID"; \
+			echo "    Region: $$CLOUD_REGION"; \
+			kubectl delete secret ambient-vertex -n $(NAMESPACE) 2>/dev/null || true; \
+			kubectl create secret generic ambient-vertex \
+				--from-file=ambient-code-key.json="$$VERTEX_KEY_FILE" \
+				-n $(NAMESPACE) >/dev/null 2>&1; \
+		elif [ -f "$$ADC_FILE" ]; then \
+			USE_VERTEX="1"; \
+			AUTH_METHOD="adc"; \
+			echo "  $(COLOR_GREEN)✓$(COLOR_RESET) Found Vertex AI config (gcloud ADC)"; \
+			echo "    Project: $$VERTEX_PROJECT_ID"; \
+			echo "    Region: $$CLOUD_REGION"; \
+			echo "    Using: Application Default Credentials"; \
+			kubectl delete secret ambient-vertex -n $(NAMESPACE) 2>/dev/null || true; \
+			kubectl create secret generic ambient-vertex \
+				--from-file=ambient-code-key.json="$$ADC_FILE" \
+				-n $(NAMESPACE) >/dev/null 2>&1; \
+		else \
+			echo "  $(COLOR_YELLOW)⚠$(COLOR_RESET)  ANTHROPIC_VERTEX_PROJECT_ID set but no credentials found"; \
+			echo "    Run: gcloud auth application-default login"; \
+			echo "    Or set: GOOGLE_APPLICATION_CREDENTIALS=/path/to/key.json"; \
+			echo "    Using direct Anthropic API for now"; \
+		fi; \
+	else \
+		echo "  $(COLOR_YELLOW)ℹ$(COLOR_RESET)  Vertex AI not configured"; \
+		echo "    To enable: export ANTHROPIC_VERTEX_PROJECT_ID=your-project-id"; \
+		echo "    Then run: gcloud auth application-default login"; \
+		echo "    Using direct Anthropic API (provide ANTHROPIC_API_KEY in workspace settings)"; \
+	fi; \
+	kubectl create configmap operator-config -n $(NAMESPACE) \
+		--from-literal=CLAUDE_CODE_USE_VERTEX="$$USE_VERTEX" \
+		--from-literal=CLOUD_ML_REGION="$$CLOUD_REGION" \
+		--from-literal=ANTHROPIC_VERTEX_PROJECT_ID="$$VERTEX_PROJECT_ID" \
+		--from-literal=GOOGLE_APPLICATION_CREDENTIALS="/app/vertex/ambient-code-key.json" \
+		--dry-run=client -o yaml | kubectl apply -f - >/dev/null 2>&1
+
+_auto-port-forward: ## Internal: Auto-start port forwarding on macOS with Podman
+	@OS=$$(uname -s); \
+	if [ "$$OS" = "Darwin" ] && [ "$(CONTAINER_ENGINE)" = "podman" ]; then \
+		echo ""; \
+		echo "$(COLOR_BLUE)▶$(COLOR_RESET) Starting port forwarding in background..."; \
+		echo "  Waiting for services to be ready..."; \
+		sleep 3; \
+		mkdir -p /tmp/ambient-code; \
+		kubectl port-forward -n $(NAMESPACE) svc/backend-service 8080:8080 > /tmp/ambient-code/port-forward-backend.log 2>&1 & \
+		echo $$! > /tmp/ambient-code/port-forward-backend.pid; \
+		kubectl port-forward -n $(NAMESPACE) svc/frontend-service 3000:3000 > /tmp/ambient-code/port-forward-frontend.log 2>&1 & \
+		echo $$! > /tmp/ambient-code/port-forward-frontend.pid; \
+		sleep 2; \
+		if ps -p $$(cat /tmp/ambient-code/port-forward-backend.pid 2>/dev/null) > /dev/null 2>&1 && \
+		   ps -p $$(cat /tmp/ambient-code/port-forward-frontend.pid 2>/dev/null) > /dev/null 2>&1; then \
+			echo "$(COLOR_GREEN)✓$(COLOR_RESET) Port forwarding started"; \
+			echo "  $(COLOR_BOLD)Wait ~30s for pods to be ready, then access:$(COLOR_RESET)"; \
+			echo "    Frontend: $(COLOR_BLUE)http://localhost:3000$(COLOR_RESET)"; \
+			echo "    Backend:  $(COLOR_BLUE)http://localhost:8080$(COLOR_RESET)"; \
+		else \
+			echo "$(COLOR_YELLOW)⚠$(COLOR_RESET)  Port forwarding started but may need time for pods"; \
+			echo "  If connection fails, wait for pods and run: $(COLOR_BOLD)make local-port-forward$(COLOR_RESET)"; \
+		fi; \
+	fi
+
+local-stop-port-forward: ## Stop background port forwarding
+	@if [ -f /tmp/ambient-code/port-forward-backend.pid ]; then \
+		echo "$(COLOR_BLUE)▶$(COLOR_RESET) Stopping port forwarding..."; \
+		if ps -p $$(cat /tmp/ambient-code/port-forward-backend.pid 2>/dev/null) > /dev/null 2>&1; then \
+			kill $$(cat /tmp/ambient-code/port-forward-backend.pid) 2>/dev/null || true; \
+			echo "  Stopped backend port forward"; \
+		fi; \
+		if ps -p $$(cat /tmp/ambient-code/port-forward-frontend.pid 2>/dev/null) > /dev/null 2>&1; then \
+			kill $$(cat /tmp/ambient-code/port-forward-frontend.pid) 2>/dev/null || true; \
+			echo "  Stopped frontend port forward"; \
+		fi; \
+		rm -f /tmp/ambient-code/port-forward-*.pid /tmp/ambient-code/port-forward-*.log; \
+		echo "$(COLOR_GREEN)✓$(COLOR_RESET) Port forwarding stopped"; \
+	fi
 
 ##@ E2E Testing
 e2e-test: ## Run complete e2e test suite (setup, deploy, test, cleanup)

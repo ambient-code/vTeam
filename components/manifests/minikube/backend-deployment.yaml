@@ -23,7 +23,7 @@ spec:
         fsGroup: 1000
       containers:
       - name: backend-api
-        image: vteam-backend:latest
+        image: localhost/vteam-backend:latest
         imagePullPolicy: Never
         securityContext:
           allowPrivilegeEscalation: false
@@ -50,7 +50,7 @@ spec:
         - name: SPEC_KIT_TEMPLATE
           value: "spec-kit-template-claude-sh"
         - name: CONTENT_SERVICE_IMAGE
-          value: "vteam-backend:latest"
+          value: "localhost/vteam-backend:latest"
         - name: IMAGE_PULL_POLICY
           value: "Never"
         - name: DISABLE_AUTH

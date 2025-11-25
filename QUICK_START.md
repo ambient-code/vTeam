@@ -8,8 +8,34 @@ Install these tools (one-time setup):
 
 ### macOS
 ```bash
+# Install tools
 brew install minikube kubectl podman
+
+# Check if you already have a podman machine
+podman machine list
 ```
+
+**If you see a machine already exists:**
+```bash
+# Check its memory (look for "MEMORY" column)
+podman machine list
+
+# If it has less than 6GB, reconfigure it:
+podman machine stop
+podman machine set --memory 6144
+podman machine set --rootful
+podman machine start
+```
+
+**If no machine exists yet:**
+```bash
+# Create a new podman machine with sufficient memory
+podman machine init --memory 6144 --cpus 4
+podman machine set --rootful
+podman machine start
+```
+
+**Why 6GB?** Kubernetes needs substantial memory for its control plane. Less than 6GB will cause startup failures.
 
 ### Linux
 ```bash
@@ -28,31 +54,124 @@ sudo apt install podman  # Ubuntu/Debian
 sudo dnf install podman  # Fedora/RHEL
 ```
 
-## Start vTeam
+**Note for Linux users**: Podman runs natively on Linux (no VM/machine needed). Just ensure your system has at least 6GB of free RAM for Kubernetes.
+
+## Configure Vertex AI (Optional, but recommended for ease of use)
+
+### 1. Authenticate with Google Cloud
+
+Note that if you have Claude Code working with Vertex AI, you have probably already done all of this:
+
+**Recommended: Use gcloud (easiest)**
+```bash
+# Install gcloud CLI if you haven't already
+# https://cloud.google.com/sdk/docs/install
+
+# Authenticate with your company Google account
+gcloud auth application-default login
+
+# Set your project (get this from your admin)
+export ANTHROPIC_VERTEX_PROJECT_ID="your-gcp-project-id"
+```
+
+**Alternative: Use a service account key file**
+```bash
+# If your admin provided a service account key file:
+export ANTHROPIC_VERTEX_PROJECT_ID="your-gcp-project-id"
+export GOOGLE_APPLICATION_CREDENTIALS="/path/to/your-key.json"
+```
+
+### 2. Make Configuration Persistent
+
+Add to your `~/.zshrc` or `~/.bashrc`:
+
+```bash
+# Vertex AI Configuration (for company work)
+export ANTHROPIC_VERTEX_PROJECT_ID="your-gcp-project-id"
+
+# Optional: Specify region (defaults to "global")
+export CLOUD_ML_REGION="global"
+
+# Optional: If using service account key instead of gcloud ADC
+# export GOOGLE_APPLICATION_CREDENTIALS="/path/to/key.json"
+```
+
+Then reload your shell:
+```bash
+source ~/.zshrc  # or source ~/.bashrc
+```
+
+**That's it!** `make local-up` will automatically detect your configuration.
+
+### 3. Verify Configuration
+
+```bash
+# Check your environment variables are set
+echo $ANTHROPIC_VERTEX_PROJECT_ID
+
+# Verify gcloud authentication
+gcloud auth application-default print-access-token
+
+# Or if using service account key:
+# ls -l $GOOGLE_APPLICATION_CREDENTIALS
+```
+
+**Alternative**: If you skip the Vertex AI setup above, you can set an `ANTHROPIC_API_KEY` in workspace settings instead.
+
+## Start Ambient Code Platform
 
 ```bash
 # Clone the repository
-git clone https://github.com/ambient-code/vTeam.git
-cd vTeam
+git clone https://github.com/ambient-code/platform.git
+cd platform
 
-# Start everything (builds images, starts minikube, deploys all components)
+# Start everything (automatically detects Vertex AI from environment)
 make local-up
 ```
 
 That's it! The command will:
 - ✅ Start minikube (if not running)
 - ✅ Build all container images
+- ✅ **Auto-detect Vertex AI** from environment variables
 - ✅ Deploy backend, frontend, and operator
 - ✅ Set up ingress and networking
+- ✅ **On macOS**: Automatically start port forwarding in background
+
+**What you'll see:**
+- ✅ "Found Vertex AI config in environment" → Using company Vertex AI
+- ⚠️ "Vertex AI not configured" → Using direct Anthropic API (workspace settings)
 
 ## Access the Application
 
-Get the access URL:
+### macOS with Podman (Automatic!)
+
+Port forwarding starts automatically. Just wait ~30 seconds for pods to be ready, then access:
+- **Frontend**: http://localhost:3000
+- **Backend**: http://localhost:8080
+
+**Stop port forwarding** if needed:
 ```bash
-make local-url
+make local-stop-port-forward
 ```
 
-Or use NodePort directly:
+**Restart port forwarding** if stopped:
+```bash
+make local-port-forward
+```
+
+### Linux or macOS with Docker
+
+**Option 1: Port Forwarding**
+```bash
+make local-port-forward
+```
+
+Then access:
+- **Frontend**: http://localhost:3000
+- **Backend**: http://localhost:8080
+
+**Option 2: NodePort (Direct access)**
+
 ```bash
 # Get minikube IP
 MINIKUBE_IP=$(minikube ip)
@@ -75,20 +194,23 @@ make local-status
 
 ```bash
 # View logs
-make local-logs              # Backend logs
-make local-logs-frontend     # Frontend logs
-make local-logs-operator     # Operator logs
+make local-logs              # All component logs
+make local-logs-backend      # Backend logs only
+make local-logs-frontend     # Frontend logs only
+make local-logs-operator     # Operator logs only
 
 # Rebuild and reload a component
 make local-reload-backend    # After changing backend code
 make local-reload-frontend   # After changing frontend code
 make local-reload-operator   # After changing operator code
 
-# Stop (keeps minikube running)
-make local-down
+# Port forwarding management (macOS)
+make local-stop-port-forward # Stop background port forwarding
+make local-port-forward      # Restart port forwarding (foreground)
 
-# Completely remove minikube cluster
-make local-clean
+# Cleanup
+make local-down              # Stop app (keeps minikube, stops port forwarding)
+make local-clean             # Delete minikube cluster completely
 ```
 
 ## What's Next?
@@ -99,6 +221,47 @@ make local-clean
 - **Read the full docs**: Check out [docs/LOCAL_DEVELOPMENT.md](docs/LOCAL_DEVELOPMENT.md)
 
 ## Troubleshooting
+
+### Podman machine has insufficient memory (macOS)?
+
+First, check your current memory allocation:
+```bash
+podman machine list
+# Look at the MEMORY column
+```
+
+If it shows less than 6GB (6144MB):
+```bash
+# Stop and reconfigure podman machine
+podman machine stop
+podman machine set --memory 6144
+podman machine start
+
+# Delete and restart minikube
+minikube delete
+make local-up
+```
+
+**Tip**: You can check if memory is the issue by looking for errors about "insufficient memory" or API server failures in `minikube logs`.
+
+### Minikube can't find a driver?
+
+**On macOS:**
+Make sure podman machine is running:
+```bash
+podman machine list
+# Should show "Currently running" in LAST UP column
+
+# If not running:
+podman machine start
+```
+
+**On Linux:**
+Podman should work natively. Verify it's installed:
+```bash
+podman --version
+podman ps  # Should not error
+```
 
 ### Pods not starting?
 ```bash
@@ -120,12 +283,78 @@ lsof -i :30080  # Backend
 
 ### Minikube issues?
 ```bash
-# Restart minikube
-minikube delete
-minikube start
+# Check minikube status
+minikube status
 
-# Then redeploy
+# Restart minikube cluster
+minikube delete
 make local-up
+
+# View detailed minikube logs if startup fails
+minikube logs
+```
+
+### Vertex AI authentication errors?
+
+Check your authentication and configuration:
+```bash
+# Verify environment variables are set
+echo $ANTHROPIC_VERTEX_PROJECT_ID
+
+# Check gcloud authentication (most common method)
+gcloud auth application-default print-access-token
+# Should print an access token (not an error)
+
+# Or if using service account key:
+echo $GOOGLE_APPLICATION_CREDENTIALS
+ls -l $GOOGLE_APPLICATION_CREDENTIALS
+
+# Check if the secret was created in Kubernetes
+kubectl get secret ambient-vertex -n ambient-code
+
+# Check the operator logs for authentication errors
+kubectl logs -n ambient-code -l app=agentic-operator --tail=50
+```
+
+**Common issues:**
+- **gcloud not authenticated**: Run `gcloud auth application-default login`
+- **Wrong project**: Check `$ANTHROPIC_VERTEX_PROJECT_ID` matches your GCP project
+- **Quota/permissions**: Ensure your account has Vertex AI API access
+- **Expired credentials**: Re-run `gcloud auth application-default login`
+
+If you need to update configuration:
+```bash
+# Re-authenticate with gcloud
+gcloud auth application-default login
+
+# Or update your environment variables in ~/.zshrc
+# Then reload and restart the platform
+source ~/.zshrc
+make local-down
+make local-up  # Will automatically pick up new configuration
+```
+
+### Can't access the application?
+
+**On macOS with Podman:**
+Port forwarding should have started automatically. Check if it's running:
+```bash
+# Check port forwarding status
+ps aux | grep "kubectl port-forward"
+
+# View port forwarding logs
+cat /tmp/ambient-code/port-forward-*.log
+
+# Restart if needed
+make local-stop-port-forward
+make local-port-forward
+```
+
+**On Linux or macOS with Docker:**
+Use NodePort with `minikube ip`:
+```bash
+curl http://$(minikube ip):30080/health
+open http://$(minikube ip):30030
 ```
 
 ### Need help?
@@ -156,12 +385,48 @@ DISABLE_AUTH: "true"       # Disables authentication
 
 These are set automatically in `components/manifests/minikube/` deployment files.
 
+### AI Access Configuration
+
+**Vertex AI** (Recommended for company work):
+- ✅ Set via environment variables (see setup above)
+- ✅ Automatically detected by `make local-up`
+- ✅ Company-issued service accounts
+- ✅ Approved for confidential/proprietary code
+- See [README.md](README.md) for advanced configuration
+
+**Direct Anthropic API** (Non-confidential data only):
+- ⚠️ Only for public repos or non-sensitive work
+- No environment variables needed
+- Provide `ANTHROPIC_API_KEY` in workspace settings when creating a project
+- Platform automatically uses this mode if Vertex AI env vars not set
+
+### Optional Integrations
+
+**GitHub App** (for OAuth login and repo browser):
+- Follow: [docs/GITHUB_APP_SETUP.md](docs/GITHUB_APP_SETUP.md)
+- Create secret: `kubectl create secret generic github-app-secret --from-literal=GITHUB_APP_ID=... -n ambient-code`
+- Restart backend: `make local-reload-backend`
+- **Note**: Not required for basic Git operations (use tokens in workspace settings)
+
+**Jira Integration** (per-workspace):
+- Configure directly in workspace settings UI
+- Provide: JIRA_URL, JIRA_EMAIL, JIRA_API_TOKEN
+- See: [components/manifests/GIT_AUTH_SETUP.md](components/manifests/GIT_AUTH_SETUP.md)
+
+**Git Tokens** (per-workspace):
+- For cloning/pushing to repositories
+- Configure in workspace settings UI
+- Can use GitHub personal access tokens or SSH keys
+- See: [components/manifests/GIT_AUTH_SETUP.md](components/manifests/GIT_AUTH_SETUP.md)
+
 ## Next Steps After Quick Start
 
-1. **Explore the UI**: http://$(minikube ip):30030
+1. **Explore the UI**: 
+   - Port forwarding (all): http://localhost:3000 (with `make local-port-forward` running)
+   - NodePort (Linux or macOS+Docker): http://$(minikube ip):30030
 2. **Create your first project**: Click "New Project" in the web interface
 3. **Submit an agentic session**: Try analyzing a codebase
-4. **Check the operator logs**: See how sessions are orchestrated
+4. **Check the operator logs**: `make local-logs-operator`
 5. **Read the architecture docs**: [CLAUDE.md](CLAUDE.md) for component details
 
 ---

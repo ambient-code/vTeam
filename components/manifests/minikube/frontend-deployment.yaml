@@ -22,7 +22,7 @@ spec:
         fsGroup: 1000
       containers:
       - name: frontend
-        image: vteam-frontend:latest
+        image: localhost/vteam-frontend:latest
         imagePullPolicy: Never
         securityContext:
           allowPrivilegeEscalation: false
