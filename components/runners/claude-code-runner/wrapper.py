@@ -15,6 +15,10 @@ from pathlib import Path
 from urllib.parse import urlparse, urlunparse
 from urllib import request as _urllib_request, error as _urllib_error
 
+# Set umask to make files readable by content service container
+# Creates files with mode 644 (rw-r--r--) instead of default 600 (rw-------)
+os.umask(0o022)
+
 # Add runner-shell to Python path
 sys.path.insert(0, '/app/runner-shell')
 

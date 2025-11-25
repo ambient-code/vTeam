@@ -32,8 +32,13 @@ ENV HOME=/app
 ENV SHELL=/bin/bash
 ENV TERM=xterm-256color
 
+# Set umask to make files readable by other containers (fixes content service access)
+# 0022 creates files as rw-r--r-- (644) instead of default rw------- (600)
+RUN echo "umask 0022" >> /etc/profile && \
+    echo "umask 0022" >> /root/.bashrc
+
 # OpenShift compatibility
 RUN chmod -R g=u /app && chmod -R g=u /usr/local && chmod g=u /etc/passwd
 
 # Default command - run via runner-shell
-CMD ["python", "/app/claude-runner/wrapper.py"]
+CMD ["/bin/bash", "-c", "umask 0022 && python /app/claude-runner/wrapper.py"]
