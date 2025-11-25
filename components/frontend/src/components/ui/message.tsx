@@ -2,7 +2,6 @@
 
 import React from "react";
 import { cn } from "@/lib/utils";
-import { Badge } from "@/components/ui/badge";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Components } from "react-markdown";
@@ -32,15 +31,25 @@ const defaultComponents: Components = {
     className?: string;
     children?: React.ReactNode;
   } & React.HTMLAttributes<HTMLElement>) => {
-    return inline ? (
-      <code
-        className="bg-muted px-1 py-0.5 rounded text-xs"
-        {...(props as React.HTMLAttributes<HTMLElement>)}
-      >
-        {children}
-      </code>
-    ) : (
-      <pre className="bg-muted text-foreground p-2 rounded text-xs overflow-x-auto border">
+    // Convert children to string to check length
+    const codeContent = String(children || '');
+    const isShortCode = codeContent.length <= 50 && !codeContent.includes('\n');
+    
+    // Treat short code blocks as inline
+    if (inline || isShortCode) {
+      return (
+        <code
+          className="bg-muted px-1.5 py-0.5 rounded text-xs font-mono"
+          {...(props as React.HTMLAttributes<HTMLElement>)}
+        >
+          {children}
+        </code>
+      );
+    }
+    
+    // Full code blocks for longer content
+    return (
+      <pre className="bg-muted text-foreground p-3 rounded text-xs overflow-x-auto border my-2">
         <code
           className={className}
           {...(props as React.HTMLAttributes<HTMLElement>)}
@@ -51,7 +60,7 @@ const defaultComponents: Components = {
     );
   },
   p: ({ children }) => (
-    <p className="text-muted-foreground leading-relaxed mb-2 text-sm">{children}</p>
+    <p className="text-muted-foreground leading-relaxed mb-0 text-sm">{children}</p>
   ),
   h1: ({ children }) => (
     <h1 className="text-lg font-bold text-foreground mb-2">{children}</h1>
@@ -61,6 +70,15 @@ const defaultComponents: Components = {
   ),
   h3: ({ children }) => (
     <h3 className="text-sm font-medium text-foreground mb-1">{children}</h3>
+  ),
+  ul: ({ children }) => (
+    <ul className="list-disc list-outside ml-4 mb-2 space-y-1 text-muted-foreground text-sm">{children}</ul>
+  ),
+  ol: ({ children }) => (
+    <ol className="list-decimal list-outside ml-4 mb-2 space-y-1 text-muted-foreground text-sm">{children}</ol>
+  ),
+  li: ({ children }) => (
+    <li className="leading-relaxed">{children}</li>
   ),
 };
 
@@ -157,7 +175,6 @@ export const Message = React.forwardRef<HTMLDivElement, MessageProps>(
     const isBot = role === "bot";
     const avatarBg = isBot ? "bg-blue-600" : "bg-green-600";
     const avatarText = isBot ? "AI" : "U";
-    const displayName = isBot ? "Claude AI" : "User";
 
     const avatar = (
       <div className="flex-shrink-0">
@@ -176,24 +193,17 @@ export const Message = React.forwardRef<HTMLDivElement, MessageProps>(
     )
 
     return (
-      <div ref={ref} className={cn("mb-4", className)} {...props}>
-        <div className="flex items-start space-x-3">
+      <div ref={ref} className={cn("mb-4", isBot && "mt-2", className)} {...props}>
+        <div className={cn("flex space-x-3", isBot ? "items-start" : "items-center justify-end")}>
           {/* Avatar */}
          {isBot ? avatar : null}
 
           {/* Message Content */}
-          <div className="flex-1 min-w-0">
-            <div className={cn(borderless ? "p-0" : "bg-card rounded-lg border shadow-sm p-3")}> 
-              {/* Header */}
-              <div className={cn("flex items-center", borderless ? "mb-1" : "mb-2")}> 
-                <Badge
-                  variant="outline"
-                  className={cn("text-xs", isLoading && "animate-pulse")}
-                >
-                  {displayName}
-                </Badge>
-              </div>
-
+          <div className={cn("flex-1 min-w-0", !isBot && "max-w-[70%]")}>
+            <div className={cn(
+              borderless ? "p-0" : "rounded-lg p-3",
+              !borderless && (isBot ? "bg-card" : "bg-border/30")
+            )}> 
               {/* Content */}
               <div className="text-sm text-foreground">
                 {isLoading ? (

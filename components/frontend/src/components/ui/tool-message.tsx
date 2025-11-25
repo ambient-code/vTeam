@@ -128,16 +128,16 @@ const hashStringToNumber = (str: string) => {
 
 const getColorClassesForName = (name: string) => {
   const colorChoices = [
-    { avatarBg: "bg-purple-600", cardBg: "bg-purple-50", border: "border-purple-200", badgeText: "text-purple-700", badgeBorder: "border-purple-200" },
-    { avatarBg: "bg-blue-600", cardBg: "bg-blue-50", border: "border-blue-200", badgeText: "text-blue-700", badgeBorder: "border-blue-200" },
-    { avatarBg: "bg-emerald-600", cardBg: "bg-emerald-50", border: "border-emerald-200", badgeText: "text-emerald-700", badgeBorder: "border-emerald-200" },
-    { avatarBg: "bg-teal-600", cardBg: "bg-teal-50", border: "border-teal-200", badgeText: "text-teal-700", badgeBorder: "border-teal-200" },
-    { avatarBg: "bg-cyan-600", cardBg: "bg-cyan-50", border: "border-cyan-200", badgeText: "text-cyan-700", badgeBorder: "border-cyan-200" },
-    { avatarBg: "bg-sky-600", cardBg: "bg-sky-50", border: "border-sky-200", badgeText: "text-sky-700", badgeBorder: "border-sky-200" },
-    { avatarBg: "bg-indigo-600", cardBg: "bg-indigo-50", border: "border-indigo-200", badgeText: "text-indigo-700", badgeBorder: "border-indigo-200" },
-    { avatarBg: "bg-fuchsia-600", cardBg: "bg-fuchsia-50", border: "border-fuchsia-200", badgeText: "text-fuchsia-700", badgeBorder: "border-fuchsia-200" },
-    { avatarBg: "bg-rose-600", cardBg: "bg-rose-50", border: "border-rose-200", badgeText: "text-rose-700", badgeBorder: "border-rose-200" },
-    { avatarBg: "bg-amber-600", cardBg: "bg-amber-50", border: "border-amber-200", badgeText: "text-amber-700", badgeBorder: "border-amber-200" },
+    { avatarBg: "bg-purple-600", badgeBg: "bg-purple-600", cardBg: "bg-purple-50", border: "border-purple-200", badgeText: "text-purple-700", badgeBorder: "border-purple-200" },
+    { avatarBg: "bg-blue-600", badgeBg: "bg-blue-600", cardBg: "bg-blue-50", border: "border-blue-200", badgeText: "text-blue-700", badgeBorder: "border-blue-200" },
+    { avatarBg: "bg-emerald-600", badgeBg: "bg-emerald-600", cardBg: "bg-emerald-50", border: "border-emerald-200", badgeText: "text-emerald-700", badgeBorder: "border-emerald-200" },
+    { avatarBg: "bg-teal-600", badgeBg: "bg-teal-600", cardBg: "bg-teal-50", border: "border-teal-200", badgeText: "text-teal-700", badgeBorder: "border-teal-200" },
+    { avatarBg: "bg-cyan-600", badgeBg: "bg-cyan-600", cardBg: "bg-cyan-50", border: "border-cyan-200", badgeText: "text-cyan-700", badgeBorder: "border-cyan-200" },
+    { avatarBg: "bg-sky-600", badgeBg: "bg-sky-600", cardBg: "bg-sky-50", border: "border-sky-200", badgeText: "text-sky-700", badgeBorder: "border-sky-200" },
+    { avatarBg: "bg-indigo-600", badgeBg: "bg-indigo-600", cardBg: "bg-indigo-50", border: "border-indigo-200", badgeText: "text-indigo-700", badgeBorder: "border-indigo-200" },
+    { avatarBg: "bg-fuchsia-600", badgeBg: "bg-fuchsia-600", cardBg: "bg-fuchsia-50", border: "border-fuchsia-200", badgeText: "text-fuchsia-700", badgeBorder: "border-fuchsia-200" },
+    { avatarBg: "bg-rose-600", badgeBg: "bg-rose-600", cardBg: "bg-rose-50", border: "border-rose-200", badgeText: "text-rose-700", badgeBorder: "border-rose-200" },
+    { avatarBg: "bg-amber-600", badgeBg: "bg-amber-600", cardBg: "bg-amber-50", border: "border-amber-200", badgeText: "text-amber-700", badgeBorder: "border-amber-200" },
   ];
   const idx = hashStringToNumber(name) % colorChoices.length;
   return colorChoices[idx];
@@ -216,8 +216,8 @@ export const ToolMessage = React.forwardRef<HTMLDivElement, ToolMessageProps>(
                 </span>
               </div>
             ) : (
-              <div className="w-6 h-6 rounded-full flex items-center justify-center bg-purple-600">
-                <Cog className="w-3 h-3 text-white" />
+              <div className="w-8 h-8 rounded-full flex items-center justify-center bg-purple-600">
+                <Cog className="w-4 h-4 text-white" />
               </div>
             )}
           </div>
@@ -262,14 +262,12 @@ export const ToolMessage = React.forwardRef<HTMLDivElement, ToolMessageProps>(
                   {/* Tool Name */}
                   <div className="flex-1 flex items-center min-h-0">
                     <Badge
-                      variant="outline"
                       className={cn(
-                        "text-xs",
-                        isLoading && "animate-pulse",
-                        isError && "border-red-200 text-red-700 dark:text-red-300 dark:text-red-300",
-                        isSuccess && "border-green-200 text-green-700",
-                        isSubagent && subagentClasses?.badgeBorder,
-                        isSubagent && subagentClasses?.badgeText,
+                        "text-xs text-white",
+                        isLoading && "bg-blue-500 animate-pulse",
+                        isError && "bg-red-600",
+                        isSuccess && "bg-green-600",
+                        isSubagent && subagentClasses?.badgeBg,
                         isCompact && "!py-0 px-1.5 leading-tight"
                       )}
                     >
@@ -378,8 +376,7 @@ export const ToolMessage = React.forwardRef<HTMLDivElement, ToolMessageProps>(
                     </div>
                     <div className="flex-1">
                       <Badge
-                        variant="outline"
-                        className={cn("text-xs", subagentClasses?.badgeBorder, subagentClasses?.badgeText)}
+                        className={cn("text-xs text-white", subagentClasses?.badgeBg)}
                       >
                         {displayName}
                       </Badge>

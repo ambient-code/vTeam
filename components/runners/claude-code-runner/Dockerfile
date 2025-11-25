@@ -7,9 +7,6 @@ RUN apt-get update && apt-get install -y \
     jq \
     gh \ 
     ca-certificates \
-    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
-    && apt-get install -y nodejs \
-    && npm install -g @anthropic-ai/claude-code \
     && rm -rf /var/lib/apt/lists/*
 
 # Create working directory

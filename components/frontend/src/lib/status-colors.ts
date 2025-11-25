@@ -26,7 +26,7 @@ export const STATUS_COLORS: Record<StatusColorKey, string> = {
   warning: 'bg-status-warning text-status-warning-foreground border-status-warning-border',
   info: 'bg-status-info text-status-info-foreground border-status-info-border',
   pending: 'bg-muted text-muted-foreground border-border',
-  running: 'bg-status-info text-status-info-foreground border-status-info-border',
+  running: 'bg-blue-600 text-white border-blue-600',
   stopped: 'bg-muted text-muted-foreground border-border',
   default: 'bg-muted text-muted-foreground border-border',
 };

@@ -3,6 +3,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { MessageSquare, Loader2, Settings, Terminal, Users } from "lucide-react";
 import { StreamMessage } from "@/components/ui/stream-message";
 import {
@@ -276,6 +277,18 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chat
           <StreamMessage key={`sm-${idx}`} message={m} isNewest={idx === filteredMessages.length - 1} onGoToResults={onGoToResults} />
         ))}
 
+        {filteredMessages.length === 0 && isCreating && (
+          <div className="flex items-center justify-center py-12">
+            <Alert className="max-w-md mx-4">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <AlertTitle>Starting Session...</AlertTitle>
+              <AlertDescription>
+                <p>Setting up your workspace and initializing the agent. Messages will appear here once the session is ready.</p>
+              </AlertDescription>
+            </Alert>
+          </div>
+        )}
+
         {filteredMessages.length === 0 && !isCreating && (
           <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground">
             <MessageSquare className="w-8 h-8 mx-auto mb-2 opacity-50" />
@@ -307,7 +320,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chat
                     checked={showSystemMessages}
                     onCheckedChange={setShowSystemMessages}
                   >
-                    {showSystemMessages ? 'Hide' : 'Show'} system messages
+                    Show system messages
                   </DropdownMenuCheckboxItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -319,7 +332,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chat
 
       {showChatInterface && (
         <div className="sticky bottom-0 bg-card">
-          <div className="px-2 pt-2 pb-0 space-y-1.5">
+          <div className="px-2 pt-2 pb-0 space-y-1.5 max-w-[90%] mx-auto mb-4">
               <div className="relative">
                 <textarea
                   ref={textareaRef}
@@ -395,7 +408,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chat
                             key={agent.id}
                             className={`px-3 py-2 cursor-pointer border-b last:border-b-0 ${
                               index === autocompleteSelectedIndex
-                                ? 'bg-blue-50'
+                                ? 'bg-accent text-accent-foreground'
                                 : 'hover:bg-muted/50'
                             }`}
                             onClick={() => handleAutocompleteSelect(agent)}
@@ -418,7 +431,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chat
                             key={cmd.id}
                             className={`px-3 py-2 cursor-pointer border-b last:border-b-0 ${
                               index === autocompleteSelectedIndex
-                                ? 'bg-blue-50'
+                                ? 'bg-accent text-accent-foreground'
                                 : 'hover:bg-muted/50'
                             }`}
                             onClick={() => handleAutocompleteSelect(cmd)}
@@ -450,7 +463,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chat
                         checked={showSystemMessages}
                         onCheckedChange={setShowSystemMessages}
                       >
-                        {showSystemMessages ? 'Hide' : 'Show'} system messages
+                        Show system messages
                       </DropdownMenuCheckboxItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -643,7 +656,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({ session, streamMessages, chat
                       checked={showSystemMessages}
                       onCheckedChange={setShowSystemMessages}
                     >
-                      {showSystemMessages ? 'Hide' : 'Show'} system messages
+                      Show system messages
                     </DropdownMenuCheckboxItem>
                   </DropdownMenuContent>
                 </DropdownMenu>

@@ -26,11 +26,12 @@ export function Navigation({ feedbackUrl }: NavigationProps) {
 
   return (
     <nav className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="container mx-auto px-6">
+      <div className="px-6">
         <div className="flex h-16 items-center justify-between gap-4">
           <div className="flex items-end gap-2">
             <Link href="/" className="text-xl font-bold">
-              Ambient Code Platform
+              <span className="hidden md:inline">Ambient Code Platform</span>
+              <span className="md:hidden">ACP</span>
             </Link>
             {version && (
               <a
