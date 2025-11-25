@@ -189,7 +189,7 @@ Now that the Ambient Code Platform is running, you're ready to:
 
 If you encounter issues not covered here:
 
-- **Check CLAUDE.md** in the repository root for detailed development documentation
+- **Check AGENTS.md** in the repository root for detailed development documentation
 - **Search existing issues** → [GitHub Issues](https://github.com/ambient-code/platform/issues)
 - **Create a new issue** with your error details and environment info
 

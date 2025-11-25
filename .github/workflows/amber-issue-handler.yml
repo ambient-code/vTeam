@@ -136,7 +136,7 @@ jobs:
           ### For `test-coverage` type:
           1. Analyze current test coverage for specified files
           2. Identify untested code paths
-          3. Write contract tests following project standards (see CLAUDE.md)
+          3. Write contract tests following project standards (see AGENTS.md)
           4. Ensure tests follow table-driven test pattern (Go) or pytest patterns (Python)
           5. Verify all new tests pass
 
@@ -148,7 +148,7 @@ jobs:
 
           ## Requirements
 
-          - Follow all standards in CLAUDE.md
+          - Follow all standards in AGENTS.md
           - Use conventional commit format: `type(scope): message`
           - Run all linters BEFORE committing:
             - Go: `gofmt -w .`, `golangci-lint run`
@@ -250,7 +250,7 @@ jobs:
           ### Pre-merge Checklist
           - [ ] All linters pass
           - [ ] All tests pass
-          - [ ] Changes follow project conventions (CLAUDE.md)
+          - [ ] Changes follow project conventions (AGENTS.md)
           - [ ] No scope creep beyond issue description
 
           ### Reviewer Notes

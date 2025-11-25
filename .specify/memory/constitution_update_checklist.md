@@ -10,7 +10,7 @@ When amending the constitution (`/memory/constitution.md`), ensure all dependent
 - [ ] `/templates/tasks-template.md` - Update if new task types needed
 - [ ] `/.claude/commands/plan.md` - Update if planning process changes
 - [ ] `/.claude/commands/tasks.md` - Update if task generation affected
-- [ ] `/CLAUDE.md` - Update runtime development guidelines
+- [ ] `/AGENTS.md` - Update runtime development guidelines
 
 ### Article-specific updates:
 

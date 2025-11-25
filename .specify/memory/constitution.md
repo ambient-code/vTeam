@@ -334,7 +334,7 @@ Replace usage of "vTeam" with "ACP" (Ambient Code Platform) where it is safe and
 
 **Incremental Approach**:
 
-- Update documentation first (README, CLAUDE.md, docs/)
+- Update documentation first (README, AGENTS.md, docs/)
 - Update UI text in new features
 - Use ACP naming in new code modules
 - Do NOT perform mass renames - update organically during feature work
@@ -409,7 +409,7 @@ npm run build  # Must pass with 0 errors, 0 warnings
 
 Runtime development guidance is maintained in:
 
-- `/CLAUDE.md` for Claude Code development
+- `/AGENTS.md` for Claude Code development
 - Component-specific README files
 - MkDocs documentation in `/docs`
 

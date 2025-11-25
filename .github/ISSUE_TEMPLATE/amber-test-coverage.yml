@@ -66,7 +66,7 @@ body:
     attributes:
       label: Confirmation
       options:
-        - label: Tests should follow patterns in CLAUDE.md
+        - label: Tests should follow patterns in AGENTS.md
           required: true
         - label: Table-driven tests for Go, pytest for Python
           required: true

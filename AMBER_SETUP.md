@@ -83,7 +83,7 @@ always_create_branch: true         # Safe workflow
    - Security considerations
    - Troubleshooting
 
-4. **CLAUDE.md** - Updated with Amber section
+4. **AGENTS.md** - Updated with Amber section
    - Quick links to documentation
    - Common workflows summary
 

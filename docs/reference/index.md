@@ -106,7 +106,7 @@ Specialized Custom Resource for Request for Enhancement workflows using a 7-agen
 **API Version**: `vteam.ambient-code/v1alpha1`
 **Kind**: `RFEWorkflow`
 
-This is an advanced feature not covered in the standard user documentation. For implementation details, see the project's CLAUDE.md file in the repository root.
+This is an advanced feature not covered in the standard user documentation. For implementation details, see the project's AGENTS.md file in the repository root.
 
 ## REST API Endpoints
 
@@ -300,7 +300,7 @@ kubectl logs job/<session-name> -n <namespace>
 - **User Guide**: [Getting Started](../user-guide/getting-started.md) for usage instructions
 - **Labs**: [Hands-on exercises](../labs/index.md) for practical learning
 - **Deployment Guides**: [OpenShift deployment](../OPENSHIFT_DEPLOY.md) for production setup
-- **Contributing**: See the project's CLAUDE.md file in the repository root for contributor guidelines and architecture details
+- **Contributing**: See the project's AGENTS.md file in the repository root for contributor guidelines and architecture details
 
 ---
 

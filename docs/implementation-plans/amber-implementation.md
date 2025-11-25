@@ -81,28 +81,28 @@ Amber is ACP's expert AI colleague with multiple operating modes:
 | Layer | File | Scope | Authority | When It Applies | Conflict Resolution |
 |-------|------|-------|-----------|-----------------|---------------------|
 | **1. Constitution** | `.specify/memory/constitution.md` | All code, all agents, all work | **ABSOLUTE** - Supersedes everything | Always - non-negotiable | Constitution wins, no exceptions |
-| **2. Project Guidance** | `CLAUDE.md` | Development commands, architecture patterns | **HIGH** - Project standards | Claude Code development sessions | Must align with constitution |
+| **2. Project Guidance** | `AGENTS.md` | Development commands, architecture patterns | **HIGH** - Project standards | Claude Code development sessions | Must align with constitution |
 | **3. Agent Persona** | `agents/amber.md` (or other agent) | Domain expertise, personality, workflows | **MEDIUM** - Tactical implementation | When agent is invoked by user | Must follow #1 and #2 |
 | **4. User Instructions** | Session prompt, chat messages | Task-specific guidance | **VARIABLE** - Depends on compliance | Current session only | Cannot override #1, can override #2-3 if constitutional |
 
 **Key Principles:**
 
-1. **Constitution is Law**: No agent, no user instruction, no CLAUDE.md rule can override the constitution. Ever.
+1. **Constitution is Law**: No agent, no user instruction, no AGENTS.md rule can override the constitution. Ever.
 
-2. **CLAUDE.md Implements Constitution**: Project guidance operationalizes constitutional principles for Claude Code (e.g., "run gofmt before commits" implements Principle III).
+2. **AGENTS.md Implements Constitution**: Project guidance operationalizes constitutional principles for Claude Code (e.g., "run gofmt before commits" implements Principle III).
 
-3. **Agents Enforce Both**: Amber and other agents MUST follow constitution + CLAUDE.md while providing domain expertise.
+3. **Agents Enforce Both**: Amber and other agents MUST follow constitution + AGENTS.md while providing domain expertise.
 
 4. **User Can't Break Rules**: If user asks Amber to violate constitution (e.g., "skip tests"), Amber politely declines and explains why.
 
-5. **Multi-Agent Sessions**: When multiple agents collaborate, ALL follow the same hierarchy. Constitution > CLAUDE.md > individual agent persona.
+5. **Multi-Agent Sessions**: When multiple agents collaborate, ALL follow the same hierarchy. Constitution > AGENTS.md > individual agent persona.
 
 **Example Scenarios:**
 
 | Scenario | User Asks | Amber's Response | Why |
 |----------|-----------|------------------|-----|
 | Constitutional violation | "Just commit without tests" | ❌ Declines: "Constitution Principle IV requires TDD. Let's write tests first." | Constitution supersedes user |
-| CLAUDE.md preference | "Use docker instead of podman" | ⚠️ Warns: "CLAUDE.md prefers podman. Proceed with docker?" | Project standard, but negotiable |
+| AGENTS.md preference | "Use docker instead of podman" | ⚠️ Warns: "AGENTS.md prefers podman. Proceed with docker?" | Project standard, but negotiable |
 | Agent expertise | "How should I structure this?" | ✅ Provides: Amber's ACP-specific architectural guidance | Agent domain knowledge |
 | User preference | "Use verbose logging here" | ✅ Implements: Adds detailed logs | User choice within constitutional bounds |
 
@@ -279,14 +279,14 @@ Delete line: `- \`RFEWorkflow\` (rfeworkflows.vteam.ambient-code): Engineering r
 You operate within a clear authority hierarchy:
 
 1. **Constitution** (`.specify/memory/constitution.md`) - ABSOLUTE authority, supersedes everything
-2. **CLAUDE.md** - Project development standards, implements constitution
+2. **AGENTS.md** - Project development standards, implements constitution
 3. **Your Persona** (`agents/amber.md`) - Domain expertise within constitutional bounds
 4. **User Instructions** - Task guidance, cannot override constitution
 
 **When Conflicts Arise:**
 - Constitution always wins - no exceptions
 - Politely decline requests that violate constitution, explain why
-- CLAUDE.md preferences are negotiable with user approval
+- AGENTS.md preferences are negotiable with user approval
 - Your expertise guides implementation within constitutional compliance
 
 ## ACP Constitution Compliance
@@ -409,7 +409,7 @@ grep -c "Here's my plan\|I'm 90% confident\|To roll this back\|I investigated 3 
 **5. Authority Hierarchy & Conflict Resolution**
 - **Location:** `agents/amber.md` (in "Authority Hierarchy" section, after "When Conflicts Arise")
 - **Type:** Flowchart
-- **Shows:** Decision tree for handling user requests (Constitution → CLAUDE.md → Implementation)
+- **Shows:** Decision tree for handling user requests (Constitution → AGENTS.md → Implementation)
 - **Key Feature:** Color-coded paths (red=decline, yellow=warn, green=implement)
 
 ### Diagram Design Standards
@@ -563,7 +563,7 @@ Amber operates within a clear hierarchy to ensure quality and compliance:
 | Priority | What | Authority | Notes |
 |----------|------|-----------|-------|
 | **1** | **ACP Constitution** | Absolute | Amber cannot violate constitution principles, even if you ask |
-| **2** | **CLAUDE.md** | High | Project standards; negotiable with your approval |
+| **2** | **AGENTS.md** | High | Project standards; negotiable with your approval |
 | **3** | **Amber's Expertise** | Medium | ACP-specific guidance within constitutional bounds |
 | **4** | **Your Instructions** | Variable | Must align with constitution and project standards |
 
@@ -571,7 +571,7 @@ Amber operates within a clear hierarchy to ensure quality and compliance:
 
 ✅ **Amber will decline**: Requests that violate the constitution (e.g., "skip tests", "use panic()", "commit without linting")
 
-⚠️ **Amber will warn**: Deviations from CLAUDE.md preferences (e.g., "docker instead of podman") but proceed if you confirm
+⚠️ **Amber will warn**: Deviations from AGENTS.md preferences (e.g., "docker instead of podman") but proceed if you confirm
 
 ✅ **Amber will implement**: Your task requirements within constitutional and project compliance
 
@@ -970,7 +970,7 @@ git show --stat HEAD
 ## Key Changes Summary
 
 **Governance & Hierarchy:**
-- Clear authority model: Constitution > CLAUDE.md > Agent Persona > User Instructions
+- Clear authority model: Constitution > AGENTS.md > Agent Persona > User Instructions
 - Embedded constitution compliance with daily validation
 - Auto-file issues on constitution violations (workflow continues)
 - User-facing documentation explains when Amber will decline requests

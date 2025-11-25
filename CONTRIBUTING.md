@@ -226,7 +226,7 @@ go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
 - Use `unstructured.Nested*` helpers for type-safe CR access
 - Set OwnerReferences on child resources for automatic cleanup
 
-See [CLAUDE.md](CLAUDE.md) for comprehensive backend/operator development standards.
+See [AGENTS.md](AGENTS.md) for comprehensive backend/operator development standards.
 
 ### Frontend Code (NextJS)
 
@@ -589,7 +589,7 @@ oc describe pvc backend-state-pvc -n vteam-dev
 If you're stuck or have questions:
 
 1. **Check existing documentation:**
-   - [CLAUDE.md](CLAUDE.md) - Comprehensive development standards
+   - [AGENTS.md](AGENTS.md) - Comprehensive development standards
    - [README.md](README.md) - Project overview and quick start
    - [docs/](docs/) - Additional documentation
 

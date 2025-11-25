@@ -327,7 +327,7 @@ Ready to dig deeper?
 - **Experiment with timeouts**: Find optimal values for different task types
 - **Explore multi-repo workflows**: Cross-repository analysis and migration
 - **Customize ProjectSettings**: Configure default models, timeouts, and API keys
-- **Review CLAUDE.md**: Understand the complete AgenticSession specification
+- **Review AGENTS.md**: Understand the complete AgenticSession specification
 
 ## Success Criteria ✅
 

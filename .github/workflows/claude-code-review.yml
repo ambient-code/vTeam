@@ -84,11 +84,11 @@ jobs:
             Perform a comprehensive code review with the following focus areas:
             
             1. **Code Quality & Best Practices**
-               - Follow repository's CLAUDE.md guidelines
+               - Follow repository's AGENTS.md guidelines
                - Clean code principles and design patterns
                - Proper error handling and edge cases
                - Code readability and maintainability
-               - TypeScript/Go best practices (see CLAUDE.md)
+               - TypeScript/Go best practices (see AGENTS.md)
             
             2. **Security**
                - Potential security vulnerabilities

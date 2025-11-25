@@ -33,7 +33,7 @@ Amber is the Ambient Code Platform's AI colleague—an expert in your codebase w
 
 | Category | What Amber Does |
 |----------|----------------|
-| **Codebase Intelligence** | Deep knowledge of architecture, patterns (CLAUDE.md, DESIGN_GUIDELINES.md), dependencies (K8s, Claude SDK, OpenShift, Go, NextJS, Langfuse), common issues |
+| **Codebase Intelligence** | Deep knowledge of architecture, patterns (AGENTS.md, DESIGN_GUIDELINES.md), dependencies (K8s, Claude SDK, OpenShift, Go, NextJS, Langfuse), common issues |
 | **Proactive Maintenance** | Monitors upstream for breaking changes, scans dependencies, detects issue patterns, generates health reports |
 | **Autonomy Levels** | Level 1: Read-only analysis; Level 2: Creates PRs for review; Level 3: Auto-merges low-risk changes; Level 4: Full autonomy (future) |
 
@@ -122,7 +122,7 @@ Amber operates within a clear hierarchy to ensure quality and compliance:
 | Priority | What | Authority | Notes |
 |----------|------|-----------|-------|
 | **1** | **ACP Constitution** | Absolute | Amber cannot violate constitution principles, even if you ask |
-| **2** | **CLAUDE.md** | High | Project standards; negotiable with your approval |
+| **2** | **AGENTS.md** | High | Project standards; negotiable with your approval |
 | **3** | **Amber's Expertise** | Medium | ACP-specific guidance within constitutional bounds |
 | **4** | **Your Instructions** | Variable | Must align with constitution and project standards |
 
@@ -130,7 +130,7 @@ Amber operates within a clear hierarchy to ensure quality and compliance:
 
 ✅ **Amber will decline**: Requests that violate the constitution (e.g., "skip tests", "use panic()", "commit without linting")
 
-⚠️ **Amber will warn**: Deviations from CLAUDE.md preferences (e.g., "docker instead of podman") but proceed if you confirm
+⚠️ **Amber will warn**: Deviations from AGENTS.md preferences (e.g., "docker instead of podman") but proceed if you confirm
 
 ✅ **Amber will implement**: Your task requirements within constitutional and project compliance
 
@@ -481,7 +481,7 @@ sequenceDiagram
     else PR Created
         GH->>A: PR created webhook
         A->>A: Check linting compliance
-        A->>A: Verify standards (CLAUDE.md)
+        A->>A: Verify standards (AGENTS.md)
         A->>A: Scan for breaking changes
         alt Unique Value Found
             A->>GH: Add inline comment
@@ -525,7 +525,7 @@ find related issues, and suggest an assignee.
 
 ### Code Review
 ```
-Amber, review PR #456 for CLAUDE.md standards compliance, security concerns,
+Amber, review PR #456 for AGENTS.md standards compliance, security concerns,
 performance impact, and missing tests.
 ```
 

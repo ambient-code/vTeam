@@ -97,7 +97,7 @@ make check-env         # Verify Go, kubectl, docker installed
 
 ## Architecture
 
-See `CLAUDE.md` in project root for:
+See `AGENTS.md` in project root for:
 - Critical development rules
 - Kubernetes client patterns
 - Error handling patterns

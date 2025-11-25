@@ -140,7 +140,7 @@ Break into modules:
 ## Constraints
 - Maintain backward compatibility
 - All existing tests must pass
-- Follow CLAUDE.md standards
+- Follow AGENTS.md standards
 
 ## Priority
 P0 - Critical
@@ -327,7 +327,7 @@ gh workflow enable amber-issue-handler.yml
 
 - [Complete Guide](amber-automation.md) - Detailed documentation
 - [Amber Config](.claude/amber-config.yml) - Automation policies
-- [Project Standards](../CLAUDE.md) - Conventions Amber follows
+- [Project Standards](../AGENTS.md) - Conventions Amber follows
 
 ---
 
