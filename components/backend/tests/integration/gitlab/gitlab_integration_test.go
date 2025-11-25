@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"ambient-code-backend/gitlab"
 	"ambient-code-backend/git"
+	"ambient-code-backend/gitlab"
 	"ambient-code-backend/handlers"
 	"ambient-code-backend/k8s"
 	"ambient-code-backend/types"

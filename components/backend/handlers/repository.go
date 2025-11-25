@@ -84,13 +84,13 @@ func GetRepositoryInfo(repoURL string) (*RepositoryInfo, error) {
 
 // RepositoryInfo contains parsed information about a repository
 type RepositoryInfo struct {
-	URL                 string              `json:"url"`
-	Provider            types.ProviderType  `json:"provider"`
-	Owner               string              `json:"owner,omitempty"`
-	Repo                string              `json:"repo,omitempty"`
-	Host                string              `json:"host,omitempty"`
-	APIURL              string              `json:"apiUrl,omitempty"`
-	IsGitLabSelfHosted  bool                `json:"isGitlabSelfHosted,omitempty"`
+	URL                string             `json:"url"`
+	Provider           types.ProviderType `json:"provider"`
+	Owner              string             `json:"owner,omitempty"`
+	Repo               string             `json:"repo,omitempty"`
+	Host               string             `json:"host,omitempty"`
+	APIURL             string             `json:"apiUrl,omitempty"`
+	IsGitLabSelfHosted bool               `json:"isGitlabSelfHosted,omitempty"`
 }
 
 // ValidateProjectRepository validates a repository for use in a project

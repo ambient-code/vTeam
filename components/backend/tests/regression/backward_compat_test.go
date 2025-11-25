@@ -107,9 +107,9 @@ func TestBackwardCompatibility_GitHubOperationsUnchanged(t *testing.T) {
 // doesn't incorrectly identify GitHub URLs as GitLab
 func TestBackwardCompatibility_NoGitLabFalsePositives(t *testing.T) {
 	notGitLabURLs := []string{
-		"https://github.com/gitlab/repo.git",      // Contains "gitlab" but is GitHub
-		"https://github.com/user/gitlab-cli.git",  // Project named gitlab
-		"git@github.com:company/gitlab-docs.git",  // Repo contains gitlab
+		"https://github.com/gitlab/repo.git",     // Contains "gitlab" but is GitHub
+		"https://github.com/user/gitlab-cli.git", // Project named gitlab
+		"git@github.com:company/gitlab-docs.git", // Repo contains gitlab
 	}
 
 	for _, url := range notGitLabURLs {
@@ -128,9 +128,9 @@ func TestBackwardCompatibility_ExistingProjectSettings(t *testing.T) {
 	// This represents real CRs created before GitLab support was added
 
 	type Repository struct {
-		URL      string              `json:"url"`
-		Branch   string              `json:"branch,omitempty"`
-		Provider types.ProviderType  `json:"provider,omitempty"`
+		URL      string             `json:"url"`
+		Branch   string             `json:"branch,omitempty"`
+		Provider types.ProviderType `json:"provider,omitempty"`
 	}
 
 	// Existing repo without provider field (should auto-detect)
