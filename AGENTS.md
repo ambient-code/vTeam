@@ -1,6 +1,7 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file implements [AGENTS.md](https://agents.md/) with instructions for coding agents
+when working with code in this repository.
 
 ## Project Overview
 
@@ -8,9 +9,11 @@ The **Ambient Code Platform** is a Kubernetes-native AI automation platform that
 
 > **Note:** This project was formerly known as "vTeam". Technical artifacts (image names, namespaces, API groups) still use "vteam" for backward compatibility.
 
+> **Note:** At the current time, much of this project is hardcoded to Claude Code. Further references below continue that. It will be a wider project to decouple this project from Claude Code specifically, but having the instructions for this project use the generic AGENTS.md is the start of that decoupling.
+
 ### Amber Background Agent
 
-The platform includes **Amber**, a background agent that automates common development tasks via GitHub Issues. Team members can trigger automated fixes, refactoring, and test additions without requiring direct access to Claude Code.
+The platform includes **Amber**, a background agent that automates common development tasks via GitHub Issues. Team members can trigger automated fixes, refactoring, and test additions without requiring direct access to a specific agentic AI system like Gemini CLI, Goose or Claude Code.
 
 **Quick Links**:
 
@@ -42,7 +45,7 @@ Pod Runs Claude CLI → Results Stored in CR → UI Displays Progress
 
 ## Memory System - Loadable Context
 
-This repository uses a structured **memory system** to provide targeted, loadable context instead of relying solely on this comprehensive CLAUDE.md file.
+This repository uses a structured **memory system** to provide targeted, loadable context instead of relying solely on this comprehensive AGENTS.md file.
 
 ### Quick Reference
 

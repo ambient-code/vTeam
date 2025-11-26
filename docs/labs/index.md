@@ -132,7 +132,7 @@ Once you've completed Lab 1, explore advanced AgenticSession capabilities:
 - **Interactive sessions**: Build iterative development workflows using inbox/outbox communication
 - **Custom ProjectSettings**: Configure default models, timeouts, and team-specific settings
 - **API integration**: Automate session creation via REST API for CI/CD pipelines
-- **CLAUDE.md exploration**: Deep-dive into the complete AgenticSession specification and backend architecture
+- **AGENTS.md exploration**: Deep-dive into the complete AgenticSession specification and backend architecture
 
 ## Ready to Start?
 

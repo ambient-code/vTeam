@@ -132,7 +132,7 @@ automation_policies:
 # Constitution compliance checks
 constitution_checks:
   enabled: true
-  reference_file: "CLAUDE.md"
+  reference_file: "AGENTS.md"
 
   principles:
     - id: "principle_v_modularity"

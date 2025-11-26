@@ -93,7 +93,7 @@ operator/
 
 ### Key Patterns
 
-See `CLAUDE.md` in project root for:
+See `AGENTS.md` in project root for:
 - Watch loop with reconnection
 - Reconciliation pattern
 - Status updates (UpdateStatus subresource)

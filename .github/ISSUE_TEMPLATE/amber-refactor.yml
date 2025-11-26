@@ -50,7 +50,7 @@ body:
         - Must maintain backward compatibility
         - No breaking changes to API
         - All existing tests must pass
-        - Follow patterns in CLAUDE.md
+        - Follow patterns in AGENTS.md
     validations:
       required: true
 
@@ -70,7 +70,7 @@ body:
     attributes:
       label: Confirmation
       options:
-        - label: I have reviewed CLAUDE.md standards
+        - label: I have reviewed AGENTS.md standards
           required: true
         - label: Backward compatibility is required
           required: true

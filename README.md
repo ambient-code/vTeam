@@ -543,7 +543,7 @@ See [e2e/README.md](e2e/README.md) for detailed documentation, troubleshooting, 
 - Update relevant documentation when changing functionality
 - Follow existing documentation style (Markdown)
 - Add code comments for complex logic
-- Update CLAUDE.md if adding new patterns or standards
+- Update AGENTS.md if adding new patterns or standards
 
 ## Support & Documentation
 

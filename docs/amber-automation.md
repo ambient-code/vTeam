@@ -141,7 +141,7 @@ File: `path/to/another.py`
 ## Success Criteria
 - [ ] All linters pass
 - [ ] All tests pass
-- [ ] Follows CLAUDE.md standards
+- [ ] Follows AGENTS.md standards
 ```
 
 **Key Fields**:
@@ -157,7 +157,7 @@ Amber's behavior is controlled by:
 
 1. **Workflow**: `.github/workflows/amber-issue-handler.yml`
 2. **Config**: `.claude/amber-config.yml` (automation policies)
-3. **Project Standards**: `CLAUDE.md` (Amber follows all project conventions)
+3. **Project Standards**: `AGENTS.md` (Amber follows all project conventions)
 
 ### Risk Levels
 
@@ -415,7 +415,7 @@ A: Depends on task complexity. Typical auto-fix: ~10K tokens ($0.03), refactorin
 ## Related Documentation
 
 - [Amber Configuration](.claude/amber-config.yml) - Automation policies
-- [Project Standards](../CLAUDE.md) - Conventions Amber follows
+- [Project Standards](../AGENTS.md) - Conventions Amber follows
 - [GitHub Actions Security](https://docs.github.com/en/actions/security-for-github-actions) - Official security guide
 
 ---
