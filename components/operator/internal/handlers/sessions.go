@@ -16,6 +16,7 @@ import (
 
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -340,6 +341,17 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 	prompt, _, _ := unstructured.NestedString(spec, "prompt")
 	timeout, _, _ := unstructured.NestedInt64(spec, "timeout")
 	interactive, _, _ := unstructured.NestedBool(spec, "interactive")
+	workspaceImage, _, _ := unstructured.NestedString(spec, "workspaceImage")
+
+	// Workspace container mode: when workspaceImage is specified, use separate workspace container
+	workspaceMode := workspaceImage != ""
+	if workspaceMode {
+		log.Printf("Workspace container mode enabled for session %s with workspaceImage: %s", name, workspaceImage)
+		// Ensure runner service account with pods/exec permissions exists
+		if err := ensureRunnerServiceAccount(sessionNamespace); err != nil {
+			log.Printf("Warning: Failed to ensure runner service account: %v", err)
+		}
+	}
 
 	llmSettings, _, _ := unstructured.NestedMap(spec, "llmSettings")
 	model, _, _ := unstructured.NestedString(llmSettings, "model")
@@ -432,8 +444,17 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 				},
 				Spec: corev1.PodSpec{
 					RestartPolicy: corev1.RestartPolicyNever,
-					// Explicitly set service account for pod creation permissions
-					AutomountServiceAccountToken: boolPtr(false),
+					// Workspace mode needs service account token for kubectl exec
+					AutomountServiceAccountToken: boolPtr(workspaceMode),
+					// Workspace mode: Enable process namespace sharing for cross-container access
+					ShareProcessNamespace: boolPtr(workspaceMode),
+					// Workspace mode: Use service account with pods/exec permissions
+					ServiceAccountName: func() string {
+						if workspaceMode {
+							return "ambient-runner"
+						}
+						return ""
+					}(),
 					Volumes: []corev1.Volume{
 						{
 							Name: "workspace",
@@ -536,6 +557,26 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 								}
 								if userName != "" {
 									base = append(base, corev1.EnvVar{Name: "USER_NAME", Value: userName})
+								}
+
+								// Workspace container mode: environment variables for MCP workspace exec
+								if workspaceMode {
+									base = append(base,
+										corev1.EnvVar{Name: "DISABLE_BASH_TOOL", Value: "1"},
+										corev1.EnvVar{Name: "WORKSPACE_CONTAINER", Value: "workspace"},
+										corev1.EnvVar{
+											Name: "POD_NAME",
+											ValueFrom: &corev1.EnvVarSource{
+												FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.name"},
+											},
+										},
+										corev1.EnvVar{
+											Name: "POD_NAMESPACE",
+											ValueFrom: &corev1.EnvVarSource{
+												FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.namespace"},
+											},
+										},
+									)
 								}
 
 								// Platform-wide Langfuse observability configuration
@@ -731,6 +772,29 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 				},
 			},
 		},
+	}
+
+	// Workspace mode: Add workspace container with user's image
+	if workspaceMode {
+		workspaceContainer := corev1.Container{
+			Name:            "workspace",
+			Image:           workspaceImage,
+			ImagePullPolicy: corev1.PullIfNotPresent,
+			Command:         []string{"sleep", "infinity"},
+			WorkingDir:      fmt.Sprintf("/workspace/sessions/%s/workspace", name),
+			SecurityContext: &corev1.SecurityContext{
+				AllowPrivilegeEscalation: boolPtr(false),
+				Capabilities: &corev1.Capabilities{
+					Drop: []corev1.Capability{"ALL"},
+				},
+			},
+			VolumeMounts: []corev1.VolumeMount{
+				{Name: "workspace", MountPath: "/workspace", ReadOnly: false},
+			},
+			Resources: corev1.ResourceRequirements{},
+		}
+		job.Spec.Template.Spec.Containers = append(job.Spec.Template.Spec.Containers, workspaceContainer)
+		log.Printf("Added workspace container with image: %s", workspaceImage)
 	}
 
 	// Note: No volume mounts needed for runner/integration secrets
@@ -1510,6 +1574,75 @@ func deleteAmbientLangfuseSecret(ctx context.Context, namespace string) error {
 		return fmt.Errorf("failed to delete %s secret: %w", langfuseSecretName, err)
 	}
 
+	return nil
+}
+
+// ensureRunnerServiceAccount creates or updates the ambient-runner service account and RBAC
+// resources needed for workspace container mode (kubectl exec permissions).
+func ensureRunnerServiceAccount(namespace string) error {
+	ctx := context.Background()
+
+	// Create/Update ServiceAccount
+	sa := &corev1.ServiceAccount{
+		ObjectMeta: v1.ObjectMeta{
+			Name:      "ambient-runner",
+			Namespace: namespace,
+		},
+	}
+	_, err := config.K8sClient.CoreV1().ServiceAccounts(namespace).Create(ctx, sa, v1.CreateOptions{})
+	if err != nil && !errors.IsAlreadyExists(err) {
+		return fmt.Errorf("failed to create service account: %w", err)
+	}
+
+	// Create/Update Role with pods/exec permission
+	role := &rbacv1.Role{
+		ObjectMeta: v1.ObjectMeta{
+			Name:      "ambient-runner-exec",
+			Namespace: namespace,
+		},
+		Rules: []rbacv1.PolicyRule{
+			{
+				APIGroups: []string{""},
+				Resources: []string{"pods/exec"},
+				Verbs:     []string{"create"},
+			},
+			{
+				APIGroups: []string{""},
+				Resources: []string{"pods"},
+				Verbs:     []string{"get", "list"},
+			},
+		},
+	}
+	_, err = config.K8sClient.RbacV1().Roles(namespace).Create(ctx, role, v1.CreateOptions{})
+	if err != nil && !errors.IsAlreadyExists(err) {
+		return fmt.Errorf("failed to create role: %w", err)
+	}
+
+	// Create/Update RoleBinding
+	rb := &rbacv1.RoleBinding{
+		ObjectMeta: v1.ObjectMeta{
+			Name:      "ambient-runner-exec",
+			Namespace: namespace,
+		},
+		RoleRef: rbacv1.RoleRef{
+			APIGroup: "rbac.authorization.k8s.io",
+			Kind:     "Role",
+			Name:     "ambient-runner-exec",
+		},
+		Subjects: []rbacv1.Subject{
+			{
+				Kind:      "ServiceAccount",
+				Name:      "ambient-runner",
+				Namespace: namespace,
+			},
+		},
+	}
+	_, err = config.K8sClient.RbacV1().RoleBindings(namespace).Create(ctx, rb, v1.CreateOptions{})
+	if err != nil && !errors.IsAlreadyExists(err) {
+		return fmt.Errorf("failed to create role binding: %w", err)
+	}
+
+	log.Printf("Ensured ambient-runner RBAC resources in namespace %s", namespace)
 	return nil
 }
 
