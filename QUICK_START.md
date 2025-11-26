@@ -1,6 +1,6 @@
 # Quick Start Guide
 
-Get vTeam running locally in **under 5 minutes**! 🚀
+Get Ambient Code Platform running locally in **under 5 minutes**! 
 
 ## Prerequisites
 
@@ -130,16 +130,39 @@ make local-up
 ```
 
 That's it! The command will:
-- ✅ Start minikube (if not running)
-- ✅ Build all container images
-- ✅ **Auto-detect Vertex AI** from environment variables
-- ✅ Deploy backend, frontend, and operator
-- ✅ Set up ingress and networking
-- ✅ **On macOS**: Automatically start port forwarding in background
+-  Start minikube (if not running)
+-  Build all container images
+-  **Auto-detect Vertex AI** from environment variables
+-  Deploy backend, frontend, and operator
+-  Set up ingress and networking
+-  **On macOS**: Automatically start port forwarding in background
 
 **What you'll see:**
-- ✅ "Found Vertex AI config in environment" → Using company Vertex AI
-- ⚠️ "Vertex AI not configured" → Using direct Anthropic API (workspace settings)
+-  "Found Vertex AI config in environment" → Using company Vertex AI
+-  "Vertex AI not configured" → Using direct Anthropic API (workspace settings)
+
+## Developer Workflow
+
+**Made a code change?** Reload just that component (takes ~30 seconds, keeps everything else running):
+
+```bash
+# After changing backend code
+make local-reload-backend
+
+# After changing frontend code
+make local-reload-frontend
+
+# After changing operator code
+make local-reload-operator
+```
+
+**These commands automatically:**
+-  Rebuild only the changed component
+-  Load the new image into minikube
+-  Restart only that deployment
+-  On macOS: Restart port forwarding for that component
+
+**No need to restart everything!** Your other components keep running.
 
 ## Access the Application
 
@@ -190,19 +213,19 @@ make local-status
 ./tests/local-dev-test.sh
 ```
 
-## Quick Commands
+## Quick Commands Reference
 
 ```bash
+# Component reload (see "Developer Workflow" above for details)
+make local-reload-backend    # Rebuild and reload backend only
+make local-reload-frontend   # Rebuild and reload frontend only
+make local-reload-operator   # Rebuild and reload operator only
+
 # View logs
 make local-logs              # All component logs
 make local-logs-backend      # Backend logs only
 make local-logs-frontend     # Frontend logs only
 make local-logs-operator     # Operator logs only
-
-# Rebuild and reload a component
-make local-reload-backend    # After changing backend code
-make local-reload-frontend   # After changing frontend code
-make local-reload-operator   # After changing operator code
 
 # Port forwarding management (macOS)
 make local-stop-port-forward # Stop background port forwarding
@@ -374,7 +397,7 @@ By default, authentication is **disabled** for local development:
 - Automatic user: "developer"
 - Full access to all features
 
-⚠️ **Security Note**: This is for local development only. Production deployments require proper OAuth.
+ **Security Note**: This is for local development only. Production deployments require proper OAuth.
 
 ### Environment Variables
 Local development uses these environment variables:
@@ -388,14 +411,14 @@ These are set automatically in `components/manifests/minikube/` deployment files
 ### AI Access Configuration
 
 **Vertex AI** (Recommended for company work):
-- ✅ Set via environment variables (see setup above)
-- ✅ Automatically detected by `make local-up`
-- ✅ Company-issued service accounts
-- ✅ Approved for confidential/proprietary code
+-  Set via environment variables (see setup above)
+-  Automatically detected by `make local-up`
+-  Company-issued service accounts
+-  Approved for confidential/proprietary code
 - See [README.md](README.md) for advanced configuration
 
 **Direct Anthropic API** (Non-confidential data only):
-- ⚠️ Only for public repos or non-sensitive work
+-  Only for public repos or non-sensitive work
 - No environment variables needed
 - Provide `ANTHROPIC_API_KEY` in workspace settings when creating a project
 - Platform automatically uses this mode if Vertex AI env vars not set
@@ -435,5 +458,5 @@ These are set automatically in `components/manifests/minikube/` deployment files
 
 **Want to contribute?** See [CONTRIBUTING.md](CONTRIBUTING.md)
 
-**Having issues?** Open an issue on [GitHub](https://github.com/ambient-code/vTeam/issues)
+**Having issues?** Open an issue on [GitHub](https://github.com/ambient-code/platform/issues)
 
