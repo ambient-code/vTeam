@@ -40,5 +40,8 @@ RUN echo "umask 0022" >> /etc/profile && \
 # OpenShift compatibility
 RUN chmod -R g=u /app && chmod -R g=u /usr/local && chmod g=u /etc/passwd
 
+# Run as UID 1001 to match content service (fixes permission issues)
+USER 1001
+
 # Default command - run via runner-shell
 CMD ["/bin/bash", "-c", "umask 0022 && python /app/claude-runner/wrapper.py"]
