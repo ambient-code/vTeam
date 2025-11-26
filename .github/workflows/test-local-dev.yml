@@ -82,20 +82,18 @@ jobs:
       run: |
         echo "Validating production manifests do NOT contain dev mode variables..."
         
-        # Check base and production manifests for DISABLE_AUTH
-        for manifest in components/manifests/base/*.yaml components/manifests/overlays/production/*.yaml; do
-          if [ -f "$manifest" ]; then
-            if grep -q "DISABLE_AUTH" "$manifest"; then
-              echo "❌ CRITICAL: Production manifest contains DISABLE_AUTH: $manifest"
-              exit 1
-            fi
-            
-            if grep -qE "ENVIRONMENT.*[\"']?(local|development)[\"']?" "$manifest"; then
-              echo "❌ CRITICAL: Production manifest sets ENVIRONMENT=local/development: $manifest"
-              exit 1
-            fi
+        # Recursively check base and production manifests for DISABLE_AUTH
+        while IFS= read -r manifest; do
+          if grep -q "DISABLE_AUTH" "$manifest"; then
+            echo "❌ CRITICAL: Production manifest contains DISABLE_AUTH: $manifest"
+            exit 1
           fi
-        done
+          
+          if grep -qE "ENVIRONMENT.*[\"']?(local|development)[\"']?" "$manifest"; then
+            echo "❌ CRITICAL: Production manifest sets ENVIRONMENT=local/development: $manifest"
+            exit 1
+          fi
+        done < <(find components/manifests/base components/manifests/overlays/production -name "*.yaml" -o -name "*.yml" 2>/dev/null)
         
         echo "✅ All production manifests are safe"
         

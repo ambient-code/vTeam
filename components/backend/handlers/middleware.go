@@ -314,7 +314,6 @@ func isLocalDevEnvironment() bool {
 	// This prevents accidental activation in staging, qa, demo, or other non-production environments
 	allowedNamespaces := []string{
 		"ambient-code", // Default minikube namespace
-		"default",      // Local testing
 		"vteam-dev",    // Legacy local dev namespace
 	}
 
