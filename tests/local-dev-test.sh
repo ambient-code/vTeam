@@ -11,6 +11,7 @@
 #
 
 # Don't exit on error - we want to collect all test results
+# shellcheck disable=SC2103  # Intentional: continue on errors to collect all test results
 set +e
 
 # Colors for output

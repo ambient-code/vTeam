@@ -62,22 +62,25 @@ func isLocalDevEnvironment() bool {
 
 ## Identified Risks
 
-### 🔴 **HIGH RISK: Weak Namespace Check**
+### 🟢 **MITIGATED: Allow-List Namespace Validation**
 
-**Current:** Only rejects if namespace contains "prod"
+**Current:** Uses allow-list of specific namespaces (ambient-code, default, vteam-dev)
 
-**Risk Scenarios:**
+**Protection:**
 ```bash
-# Would PASS (incorrectly enable dev mode):
-NAMESPACE=staging DISABLE_AUTH=true ENVIRONMENT=local  # ❌ Dangerous
-NAMESPACE=qa-env DISABLE_AUTH=true ENVIRONMENT=local   # ❌ Dangerous
-NAMESPACE=demo DISABLE_AUTH=true ENVIRONMENT=local     # ❌ Dangerous
-NAMESPACE=customer-abc DISABLE_AUTH=true ENVIRONMENT=local # ❌ Dangerous
+# Would PASS (correctly enable dev mode):
+NAMESPACE=ambient-code DISABLE_AUTH=true ENVIRONMENT=local  # ✅ Allowed
+NAMESPACE=default DISABLE_AUTH=true ENVIRONMENT=local       # ✅ Allowed
+NAMESPACE=vteam-dev DISABLE_AUTH=true ENVIRONMENT=local     # ✅ Allowed
 
 # Would FAIL (correctly reject):
-NAMESPACE=production DISABLE_AUTH=true ENVIRONMENT=local # ✅ Good
-NAMESPACE=prod-east DISABLE_AUTH=true ENVIRONMENT=local  # ✅ Good
+NAMESPACE=staging DISABLE_AUTH=true ENVIRONMENT=local       # ❌ Rejected
+NAMESPACE=qa-env DISABLE_AUTH=true ENVIRONMENT=local        # ❌ Rejected
+NAMESPACE=production DISABLE_AUTH=true ENVIRONMENT=local    # ❌ Rejected
+NAMESPACE=customer-abc DISABLE_AUTH=true ENVIRONMENT=local  # ❌ Rejected
 ```
+
+**Implementation:** See `components/backend/handlers/middleware.go:315-327`
 
 ### 🟡 **MEDIUM RISK: No Cluster Type Detection**
 

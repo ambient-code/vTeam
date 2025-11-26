@@ -20,6 +20,8 @@ from urllib import request as _urllib_request, error as _urllib_error
 os.umask(0o022)
 
 # Add runner-shell to Python path
+# Required: runner-shell is installed in /app/runner-shell and contains the core RunnerShell framework
+# that this wrapper depends on. Must be imported before runner_shell module below.
 sys.path.insert(0, '/app/runner-shell')
 
 from runner_shell.core.shell import RunnerShell

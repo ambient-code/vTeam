@@ -521,17 +521,18 @@ _auto-port-forward: ## Internal: Auto-start port forwarding on macOS with Podman
 		echo ""; \
 		echo "$(COLOR_BLUE)▶$(COLOR_RESET) Starting port forwarding in background..."; \
 		echo "  Waiting for services to be ready..."; \
-		sleep 3; \
+		kubectl wait --for=condition=ready pod -l app=backend -n $(NAMESPACE) --timeout=60s 2>/dev/null || true; \
+		kubectl wait --for=condition=ready pod -l app=frontend -n $(NAMESPACE) --timeout=60s 2>/dev/null || true; \
 		mkdir -p /tmp/ambient-code; \
 		kubectl port-forward -n $(NAMESPACE) svc/backend-service 8080:8080 > /tmp/ambient-code/port-forward-backend.log 2>&1 & \
 		echo $$! > /tmp/ambient-code/port-forward-backend.pid; \
 		kubectl port-forward -n $(NAMESPACE) svc/frontend-service 3000:3000 > /tmp/ambient-code/port-forward-frontend.log 2>&1 & \
 		echo $$! > /tmp/ambient-code/port-forward-frontend.pid; \
-		sleep 2; \
+		sleep 1; \
 		if ps -p $$(cat /tmp/ambient-code/port-forward-backend.pid 2>/dev/null) > /dev/null 2>&1 && \
 		   ps -p $$(cat /tmp/ambient-code/port-forward-frontend.pid 2>/dev/null) > /dev/null 2>&1; then \
 			echo "$(COLOR_GREEN)✓$(COLOR_RESET) Port forwarding started"; \
-			echo "  $(COLOR_BOLD)Wait ~30s for pods to be ready, then access:$(COLOR_RESET)"; \
+			echo "  $(COLOR_BOLD)Access at:$(COLOR_RESET)"; \
 			echo "    Frontend: $(COLOR_BLUE)http://localhost:3000$(COLOR_RESET)"; \
 			echo "    Backend:  $(COLOR_BLUE)http://localhost:8080$(COLOR_RESET)"; \
 		else \
