@@ -222,23 +222,54 @@ jobs:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
         run: |
           # Run Claude Code with full tool access (you make the rules!)
-          claude --batch --dangerously-skip-permissions amber-prompt.md || true
+          cat amber-prompt.md | claude --print --dangerously-skip-permissions || true
           echo "Claude Code execution completed"
 
       - name: Check if changes were made
         id: check-changes
         run: |
-          if git diff --quiet HEAD~1 2>/dev/null; then
+          # Check if there are any new commits on this branch vs main
+          CURRENT_BRANCH=$(git branch --show-current)
+          COMMITS_AHEAD=$(git rev-list --count origin/main.."$CURRENT_BRANCH" 2>/dev/null || echo "0")
+
+          if [ "$COMMITS_AHEAD" -eq 0 ]; then
             echo "has_changes=false" >> $GITHUB_OUTPUT
-            echo "No changes made by Amber"
+            echo "No changes made by Amber (no new commits)"
           else
             COMMIT_SHA=$(git rev-parse HEAD)
-            BRANCH_NAME=$(git branch --show-current)
             echo "has_changes=true" >> $GITHUB_OUTPUT
-            echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
+            echo "branch_name=$CURRENT_BRANCH" >> $GITHUB_OUTPUT
             echo "commit_sha=$COMMIT_SHA" >> $GITHUB_OUTPUT
-            echo "Changes committed on branch $BRANCH_NAME (commit: ${COMMIT_SHA:0:7})"
+            echo "Changes committed on branch $CURRENT_BRANCH (commit: ${COMMIT_SHA:0:7})"
+            echo "Commits ahead of main: $COMMITS_AHEAD"
           fi
+
+      - name: Report no changes
+        if: steps.check-changes.outputs.has_changes == 'false'
+        env:
+          ISSUE_NUMBER: ${{ steps.issue-details.outputs.issue_number }}
+          ACTION_TYPE: ${{ steps.action-type.outputs.type }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issueNumber = parseInt(process.env.ISSUE_NUMBER);
+            const actionType = process.env.ACTION_TYPE;
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              body: `✅ Amber reviewed this issue but found no changes were needed.
+
+            **Action Type:** ${actionType}
+
+            **Possible reasons:**
+            - Files are already properly formatted
+            - No linting issues found
+            - The requested changes may have already been applied
+
+            If you believe changes are still needed, please provide more specific instructions or file paths in the issue description.`
+            });
 
       - name: Push branch to remote
         if: steps.check-changes.outputs.has_changes == 'true'
