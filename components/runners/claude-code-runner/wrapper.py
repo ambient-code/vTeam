@@ -1471,10 +1471,11 @@ class ClaudeCodeAdapter:
             return None
         return None
 
-    async def _update_cr_annotation(self, key: str, value: str):
-        """Update a single annotation on the AgenticSession CR."""
+    async def _update_cr_annotation(self, key: str, value: str, max_retries: int = 3):
+        """Update a single annotation on the AgenticSession CR with retry logic."""
         status_url = self._compute_status_url()
         if not status_url:
+            logging.warning(f"Cannot update annotation {key}: no status URL available")
             return
 
         # Transform status URL to patch endpoint
@@ -1495,29 +1496,41 @@ class ClaudeCodeAdapter:
                 }
             }).encode('utf-8')
 
-            req = _urllib_request.Request(url, data=patch, headers={
-                'Content-Type': 'application/merge-patch+json'
-            }, method='PATCH')
-
             token = (os.getenv('BOT_TOKEN') or '').strip()
-            if token:
-                req.add_header('Authorization', f'Bearer {token}')
+            if not token:
+                logging.error(f"Cannot update annotation {key}: BOT_TOKEN not available")
+                return
 
             loop = asyncio.get_event_loop()
 
             def _do():
-                try:
-                    with _urllib_request.urlopen(req, timeout=10) as resp:
-                        _ = resp.read()
-                    logging.info(f"Annotation {key} updated successfully")
-                    return True
-                except Exception as e:
-                    logging.error(f"Annotation update failed: {e}")
-                    return False
+                for attempt in range(max_retries):
+                    try:
+                        req = _urllib_request.Request(url, data=patch, headers={
+                            'Content-Type': 'application/merge-patch+json',
+                            'Authorization': f'Bearer {token}'
+                        }, method='PATCH')
 
-            await loop.run_in_executor(None, _do)
+                        with _urllib_request.urlopen(req, timeout=10) as resp:
+                            _ = resp.read()
+                        logging.info(f"Annotation {key}={value} updated successfully")
+                        return True
+                    except Exception as e:
+                        if attempt < max_retries - 1:
+                            wait_time = 2 ** attempt  # Exponential backoff: 1s, 2s, 4s
+                            logging.warning(f"Annotation update attempt {attempt+1}/{max_retries} failed: {e}, retrying in {wait_time}s...")
+                            time.sleep(wait_time)
+                        else:
+                            logging.error(f"Annotation update failed after {max_retries} attempts: {e}")
+                            return False
+                return False
+
+            result = await loop.run_in_executor(None, _do)
+            if not result:
+                # Critical annotation failed - log prominently
+                logging.error(f"CRITICAL: Failed to persist annotation {key}={value} - session resume may not work!")
         except Exception as e:
-            logging.error(f"Failed to update annotation: {e}")
+            logging.error(f"Failed to update annotation {key}: {e}")
 
     async def _update_cr_status(self, fields: dict, blocking: bool = False):
         """Update CR status. Set blocking=True for critical final updates before container exit."""

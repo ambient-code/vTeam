@@ -418,7 +418,7 @@ func handleAgenticSessionEvent(obj *unstructured.Unstructured) error {
 		},
 		Spec: batchv1.JobSpec{
 			BackoffLimit:          int32Ptr(3),
-			ActiveDeadlineSeconds: int64Ptr(14400), // 4 hour timeout for safety
+			ActiveDeadlineSeconds: int64Ptr(86400), // 24 hour timeout for long-running sessions
 			// Auto-cleanup finished Jobs if TTL controller is enabled in the cluster
 			TTLSecondsAfterFinished: int32Ptr(600),
 			Template: corev1.PodTemplateSpec{
@@ -978,6 +978,8 @@ func monitorJob(jobName, sessionName, sessionNamespace string) {
 						"message":        "Job pod was deleted or evicted unexpectedly",
 						"completionTime": time.Now().Format(time.RFC3339),
 					})
+					// Ensure session is interactive so it can be resumed
+					_ = ensureSessionIsInteractive(sessionNamespace, sessionName)
 					_ = deleteJobAndPerJobService(sessionNamespace, jobName, sessionName)
 					return
 				}
@@ -1009,6 +1011,8 @@ func monitorJob(jobName, sessionName, sessionNamespace string) {
 						"message":        failureMsg,
 						"completionTime": time.Now().Format(time.RFC3339),
 					})
+					// Ensure session is interactive so it can be resumed
+					_ = ensureSessionIsInteractive(sessionNamespace, sessionName)
 					_ = deleteJobAndPerJobService(sessionNamespace, jobName, sessionName)
 					return
 				}
@@ -1040,6 +1044,8 @@ func monitorJob(jobName, sessionName, sessionNamespace string) {
 									"message":        failureMsg,
 									"completionTime": time.Now().Format(time.RFC3339),
 								})
+								// Ensure session is interactive so it can be resumed
+								_ = ensureSessionIsInteractive(sessionNamespace, sessionName)
 								_ = deleteJobAndPerJobService(sessionNamespace, jobName, sessionName)
 								return
 							}
