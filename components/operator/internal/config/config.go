@@ -2,10 +2,15 @@
 package config
 
 import (
+	"context"
 	"fmt"
+	"log"
 	"os"
 
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -58,6 +63,64 @@ func InitK8sClients() error {
 	}
 
 	return nil
+}
+
+// DiscoverFrontendURL attempts to discover the frontend external URL from OpenShift Route or Kubernetes Ingress
+// Returns empty string if not found (MCP OAuth callbacks will not work)
+func DiscoverFrontendURL(namespace string) string {
+	ctx := context.TODO()
+
+	// Try OpenShift Route (most common in vTeam deployments)
+	routeGVR := schema.GroupVersionResource{
+		Group:    "route.openshift.io",
+		Version:  "v1",
+		Resource: "routes",
+	}
+
+	route, err := DynamicClient.Resource(routeGVR).Namespace(namespace).Get(ctx, "frontend", metav1.GetOptions{})
+	if err == nil {
+		if spec, found, _ := unstructured.NestedMap(route.Object, "spec"); found {
+			if host, ok := spec["host"].(string); ok && host != "" {
+				// Check TLS
+				scheme := "http"
+				if tls, found, _ := unstructured.NestedMap(spec, "tls"); found && tls != nil {
+					scheme = "https"
+				}
+				url := fmt.Sprintf("%s://%s", scheme, host)
+				log.Printf("Discovered frontend URL from OpenShift Route: %s", url)
+				return url
+			}
+		}
+	}
+
+	// Try Kubernetes Ingress as fallback
+	ingressGVR := schema.GroupVersionResource{
+		Group:    "networking.k8s.io",
+		Version:  "v1",
+		Resource: "ingresses",
+	}
+
+	ingress, err := DynamicClient.Resource(ingressGVR).Namespace(namespace).Get(ctx, "frontend", metav1.GetOptions{})
+	if err == nil {
+		if spec, found, _ := unstructured.NestedMap(ingress.Object, "spec"); found {
+			if rules, found, _ := unstructured.NestedSlice(spec, "rules"); found && len(rules) > 0 {
+				if rule, ok := rules[0].(map[string]interface{}); ok {
+					if host, ok := rule["host"].(string); ok && host != "" {
+						scheme := "http"
+						if tls, found, _ := unstructured.NestedSlice(spec, "tls"); found && len(tls) > 0 {
+							scheme = "https"
+						}
+						url := fmt.Sprintf("%s://%s", scheme, host)
+						log.Printf("Discovered frontend URL from Kubernetes Ingress: %s", url)
+						return url
+					}
+				}
+			}
+		}
+	}
+
+	log.Printf("Warning: Could not discover frontend Route or Ingress in namespace %s - MCP OAuth will not work", namespace)
+	return ""
 }
 
 // LoadConfig loads the operator configuration from environment variables
