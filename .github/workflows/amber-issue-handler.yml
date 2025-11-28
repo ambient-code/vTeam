@@ -321,6 +321,32 @@ jobs:
             const actionType = process.env.ACTION_TYPE;
             const repository = process.env.GITHUB_REPOSITORY;
 
+            // Helper function for retrying API calls with exponential backoff
+            // Retries on: 5xx errors, network errors (no status), JSON parse errors
+            async function retryWithBackoff(fn, maxRetries = 3, initialDelay = 1000) {
+              for (let i = 0; i < maxRetries; i++) {
+                try {
+                  return await fn();
+                } catch (error) {
+                  const isLastAttempt = i === maxRetries - 1;
+                  // Retry on: network errors (undefined status), 5xx errors, or specific error patterns
+                  const isRetriable = !error.status || error.status >= 500;
+
+                  if (isLastAttempt || !isRetriable) {
+                    throw error;
+                  }
+
+                  const delay = initialDelay * Math.pow(2, i);
+                  const errorMsg = error.message || 'Unknown error';
+                  const errorStatus = error.status || 'network error';
+                  console.log(`Attempt ${i + 1} failed (${errorStatus}: ${errorMsg}), retrying in ${delay}ms...`);
+                  await new Promise(resolve => setTimeout(resolve, delay));
+                }
+              }
+              // Defensive: Should never reach here due to throw in loop, but explicit for clarity
+              throw new Error('retryWithBackoff: max retries exceeded');
+            }
+
             // Create PR with error handling (Issue #3)
             try {
               const pr = await github.rest.pulls.create({
@@ -356,12 +382,14 @@ jobs:
             Closes #${issueNumber}`
               });
 
-              // Add labels
-              await github.rest.issues.addLabels({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: pr.data.number,
-                labels: ['amber-generated', 'auto-fix', actionType]
+              // Add labels with retry logic for transient API failures
+              await retryWithBackoff(async () => {
+                return await github.rest.issues.addLabels({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: pr.data.number,
+                  labels: ['amber-generated', 'auto-fix', actionType]
+                });
               });
 
               // Link PR back to issue
