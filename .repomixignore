@@ -1,0 +1,66 @@
+# Repomix Ignore Patterns - Production Optimized
+# Designed to balance completeness with token efficiency for AI agent steering
+
+# Test files - reduce noise while preserving architecture
+**/*_test.go
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.ts
+**/*.spec.tsx
+**/test_*.py
+tests/
+cypress/
+e2e/cypress/screenshots/
+e2e/cypress/videos/
+
+# Generated lock files - auto-generated, high token cost, low value
+**/package-lock.json
+**/go.sum
+**/poetry.lock
+**/Pipfile.lock
+
+# Documentation duplicates - MkDocs builds site/ from docs/
+site/
+
+# Virtual environments and dependencies - massive token waste
+# Python virtual environments
+**/.venv
+**/.venv/
+**/.venv-*/
+**/venv
+**/venv/
+**/env
+**/env/
+**/.env-*/
+**/virtualenv/
+**/.virtualenv/
+
+# Node.js and Go dependencies
+**/node_modules/
+**/vendor/
+
+# Build artifacts - generated output, not source
+**/.next/
+**/dist/
+**/build/
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.so
+**/*.dylib
+
+# OS and IDE files
+**/.DS_Store
+**/.idea/
+**/.vscode/
+**/*.swp
+**/*.swo
+
+# E2E artifacts
+e2e/cypress/screenshots/
+e2e/cypress/videos/
+
+# Temporary files
+**/*.tmp
+**/*.temp
+**/tmp/
