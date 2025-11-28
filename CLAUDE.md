@@ -13,13 +13,11 @@ The **Ambient Code Platform** is a Kubernetes-native AI automation platform that
 The platform includes **Amber**, a background agent that automates common development tasks via GitHub Issues. Team members can trigger automated fixes, refactoring, and test additions without requiring direct access to Claude Code.
 
 **Quick Links**:
-
 - [Amber Quickstart](docs/amber-quickstart.md) - Get started in 5 minutes
 - [Full Documentation](docs/amber-automation.md) - Complete automation guide
 - [Amber Config](.claude/amber-config.yml) - Automation policies
 
 **Common Workflows**:
-
 - 🤖 **Auto-Fix** (label: `amber:auto-fix`): Formatting, linting, trivial fixes
 - 🔧 **Refactoring** (label: `amber:refactor`): Break large files, extract patterns
 - 🧪 **Test Coverage** (label: `amber:test-coverage`): Add missing tests
