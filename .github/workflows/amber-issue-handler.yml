@@ -235,6 +235,14 @@ jobs:
             echo "Changes committed on branch $BRANCH_NAME (commit: ${COMMIT_SHA:0:7})"
           fi
 
+      - name: Push branch to remote
+        if: steps.check-changes.outputs.has_changes == 'true'
+        env:
+          BRANCH_NAME: ${{ steps.check-changes.outputs.branch_name }}
+        run: |
+          git push -u origin "$BRANCH_NAME"
+          echo "Pushed branch $BRANCH_NAME to remote"
+
       - name: Validate changes align with issue intent
         if: steps.check-changes.outputs.has_changes == 'true'
         env:
