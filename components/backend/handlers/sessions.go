@@ -387,10 +387,11 @@ func CreateSession(c *gin.Context) {
 		annotations["vteam.ambient-code/parent-session-id"] = req.ParentSessionID
 		log.Printf("Creating continuation session from parent %s", req.ParentSessionID)
 
-		// Clean up temp-content pod from parent session to free the PVC
+		// Clean up pods from parent session to free the PVC
 		// This prevents Multi-Attach errors when the new session tries to mount the same workspace
 		reqK8s, _ := GetK8sClientsForRequest(c)
 		if reqK8s != nil {
+			// Delete temp-content pod
 			tempPodName := fmt.Sprintf("temp-content-%s", req.ParentSessionID)
 			if err := reqK8s.CoreV1().Pods(project).Delete(c.Request.Context(), tempPodName, v1.DeleteOptions{}); err != nil {
 				if !errors.IsNotFound(err) {
@@ -398,6 +399,22 @@ func CreateSession(c *gin.Context) {
 				}
 			} else {
 				log.Printf("CreateSession: deleted temp-content pod %s to free PVC for continuation", tempPodName)
+			}
+
+			// Delete parent job to ensure all pods using the PVC are cleaned up
+			// The Job controller will delete its pods automatically
+			parentJobName := fmt.Sprintf("agentic-session-job-%s", req.ParentSessionID)
+			policy := v1.DeletePropagationBackground
+			if err := reqK8s.BatchV1().Jobs(project).Delete(c.Request.Context(), parentJobName, v1.DeleteOptions{
+				PropagationPolicy: &policy,
+			}); err != nil {
+				if !errors.IsNotFound(err) {
+					log.Printf("CreateSession: failed to delete parent job %s (non-fatal): %v", parentJobName, err)
+				}
+			} else {
+				log.Printf("CreateSession: deleted parent job %s to free PVC for continuation", parentJobName)
+				// Wait briefly for pod deletion to propagate
+				time.Sleep(2 * time.Second)
 			}
 		}
 	}
