@@ -7,7 +7,11 @@ RUN apt-get update && apt-get install -y \
     jq \
     gh \
     ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    # Install kubectl for workspace container mode (MCP workspace exec)
+    && curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" \
+    && chmod +x kubectl \
+    && mv kubectl /usr/local/bin/
 
 # Create working directory
 WORKDIR /app

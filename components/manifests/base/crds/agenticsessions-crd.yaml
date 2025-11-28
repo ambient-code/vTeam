@@ -56,6 +56,9 @@ spec:
               interactive:
                 type: boolean
                 description: "When true, run session in interactive chat mode using inbox/outbox files"
+              workspaceImage:
+                type: string
+                description: "Container image for the workspace environment. When specified, enables workspace container mode with separate agent and workspace containers."
               prompt:
                 type: string
                 description: "Optional initial prompt for the agentic session. If using a workflow with startupPrompt in ambient.json, this can be omitted."

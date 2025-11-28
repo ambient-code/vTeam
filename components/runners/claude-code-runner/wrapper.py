@@ -394,12 +394,49 @@ class ClaudeCodeAdapter:
 
             # Load MCP server configuration from .mcp.json if present
             mcp_servers = self._load_mcp_config(cwd_path)
-            # Build allowed_tools list with MCP server
-            allowed_tools = ["Read","Write","Bash","Glob","Grep","Edit","MultiEdit","WebSearch","WebFetch"]
+            if mcp_servers is None:
+                mcp_servers = {}
+
+            # Build allowed_tools list
+            # Workspace container mode (DISABLE_BASH_TOOL=1): Remove Bash, use MCP workspace exec instead
+            disable_bash = self.context.get_env('DISABLE_BASH_TOOL', '').strip().lower() in ('1', 'true', 'yes')
+            workspace_container = self.context.get_env('WORKSPACE_CONTAINER', '').strip()
+            workspace_mode = disable_bash and workspace_container
+
+            # Track tools to explicitly disable (applied after SDK pre-filtering)
+            disallowed_tools: list[str] = []
+
+            if workspace_mode:
+                allowed_tools = ["Read", "Write", "Glob", "Grep", "Edit", "MultiEdit", "WebSearch", "WebFetch"]
+                # Explicitly disable Bash tools - this is required because allowed_tools alone
+                # doesn't filter out built-in tools (SDK uses two-stage filtering)
+                disallowed_tools = ["Bash", "BashOutput", "KillShell"]
+                logging.info(f"Workspace container mode ENABLED: Bash disabled, workspace container={workspace_container}")
+
+                # Start the MCP workspace exec server in background
+                mcp_port = 19999
+                await self._start_workspace_mcp_server(mcp_port)
+
+                # Add workspace MCP server to configuration
+                mcp_servers["workspace"] = {
+                    "type": "http",
+                    "url": f"http://localhost:{mcp_port}/mcp"
+                }
+                allowed_tools.append("mcp__workspace")
+                logging.info(f"Added workspace MCP server on port {mcp_port}")
+            elif disable_bash:
+                # DISABLE_BASH_TOOL set but no WORKSPACE_CONTAINER - just disable Bash
+                allowed_tools = ["Read", "Write", "Glob", "Grep", "Edit", "MultiEdit", "WebSearch", "WebFetch"]
+                disallowed_tools = ["Bash", "BashOutput", "KillShell"]
+                logging.info("Bash tool DISABLED (no workspace container configured)")
+            else:
+                allowed_tools = ["Read", "Write", "Bash", "Glob", "Grep", "Edit", "MultiEdit", "WebSearch", "WebFetch"]
+
             if mcp_servers:
                 # Add permissions for all tools from each MCP server
                 for server_name in mcp_servers.keys():
-                    allowed_tools.append(f"mcp__{server_name}")
+                    if f"mcp__{server_name}" not in allowed_tools:
+                        allowed_tools.append(f"mcp__{server_name}")
                 logging.info(f"MCP tool permissions granted for servers: {list(mcp_servers.keys())}")
 
             # Build comprehensive workspace context system prompt
@@ -420,6 +457,7 @@ class ClaudeCodeAdapter:
                 cwd=cwd_path,
                 permission_mode="acceptEdits",
                 allowed_tools=allowed_tools,
+                disallowed_tools=disallowed_tools if disallowed_tools else None,
                 mcp_servers=mcp_servers,
                 setting_sources=["project"],
                 system_prompt=system_prompt_config
@@ -2021,6 +2059,51 @@ class ClaudeCodeAdapter:
                 logging.warning(f"MCP server '{name}' rejected: type '{server_type}' not allowed")
 
         return allowed_servers
+
+    async def _start_workspace_mcp_server(self, port: int) -> None:
+        """Start the MCP workspace exec server for workspace container mode.
+
+        This runs the workspace_exec MCP server in the background, which provides
+        the mcp__workspace__exec tool for executing commands in the workspace container.
+        """
+        import asyncio
+        import sys
+        from pathlib import Path
+
+        # Get the path to the MCP server module
+        mcp_server_path = Path(__file__).parent / "mcp_servers" / "workspace_exec.py"
+        if not mcp_server_path.exists():
+            logging.error(f"MCP workspace_exec server not found at {mcp_server_path}")
+            return
+
+        logging.info(f"Starting MCP workspace server on port {port}...")
+
+        # Start the MCP server as a subprocess
+        try:
+            process = await asyncio.create_subprocess_exec(
+                sys.executable,
+                str(mcp_server_path),
+                "--mode", "http",
+                "--port", str(port),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+
+            # Store the process for cleanup later
+            self._mcp_server_process = process
+
+            # Give it a moment to start
+            await asyncio.sleep(1)
+
+            # Check if it's running
+            if process.returncode is None:
+                logging.info(f"MCP workspace server started (PID {process.pid})")
+            else:
+                stderr = await process.stderr.read() if process.stderr else b""
+                logging.error(f"MCP workspace server failed to start: {stderr.decode()}")
+
+        except Exception as e:
+            logging.error(f"Failed to start MCP workspace server: {e}")
 
     def _load_mcp_config(self, cwd_path: str) -> dict | None:
         """Load MCP server configuration from .mcp.json file in the workspace.
