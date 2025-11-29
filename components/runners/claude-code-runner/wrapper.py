@@ -832,10 +832,15 @@ class ClaudeCodeAdapter:
                         await self._send_log(f"📥 Cloning {name}...")
                         logging.info(f"Cloning {name} from {url} (branch: {branch})")
                         clone_url = self._url_with_token(url, token) if token else url
-                        await self._run_cmd(["git", "clone", "--branch", branch, "--single-branch", clone_url, str(repo_dir)], cwd=str(workspace))
-                        # Update remote URL to persist token (git strips it from clone URL)
-                        await self._run_cmd(["git", "remote", "set-url", "origin", clone_url], cwd=str(repo_dir), ignore_errors=True)
-                        logging.info(f"Successfully cloned {name}")
+                        try:
+                            await self._run_cmd(["git", "clone", "--branch", branch, "--single-branch", clone_url, str(repo_dir)], cwd=str(workspace))
+                            # Update remote URL to persist token (git strips it from clone URL)
+                            await self._run_cmd(["git", "remote", "set-url", "origin", clone_url], cwd=str(repo_dir), ignore_errors=True)
+                            logging.info(f"Successfully cloned {name}")
+                        except Exception as e:
+                            logging.warning(f"Failed to clone {name}: {e}")
+                            await self._send_log(f"⚠️ Failed to clone {name}, continuing without it")
+                            continue  # Skip this repo and continue with others
                     elif reusing_workspace:
                         # Reusing workspace - preserve local changes from previous session
                         await self._send_log(f"✓ Preserving {name} (continuation)")
@@ -847,11 +852,15 @@ class ClaudeCodeAdapter:
                         # Repo exists but NOT reusing - reset to clean state
                         await self._send_log(f"🔄 Resetting {name} to clean state")
                         logging.info(f"Repo {name} exists but not reusing - resetting to clean state")
-                        await self._run_cmd(["git", "remote", "set-url", "origin", self._url_with_token(url, token) if token else url], cwd=str(repo_dir), ignore_errors=True)
-                        await self._run_cmd(["git", "fetch", "origin", branch], cwd=str(repo_dir))
-                        await self._run_cmd(["git", "checkout", branch], cwd=str(repo_dir))
-                        await self._run_cmd(["git", "reset", "--hard", f"origin/{branch}"], cwd=str(repo_dir))
-                        logging.info(f"Reset {name} to origin/{branch}")
+                        try:
+                            await self._run_cmd(["git", "remote", "set-url", "origin", self._url_with_token(url, token) if token else url], cwd=str(repo_dir), ignore_errors=True)
+                            await self._run_cmd(["git", "fetch", "origin", branch], cwd=str(repo_dir))
+                            await self._run_cmd(["git", "checkout", branch], cwd=str(repo_dir))
+                            await self._run_cmd(["git", "reset", "--hard", f"origin/{branch}"], cwd=str(repo_dir))
+                            logging.info(f"Reset {name} to origin/{branch}")
+                        except Exception as e:
+                            logging.warning(f"Failed to reset {name}: {e}")
+                            await self._send_log(f"⚠️ Failed to reset {name}, using existing state")
 
                     # Git identity with fallbacks
                     user_name = os.getenv("GIT_USER_NAME", "").strip() or "Ambient Code Bot"
@@ -892,10 +901,14 @@ class ClaudeCodeAdapter:
                 await self._send_log("📥 Cloning input repository...")
                 logging.info(f"Cloning from {input_repo} (branch: {input_branch})")
                 clone_url = self._url_with_token(input_repo, token) if token else input_repo
-                await self._run_cmd(["git", "clone", "--branch", input_branch, "--single-branch", clone_url, str(workspace)], cwd=str(workspace.parent))
-                # Update remote URL to persist token (git strips it from clone URL)
-                await self._run_cmd(["git", "remote", "set-url", "origin", clone_url], cwd=str(workspace), ignore_errors=True)
-                logging.info("Successfully cloned repository")
+                try:
+                    await self._run_cmd(["git", "clone", "--branch", input_branch, "--single-branch", clone_url, str(workspace)], cwd=str(workspace.parent))
+                    # Update remote URL to persist token (git strips it from clone URL)
+                    await self._run_cmd(["git", "remote", "set-url", "origin", clone_url], cwd=str(workspace), ignore_errors=True)
+                    logging.info("Successfully cloned repository")
+                except Exception as e:
+                    logging.warning(f"Failed to clone repository: {e}")
+                    await self._send_log(f"⚠️ Failed to clone repository, continuing without it")
             elif reusing_workspace:
                 # Reusing workspace - preserve local changes from previous session
                 await self._send_log("✓ Preserving workspace (continuation)")
@@ -906,11 +919,15 @@ class ClaudeCodeAdapter:
                 # Reset to clean state
                 await self._send_log("🔄 Resetting workspace to clean state")
                 logging.info("Workspace exists but not reusing - resetting to clean state")
-                await self._run_cmd(["git", "remote", "set-url", "origin", self._url_with_token(input_repo, token) if token else input_repo], cwd=str(workspace))
-                await self._run_cmd(["git", "fetch", "origin", input_branch], cwd=str(workspace))
-                await self._run_cmd(["git", "checkout", input_branch], cwd=str(workspace))
-                await self._run_cmd(["git", "reset", "--hard", f"origin/{input_branch}"], cwd=str(workspace))
-                logging.info(f"Reset workspace to origin/{input_branch}")
+                try:
+                    await self._run_cmd(["git", "remote", "set-url", "origin", self._url_with_token(input_repo, token) if token else input_repo], cwd=str(workspace))
+                    await self._run_cmd(["git", "fetch", "origin", input_branch], cwd=str(workspace))
+                    await self._run_cmd(["git", "checkout", input_branch], cwd=str(workspace))
+                    await self._run_cmd(["git", "reset", "--hard", f"origin/{input_branch}"], cwd=str(workspace))
+                    logging.info(f"Reset workspace to origin/{input_branch}")
+                except Exception as e:
+                    logging.warning(f"Failed to reset workspace: {e}")
+                    await self._send_log(f"⚠️ Failed to reset workspace, using existing state")
 
             # Git identity with fallbacks
             user_name = os.getenv("GIT_USER_NAME", "").strip() or "Ambient Code Bot"
@@ -1047,8 +1064,13 @@ class ClaudeCodeAdapter:
         await self._send_log(f"📥 Cloning workflow {workflow_name}...")
         logging.info(f"Cloning workflow from {git_url} (branch: {branch})")
         clone_url = self._url_with_token(git_url, token) if token else git_url
-        await self._run_cmd(["git", "clone", "--branch", branch, "--single-branch", clone_url, str(temp_clone_dir)], cwd=str(workspace))
-        logging.info(f"Successfully cloned workflow to temp directory")
+        try:
+            await self._run_cmd(["git", "clone", "--branch", branch, "--single-branch", clone_url, str(temp_clone_dir)], cwd=str(workspace))
+            logging.info(f"Successfully cloned workflow to temp directory")
+        except Exception as e:
+            logging.warning(f"Failed to clone workflow {workflow_name}: {e}")
+            await self._send_log(f"⚠️ Failed to clone workflow {workflow_name}, continuing without it")
+            return  # Exit early, workflow not available
 
         # Extract subdirectory if path is specified
         if path and path.strip():
@@ -1131,15 +1153,20 @@ class ClaudeCodeAdapter:
         clone_url = self._url_with_token(repo_url, token) if token else repo_url
 
         await self._send_log(f"📥 Cloning {repo_name}...")
-        await self._run_cmd(["git", "clone", "--branch", repo_branch, "--single-branch", clone_url, str(repo_dir)], cwd=str(workspace))
-        
-        # Configure git identity
-        user_name = os.getenv("GIT_USER_NAME", "").strip() or "Ambient Code Bot"
-        user_email = os.getenv("GIT_USER_EMAIL", "").strip() or "bot@ambient-code.local"
-        await self._run_cmd(["git", "config", "user.name", user_name], cwd=str(repo_dir))
-        await self._run_cmd(["git", "config", "user.email", user_email], cwd=str(repo_dir))
-        
-        await self._send_log(f"✅ Repository {repo_name} added")
+        try:
+            await self._run_cmd(["git", "clone", "--branch", repo_branch, "--single-branch", clone_url, str(repo_dir)], cwd=str(workspace))
+
+            # Configure git identity
+            user_name = os.getenv("GIT_USER_NAME", "").strip() or "Ambient Code Bot"
+            user_email = os.getenv("GIT_USER_EMAIL", "").strip() or "bot@ambient-code.local"
+            await self._run_cmd(["git", "config", "user.name", user_name], cwd=str(repo_dir))
+            await self._run_cmd(["git", "config", "user.email", user_email], cwd=str(repo_dir))
+
+            await self._send_log(f"✅ Repository {repo_name} added")
+        except Exception as e:
+            logging.warning(f"Failed to clone repository {repo_name}: {e}")
+            await self._send_log(f"⚠️ Failed to clone {repo_name}, continuing without it")
+            return  # Exit early, don't update REPOS_JSON or request restart
 
         # Update REPOS_JSON env var
         repos_cfg = self._get_repos_config()
